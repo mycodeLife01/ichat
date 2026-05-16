@@ -1,0 +1,181 @@
+import os
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from uuid import uuid4
+
+import pytest
+from fastapi import status
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.core.errors import AppError
+from app.models.conversation import Conversation, Message
+from app.models.run import Run
+from app.models.user import User
+from app.services.conversations.service import (
+    create_conversation,
+    delete_conversation,
+    get_conversation_detail,
+    list_conversations,
+    rename_conversation,
+)
+
+TEST_DATABASE_URL = os.environ.get(
+    "CONVERSATION_TEST_DATABASE_URL",
+    "postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat",
+)
+TEST_EMAIL_DOMAIN = "conversation-service-test.example.com"
+
+
+async def clean_test_data(session: AsyncSession) -> None:
+    user_ids = select(User.id).where(User.email.like(f"%@{TEST_EMAIL_DOMAIN}")).scalar_subquery()
+    conversation_ids = (
+        select(Conversation.id).where(Conversation.user_id.in_(user_ids)).scalar_subquery()
+    )
+    await session.execute(delete(Run).where(Run.conversation_id.in_(conversation_ids)))
+    await session.execute(delete(Message).where(Message.conversation_id.in_(conversation_ids)))
+    await session.execute(delete(Conversation).where(Conversation.user_id.in_(user_ids)))
+    await session.execute(delete(User).where(User.id.in_(user_ids)))
+
+
+@pytest.fixture()
+async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with factory() as session:
+        await clean_test_data(session)
+        await session.commit()
+
+    yield factory
+
+    async with factory() as session:
+        await clean_test_data(session)
+        await session.commit()
+    await engine.dispose()
+
+
+async def create_user(session: AsyncSession, username: str) -> User:
+    suffix = uuid4().hex
+    user = User(
+        username=f"{username}-{suffix}",
+        email=f"{username}-{suffix}@{TEST_EMAIL_DOMAIN}",
+        password_hash="hashed-password",
+        email_verified=False,
+        is_active=True,
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
+async def test_create_and_list_conversations_for_owner(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        other_user = await create_user(session, "bob")
+
+        first = await create_conversation(session, user=user, title=None)
+        second = await create_conversation(session, user=user, title="Project chat")
+        await create_conversation(session, user=other_user, title="Other chat")
+        await session.commit()
+
+        conversations = await list_conversations(session, user=user)
+
+    assert [conversation.id for conversation in conversations] == [second.id, first.id]
+    assert conversations[0].title == "Project chat"
+    assert conversations[1].title is None
+
+
+async def test_deleted_conversation_detail_returns_not_found(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+        visible = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="Hello",
+            position=1,
+        )
+        archived = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="Old answer",
+            position=2,
+        )
+        session.add_all([visible, archived])
+        await session.flush()
+        await delete_conversation(session, user=user, conversation_id=conversation.id)
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await get_conversation_detail(session, user=user, conversation_id=conversation.id)
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Conversation not found"
+
+
+async def test_get_conversation_detail_hides_archived_messages(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+        visible = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="Hello",
+            position=1,
+        )
+        archived = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="Old answer",
+            position=2,
+        )
+        session.add_all([visible, archived])
+        await session.flush()
+        archived.archived_at = datetime.now(UTC)
+        await session.commit()
+
+        detail = await get_conversation_detail(session, user=user, conversation_id=conversation.id)
+
+    assert [message.id for message in detail.messages] == [visible.id]
+
+
+async def test_rename_conversation_updates_title(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title=None)
+
+        updated = await rename_conversation(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            title="  New title  ",
+        )
+        await session.commit()
+
+    assert updated.title == "New title"
+    assert updated.updated_at >= updated.created_at
+
+
+async def test_cross_user_conversation_access_returns_not_found(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        owner = await create_user(session, "alice")
+        other_user = await create_user(session, "bob")
+        conversation = await create_conversation(session, user=owner, title="Private")
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await get_conversation_detail(session, user=other_user, conversation_id=conversation.id)
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Conversation not found"
