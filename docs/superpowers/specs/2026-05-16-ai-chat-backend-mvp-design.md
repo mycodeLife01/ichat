@@ -1,94 +1,94 @@
-# AIChat Backend MVP Design
+# AIChat 后端 MVP 设计
 
-Date: 2026-05-16
+日期：2026-05-16
 
-## Goal
+## 目标
 
-Build the first production-usable backend for an AIChat platform similar to ChatGPT. The MVP supports username/email password authentication, conversation management, linear chat, DeepSeek-backed LLM generation, durable streaming output, explicit cancellation, and replayable stream events.
+构建 AIChat 平台的第一个生产可用后端。产品形态类似 ChatGPT。MVP 支持用户名/邮箱加密码认证、对话管理、线性聊天、基于 DeepSeek 的 LLM 生成、持久化流式输出、显式取消，以及可重放的流式事件。
 
-The central product rule is:
+核心产品规则是：
 
-> An HTTP connection observes a run; it does not own the run lifecycle.
+> HTTP 连接只是观察一个 run；它不拥有 run 的生命周期。
 
-If a client disconnects from the stream, the backend continues generation by default. The client can reconnect and replay persisted output events. A run changes lifecycle only through backend state transitions such as success, failure, explicit cancel, or regenerate.
+如果客户端从流式连接断开，后端默认继续生成。客户端可以重新连接，并重放已持久化的输出事件。run 的生命周期只由后端状态转换改变，例如成功、失败、显式取消或重生成。
 
-## Scope
+## 范围
 
-In scope for the first version:
+首版包含：
 
-- User registration and login with username/email plus password.
-- JWT access tokens plus persisted refresh tokens.
-- Conversation create, list, detail, rename, and soft delete.
-- Linear conversation messages with user and assistant roles.
-- Sending a user message creates a queued LLM run.
-- DeepSeek as the only provider in MVP, called through its OpenAI-compatible streaming API with `httpx`.
-- Provider abstraction that allows additional providers later.
-- Text delta event persistence with monotonic `seq` per run.
-- SSE stream replay using `after_seq` query cursor only.
-- Explicit run cancellation.
-- Regenerate from any user message by archiving later messages and creating a new run.
-- PostgreSQL-backed run queue with independent worker process.
-- Worker lease/heartbeat and timeout recovery.
-- Structured logs with request, user, run, and conversation correlation.
-- Core unit tests and API integration tests with fake provider streams.
+- 用户注册和登录，支持用户名/邮箱加密码。
+- JWT access token 加持久化 refresh token。
+- conversation 创建、列表、详情、重命名和软删除。
+- 线性 conversation message，支持 `user` 和 `assistant` 角色。
+- 发送 user message 时创建 queued LLM run。
+- MVP 只接入 DeepSeek，通过 `httpx` 调用其 OpenAI-compatible streaming API。
+- provider 抽象，为未来接入其他 provider 留出空间。
+- 文本 delta 事件持久化，每个 run 内使用单调递增的 `seq`。
+- SSE 流式重放只使用 `after_seq` query cursor。
+- 显式 run 取消。
+- 从任意 user message 重生成：归档其后的消息并创建新 run。
+- 基于 PostgreSQL 的 run 队列和独立 worker 进程。
+- worker lease/heartbeat 和超时恢复。
+- 结构化日志，关联 request、user、run 和 conversation。
+- 核心单元测试和使用 fake provider stream 的 API 集成测试。
 
-Out of scope for the first version:
+首版不包含：
 
-- Frontend application.
-- Email sending and email verification flow, though verification structures are reserved.
-- Password reset.
-- Billing, quota, and payment.
-- Redis, Celery, LangChain, LangGraph, LiteLLM, OpenTelemetry, and Prometheus.
-- Conversation branches as first-class product objects.
-- Native EventSource support and `Last-Event-ID`.
-- Model/provider management API.
+- 前端应用。
+- 邮件发送和邮箱验证流程，但会预留验证相关结构。
+- 密码重置。
+- 计费、额度和支付。
+- Redis、Celery、LangChain、LangGraph、LiteLLM、OpenTelemetry 和 Prometheus。
+- 作为一等产品能力的 conversation branch。
+- 原生 EventSource 支持和 `Last-Event-ID`。
+- model/provider 管理 API。
 
-## Technology
+## 技术栈
 
-- Python 3.12.
-- FastAPI.
-- PostgreSQL.
-- SQLAlchemy 2.0 async with asyncpg.
-- Alembic.
-- uv.
-- httpx for DeepSeek HTTP streaming.
-- pytest for tests.
-- Docker Compose for local and small production deployment.
+- Python 3.12。
+- FastAPI。
+- PostgreSQL。
+- SQLAlchemy 2.0 async + asyncpg。
+- Alembic。
+- uv。
+- httpx，用于 DeepSeek HTTP streaming。
+- pytest，用于测试。
+- Docker Compose，用于本地和小规模生产部署。
 
-The deployment shape is:
+部署形态：
 
-- `api`: FastAPI service.
-- `worker`: independent async worker process.
-- `postgres`: durable state store and run queue.
+- `api`：FastAPI 服务。
+- `worker`：独立 async worker 进程。
+- `postgres`：持久化状态存储和 run 队列。
 
-## Architecture
+## 架构
 
-The API service handles authentication, conversation and message APIs, run creation, cancellation, regeneration, and SSE event reads. It never calls DeepSeek directly in request handlers.
+API 服务处理认证、conversation 和 message API、run 创建、取消、重生成，以及 SSE 事件读取。API 请求处理器不直接调用 DeepSeek。
 
-The worker process claims queued runs from PostgreSQL, holds execution ownership through a lease and heartbeat, builds provider context, calls DeepSeek streaming API, parses provider SSE chunks, normalizes text deltas, and persists run events.
+worker 进程从 PostgreSQL 抢占 queued run，通过 lease 和 heartbeat 持有执行权，构建 provider 上下文，调用 DeepSeek streaming API，解析 provider SSE chunk，规范化文本 delta，并持久化 run event。
 
-PostgreSQL is the source of truth for users, sessions, conversations, messages, runs, and run events. It also backs the queue through run status, lease fields, and row-level claiming.
+PostgreSQL 是 users、sessions、conversations、messages、runs 和 run_events 的事实源。它也通过 run status、lease 字段和行级抢占承担队列职责。
 
-The queue mechanism is PostgreSQL row claiming with transactional updates and `FOR UPDATE SKIP LOCKED` or equivalent SQLAlchemy-supported locking. Redis or a dedicated task system is intentionally deferred.
+队列机制使用 PostgreSQL 行抢占：在事务中更新 run，并使用 `FOR UPDATE SKIP LOCKED` 或 SQLAlchemy 支持的等价锁机制。Redis 或专用任务系统明确推迟。
 
-## Authentication
+## 认证
 
-Users can register and log in with username/email plus password. Passwords are stored only as secure password hashes.
+用户可以使用用户名/邮箱加密码注册和登录。密码只保存安全哈希。
 
-Login returns:
+登录返回：
 
-- A short-lived JWT access token.
-- A long-lived refresh token persisted in PostgreSQL.
+- 短期 JWT access token。
+- 长期 refresh token，持久化在 PostgreSQL。
 
-Refresh tokens can be revoked for logout. Access tokens are used for REST APIs and SSE streams through `Authorization: Bearer <token>`.
+refresh token 可以被撤销，用于登出。access token 用于 REST API 和 SSE stream，形式为 `Authorization: Bearer <token>`。
 
-The user model includes `email_verified`, defaulting to false. The MVP does not send verification emails. The schema includes an email verification token table reserved for a later verification flow so that future email verification does not require reshaping the auth model.
+user model 包含 `email_verified`，默认值为 false。MVP 不发送验证邮件。schema 包含为后续邮箱验证流程预留的 email verification token 表，这样未来加入邮箱验证时不需要重塑认证模型。
 
-Password reset is not included in the MVP.
+MVP 不包含密码重置。
 
-## Conversations And Messages
+## Conversations 和 Messages
 
-Conversations are first-class resources owned by a user. The MVP supports:
+conversation 是用户拥有的一等资源。MVP 支持：
 
 - `POST /api/v1/conversations`
 - `GET /api/v1/conversations`
@@ -96,40 +96,40 @@ Conversations are first-class resources owned by a user. The MVP supports:
 - `PATCH /api/v1/conversations/{conversation_id}`
 - `DELETE /api/v1/conversations/{conversation_id}`
 
-`POST /api/v1/conversations` creates an empty conversation for a new chat window. `PATCH` supports renaming. `DELETE` soft-deletes the conversation. A soft-deleted conversation is hidden from normal list/detail APIs and cannot receive new messages. Existing messages, runs, and events remain in the database for audit and debugging.
+`POST /api/v1/conversations` 为新的聊天窗口创建空 conversation。`PATCH` 支持重命名。`DELETE` 软删除 conversation。软删除的 conversation 会从常规列表和详情 API 中隐藏，并且不允许继续发送新消息。已有 messages、runs 和 events 保留在数据库中，用于审计和排错。
 
-The conversation model is a linear mainline. Messages are ordered within a conversation and have a role of `user` or `assistant`. The MVP does not support conversation-level system prompts. Context building uses a global default system prompt from configuration.
+conversation 模型是线性主线。messages 在 conversation 内有序排列，角色为 `user` 或 `assistant`。MVP 不支持 conversation-level system prompt。上下文构建使用配置中的全局默认 system prompt。
 
-Sending a message uses:
+发送消息使用：
 
 - `POST /api/v1/conversations/{conversation_id}/messages`
 
-This endpoint writes the user message and creates a queued run in the same transaction. It returns the user message id and run id.
+该接口在同一个事务中写入 user message，并创建 queued run。返回 user message id 和 run id。
 
-Each conversation allows at most one active run at a time. Active states are `queued`, `started`, `streaming`, and `cancelling`.
+每个 conversation 同时最多允许一个 active run。active 状态包括 `queued`、`started`、`streaming` 和 `cancelling`。
 
-## Regenerate
+## 重生成
 
-Regenerate is supported from any visible user message:
+支持从任意可见 user message 发起重生成：
 
 - `POST /api/v1/messages/{message_id}/regenerate`
 
-The target message must be a user message owned by the current user.
+目标 message 必须是当前用户拥有的 user message。
 
-Regenerate semantics:
+重生成语义：
 
-1. Find the target user message.
-2. Cancel any active run later in the same conversation.
-3. Soft-archive every message after the target message.
-4. Create a new queued run using conversation context up to and including the target message.
+1. 找到目标 user message。
+2. 取消同一 conversation 中位于其后的任何 active run。
+3. 软归档目标 message 之后的所有 message。
+4. 使用截至并包含目标 message 的 conversation 上下文创建新的 queued run。
 
-To the product, messages after the target appear cleared. To the backend, those messages remain available for audit and debugging through archived metadata.
+对产品表现来说，目标 message 之后的消息被清空。对后端来说，这些消息通过 archived metadata 保留，可用于审计和排错。
 
-The MVP does not expose full conversation branches. Archived messages are not part of normal visible context.
+MVP 不暴露完整 conversation branch。已归档 message 不参与常规可见上下文。
 
-## Run State Machine
+## Run 状态机
 
-Runs use provider-agnostic public states:
+run 使用 provider 无关的公开状态：
 
 - `queued`
 - `started`
@@ -139,9 +139,9 @@ Runs use provider-agnostic public states:
 - `cancelling`
 - `cancelled`
 
-Terminal states are `succeeded`, `failed`, and `cancelled`.
+terminal 状态为 `succeeded`、`failed` 和 `cancelled`。
 
-Expected transitions:
+预期转换：
 
 - `queued -> started -> streaming -> succeeded`
 - `queued -> cancelling -> cancelled`
@@ -150,15 +150,15 @@ Expected transitions:
 - `started -> cancelling -> cancelled`
 - `streaming -> cancelling -> cancelled`
 
-Runs record timestamps such as created, started, first streamed, completed, failed, cancelled, and updated. Runs also record provider name, provider model, provider request id when available, error code/message, usage metadata, lease owner, lease expiry, and heartbeat time.
+run 记录 created、started、first streamed、completed、failed、cancelled 和 updated 等时间戳。run 也记录 provider name、provider model、可用时的 provider request id、error code/message、usage metadata、lease owner、lease expiry 和 heartbeat time。
 
-The worker claims queued runs by transactionally moving them to `started` and setting lease fields. During execution it renews the lease. If a worker crashes or is restarted, a recovery loop marks expired active runs as `failed` with an interruption reason and preserves any partial run events.
+worker 通过事务将 queued run 移动到 `started` 并设置 lease 字段，从而 claim run。执行期间 worker 会续租 lease。如果 worker 崩溃或重启，恢复循环会把 lease 过期的 active run 标记为 `failed`，写入中断原因，并保留已有 partial run events。
 
-## Run Events And Replay
+## Run Events 和 Replay
 
-Every text delta produced by the provider is normalized into a run event. Each event has a monotonically increasing `seq` within its run.
+provider 产生的每个文本 delta 都会被规范化为 run event。每个 event 在其 run 内有单调递增的 `seq`。
 
-Run event examples include:
+run event 示例：
 
 - `text_delta`
 - `run_started`
@@ -166,111 +166,111 @@ Run event examples include:
 - `run_failed`
 - `run_cancelled`
 
-Only text delta event replay is required for the user-visible stream, but terminal events are useful for clients and debugging.
+用户可见 stream 只要求重放 text delta event，但 terminal event 对客户端和调试都有价值。
 
-The final assistant message is materialized from accumulated deltas only when the run succeeds. If a run fails or is cancelled after partial output, partial run events remain persisted, but no assistant message is materialized for that partial output. Clients can display partial output from run events together with the terminal run status.
+最终 assistant message 只在 run 成功时，由累积 delta 物化生成。如果 run 在 partial output 之后失败或取消，partial run events 会保留，但不会为这些 partial output 物化 assistant message。客户端可以同时展示来自 run events 的 partial output 和 terminal run status。
 
 ## SSE API
 
-Clients stream run events with:
+客户端使用以下接口 stream run events：
 
 - `GET /api/v1/runs/{run_id}/events?after_seq=0`
 
-Authentication uses the normal access token:
+认证使用普通 access token：
 
 - `Authorization: Bearer <access_token>`
 
-The MVP supports only the `after_seq` query cursor. It does not support `Last-Event-ID`.
+MVP 只支持 `after_seq` query cursor。不支持 `Last-Event-ID`。
 
-The stream endpoint:
+stream endpoint：
 
-1. Authorizes the user against the run's conversation.
-2. Sends stored events where `seq > after_seq`.
-3. Tails new persisted events.
-4. Ends after a terminal run event is observed.
+1. 根据 run 所属 conversation 校验当前用户权限。
+2. 发送 `seq > after_seq` 的已存储 events。
+3. tail 新持久化的 events。
+4. 观察到 terminal run event 后结束。
 
-The SSE endpoint does not call DeepSeek and does not own run execution. It reads PostgreSQL only.
+SSE endpoint 不调用 DeepSeek，也不拥有 run 执行。它只读取 PostgreSQL。
 
-## Cancellation
+## 取消
 
-Cancellation uses:
+取消使用：
 
 - `POST /api/v1/runs/{run_id}/cancel`
 
-If the run is active and belongs to the current user, the API marks it `cancelling`. The worker checks cancellation between provider chunks and during heartbeat work. When cancellation is observed, the worker closes the provider stream, writes a terminal cancellation event, and marks the run `cancelled`.
+如果 run 处于 active 状态且属于当前用户，API 将其标记为 `cancelling`。worker 会在 provider chunk 之间和 heartbeat 工作期间检查取消状态。观察到取消后，worker 关闭 provider stream，写入 terminal cancellation event，并将 run 标记为 `cancelled`。
 
-If a queued run is cancelled before a worker claims it, it moves directly to `cancelled`.
+如果 queued run 在 worker claim 之前被取消，它会直接移动到 `cancelled`。
 
-Cancellation is idempotent for terminal runs and active runs already in `cancelling`.
+对 terminal run 和已经处于 `cancelling` 的 active run，取消操作是幂等的。
 
 ## DeepSeek Provider
 
-The MVP uses DeepSeek only, but business logic depends on a provider interface rather than DeepSeek-specific classes.
+MVP 只使用 DeepSeek，但业务逻辑依赖 provider interface，而不是 DeepSeek-specific class。
 
-The DeepSeek provider implementation:
+DeepSeek provider 实现：
 
-- Uses `httpx` directly.
-- Calls DeepSeek's OpenAI-compatible `/chat/completions` streaming API.
-- Sends `stream: true`.
-- Parses provider SSE `data:` lines.
-- Extracts assistant text deltas.
-- Maps provider finish and error metadata into normalized run events and run fields.
+- 直接使用 `httpx`。
+- 调用 DeepSeek 的 OpenAI-compatible `/chat/completions` streaming API。
+- 发送 `stream: true`。
+- 解析 provider SSE `data:` 行。
+- 提取 assistant text delta。
+- 将 provider finish 和 error metadata 映射为规范化 run events 和 run 字段。
 
-The MVP does not use the OpenAI Python SDK for DeepSeek. This preserves direct control of streaming, cancellation, retry, timeout handling, and event persistence.
+MVP 不使用 OpenAI Python SDK 调用 DeepSeek。这保留了对 streaming、取消、重试、超时处理和事件持久化的直接控制。
 
-DeepSeek thinking/reasoning support is a provider-level configuration capability. It is disabled by default in the MVP. Default user-visible output includes only assistant text.
+DeepSeek thinking/reasoning 支持是 provider-level 配置能力。MVP 默认关闭。默认用户可见输出只包含 assistant text。
 
-Provider configuration comes from environment/config:
+provider 配置来自环境变量/配置：
 
-- API key.
-- Base URL.
-- Model name.
-- Timeout settings.
-- Thinking/reasoning enabled flag.
-- Default generation parameters.
+- API key。
+- Base URL。
+- Model name。
+- Timeout settings。
+- Thinking/reasoning enabled flag。
+- Default generation parameters。
 
-There is no provider/model management API in the MVP.
+MVP 不提供 provider/model 管理 API。
 
-## Context Building
+## 上下文构建
 
-The worker does not assemble provider messages inline. It calls a context builder.
+worker 不在执行逻辑里直接拼装 provider messages。它调用 context builder。
 
-The MVP context builder:
+MVP context builder：
 
-- Starts with a global default system prompt from configuration.
-- Reads visible, non-archived messages in conversation order.
-- Includes context up to the run's target user message.
-- Applies a simple recent-history truncation strategy based on configurable token or character budget.
+- 从配置中的全局默认 system prompt 开始。
+- 按 conversation 顺序读取可见、未归档 messages。
+- 包含截至 run 目标 user message 的上下文。
+- 使用基于可配置 token 或字符预算的简单近期历史截断策略。
 
-The design keeps context strategy isolated so later versions can add summarization, provider-specific budgets, or richer prompt policies without rewriting worker execution.
+该设计将上下文策略隔离出来，使后续版本可以加入 summarization、provider-specific budget 或更丰富的 prompt policy，而不需要重写 worker 执行逻辑。
 
-## Failure Handling
+## 失败处理
 
-API errors are structured with stable error codes and human-readable messages.
+API error 使用稳定 error code 和人类可读 message 的结构化格式。
 
-Provider failure behavior:
+provider failure 行为：
 
-- If DeepSeek fails before any text delta is persisted, the worker retries once.
-- If any text delta has already been persisted, the worker does not retry automatically.
-- Partial events remain persisted.
-- The run is marked `failed` with error code and message.
+- 如果 DeepSeek 在任何 text delta 被持久化之前失败，worker 重试一次。
+- 如果已有任何 text delta 被持久化，worker 不自动重试。
+- partial events 保留。
+- run 标记为 `failed`，并记录 error code 和 message。
 
-Context building failure, database failure, lease loss, and unexpected worker exceptions are mapped to `failed` when possible.
+context building failure、database failure、lease loss 和意外 worker exception 会在可行时映射为 `failed`。
 
-Worker interruption behavior:
+worker interruption 行为：
 
-- Active runs have lease expiry and heartbeat metadata.
-- Recovery logic marks expired active runs failed.
-- No attempt is made to resume a provider HTTP stream.
-- No attempt is made to replay already-produced deltas back into a new provider call automatically.
+- active run 有 lease expiry 和 heartbeat metadata。
+- 恢复逻辑会把 lease 过期的 active run 标记为 failed。
+- 不尝试恢复 provider HTTP stream。
+- 不尝试把已经生成的 delta 自动拼进新的 provider 调用。
 
-This avoids creating duplicate or semantically inconsistent assistant output.
+这可以避免生成重复或语义不一致的 assistant output。
 
-## Usage And Observability
+## Usage 和可观测性
 
-When DeepSeek returns token usage or comparable metadata, the worker stores it on the run. Usage is for observability and future billing support only. The MVP has no quota or billing logic.
+当 DeepSeek 返回 token usage 或类似 metadata 时，worker 将其保存到 run 上。usage 只用于可观测性和未来计费支持。MVP 没有 quota 或 billing 逻辑。
 
-Logs are structured and include correlation fields where available:
+日志使用结构化格式，并在可用时包含以下关联字段：
 
 - request id
 - user id
@@ -279,91 +279,91 @@ Logs are structured and include correlation fields where available:
 - provider
 - provider request id
 
-Metrics and tracing are deferred.
+metrics 和 tracing 推迟。
 
-## Deployment
+## 部署
 
-The MVP is deployed with Docker Compose:
+MVP 使用 Docker Compose 部署：
 
 - `api`
 - `worker`
 - `postgres`
 
-Configuration is environment-driven. Required values include:
+配置由环境变量驱动。必需配置包括：
 
-- PostgreSQL DSN.
-- JWT secret and token TTLs.
-- Refresh token TTL.
-- DeepSeek API key.
-- DeepSeek base URL.
-- DeepSeek model.
-- Global default system prompt.
-- DeepSeek thinking/reasoning flag.
-- Run lease duration.
-- Worker poll interval.
-- Worker heartbeat interval.
-- Log level.
+- PostgreSQL DSN。
+- JWT secret 和 token TTL。
+- Refresh token TTL。
+- DeepSeek API key。
+- DeepSeek base URL。
+- DeepSeek model。
+- 全局默认 system prompt。
+- DeepSeek thinking/reasoning flag。
+- Run lease duration。
+- Worker poll interval。
+- Worker heartbeat interval。
+- Log level。
 
-Alembic migrations manage database schema.
+Alembic migrations 管理数据库 schema。
 
-## Testing
+## 测试
 
-Default automated tests do not call real DeepSeek.
+默认自动化测试不调用真实 DeepSeek。
 
-Unit tests cover:
+单元测试覆盖：
 
-- Password hashing and token logic.
-- Refresh token persistence and revocation.
-- Context builder truncation.
-- DeepSeek SSE parser.
-- Run state transitions.
-- Cancellation state transitions.
-- Regenerate archive rules.
+- Password hashing 和 token logic。
+- Refresh token 持久化和撤销。
+- Context builder 截断。
+- DeepSeek SSE parser。
+- Run 状态转换。
+- Cancellation 状态转换。
+- Regenerate archive 规则。
 
-API integration tests cover:
+API 集成测试覆盖：
 
-- Registration and login.
-- Token refresh and logout.
-- Conversation create/list/detail/rename/delete.
-- Sending a message and creating a queued run.
-- SSE replay from `after_seq`.
-- Run cancellation.
-- Regenerate from an arbitrary user message.
-- Authorization boundaries between users.
+- 注册和登录。
+- Token refresh 和 logout。
+- Conversation 创建/列表/详情/重命名/删除。
+- 发送 message 并创建 queued run。
+- 从 `after_seq` 开始 SSE replay。
+- Run cancellation。
+- 从任意 user message regenerate。
+- 用户之间的 authorization boundary。
 
-Worker tests use a fake provider stream to simulate:
+worker 测试使用 fake provider stream 模拟：
 
-- Successful text deltas.
-- Failure before first delta and retry success.
-- Failure after partial delta.
-- Cancellation during streaming.
-- Lease timeout recovery behavior.
+- 成功 text deltas。
+- 首个 delta 前失败，然后重试成功。
+- partial delta 后失败。
+- streaming 期间取消。
+- lease timeout recovery 行为。
 
-A manual DeepSeek smoke command is included for local verification with real credentials, but it is not part of default automated tests.
+提供一个手动 DeepSeek smoke command，用真实凭据做本地验证，但它不属于默认自动化测试。
 
-## Implementation Notes
+## 实现备注
 
-The project should be structured around clear boundaries:
+项目应围绕清晰边界组织：
 
-- `api`: route handlers and request/response schemas.
-- `auth`: password, JWT, refresh token behavior.
-- `db`: SQLAlchemy models, sessions, migrations.
-- `conversations`: conversation and message services.
-- `runs`: run state machine, queue claiming, events, cancellation.
-- `providers`: provider interface and DeepSeek adapter.
-- `context`: provider message assembly.
-- `worker`: polling, lease, execution loop, recovery.
-- `core`: config, logging, error types.
+- `api`：route handlers 和 request/response schemas。
+- `auth`：password、JWT、refresh token 行为。
+- `db`：SQLAlchemy models、sessions、migrations。
+- `conversations`：conversation 和 message services。
+- `runs`：run 状态机、queue claiming、events、cancellation。
+- `providers`：provider interface 和 DeepSeek adapter。
+- `context`：provider message assembly。
+- `worker`：polling、lease、execution loop、recovery。
+- `core`：config、logging、error types。
 
-The implementation should keep route handlers thin. Business rules such as "one active run per conversation", "regenerate archives later messages", and "SSE reads only persisted events" belong in services that can be tested without HTTP.
+route handlers 应保持薄。业务规则，例如“每个 conversation 只允许一个 active run”、“regenerate 归档后续 messages”、“SSE 只读取已持久化 events”，应该放在 service 中，以便不通过 HTTP 也能测试。
 
-## Open Decisions Closed In This Spec
+## 本规格已关闭的决策
 
-- Use PostgreSQL-backed run queue rather than in-process background tasks or Redis/Celery.
-- Use `httpx` direct streaming for DeepSeek rather than the OpenAI Python SDK.
-- Use `after_seq` query cursor only for replay.
-- Use fetch-based SSE with Authorization header.
-- Use global system prompt only in MVP.
-- Use soft delete for conversations and soft archive for messages removed by regenerate.
-- Allow one active run per conversation.
-- Retry provider failure only before the first persisted delta.
+- 使用 PostgreSQL-backed run queue，而不是 in-process background tasks 或 Redis/Celery。
+- 使用 `httpx` 直接 streaming 调用 DeepSeek，而不是 OpenAI Python SDK。
+- replay 只使用 `after_seq` query cursor。
+- 使用 fetch-based SSE 和 Authorization header。
+- MVP 只使用全局 system prompt。
+- conversation 使用软删除，regenerate 移除的 messages 使用软归档。
+- 每个 conversation 只允许一个 active run。
+- provider failure 只在首个 persisted delta 之前重试。
