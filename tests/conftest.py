@@ -3,7 +3,7 @@ from os import environ
 
 def pytest_configure() -> None:
     environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
-    environ.setdefault("JWT_SECRET", "secret")
+    environ.setdefault("JWT_SECRET", "test-jwt-secret-with-at-least-32-bytes")
     environ.setdefault("JWT_ACCESS_TOKEN_TTL_SECONDS", "900")
     environ.setdefault("REFRESH_TOKEN_TTL_SECONDS", "2592000")
     environ.setdefault("DEEPSEEK_API_KEY", "key")

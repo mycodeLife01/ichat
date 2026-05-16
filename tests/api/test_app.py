@@ -2,13 +2,19 @@ from uuid import UUID
 
 from fastapi import status
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.core.errors import AppError
 from app.main import create_app
+from app.schemas.responses import SuccessResponse
 
 
 async def ready() -> bool:
     return True
+
+
+class StatusResponse(BaseModel):
+    status: str
 
 
 def test_healthz_returns_ok() -> None:
@@ -27,6 +33,31 @@ def test_readyz_returns_ok_when_database_is_ready() -> None:
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"status": "ok"}
+
+
+def test_create_app_does_not_store_settings_on_app_state() -> None:
+    app = create_app(database_ready_check=ready)
+
+    assert not hasattr(app.state, "settings")
+
+
+def test_api_v1_success_response_omits_empty_meta() -> None:
+    app = create_app(database_ready_check=ready)
+
+    @app.get(
+        "/api/v1/test-envelope",
+        response_model=SuccessResponse[StatusResponse],
+        response_model_exclude_none=True,
+    )
+    async def test_envelope() -> SuccessResponse[StatusResponse]:
+        return SuccessResponse(data=StatusResponse(status="ok"))
+
+    client = TestClient(app)
+
+    response = client.get("/api/v1/test-envelope")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"data": {"status": "ok"}}
 
 
 def test_request_id_header_is_generated_when_missing() -> None:

@@ -4,7 +4,8 @@ from uuid import uuid4
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from app.core.config import Settings, get_settings
+from app.api.v1.auth import router as auth_router
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
 from app.db.session import check_database_ready
@@ -13,15 +14,14 @@ DatabaseReadyCheck = Callable[[], Awaitable[bool]]
 
 
 def create_app(
-    settings: Settings | None = None,
     database_ready_check: DatabaseReadyCheck | None = None,
 ) -> FastAPI:
-    app_settings = settings or get_settings()
+    app_settings = get_settings()
     configure_logging(app_settings.log_level)
     readiness_check = database_ready_check or check_database_ready
 
     app = FastAPI(title="iChat API")
-    app.state.settings = app_settings
+    app.include_router(auth_router)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
