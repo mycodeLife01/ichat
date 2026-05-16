@@ -1,0 +1,45 @@
+[project]
+name = "ichat"
+version = "0.1.0"
+description = "AIChat backend service"
+readme = "docs/superpowers/specs/2026-05-16-ai-chat-backend-mvp-design.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic",
+    "asyncpg",
+    "email-validator",
+    "fastapi",
+    "httpx",
+    "pydantic-settings",
+    "pwdlib[argon2]",
+    "pyjwt[crypto]",
+    "python-dotenv",
+    "sqlalchemy[asyncio]",
+    "structlog",
+    "uvicorn[standard]",
+]
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
