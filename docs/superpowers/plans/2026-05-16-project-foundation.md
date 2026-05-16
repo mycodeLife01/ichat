@@ -4,7 +4,7 @@
 
 **目标：** 搭建 AIChat 后端项目骨架，安装首版所需依赖，创建 Docker Compose PostgreSQL 环境，并留下交接文档；本计划不实现业务代码、不创建 Alembic 迁移脚本、不编写 API/worker 逻辑。
 
-**架构：** 本次只建立工程基础设施和模块边界。Python 依赖由 `uv` 管理，源码目录采用 `src/ichat/<module>` 边界但只放 `.gitkeep`，模块职责写入中文架构文档。Docker Compose 提供 `api`、`worker`、`postgres` 三个服务，其中 `api` 和 `worker` 只是可构建基础容器，PostgreSQL 负责创建本地 `ichat` 数据库。
+**架构：** 本次只建立工程基础设施和模块边界。Python 依赖由 `uv` 管理，源码根目录采用 `app/`。业务逻辑收敛到 `app/services/...`，跨业务共享的 ORM models 和请求/响应 schemas 分别放在 `app/models` 和 `app/schemas`，模块职责写入中文架构文档。Docker Compose 提供 `api`、`worker`、`postgres` 三个服务，其中 `api` 和 `worker` 只是可构建基础容器，PostgreSQL 负责创建本地 `ichat` 数据库。
 
 **技术栈：** Python 3.12、uv、FastAPI、SQLAlchemy async、asyncpg、Alembic、httpx、pytest、Docker Compose、PostgreSQL 16。
 
@@ -27,9 +27,9 @@
 本次明确不做：
 
 - FastAPI app 入口。
-- SQLAlchemy models。
+- SQLAlchemy ORM model 类。
 - Alembic 初始化和迁移脚本。
-- auth、conversation、run、provider、worker 的业务实现。
+- auth、conversation、run、provider、context、worker 的业务实现。
 - 真实 DeepSeek 调用。
 - 自动化测试用例。
 
@@ -44,23 +44,27 @@
 
 **模块边界：**
 
-- Create: `src/ichat/api/.gitkeep`，保留 API 层目录。
-- Create: `src/ichat/auth/.gitkeep`，保留认证模块目录。
-- Create: `src/ichat/core/.gitkeep`，保留配置、日志、错误类型目录。
-- Create: `src/ichat/db/.gitkeep`，保留数据库模型、session、迁移相关目录。
-- Create: `src/ichat/conversations/.gitkeep`，保留 conversation 和 message 服务目录。
-- Create: `src/ichat/runs/.gitkeep`，保留 run 状态机、事件和队列目录。
-- Create: `src/ichat/providers/.gitkeep`，保留 provider interface 和 DeepSeek adapter 目录。
-- Create: `src/ichat/context/.gitkeep`，保留上下文构建目录。
-- Create: `src/ichat/worker/.gitkeep`，保留 worker polling、lease、recovery 目录。
+- Create: `app/api/.gitkeep`，保留 API 路由层目录。
+- Create: `app/core/.gitkeep`，保留配置、日志、错误类型目录。
+- Create: `app/db/.gitkeep`，保留数据库连接、session、Alembic 集成入口目录。
+- Create: `app/models/.gitkeep`，保留 SQLAlchemy ORM models 目录。
+- Create: `app/schemas/.gitkeep`，保留 Pydantic 请求/响应 schemas 目录。
+- Create: `app/services/auth/.gitkeep`，保留认证业务 service 目录。
+- Create: `app/services/conversations/.gitkeep`，保留 conversation 和 message 业务 service 目录。
+- Create: `app/services/runs/.gitkeep`，保留 run 状态机、事件和队列 service 目录。
+- Create: `app/services/providers/.gitkeep`，保留 provider interface 和 DeepSeek adapter 目录。
+- Create: `app/services/context/.gitkeep`，保留上下文构建 service 目录。
+- Create: `app/worker/.gitkeep`，保留 worker polling、lease、recovery 进程目录。
 - Create: `tests/api/.gitkeep`，保留 API 测试目录。
-- Create: `tests/auth/.gitkeep`，保留认证测试目录。
 - Create: `tests/core/.gitkeep`，保留 core 测试目录。
 - Create: `tests/db/.gitkeep`，保留数据库测试目录。
-- Create: `tests/conversations/.gitkeep`，保留 conversation 测试目录。
-- Create: `tests/runs/.gitkeep`，保留 run 测试目录。
-- Create: `tests/providers/.gitkeep`，保留 provider 测试目录。
-- Create: `tests/context/.gitkeep`，保留上下文测试目录。
+- Create: `tests/models/.gitkeep`，保留 ORM model 测试目录。
+- Create: `tests/schemas/.gitkeep`，保留 schema 测试目录。
+- Create: `tests/services/auth/.gitkeep`，保留认证 service 测试目录。
+- Create: `tests/services/conversations/.gitkeep`，保留 conversation service 测试目录。
+- Create: `tests/services/runs/.gitkeep`，保留 run service 测试目录。
+- Create: `tests/services/providers/.gitkeep`，保留 provider service 测试目录。
+- Create: `tests/services/context/.gitkeep`，保留 context service 测试目录。
 - Create: `tests/worker/.gitkeep`，保留 worker 测试目录。
 - Create: `docs/architecture/module-boundaries.md`，用中文记录模块职责和禁止事项。
 
@@ -194,23 +198,27 @@ Expected:
 
 **Files:**
 
-- Create: `src/ichat/api/.gitkeep`
-- Create: `src/ichat/auth/.gitkeep`
-- Create: `src/ichat/core/.gitkeep`
-- Create: `src/ichat/db/.gitkeep`
-- Create: `src/ichat/conversations/.gitkeep`
-- Create: `src/ichat/runs/.gitkeep`
-- Create: `src/ichat/providers/.gitkeep`
-- Create: `src/ichat/context/.gitkeep`
-- Create: `src/ichat/worker/.gitkeep`
+- Create: `app/api/.gitkeep`
+- Create: `app/core/.gitkeep`
+- Create: `app/db/.gitkeep`
+- Create: `app/models/.gitkeep`
+- Create: `app/schemas/.gitkeep`
+- Create: `app/services/auth/.gitkeep`
+- Create: `app/services/conversations/.gitkeep`
+- Create: `app/services/runs/.gitkeep`
+- Create: `app/services/providers/.gitkeep`
+- Create: `app/services/context/.gitkeep`
+- Create: `app/worker/.gitkeep`
 - Create: `tests/api/.gitkeep`
-- Create: `tests/auth/.gitkeep`
 - Create: `tests/core/.gitkeep`
 - Create: `tests/db/.gitkeep`
-- Create: `tests/conversations/.gitkeep`
-- Create: `tests/runs/.gitkeep`
-- Create: `tests/providers/.gitkeep`
-- Create: `tests/context/.gitkeep`
+- Create: `tests/models/.gitkeep`
+- Create: `tests/schemas/.gitkeep`
+- Create: `tests/services/auth/.gitkeep`
+- Create: `tests/services/conversations/.gitkeep`
+- Create: `tests/services/runs/.gitkeep`
+- Create: `tests/services/providers/.gitkeep`
+- Create: `tests/services/context/.gitkeep`
 - Create: `tests/worker/.gitkeep`
 - Create: `docs/architecture/module-boundaries.md`
 
@@ -220,23 +228,27 @@ Run:
 
 ```bash
 mkdir -p \
-  src/ichat/api \
-  src/ichat/auth \
-  src/ichat/core \
-  src/ichat/db \
-  src/ichat/conversations \
-  src/ichat/runs \
-  src/ichat/providers \
-  src/ichat/context \
-  src/ichat/worker \
+  app/api \
+  app/core \
+  app/db \
+  app/models \
+  app/schemas \
+  app/services/auth \
+  app/services/conversations \
+  app/services/runs \
+  app/services/providers \
+  app/services/context \
+  app/worker \
   tests/api \
-  tests/auth \
   tests/core \
   tests/db \
-  tests/conversations \
-  tests/runs \
-  tests/providers \
-  tests/context \
+  tests/models \
+  tests/schemas \
+  tests/services/auth \
+  tests/services/conversations \
+  tests/services/runs \
+  tests/services/providers \
+  tests/services/context \
   tests/worker \
   docs/architecture
 ```
@@ -251,23 +263,27 @@ Run:
 
 ```bash
 touch \
-  src/ichat/api/.gitkeep \
-  src/ichat/auth/.gitkeep \
-  src/ichat/core/.gitkeep \
-  src/ichat/db/.gitkeep \
-  src/ichat/conversations/.gitkeep \
-  src/ichat/runs/.gitkeep \
-  src/ichat/providers/.gitkeep \
-  src/ichat/context/.gitkeep \
-  src/ichat/worker/.gitkeep \
+  app/api/.gitkeep \
+  app/core/.gitkeep \
+  app/db/.gitkeep \
+  app/models/.gitkeep \
+  app/schemas/.gitkeep \
+  app/services/auth/.gitkeep \
+  app/services/conversations/.gitkeep \
+  app/services/runs/.gitkeep \
+  app/services/providers/.gitkeep \
+  app/services/context/.gitkeep \
+  app/worker/.gitkeep \
   tests/api/.gitkeep \
-  tests/auth/.gitkeep \
   tests/core/.gitkeep \
   tests/db/.gitkeep \
-  tests/conversations/.gitkeep \
-  tests/runs/.gitkeep \
-  tests/providers/.gitkeep \
-  tests/context/.gitkeep \
+  tests/models/.gitkeep \
+  tests/schemas/.gitkeep \
+  tests/services/auth/.gitkeep \
+  tests/services/conversations/.gitkeep \
+  tests/services/runs/.gitkeep \
+  tests/services/providers/.gitkeep \
+  tests/services/context/.gitkeep \
   tests/worker/.gitkeep
 ```
 
@@ -285,50 +301,76 @@ Expected:
 
 本文记录 AIChat 后端首版的模块职责。本次项目骨架只创建目录和文档，不实现业务代码。
 
-## `api`
+## 顶层结构
 
-负责 FastAPI 路由、请求/响应 schema、依赖注入入口。路由处理器应保持薄，不直接调用 DeepSeek，不直接拼装复杂业务流程。
+源码根目录使用 `app/`。业务逻辑集中在 `app/services/...`，跨业务共享的结构定义和基础设施模块保留在 `services` 外。
 
-## `auth`
+## `app/api`
 
-负责密码哈希、JWT access token、refresh token、当前用户解析、认证相关 service。用户注册、登录、刷新 token 和登出逻辑放在这里。
+负责 FastAPI 路由、引用请求/响应 schema、依赖注入入口。路由处理器应保持薄，不直接调用 DeepSeek，不直接拼装复杂业务流程。
 
-## `core`
+不放在 `services` 下的理由：`api` 是传输层入口，不是业务能力本身。
+
+## `app/core`
 
 负责配置、结构化日志、错误类型、跨模块常量。业务模块可以依赖 `core`，但 `core` 不依赖业务模块。
 
-## `db`
+不放在 `services` 下的理由：`core` 是全局基础设施，不能依赖任何业务 service。
 
-负责 SQLAlchemy models、数据库 session、Alembic 集成入口和数据库工具。本次不创建迁移脚本。
+## `app/db`
 
-## `conversations`
+负责数据库 engine、session、transaction helper、Alembic 集成入口和数据库工具。本次不创建迁移脚本。
+
+不放在 `services` 下的理由：`db` 是持久化基础设施，供 models 和 services 使用。
+
+## `app/models`
+
+负责 SQLAlchemy ORM model 类。后续 users、refresh_tokens、conversations、messages、runs、run_events 等 ORM model 放在这里。
+
+不放在 `services` 下的理由：ORM models 描述数据库结构和跨业务关系，会被多个 service、migration 和 query 使用。
+
+## `app/schemas`
+
+负责 Pydantic 请求/响应 schema。API 层使用 schema 定义接口边界，service 层可以返回内部对象或 schema 组装所需数据。
+
+不放在 `services` 下的理由：schemas 是 API contract，不是业务行为；同一个 response 可能组合多个 service 的数据。
+
+## `app/services/auth`
+
+负责密码哈希、JWT access token、refresh token、当前用户解析、认证相关 service。用户注册、登录、刷新 token 和登出逻辑放在这里。
+
+## `app/services/conversations`
 
 负责 conversation 和 message 的业务规则，包括创建对话、重命名、软删除、发送 user message、读取可见消息。
 
-## `runs`
+## `app/services/runs`
 
 负责 run 状态机、run_events、queue claiming、取消、lease 字段和 replay 语义。SSE 读取持久化事件，不直接调用 provider。
 
-## `providers`
+## `app/services/providers`
 
 负责 provider interface 和具体 provider adapter。MVP 首个 adapter 是 DeepSeek，使用 `httpx` 直接调用 OpenAI-compatible streaming API。
 
-## `context`
+## `app/services/context`
 
 负责把全局 system prompt 和可见 conversation messages 组装成 provider messages，并执行首版截断策略。
 
-## `worker`
+## `app/worker`
 
 负责独立 worker 进程的 polling、claim run、heartbeat、执行 provider stream、写入 run_events、处理取消和 lease recovery。
 
+不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个 service，但本身不是领域 service。
+
 ## 跨模块规则
 
-- `api` 可以调用 service，但不承载业务状态机。
-- `worker` 可以调用 `runs`、`context`、`providers` 和 `db`。
-- `providers` 不读取数据库。
-- `context` 不调用 provider。
-- `runs` 不拼装 prompt。
-- `conversations` 不直接调用 provider。
+- `app/api` 可以调用 `app/services/...`，但不承载业务状态机。
+- `app/worker` 可以调用 `app/services/runs`、`app/services/context`、`app/services/providers` 和 `app/db`。
+- `app/services/providers` 不读取数据库。
+- `app/services/context` 不调用 provider。
+- `app/services/runs` 不拼装 prompt。
+- `app/services/conversations` 不直接调用 provider。
+- `app/models` 只定义 ORM model，不承载业务流程。
+- `app/schemas` 只定义请求/响应结构，不访问数据库。
 - 测试目录按模块镜像组织。
 ```
 
@@ -337,7 +379,7 @@ Expected:
 Run:
 
 ```bash
-find src tests -type f ! -name .gitkeep -print
+find app tests -type f ! -name .gitkeep -print
 ```
 
 Expected:
@@ -350,7 +392,7 @@ Expected:
 Run:
 
 ```bash
-git add src tests docs/architecture/module-boundaries.md
+git add app tests docs/architecture/module-boundaries.md
 git commit -m "chore: add module boundary scaffold"
 ```
 
@@ -462,7 +504,7 @@ services:
     build:
       context: .
     image: ichat-api:local
-    command: ["python", "-c", "import time; print('api placeholder container ready', flush=True); time.sleep(3600)"]
+    command: ["python", "-c", "import time; print('api foundation container ready', flush=True); time.sleep(3600)"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ichat}:${POSTGRES_PASSWORD:-ichat_password}@postgres:5432/${POSTGRES_DB:-ichat}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -474,7 +516,7 @@ services:
     build:
       context: .
     image: ichat-worker:local
-    command: ["python", "-c", "import time; print('worker placeholder container ready', flush=True); time.sleep(3600)"]
+    command: ["python", "-c", "import time; print('worker foundation container ready', flush=True); time.sleep(3600)"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ichat}:${POSTGRES_PASSWORD:-ichat_password}@postgres:5432/${POSTGRES_DB:-ichat}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -596,7 +638,7 @@ Expected:
 
 - 创建 `pyproject.toml`，定义 Python 3.12、FastAPI、SQLAlchemy async、asyncpg、Alembic、httpx、认证、安全、日志和测试相关依赖。
 - 使用 `uv sync` 生成 `uv.lock` 并安装依赖。
-- 创建 `src/ichat/` 下的模块目录边界：`api`、`auth`、`core`、`db`、`conversations`、`runs`、`providers`、`context`、`worker`。
+- 创建 `app/` 下的模块目录边界：`api`、`core`、`db`、`models`、`schemas`、`services/auth`、`services/conversations`、`services/runs`、`services/providers`、`services/context`、`worker`。
 - 创建 `tests/` 下与源码模块对应的测试目录。
 - 创建 `docs/architecture/module-boundaries.md`，记录模块职责和跨模块规则。
 - 创建 `.env.example`、`.dockerignore`、`Dockerfile` 和 `compose.yml`。
@@ -606,7 +648,7 @@ Expected:
 ## 本次刻意未做
 
 - 未创建 FastAPI app 入口。
-- 未创建 SQLAlchemy models。
+- 未创建 SQLAlchemy ORM model 类。
 - 未初始化 Alembic 环境。
 - 未创建数据库迁移脚本。
 - 未实现 auth、conversation、run、provider、context 或 worker 业务逻辑。
@@ -630,16 +672,18 @@ docker compose exec -T postgres psql -U ichat -d ichat -c "select current_databa
 
 建议按以下顺序继续：
 
-1. 创建 `core` 配置和结构化日志模块，读取 `.env`/环境变量。
-2. 初始化 SQLAlchemy async session 和 Alembic 环境。
-3. 建立 users、refresh_tokens、email_verification_tokens 的 models 和迁移。
-4. 实现 password hashing、JWT access token、refresh token service。
-5. 建立 conversations、messages 的 models、迁移和 service。
-6. 建立 runs、run_events 的 models、迁移和 run 状态机。
-7. 实现 context builder 的首版截断策略。
-8. 实现 provider interface、fake provider stream 和 DeepSeek SSE parser。
-9. 实现 worker claim、lease、heartbeat、取消检测和 recovery。
-10. 实现 SSE replay endpoint，只支持 `after_seq`。
+1. 创建 `app/core` 配置和结构化日志模块，读取 `.env`/环境变量。
+2. 初始化 `app/db` SQLAlchemy async session 和 Alembic 环境。
+3. 在 `app/models` 建立 users、refresh_tokens、email_verification_tokens 的 ORM models 和迁移。
+4. 在 `app/schemas` 建立 auth 请求/响应 schemas。
+5. 在 `app/services/auth` 实现 password hashing、JWT access token、refresh token service。
+6. 在 `app/models` 建立 conversations、messages、runs、run_events 的 ORM models 和迁移。
+7. 在 `app/schemas` 建立 conversation、message、run 请求/响应 schemas。
+8. 在 `app/services/conversations`、`app/services/runs` 实现 conversation、message、run 状态机和事件 service。
+9. 在 `app/services/context` 实现 context builder 的首版截断策略。
+10. 在 `app/services/providers` 实现 provider interface、fake provider stream 和 DeepSeek SSE parser。
+11. 在 `app/worker` 实现 worker claim、lease、heartbeat、取消检测和 recovery。
+12. 在 `app/api` 实现 SSE replay endpoint，只支持 `after_seq`。
 
 ## 注意事项
 
@@ -683,7 +727,7 @@ Expected:
 
 - Verify: `pyproject.toml`
 - Verify: `uv.lock`
-- Verify: `src/ichat/**/.gitkeep`
+- Verify: `app/**/.gitkeep`
 - Verify: `tests/**/.gitkeep`
 - Verify: `docs/architecture/module-boundaries.md`
 - Verify: `.env.example`
@@ -712,7 +756,7 @@ runtime dependencies ok
 Run:
 
 ```bash
-find src tests -type f ! -name .gitkeep -print
+find app tests -type f ! -name .gitkeep -print
 ```
 
 Expected:
