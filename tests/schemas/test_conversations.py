@@ -1,0 +1,95 @@
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+from app.schemas.conversations import (
+    ConversationCreateRequest,
+    ConversationDetailResponse,
+    ConversationRenameRequest,
+    ConversationResponse,
+    MessageCreateRequest,
+    MessageResponse,
+    RunResponse,
+    SendMessageResponse,
+)
+
+
+def test_conversation_create_request_trims_blank_title_to_none() -> None:
+    request = ConversationCreateRequest(title="   ")
+
+    assert request.title is None
+
+
+def test_conversation_create_request_trims_non_empty_title() -> None:
+    request = ConversationCreateRequest(title="  Project chat  ")
+
+    assert request.title == "Project chat"
+
+
+def test_conversation_rename_request_rejects_blank_title() -> None:
+    with pytest.raises(ValidationError):
+        ConversationRenameRequest(title="   ")
+
+
+def test_message_create_request_preserves_non_blank_content() -> None:
+    request = MessageCreateRequest(content="  hello\n")
+
+    assert request.content == "  hello\n"
+
+
+def test_message_create_request_rejects_blank_content() -> None:
+    with pytest.raises(ValidationError):
+        MessageCreateRequest(content=" \n\t ")
+
+
+def test_conversation_detail_response_contains_visible_messages() -> None:
+    now = datetime.now(UTC)
+    conversation = ConversationResponse(
+        id=1,
+        title="Project chat",
+        created_at=now,
+        updated_at=now,
+    )
+    message = MessageResponse(
+        id=10,
+        conversation_id=1,
+        run_id=20,
+        role="user",
+        content="Hello",
+        position=1,
+        created_at=now,
+    )
+    detail = ConversationDetailResponse(
+        **conversation.model_dump(),
+        messages=[message],
+    )
+
+    assert detail.id == 1
+    assert detail.messages == [message]
+
+
+def test_send_message_response_contains_message_and_run() -> None:
+    now = datetime.now(UTC)
+    message = MessageResponse(
+        id=10,
+        conversation_id=1,
+        run_id=20,
+        role="user",
+        content="Hello",
+        position=1,
+        created_at=now,
+    )
+    run = RunResponse(
+        id=20,
+        conversation_id=1,
+        user_message_id=10,
+        status="queued",
+        provider_name="deepseek",
+        provider_model="deepseek-chat",
+        created_at=now,
+    )
+    response = SendMessageResponse(message=message, run=run)
+
+    assert response.message.id == 10
+    assert response.run.status == "queued"
