@@ -10,12 +10,12 @@ dependencies = [
     "email-validator",
     "fastapi",
     "httpx",
+    "loguru>=0.7.3",
     "pydantic-settings",
     "pwdlib[argon2]",
     "pyjwt[crypto]",
     "python-dotenv",
     "sqlalchemy[asyncio]",
-    "structlog",
     "uvicorn[standard]",
 ]
 
@@ -31,6 +31,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100

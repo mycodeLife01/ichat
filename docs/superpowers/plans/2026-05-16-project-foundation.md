@@ -108,7 +108,7 @@ dependencies = [
     "pyjwt[crypto]",
     "python-dotenv",
     "sqlalchemy[asyncio]",
-    "structlog",
+    "loguru",
     "uvicorn[standard]",
 ]
 
@@ -157,7 +157,7 @@ Expected:
 Run:
 
 ```bash
-uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, pydantic_settings, pwdlib, sqlalchemy, structlog, uvicorn; print('runtime dependencies ok')"
+uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, loguru, pydantic_settings, pwdlib, sqlalchemy, uvicorn; print('runtime dependencies ok')"
 ```
 
 Expected:
@@ -658,7 +658,7 @@ Expected:
 
 ```bash
 uv sync
-uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, pydantic_settings, pwdlib, sqlalchemy, structlog, uvicorn; print('runtime dependencies ok')"
+uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, loguru, pydantic_settings, pwdlib, sqlalchemy, uvicorn; print('runtime dependencies ok')"
 uv run pytest --version
 uv run ruff --version
 uv run mypy --version
@@ -742,7 +742,7 @@ Run:
 
 ```bash
 uv sync
-uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, pydantic_settings, pwdlib, sqlalchemy, structlog, uvicorn; print('runtime dependencies ok')"
+uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, loguru, pydantic_settings, pwdlib, sqlalchemy, uvicorn; print('runtime dependencies ok')"
 ```
 
 Expected:

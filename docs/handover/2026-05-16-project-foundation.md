@@ -24,7 +24,7 @@
 
 ```bash
 uv sync
-uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, pydantic_settings, pwdlib, sqlalchemy, structlog, uvicorn; print('runtime dependencies ok')"
+uv run python -c "import alembic, asyncpg, fastapi, httpx, jwt, loguru, pydantic_settings, pwdlib, sqlalchemy, uvicorn; print('runtime dependencies ok')"
 uv run pytest --version
 uv run ruff --version
 uv run mypy --version

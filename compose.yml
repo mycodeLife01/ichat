@@ -21,9 +21,22 @@ services:
     build:
       context: .
     image: ichat-api:local
-    command: ["python", "-c", "import time; print('api foundation container ready', flush=True); time.sleep(3600)"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${API_PORT:-8000}:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ichat}:${POSTGRES_PASSWORD:-ichat_password}@postgres:5432/${POSTGRES_DB:-ichat}
+      JWT_SECRET: ${JWT_SECRET:-change-me-local-dev-only}
+      JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-replace-in-real-deployments}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_THINKING_ENABLED: ${DEEPSEEK_THINKING_ENABLED:-false}
+      DEFAULT_SYSTEM_PROMPT: ${DEFAULT_SYSTEM_PROMPT:-You are a helpful assistant.}
+      RUN_LEASE_SECONDS: ${RUN_LEASE_SECONDS:-60}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-2}
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
@@ -36,6 +49,17 @@ services:
     command: ["python", "-c", "import time; print('worker foundation container ready', flush=True); time.sleep(3600)"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ichat}:${POSTGRES_PASSWORD:-ichat_password}@postgres:5432/${POSTGRES_DB:-ichat}
+      JWT_SECRET: ${JWT_SECRET:-change-me-local-dev-only}
+      JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-replace-in-real-deployments}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_THINKING_ENABLED: ${DEEPSEEK_THINKING_ENABLED:-false}
+      DEFAULT_SYSTEM_PROMPT: ${DEFAULT_SYSTEM_PROMPT:-You are a helpful assistant.}
+      RUN_LEASE_SECONDS: ${RUN_LEASE_SECONDS:-60}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-2}
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:

@@ -20,7 +20,7 @@
 
 ## `app/db`
 
-负责数据库 engine、session、transaction helper、Alembic 集成入口和数据库工具。本次不创建迁移脚本。
+负责数据库 engine、session、transaction helper、Alembic 集成入口和数据库工具。业务表迁移脚本由后续模型任务创建。
 
 不放在 `services` 下的理由：`db` 是持久化基础设施，供 models 和 services 使用。
 
