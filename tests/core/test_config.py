@@ -1,6 +1,8 @@
 from collections.abc import Mapping
 
+import pytest
 from dotenv import dotenv_values
+from pydantic import ValidationError
 from pytest import MonkeyPatch
 
 from app.core.config import Settings, get_settings
@@ -28,16 +30,19 @@ def env_value(values: Mapping[str, str | None], key: str) -> str:
     return value
 
 
-def test_settings_have_local_development_defaults(monkeypatch: MonkeyPatch) -> None:
+def test_settings_require_configuration_when_env_file_is_disabled(
+    monkeypatch: MonkeyPatch,
+) -> None:
     for key in ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
-    assert settings.database_url == "postgresql+asyncpg://ichat:ichat_password@postgres:5432/ichat"
-    assert settings.jwt_secret == "change-me-local-dev-only"
-    assert settings.deepseek_model == "deepseek-chat"
-    assert settings.log_level == "INFO"
+    missing_fields = {error["loc"][0] for error in exc_info.value.errors()}
+    assert "database_url" in missing_fields
+    assert "jwt_secret" in missing_fields
+    assert "deepseek_api_key" in missing_fields
 
 
 def test_settings_parse_environment_values(monkeypatch: MonkeyPatch) -> None:
