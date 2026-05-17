@@ -4,6 +4,7 @@ import { getAuth, logout, withAuth } from "../auth.js";
 import { getState, setState, subscribe } from "../state.js";
 import { el, toast } from "../ui.js";
 import { escapeHtml, nearBottom, scrollToBottom } from "../ui.js";
+import { streamRunEvents } from "../sse.js";
 
 export function renderChatView(container, { onLoggedOut }) {
   container.replaceChildren(buildShell({ onLoggedOut }));
@@ -110,6 +111,15 @@ function renderMessage(message) {
     dataset: { messageId: String(message.id), role: message.role },
   });
   bubble.textContent = message.content;
+  if (!isUser && message._pending) {
+    bubble.insertAdjacentHTML("beforeend", `<span class="streaming-caret">▍</span>`);
+  }
+  if (!isUser && message._terminal === "cancelled") {
+    bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-zinc-400">已取消</span>`);
+  }
+  if (!isUser && message._terminal === "failed") {
+    bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-red-500">失败</span>`);
+  }
   return el("div", { class: `flex ${isUser ? "justify-end" : "justify-start"}` }, [bubble]);
 }
 
@@ -259,7 +269,7 @@ function buildComposer() {
           detail: { ...detail, messages: [...detail.messages, message] },
         });
       }
-      toast(`run ${run.id} queued (流式渲染将在 Task 9 接入)`, "info");
+      void attachRunStream({ conversationId: selectedId, runId: run.id, afterSeq: 0 });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         toast("当前对话已有未完成的生成任务，请稍候或取消后重试", "error");
@@ -281,6 +291,120 @@ function mountComposer() {
 async function cancelActiveRun() {
   // 占位，Task 10 实现。
   toast("cancel 将在 Task 10 接入", "info");
+}
+
+function ensureAssistantPlaceholder(conversationId, runId) {
+  const detail = getState().detail;
+  if (!detail || detail.id !== conversationId) return null;
+
+  const placeholderId = `pending-${runId}`;
+  if (detail.messages.some((m) => m.id === placeholderId)) return placeholderId;
+
+  const placeholder = {
+    id: placeholderId,
+    conversation_id: conversationId,
+    run_id: runId,
+    role: "assistant",
+    content: "",
+    position: (detail.messages.at(-1)?.position ?? 0) + 1,
+    created_at: new Date().toISOString(),
+    _pending: true,
+  };
+  setState({ detail: { ...detail, messages: [...detail.messages, placeholder] } });
+  return placeholderId;
+}
+
+function updateAssistantText(placeholderId, text) {
+  const detail = getState().detail;
+  if (!detail) return;
+  const next = detail.messages.map((m) =>
+    m.id === placeholderId ? { ...m, content: text } : m,
+  );
+  setState({ detail: { ...detail, messages: next } });
+}
+
+function markAssistantTerminal(placeholderId, kind) {
+  // kind: "succeeded" | "failed" | "cancelled"
+  const detail = getState().detail;
+  if (!detail) return;
+  const next = detail.messages.map((m) =>
+    m.id === placeholderId ? { ...m, _terminal: kind, _pending: false } : m,
+  );
+  setState({ detail: { ...detail, messages: next } });
+}
+
+async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
+  const previous = getState().activeRun;
+  if (previous?.controller) {
+    try { previous.controller.abort(); } catch {}
+  }
+  const placeholderId = ensureAssistantPlaceholder(conversationId, runId);
+  if (!placeholderId) return;
+
+  const controller = new AbortController();
+  let draft = "";
+  let terminalKind = null;
+  let failureMessage = null;
+
+  setState({
+    activeRun: {
+      runId, conversationId, controller, draftText: "", assistantPlaceholderId: placeholderId,
+      status: "streaming",
+    },
+  });
+  rerenderMain();
+
+  try {
+    const token = (await import("../auth.js")).getAccessToken();
+    await streamRunEvents({
+      runId, afterSeq, token, signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === "text_delta") {
+          const delta = event.payload?.delta ?? "";
+          if (delta) {
+            draft += delta;
+            updateAssistantText(placeholderId, draft);
+            maybeAutoScroll();
+          }
+        } else if (event.type === "run_succeeded") {
+          terminalKind = "succeeded";
+        } else if (event.type === "run_failed") {
+          terminalKind = "failed";
+          failureMessage = event.payload?.message || event.payload?.code || "Generation failed";
+        } else if (event.type === "run_cancelled") {
+          terminalKind = "cancelled";
+        }
+      },
+    });
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      toast(errorMessage(err, "流式连接异常"), "error");
+    }
+  } finally {
+    setState({ activeRun: null });
+    if (terminalKind === "succeeded") {
+      try {
+        const detail = await withAuth((t) => api.conversations.detail(t, conversationId));
+        if (getState().selectedId === conversationId) setState({ detail });
+      } catch {
+        markAssistantTerminal(placeholderId, "succeeded");
+      }
+    } else if (terminalKind === "failed") {
+      markAssistantTerminal(placeholderId, "failed");
+      toast(failureMessage ?? "生成失败", "error");
+    } else if (terminalKind === "cancelled") {
+      markAssistantTerminal(placeholderId, "cancelled");
+    } else {
+      markAssistantTerminal(placeholderId, "failed");
+    }
+    rerenderMain();
+  }
+}
+
+function maybeAutoScroll() {
+  const messages = document.getElementById("messages");
+  if (!messages) return;
+  if (nearBottom(messages)) requestAnimationFrame(() => scrollToBottom(messages));
 }
 
 function errorMessage(err, fallback) {
