@@ -499,6 +499,97 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
         assert [message.role for message in messages] == ["user"]
 
 
+async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    release_error = asyncio.Event()
+
+    class ErrorAfterCancellationProvider(Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self, *, model: str, messages: list[ProviderMessage]
+        ) -> AsyncIterator[ProviderChunk]:
+            yield TextDelta(text="partial")
+            await release_error.wait()
+            raise ProviderError(code="upstream_5xx", message="boom after cancel")
+
+    async def flip_to_cancelling_after_delta() -> None:
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            async with session_factory() as session:
+                event = await session.scalar(
+                    select(RunEvent.id).where(
+                        RunEvent.run_id == run_id,
+                        RunEvent.type == "text_delta",
+                    )
+                )
+                if event is None:
+                    continue
+                run = await session.get(Run, run_id)
+                assert run is not None
+                run.status = "cancelling"
+                await session.commit()
+                release_error.set()
+                return
+        raise AssertionError("text_delta was not persisted before timeout")
+
+    slow_heartbeat_settings = settings.model_copy(
+        update={"worker_heartbeat_interval_seconds": 60.0}
+    )
+    flip_task = asyncio.create_task(flip_to_cancelling_after_delta())
+    try:
+        await execute_run(
+            session_factory=session_factory,
+            run_id=run_id,
+            worker_id="worker-x",
+            settings=slow_heartbeat_settings,
+            resolve_provider=make_resolver(ErrorAfterCancellationProvider()),
+        )
+    finally:
+        await flip_task
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "cancelled"
+        assert run.cancelled_at is not None
+        assert run.error_code is None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "text_delta",
+            "run_cancelled",
+        ]
+
+        messages = (
+            await session.scalars(
+                select(Message).where(Message.conversation_id == run.conversation_id)
+            )
+        ).all()
+        assert [message.role for message in messages] == ["user"]
+
+
 async def test_execute_run_renews_lease_during_long_stream(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,

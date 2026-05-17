@@ -164,6 +164,26 @@ async def is_cancelling(session: AsyncSession, *, run_id: int) -> bool:
     return status == "cancelling"
 
 
+async def mark_run_cancelled_if_cancelling(session: AsyncSession, *, run_id: int) -> bool:
+    run = await _get_run_for_update(session, run_id=run_id)
+    if run.status != "cancelling":
+        return False
+    now = datetime.now(UTC)
+    run.status = "cancelled"
+    run.cancelled_at = now
+    run.completed_at = now
+    run.lease_owner = None
+    run.lease_expires_at = None
+    await session.flush()
+    await append_run_event(
+        session,
+        run_id=run_id,
+        event_type="run_cancelled",
+        payload={},
+    )
+    return True
+
+
 async def run_has_text_delta(session: AsyncSession, *, run_id: int) -> bool:
     event_id = await session.scalar(
         select(RunEvent.id)

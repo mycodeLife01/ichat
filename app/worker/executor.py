@@ -14,6 +14,7 @@ from app.services.conversations import materialize_assistant_message
 from app.services.runs.lifecycle import (
     is_cancelling,
     mark_run_cancelled,
+    mark_run_cancelled_if_cancelling,
     mark_run_failed,
     mark_run_streaming,
     mark_run_succeeded,
@@ -51,12 +52,14 @@ async def execute_run(
             )
         except Exception as exc:
             run_logger.exception("Context build failed")
-            await mark_run_failed(
-                session,
-                run_id=run_id,
-                code="context_build_error",
-                message=str(exc),
-            )
+            cancelled = await mark_run_cancelled_if_cancelling(session, run_id=run_id)
+            if not cancelled:
+                await mark_run_failed(
+                    session,
+                    run_id=run_id,
+                    code="context_build_error",
+                    message=str(exc),
+                )
             await session.commit()
             return
         provider_name = run.provider_name
@@ -94,6 +97,11 @@ async def execute_run(
                     await mark_run_cancelled(session, run_id=run_id)
                     await session.commit()
                 return
+            if await _cancel_if_db_status_is_cancelling(
+                session_factory,
+                run_id=run_id,
+            ):
+                return
             allow_retry = (
                 outcome.before_first_delta
                 and attempt < max_attempts
@@ -108,14 +116,12 @@ async def execute_run(
                     await mark_run_cancelled(session, run_id=run_id)
                     await session.commit()
                 return
-            async with session_factory() as session:
-                await mark_run_failed(
-                    session,
-                    run_id=run_id,
-                    code=outcome.code or "unknown_error",
-                    message=outcome.message or "",
-                )
-                await session.commit()
+            await _mark_failed_or_cancelled_if_cancelling(
+                session_factory,
+                run_id=run_id,
+                code=outcome.code or "unknown_error",
+                message=outcome.message or "",
+            )
             return
     finally:
         heartbeat_task.cancel()
@@ -142,6 +148,36 @@ async def _heartbeat_loop(
                 cancel_event.set()
         except asyncio.CancelledError:
             return
+
+
+async def _cancel_if_db_status_is_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: int,
+) -> bool:
+    async with session_factory() as session:
+        changed = await mark_run_cancelled_if_cancelling(session, run_id=run_id)
+        await session.commit()
+        return changed
+
+
+async def _mark_failed_or_cancelled_if_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: int,
+    code: str,
+    message: str,
+) -> None:
+    async with session_factory() as session:
+        cancelled = await mark_run_cancelled_if_cancelling(session, run_id=run_id)
+        if not cancelled:
+            await mark_run_failed(
+                session,
+                run_id=run_id,
+                code=code,
+                message=message,
+            )
+        await session.commit()
 
 
 @dataclass
