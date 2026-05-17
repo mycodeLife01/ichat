@@ -92,6 +92,7 @@ function rerenderMain() {
     messages.replaceChildren(list);
     requestAnimationFrame(() => scrollToBottom(messages));
   }
+  mountComposer();
 }
 
 function emptyHero(text) {
@@ -200,6 +201,86 @@ async function deleteConversation(conv) {
   } catch (err) {
     toast(errorMessage(err, "删除失败"), "error");
   }
+}
+
+function buildComposer() {
+  const { selectedId, activeRun } = getState();
+  const disabled = !selectedId;
+
+  const textarea = el("textarea", {
+    rows: "1",
+    placeholder: disabled ? "选择或新建一个对话后开始输入…" : "向 iChat 提问…",
+    class: "flex-1 resize-none max-h-40 px-3 py-2 text-sm outline-none bg-transparent disabled:text-zinc-400",
+    ...(disabled ? { disabled: "true" } : {}),
+  });
+
+  const sendButton = el("button", {
+    class: "shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-md bg-zinc-900 text-white text-sm hover:bg-zinc-800 disabled:bg-zinc-300",
+    title: activeRun ? "停止生成" : "发送（Enter）",
+  }, [activeRun ? "■" : "↑"]);
+
+  const wrapper = el("div", { class: "max-w-3xl mx-auto px-6 py-3" }, [
+    el("div", {
+      class: "flex items-end gap-2 border border-zinc-200 rounded-2xl px-2 py-1 bg-white shadow-sm focus-within:border-zinc-400",
+    }, [textarea, sendButton]),
+    el("p", { class: "text-[11px] text-zinc-400 mt-1 px-1" }, [
+      activeRun ? "正在生成，按停止按钮可取消" : "Enter 发送，Shift+Enter 换行",
+    ]),
+  ]);
+
+  textarea.addEventListener("input", () => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  });
+
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!activeRun) void submit();
+    }
+  });
+
+  sendButton.addEventListener("click", () => {
+    if (activeRun) void cancelActiveRun();
+    else void submit();
+  });
+
+  async function submit() {
+    const content = textarea.value.trim();
+    if (!content || !selectedId) return;
+    textarea.value = "";
+    textarea.style.height = "auto";
+    try {
+      const { message, run } = await withAuth((t) => api.conversations.sendMessage(t, selectedId, content));
+      // 把 user message 立刻 append 到 detail.messages
+      const detail = getState().detail;
+      if (detail && detail.id === selectedId) {
+        setState({
+          detail: { ...detail, messages: [...detail.messages, message] },
+        });
+      }
+      toast(`run ${run.id} queued (流式渲染将在 Task 9 接入)`, "info");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        toast("当前对话已有未完成的生成任务，请稍候或取消后重试", "error");
+      } else {
+        toast(errorMessage(err, "发送失败"), "error");
+      }
+    }
+  }
+
+  return wrapper;
+}
+
+function mountComposer() {
+  const mount = document.getElementById("composer-mount");
+  if (!mount) return;
+  mount.replaceChildren(buildComposer());
+}
+
+async function cancelActiveRun() {
+  // 占位，Task 10 实现。
+  toast("cancel 将在 Task 10 接入", "info");
 }
 
 function errorMessage(err, fallback) {
