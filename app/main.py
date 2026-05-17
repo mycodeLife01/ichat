@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.conversations import router as conversations_router
+from app.api.v1.runs import router as runs_router
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
@@ -24,6 +25,7 @@ def create_app(
     app = FastAPI(title="iChat API")
     app.include_router(auth_router)
     app.include_router(conversations_router)
+    app.include_router(runs_router)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
