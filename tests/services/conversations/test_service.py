@@ -18,6 +18,7 @@ from app.services.conversations.service import (
     get_conversation_detail,
     list_conversations,
     rename_conversation,
+    submit_user_message,
 )
 
 TEST_DATABASE_URL = os.environ.get(
@@ -176,6 +177,130 @@ async def test_cross_user_conversation_access_returns_not_found(
 
         with pytest.raises(AppError) as exc_info:
             await get_conversation_detail(session, user=other_user, conversation_id=conversation.id)
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Conversation not found"
+
+
+async def test_submit_user_message_creates_message_and_queued_run(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+
+        result = await submit_user_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            content="Hello",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        await session.commit()
+
+        stored_message = await session.get(Message, result.message.id)
+        stored_run = await session.get(Run, result.run.id)
+
+    assert result.message.role == "user"
+    assert result.message.content == "Hello"
+    assert result.message.position == 1
+    assert result.message.run_id == result.run.id
+    assert result.run.status == "queued"
+    assert result.run.provider_name == "deepseek"
+    assert result.run.provider_model == "deepseek-chat"
+    assert result.run.user_message_id == result.message.id
+    assert stored_message is not None
+    assert stored_message.run_id == result.run.id
+    assert stored_run is not None
+    assert stored_run.status == "queued"
+
+
+async def test_submit_user_message_uses_next_visible_position_after_terminal_run(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+        previous_message = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="First",
+            position=1,
+        )
+        session.add(previous_message)
+        await session.flush()
+        previous_run = Run(
+            conversation_id=conversation.id,
+            user_message_id=previous_message.id,
+            status="succeeded",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        session.add(previous_run)
+        await session.flush()
+        previous_message.run_id = previous_run.id
+
+        result = await submit_user_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            content="Second",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        await session.commit()
+
+    assert result.message.position == 2
+
+
+async def test_submit_user_message_rejects_active_run(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+        first = await submit_user_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            content="Hello",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+
+        with pytest.raises(AppError) as exc_info:
+            await submit_user_message(
+                session,
+                user=user,
+                conversation_id=conversation.id,
+                content="Again",
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+
+    assert first.run.status == "queued"
+    assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+    assert exc_info.value.detail == "Active run already exists"
+
+
+async def test_submit_user_message_rejects_deleted_conversation(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+        await delete_conversation(session, user=user, conversation_id=conversation.id)
+
+        with pytest.raises(AppError) as exc_info:
+            await submit_user_message(
+                session,
+                user=user,
+                conversation_id=conversation.id,
+                content="Hello",
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Conversation not found"

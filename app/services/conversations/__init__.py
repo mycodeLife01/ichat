@@ -4,6 +4,7 @@ from app.services.conversations.service import (
     get_conversation_detail,
     list_conversations,
     rename_conversation,
+    submit_user_message,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "get_conversation_detail",
     "list_conversations",
     "rename_conversation",
+    "submit_user_message",
 ]
