@@ -52,15 +52,13 @@ async def execute_run(
             )
         except Exception as exc:
             run_logger.exception("Context build failed")
-            cancelled = await mark_run_cancelled_if_cancelling(session, run_id=run_id)
-            if not cancelled:
-                await mark_run_failed(
-                    session,
-                    run_id=run_id,
-                    code="context_build_error",
-                    message=str(exc),
-                )
-            await session.commit()
+            await session.rollback()
+            await _mark_failed_or_cancelled_if_cancelling(
+                session_factory,
+                run_id=run_id,
+                code="context_build_error",
+                message=str(exc),
+            )
             return
         provider_name = run.provider_name
         provider_model = run.provider_model

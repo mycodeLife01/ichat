@@ -341,6 +341,59 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
         assert run.error_code == "dead"
 
 
+async def test_execute_run_marks_cancelled_when_context_build_fails_after_db_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    async def fail_after_cancellation(*args: object, **kwargs: object) -> list[ProviderMessage]:
+        async with session_factory() as session:
+            run = await session.get(Run, run_id)
+            assert run is not None
+            run.status = "cancelling"
+            await session.commit()
+        raise RuntimeError("context exploded after cancel")
+
+    monkeypatch.setattr("app.worker.executor.build_context", fail_after_cancellation)
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(FakeProvider(script=[])),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "cancelled"
+        assert run.cancelled_at is not None
+        assert run.error_code is None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "run_cancelled",
+        ]
+
+
 async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
