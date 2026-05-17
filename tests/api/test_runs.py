@@ -380,3 +380,163 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
     assert "event: run_succeeded" in body
     assert '"seq":2,"type":"run_succeeded","payload":{}' in body
     assert body.index("event: text_delta") < body.index("event: run_succeeded")
+
+
+async def test_cancel_run_requires_authentication(client: AsyncClient) -> None:
+    response = await client.post("/api/v1/runs/1/cancel")
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json() == {"detail": "Authentication required"}
+
+
+async def test_cancel_queued_run_returns_ok_and_marks_cancelled(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-cancel-queued-api",
+        email=f"alice-cancel-queued@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="queued",
+        )
+        run_id = run.id
+        await session.commit()
+
+    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"data": {"status": "ok"}}
+
+    async with session_factory() as session:
+        persisted_run = await session.get(Run, run_id)
+        assert persisted_run is not None
+        assert persisted_run.status == "cancelled"
+        assert persisted_run.cancelled_at is not None
+        assert persisted_run.completed_at is not None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == ["run_cancelled"]
+
+
+async def test_cancel_streaming_run_returns_ok_and_marks_cancelling(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-cancel-streaming-api",
+        email=f"alice-cancel-streaming@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        run_id = run.id
+        await session.commit()
+
+    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"data": {"status": "ok"}}
+
+    async with session_factory() as session:
+        persisted_run = await session.get(Run, run_id)
+        assert persisted_run is not None
+        assert persisted_run.status == "cancelling"
+        assert persisted_run.cancelled_at is None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == ["run_started"]
+
+
+async def test_cancel_terminal_run_is_idempotent(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-cancel-terminal-api",
+        email=f"alice-cancel-terminal@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="cancelled",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_cancelled", payload={})
+        run_id = run.id
+        await session.commit()
+
+    first_response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+    second_response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+
+    assert first_response.status_code == status.HTTP_200_OK
+    assert first_response.json() == {"data": {"status": "ok"}}
+    assert second_response.status_code == status.HTTP_200_OK
+    assert second_response.json() == {"data": {"status": "ok"}}
+
+    async with session_factory() as session:
+        persisted_run = await session.get(Run, run_id)
+        assert persisted_run is not None
+        assert persisted_run.status == "cancelled"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == ["run_cancelled"]
+
+
+async def test_cross_user_cancel_run_returns_not_found(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-cancel-private-api",
+        email=f"alice-cancel-private@{TEST_EMAIL_DOMAIN}",
+    )
+    bob = await register_user(
+        client,
+        username="bob-cancel-private-api",
+        email=f"bob-cancel-private@{TEST_EMAIL_DOMAIN}",
+    )
+    bob_headers = auth_headers(bob)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        run_id = run.id
+        await session.commit()
+
+    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=bob_headers)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Run not found"}

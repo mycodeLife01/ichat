@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.models.user import User
+from app.schemas.auth import CommandStatusResponse
 from app.schemas.responses import SuccessResponse
 from app.schemas.runs import RunEventResponse, RunStateResponse
 from app.services.auth.dependencies import get_current_user
 from app.services.runs.service import (
     TERMINAL_EVENT_TYPES,
+    cancel_owned_run,
     get_owned_run_state,
     get_owned_visible_run,
     list_run_events_after,
@@ -34,6 +36,21 @@ async def get_run_state_route(
 ) -> SuccessResponse[RunStateResponse]:
     state = await get_owned_run_state(session, user=current_user, run_id=run_id)
     return SuccessResponse(data=state)
+
+
+@router.post(
+    "/{run_id}/cancel",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def cancel_run_route(
+    run_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[CommandStatusResponse]:
+    result = await cancel_owned_run(session, user=current_user, run_id=run_id)
+    await session.commit()
+    return SuccessResponse(data=result)
 
 
 @router.get("/{run_id}/events")
