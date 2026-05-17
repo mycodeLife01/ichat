@@ -239,6 +239,37 @@ async def get_database_now(session: AsyncSession) -> datetime:
     return now
 
 
+async def materialize_assistant_message(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    content: str,
+) -> Message:
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise LookupError(f"Run {run_id} not found")
+
+    next_position = await get_next_message_position(
+        session,
+        conversation_id=run.conversation_id,
+    )
+    message = Message(
+        conversation_id=run.conversation_id,
+        run_id=run.id,
+        role="assistant",
+        content=content,
+        position=next_position,
+    )
+    session.add(message)
+    await session.flush()
+
+    conversation = await session.get(Conversation, run.conversation_id)
+    if conversation is not None:
+        conversation.updated_at = await get_database_now(session)
+        await session.flush()
+    return message
+
+
 def normalize_optional_title(title: str | None) -> str | None:
     if title is None:
         return None
