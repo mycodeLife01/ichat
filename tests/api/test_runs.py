@@ -208,3 +208,116 @@ async def test_cross_user_run_state_returns_not_found(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}
+
+
+async def test_run_events_replay_starts_after_seq_and_stops_at_terminal(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-events-api",
+        email=f"alice-events@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="succeeded",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="text_delta",
+            payload={"text": "Hello"},
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
+        run_id = run.id
+        await session.commit()
+
+    response = await client.get(f"/api/v1/runs/{run_id}/events?after_seq=1", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert "id: 1" not in body
+    assert "event: run_started" not in body
+    assert "id: 2" in body
+    assert "event: text_delta" in body
+    assert '"payload":{"text":"Hello"}' in body
+    assert "id: 3" in body
+    assert "event: run_succeeded" in body
+
+
+async def test_run_events_returns_empty_stream_when_after_seq_passed_terminal(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-terminal-passed-api",
+        email=f"alice-terminal-passed@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="succeeded",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
+        run_id = run.id
+        await session.commit()
+
+    response = await client.get(f"/api/v1/runs/{run_id}/events?after_seq=2", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.text == ""
+
+
+async def test_run_events_rejects_negative_after_seq(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-events-invalid-api",
+        email=f"alice-events-invalid@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    response = await client.get("/api/v1/runs/1/events?after_seq=-1", headers=headers)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_cross_user_run_events_returns_not_found(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-private-events-api",
+        email=f"alice-private-events@{TEST_EMAIL_DOMAIN}",
+    )
+    bob = await register_user(
+        client,
+        username="bob-private-events-api",
+        email=f"bob-private-events@{TEST_EMAIL_DOMAIN}",
+    )
+    bob_headers = auth_headers(bob)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(session, user_id=alice["user"]["id"])
+        run_id = run.id
+        await session.commit()
+
+    response = await client.get(f"/api/v1/runs/{run_id}/events", headers=bob_headers)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Run not found"}
