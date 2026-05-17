@@ -1209,7 +1209,6 @@ SSE_POLL_INTERVAL_SECONDS = 0.2
 @router.get(
     "/{run_id}/state",
     response_model=SuccessResponse[RunStateResponse],
-    response_model_exclude_none=True,
 )
 async def get_run_state_route(
     run_id: int,
