@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from fastapi import status
 from sqlalchemy import func, select
@@ -8,7 +8,7 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.schemas.runs import RunEventResponse, RunEventType, RunStateResponse
+from app.schemas.runs import RunEventResponse, RunEventType, RunStateResponse, RunStatus
 
 RUN_NOT_FOUND_MESSAGE = "Run not found"
 TERMINAL_EVENT_TYPES: tuple[RunEventType, ...] = (
@@ -123,7 +123,7 @@ async def get_owned_run_state(
 
     return RunStateResponse(
         run_id=run.id,
-        status=run.status,
+        status=cast(RunStatus, run.status),
         latest_seq=latest_seq,
         draft_text="".join(draft_parts),
         terminal_event=terminal_event,
