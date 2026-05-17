@@ -229,6 +229,12 @@ function buildComposer() {
     title: activeRun ? "停止生成" : "发送（Enter）",
   }, [activeRun ? "■" : "↑"]);
 
+  if (activeRun && activeRun.cancelRequested) {
+    sendButton.disabled = true;
+    sendButton.title = "取消中…";
+    sendButton.textContent = "…";
+  }
+
   const wrapper = el("div", { class: "max-w-3xl mx-auto px-6 py-3" }, [
     el("div", {
       class: "flex items-end gap-2 border border-zinc-200 rounded-2xl px-2 py-1 bg-white shadow-sm focus-within:border-zinc-400",
@@ -289,8 +295,15 @@ function mountComposer() {
 }
 
 async function cancelActiveRun() {
-  // 占位，Task 10 实现。
-  toast("cancel 将在 Task 10 接入", "info");
+  const { activeRun } = getState();
+  if (!activeRun) return;
+  setState({ activeRun: { ...activeRun, cancelRequested: true } });
+  try {
+    await withAuth((t) => api.runs.cancel(t, activeRun.runId));
+    toast("已请求取消，等待生成停止…", "info");
+  } catch (err) {
+    toast(errorMessage(err, "取消失败"), "error");
+  }
 }
 
 function ensureAssistantPlaceholder(conversationId, runId) {
