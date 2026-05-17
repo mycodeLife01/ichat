@@ -1,3 +1,13 @@
+from app.services.runs.lifecycle import (
+    claim_next_queued_run,
+    is_cancelling,
+    mark_run_cancelled,
+    mark_run_failed,
+    mark_run_streaming,
+    mark_run_succeeded,
+    renew_lease,
+    run_has_text_delta,
+)
 from app.services.runs.service import (
     RUN_NOT_FOUND_MESSAGE,
     TERMINAL_EVENT_TYPES,
@@ -13,9 +23,17 @@ __all__ = [
     "RUN_NOT_FOUND_MESSAGE",
     "TERMINAL_EVENT_TYPES",
     "append_run_event",
+    "claim_next_queued_run",
     "get_owned_run_state",
     "get_owned_visible_run",
+    "is_cancelling",
     "list_owned_run_events_after",
     "list_run_events_after",
+    "mark_run_cancelled",
+    "mark_run_failed",
+    "mark_run_streaming",
+    "mark_run_succeeded",
+    "renew_lease",
     "run_has_terminal_event",
+    "run_has_text_delta",
 ]
