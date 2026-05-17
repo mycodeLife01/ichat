@@ -1,8 +1,10 @@
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.conversations import router as conversations_router
@@ -64,3 +66,7 @@ def create_app(
 
 
 app = create_app()
+
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+if frontend_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
