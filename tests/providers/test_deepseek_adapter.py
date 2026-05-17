@@ -87,3 +87,91 @@ async def test_deepseek_provider_raises_provider_error_on_http_error() -> None:
 
     assert exc_info.value.code == "deepseek_http_error"
     assert "500" in exc_info.value.message
+
+
+async def test_deepseek_provider_disables_thinking_when_config_false() -> None:
+    captured_payload: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payload.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=sse_body(
+                [
+                    {
+                        "id": "1",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": "Hi"},
+                                "finish_reason": None,
+                            }
+                        ],
+                    },
+                    {
+                        "id": "1",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    },
+                ]
+            ),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    settings = make_settings().model_copy(update={"deepseek_thinking_enabled": False})
+    provider = DeepSeekProvider(settings=settings, transport=httpx.MockTransport(handler))
+
+    chunks = [
+        chunk
+        async for chunk in provider.stream(
+            model="deepseek-test",
+            messages=[ProviderMessage(role="user", content="hi")],
+        )
+    ]
+
+    assert chunks[0] == TextDelta(text="Hi")
+    assert captured_payload["thinking"] == {"type": "disabled"}
+
+
+async def test_deepseek_provider_enables_thinking_when_config_true() -> None:
+    captured_payload: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payload.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=sse_body(
+                [
+                    {
+                        "id": "1",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    },
+                ]
+            ),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    settings = make_settings().model_copy(update={"deepseek_thinking_enabled": True})
+    provider = DeepSeekProvider(settings=settings, transport=httpx.MockTransport(handler))
+
+    chunks = [
+        chunk
+        async for chunk in provider.stream(
+            model="deepseek-test",
+            messages=[ProviderMessage(role="user", content="hi")],
+        )
+    ]
+
+    assert isinstance(chunks[0], Finish)
+    assert captured_payload["thinking"] == {"type": "enabled"}

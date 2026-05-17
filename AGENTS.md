@@ -61,11 +61,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## 5. Implementation Workspace
+### 5. Implementation Workspace
 
 When entering the implementation phase, develop directly on the current branch by default. Do not create or switch to a git worktree.
 
 Use a worktree only when the user explicitly asks for one. If a generic workflow or external skill recommends using a worktree, this project rule takes precedence.
+
+### 6. Subagent Model Policy
+
+When the user explicitly authorizes subagent use, choose models by task role:
+- Orchestrator and reviewer subagents must use `gpt-5.5` with `xhigh` reasoning.
+- Executor and worker subagents must use `gpt-5.4-mini` with `xhigh` reasoning.
+- Read-only and explore subagents must use `gpt-5.4-mini` with `medium` reasoning.
 
 ## Documentations
 - All documentation must be written in Chinese.

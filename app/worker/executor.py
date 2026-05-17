@@ -79,7 +79,7 @@ async def execute_run(
     try:
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
-            outcome = await _run_provider_stream(
+            outcome = await _run_provider_stream_until_done_or_cancelled(
                 session_factory=session_factory,
                 run_id=run_id,
                 provider=provider,
@@ -140,7 +140,6 @@ async def _heartbeat_loop(
                 await session.commit()
             if cancelling:
                 cancel_event.set()
-                return
         except asyncio.CancelledError:
             return
 
@@ -152,6 +151,52 @@ class _StreamOutcome:
     delta_persisted: bool
     code: str | None = None
     message: str | None = None
+
+
+async def _run_provider_stream_until_done_or_cancelled(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    run_id: int,
+    provider: Provider,
+    provider_model: str,
+    messages: list[ProviderMessage],
+    cancel_event: asyncio.Event,
+) -> _StreamOutcome:
+    stream_task = asyncio.create_task(
+        _run_provider_stream(
+            session_factory=session_factory,
+            run_id=run_id,
+            provider=provider,
+            provider_model=provider_model,
+            messages=messages,
+            cancel_event=cancel_event,
+        )
+    )
+    cancel_task = asyncio.create_task(cancel_event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {stream_task, cancel_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if cancel_task in done and cancel_event.is_set() and not stream_task.done():
+            stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stream_task
+            async with session_factory() as session:
+                delta_persisted = await run_has_text_delta(session, run_id=run_id)
+            return _StreamOutcome(
+                status="cancelled",
+                before_first_delta=not delta_persisted,
+                delta_persisted=delta_persisted,
+            )
+        return await stream_task
+    finally:
+        for task in (stream_task, cancel_task):
+            if not task.done():
+                task.cancel()
+        for task in (stream_task, cancel_task):
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 async def _run_provider_stream(
@@ -177,7 +222,14 @@ async def _run_provider_stream(
             if isinstance(chunk, TextDelta):
                 async with session_factory() as session:
                     if not first_delta_seen:
-                        await mark_run_streaming(session, run_id=run_id)
+                        changed = await mark_run_streaming(session, run_id=run_id)
+                        if not changed:
+                            await session.commit()
+                            return _StreamOutcome(
+                                status="cancelled",
+                                before_first_delta=True,
+                                delta_persisted=False,
+                            )
                         first_delta_seen = True
                     await append_run_event(
                         session,
@@ -196,18 +248,25 @@ async def _run_provider_stream(
             elif isinstance(chunk, Finish):
                 full_text = "".join(text_parts)
                 async with session_factory() as session:
-                    await mark_run_succeeded(
+                    changed = await mark_run_succeeded(
                         session,
                         run_id=run_id,
                         usage=chunk.usage,
                         provider_request_id=chunk.provider_request_id,
                     )
-                    await materialize_assistant_message(
-                        session,
-                        run_id=run_id,
-                        content=full_text,
-                    )
+                    if changed:
+                        await materialize_assistant_message(
+                            session,
+                            run_id=run_id,
+                            content=full_text,
+                        )
                     await session.commit()
+                if not changed:
+                    return _StreamOutcome(
+                        status="cancelled",
+                        before_first_delta=not first_delta_seen,
+                        delta_persisted=first_delta_seen,
+                    )
                 return _StreamOutcome(
                     status="succeeded",
                     before_first_delta=not first_delta_seen,

@@ -13,6 +13,7 @@ from app.models.user import User
 from app.services.runs.lifecycle import (
     claim_next_queued_run,
     is_cancelling,
+    mark_run_cancelled,
     mark_run_failed,
     mark_run_streaming,
     mark_run_succeeded,
@@ -185,6 +186,27 @@ async def test_mark_run_streaming_sets_status_and_first_streamed_at(
         assert updated.first_streamed_at is not None
 
 
+async def test_mark_run_streaming_noops_when_run_is_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session, status_value="cancelling")
+        run_id = run.id
+        await session.commit()
+
+    async with session_factory() as session:
+        changed = await mark_run_streaming(session, run_id=run_id)
+        await session.commit()
+
+    assert changed is False
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "cancelling"
+        assert updated.first_streamed_at is None
+
+
 async def test_mark_run_succeeded_writes_terminal_event_and_clears_lease(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -223,6 +245,38 @@ async def test_mark_run_succeeded_writes_terminal_event_and_clears_lease(
         assert events[-1].payload == {"usage": {"prompt_tokens": 5}}
 
 
+async def test_mark_run_succeeded_noops_when_run_is_cancelling(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session, status_value="cancelling")
+        run_id = run.id
+        await session.commit()
+
+    async with session_factory() as session:
+        changed = await mark_run_succeeded(
+            session,
+            run_id=run_id,
+            usage=None,
+            provider_request_id=None,
+        )
+        await session.commit()
+
+    assert changed is False
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "cancelling"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert events == []
+
+
 async def test_mark_run_failed_writes_terminal_event_and_records_error(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -258,6 +312,40 @@ async def test_mark_run_failed_writes_terminal_event_and_records_error(
         ).all()
         assert events[-1].type == "run_failed"
         assert events[-1].payload == {"code": "upstream_5xx", "message": "bad upstream"}
+
+
+async def test_terminal_transition_noops_when_run_already_terminal(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session, status_value="streaming")
+        run_id = run.id
+        await mark_run_failed(
+            session,
+            run_id=run_id,
+            code="lease_expired",
+            message="worker lease expired",
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        changed = await mark_run_cancelled(session, run_id=run_id)
+        await session.commit()
+
+    assert changed is False
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "failed"
+        assert updated.error_code == "lease_expired"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == ["run_failed"]
 
 
 async def test_renew_lease_extends_expiry_and_heartbeat(

@@ -38,6 +38,9 @@ class DeepSeekProvider(Provider):
             "model": model,
             "stream": True,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "thinking": {
+                "type": "enabled" if self._settings.deepseek_thinking_enabled else "disabled"
+            },
         }
         headers = {
             "Authorization": f"Bearer {self._settings.deepseek_api_key}",
