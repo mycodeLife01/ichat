@@ -378,4 +378,5 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
     assert "event: text_delta" in body
     assert '"payload":{"text":"Late hello"}' in body
     assert "event: run_succeeded" in body
+    assert '"seq":2,"type":"run_succeeded","payload":{}' in body
     assert body.index("event: text_delta") < body.index("event: run_succeeded")
