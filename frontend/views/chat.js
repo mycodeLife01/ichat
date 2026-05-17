@@ -85,6 +85,39 @@ function rerenderMain() {
   }
 
   header.textContent = detail.title?.trim() || "新对话";
+  header.ondblclick = () => {
+    const conv = getState().detail;
+    if (!conv) return;
+    const input = el("input", {
+      type: "text",
+      value: conv.title || "",
+      class: "bg-transparent border-b border-zinc-400 outline-none text-sm font-medium w-full",
+    });
+    header.replaceChildren(input);
+    input.focus();
+    input.select();
+    const commit = async () => {
+      const title = input.value.trim();
+      header.replaceChildren();
+      if (title && title !== (conv.title || "")) {
+        try {
+          const updated = await withAuth((t) => api.conversations.rename(t, conv.id, title));
+          setState({
+            detail: { ...getState().detail, title: updated.title },
+            conversations: getState().conversations.map((c) => c.id === conv.id ? updated : c),
+          });
+        } catch (err) {
+          toast(errorMessage(err, "重命名失败"), "error");
+        }
+      }
+      rerenderMain();
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { input.blur(); }
+      if (e.key === "Escape") { input.value = conv.title || ""; input.blur(); }
+    });
+  };
   if (detail.messages.length === 0) {
     messages.replaceChildren(emptyHero("发出你的第一条消息开始对话"));
   } else {

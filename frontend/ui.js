@@ -27,6 +27,9 @@ export function el(tag, attrs = {}, children = []) {
 
 export function toast(message, level = "info") {
   const root = document.getElementById("toast-root");
+  while (root.children.length >= 3) {
+    root.firstChild.remove();
+  }
   const color = level === "error" ? "bg-red-600" : level === "success" ? "bg-emerald-600" : "bg-zinc-900";
   const node = el("div", {
     class: `${color} text-white text-sm px-3 py-2 rounded-md shadow-md max-w-sm`,
