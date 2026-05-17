@@ -3,17 +3,18 @@ import * as api from "../api.js";
 import { getAuth, logout, withAuth } from "../auth.js";
 import { getState, setState, subscribe } from "../state.js";
 import { el, toast } from "../ui.js";
+import { escapeHtml, nearBottom, scrollToBottom } from "../ui.js";
 
 export function renderChatView(container, { onLoggedOut }) {
   container.replaceChildren(buildShell({ onLoggedOut }));
   void loadConversations();
-  const unsubscribe = subscribe(() => rerenderSidebar(container));
+  const unsubscribe = subscribe(() => { rerenderSidebar(); rerenderMain(); });
   container._chatUnsubscribe = unsubscribe;
 }
 
 function buildShell({ onLoggedOut }) {
   const root = el("div", { class: "h-full w-full flex bg-white" });
-  root.append(buildSidebar({ onLoggedOut }), buildMainPlaceholder());
+  root.append(buildSidebar({ onLoggedOut }), buildMain());
   return root;
 }
 
@@ -54,11 +55,61 @@ function buildSidebar({ onLoggedOut }) {
   return sidebar;
 }
 
-function buildMainPlaceholder() {
-  return el("section", {
-    id: "main",
-    class: "flex-1 flex items-center justify-center text-zinc-400 text-sm",
-  }, ["选择一个对话，或点击左上角"+" + 新建 创建一个新对话"]);
+function buildMain() {
+  return el("section", { id: "main", class: "flex-1 flex flex-col min-w-0" }, [
+    el("header", {
+      id: "main-header",
+      class: "h-14 px-6 flex items-center border-b border-zinc-200 text-sm font-medium text-zinc-900",
+    }, ["选择一个对话开始聊天"]),
+    el("div", { id: "messages", class: "flex-1 overflow-y-auto scroll-thin" }),
+    el("div", { id: "composer-mount", class: "border-t border-zinc-200" }),
+  ]);
+}
+
+function rerenderMain() {
+  const header = document.getElementById("main-header");
+  const messages = document.getElementById("messages");
+  if (!header || !messages) return;
+
+  const { selectedId, detail } = getState();
+  if (!selectedId) {
+    header.textContent = "选择一个对话开始聊天";
+    messages.replaceChildren(emptyHero("从左侧选一个对话，或新建一个开始"));
+    return;
+  }
+  if (!detail || detail.id !== selectedId) {
+    header.textContent = "加载中…";
+    messages.replaceChildren(emptyHero("加载中…"));
+    return;
+  }
+
+  header.textContent = detail.title?.trim() || "新对话";
+  if (detail.messages.length === 0) {
+    messages.replaceChildren(emptyHero("发出你的第一条消息开始对话"));
+  } else {
+    const list = el("div", { class: "max-w-3xl mx-auto px-6 py-8 space-y-6" },
+      detail.messages.map(renderMessage));
+    messages.replaceChildren(list);
+    requestAnimationFrame(() => scrollToBottom(messages));
+  }
+}
+
+function emptyHero(text) {
+  return el("div", {
+    class: "h-full w-full flex items-center justify-center text-zinc-400 text-sm",
+  }, [text]);
+}
+
+function renderMessage(message) {
+  const isUser = message.role === "user";
+  const bubble = el("div", {
+    class: isUser
+      ? "max-w-[80%] ml-auto bg-zinc-100 text-zinc-900 rounded-2xl rounded-tr-md px-4 py-3 text-sm whitespace-pre-wrap break-words"
+      : "max-w-[80%] mr-auto text-zinc-900 px-1 py-1 text-sm whitespace-pre-wrap break-words leading-relaxed",
+    dataset: { messageId: String(message.id), role: message.role },
+  });
+  bubble.textContent = message.content;
+  return el("div", { class: `flex ${isUser ? "justify-end" : "justify-start"}` }, [bubble]);
 }
 
 function rerenderSidebar() {
@@ -113,7 +164,12 @@ async function createConversation() {
 
 async function selectConversation(id) {
   setState({ selectedId: id, detail: null });
-  // 详情/消息渲染在 Task 6 接入。
+  try {
+    const detail = await withAuth((t) => api.conversations.detail(t, id));
+    if (getState().selectedId === id) setState({ detail });
+  } catch (err) {
+    toast(errorMessage(err, "加载对话失败"), "error");
+  }
 }
 
 async function renameConversation(conv) {
