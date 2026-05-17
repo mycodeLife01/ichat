@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     deepseek_thinking_enabled: bool
     default_system_prompt: str
     run_lease_seconds: int
-    worker_poll_interval_seconds: int
-    worker_heartbeat_interval_seconds: int
+    worker_poll_interval_seconds: float
+    worker_heartbeat_interval_seconds: float
     log_level: str
 
     model_config = SettingsConfigDict(

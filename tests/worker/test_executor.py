@@ -1,5 +1,7 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -13,7 +15,7 @@ from app.models.user import User
 from app.providers import Finish, Provider, ProviderChunk, ProviderError, ProviderMessage, TextDelta
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
-from tests.providers.fake import FakeProvider, RaiseError
+from tests.providers.fake import FakeProvider, RaiseError, Sleep
 
 TEST_DATABASE_URL = os.environ.get(
     "WORKER_TEST_DATABASE_URL",
@@ -337,3 +339,119 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
         assert run is not None
         assert run.status == "failed"
         assert run.error_code == "dead"
+
+
+async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    fake = FakeProvider(
+        script=[
+            TextDelta(text="part one"),
+            Sleep(seconds=0.5),
+            TextDelta(text="part two"),
+            Sleep(seconds=0.5),
+            Finish(finish_reason="stop"),
+        ]
+    )
+
+    cancel_settings = settings.model_copy(update={"worker_heartbeat_interval_seconds": 0.05})
+
+    async def flip_to_cancelling() -> None:
+        await asyncio.sleep(0.2)
+        async with session_factory() as session:
+            run = await session.get(Run, run_id)
+            assert run is not None
+            run.status = "cancelling"
+            await session.commit()
+
+    flip_task = asyncio.create_task(flip_to_cancelling())
+    try:
+        await execute_run(
+            session_factory=session_factory,
+            run_id=run_id,
+            worker_id="worker-x",
+            settings=cancel_settings,
+            resolve_provider=make_resolver(fake),
+        )
+    finally:
+        await flip_task
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "cancelled"
+        assert run.cancelled_at is not None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert events[-1].type == "run_cancelled"
+
+        messages = (
+            await session.scalars(
+                select(Message).where(Message.conversation_id == run.conversation_id)
+            )
+        ).all()
+        roles = [m.role for m in messages]
+        assert "assistant" not in roles
+
+
+async def test_execute_run_renews_lease_during_long_stream(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+        async with session_factory() as session2:
+            run = await session2.get(Run, run_id)
+            assert run is not None
+            original_expiry = run.lease_expires_at
+
+    fake = FakeProvider(
+        script=[
+            TextDelta(text="hi"),
+            Sleep(seconds=0.3),
+            Finish(finish_reason="stop"),
+        ]
+    )
+    fast_settings = settings.model_copy(update={"worker_heartbeat_interval_seconds": 0.05})
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=fast_settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+        assert run.heartbeat_at is not None
+        assert original_expiry is not None
+        assert run.heartbeat_at >= original_expiry - timedelta(seconds=settings.run_lease_seconds)

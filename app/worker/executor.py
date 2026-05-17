@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,9 +12,12 @@ from app.models.run import Run
 from app.providers import Finish, Provider, ProviderError, ProviderMessage, TextDelta
 from app.services.conversations import materialize_assistant_message
 from app.services.runs.lifecycle import (
+    is_cancelling,
+    mark_run_cancelled,
     mark_run_failed,
     mark_run_streaming,
     mark_run_succeeded,
+    renew_lease,
     run_has_text_delta,
 )
 from app.services.runs.service import append_run_event
@@ -60,26 +65,49 @@ async def execute_run(
 
     provider = resolve_provider(provider_name, settings=settings)
 
-    max_attempts = 2
-    for attempt in range(1, max_attempts + 1):
-        outcome = await _run_provider_stream(
+    cancel_event = asyncio.Event()
+    heartbeat_task = asyncio.create_task(
+        _heartbeat_loop(
             session_factory=session_factory,
             run_id=run_id,
-            provider=provider,
-            provider_model=provider_model,
-            messages=messages,
+            lease_seconds=settings.run_lease_seconds,
+            interval_seconds=settings.worker_heartbeat_interval_seconds,
+            cancel_event=cancel_event,
         )
-        if outcome.status == "succeeded":
-            return
-        if outcome.status == "failed":
+    )
+
+    try:
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            outcome = await _run_provider_stream(
+                session_factory=session_factory,
+                run_id=run_id,
+                provider=provider,
+                provider_model=provider_model,
+                messages=messages,
+                cancel_event=cancel_event,
+            )
+            if outcome.status == "succeeded":
+                return
+            if outcome.status == "cancelled":
+                async with session_factory() as session:
+                    await mark_run_cancelled(session, run_id=run_id)
+                    await session.commit()
+                return
             allow_retry = (
                 outcome.before_first_delta
-                and not outcome.delta_persisted
                 and attempt < max_attempts
+                and not outcome.delta_persisted
+                and not cancel_event.is_set()
             )
             if allow_retry:
                 run_logger.bind(code=outcome.code).info("Retrying provider stream once")
                 continue
+            if cancel_event.is_set():
+                async with session_factory() as session:
+                    await mark_run_cancelled(session, run_id=run_id)
+                    await session.commit()
+                return
             async with session_factory() as session:
                 await mark_run_failed(
                     session,
@@ -89,11 +117,37 @@ async def execute_run(
                 )
                 await session.commit()
             return
+    finally:
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat_task
+
+
+async def _heartbeat_loop(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    run_id: int,
+    lease_seconds: int,
+    interval_seconds: float,
+    cancel_event: asyncio.Event,
+) -> None:
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            async with session_factory() as session:
+                await renew_lease(session, run_id=run_id, lease_seconds=lease_seconds)
+                cancelling = await is_cancelling(session, run_id=run_id)
+                await session.commit()
+            if cancelling:
+                cancel_event.set()
+                return
+        except asyncio.CancelledError:
+            return
 
 
 @dataclass
 class _StreamOutcome:
-    status: str  # "succeeded" | "failed"
+    status: str  # "succeeded" | "failed" | "cancelled"
     before_first_delta: bool
     delta_persisted: bool
     code: str | None = None
@@ -107,12 +161,19 @@ async def _run_provider_stream(
     provider: Provider,
     provider_model: str,
     messages: list[ProviderMessage],
+    cancel_event: asyncio.Event,
 ) -> _StreamOutcome:
     text_parts: list[str] = []
     first_delta_seen = False
 
     try:
         async for chunk in provider.stream(model=provider_model, messages=messages):
+            if cancel_event.is_set():
+                return _StreamOutcome(
+                    status="cancelled",
+                    before_first_delta=not first_delta_seen,
+                    delta_persisted=first_delta_seen,
+                )
             if isinstance(chunk, TextDelta):
                 async with session_factory() as session:
                     if not first_delta_seen:
@@ -126,6 +187,12 @@ async def _run_provider_stream(
                     )
                     await session.commit()
                 text_parts.append(chunk.text)
+                if cancel_event.is_set():
+                    return _StreamOutcome(
+                        status="cancelled",
+                        before_first_delta=False,
+                        delta_persisted=True,
+                    )
             elif isinstance(chunk, Finish):
                 full_text = "".join(text_parts)
                 async with session_factory() as session:
