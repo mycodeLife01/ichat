@@ -34,7 +34,7 @@ services:
     image: ichat-worker:local
     env_file:
       - .env
-    command: ["python", "-c", "import time; print('worker foundation container ready', flush=True); time.sleep(3600)"]
+    command: ["python", "-m", "app.worker"]
     depends_on:
       postgres:
         condition: service_healthy
