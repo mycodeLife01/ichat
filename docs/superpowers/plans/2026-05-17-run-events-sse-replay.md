@@ -986,7 +986,6 @@ router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
 @router.get(
     "/{run_id}/state",
     response_model=SuccessResponse[RunStateResponse],
-    response_model_exclude_none=True,
 )
 async def get_run_state_route(
     run_id: int,
@@ -1489,6 +1488,7 @@ Expected:
 - `/events` 在返回 `StreamingResponse` 前先调用 `get_owned_visible_run()`，让跨用户和软删除场景在进入 stream 前返回标准 JSON error。
 - `/events` 的成功响应是 `text/event-stream`，不使用 `SuccessResponse`。
 - `/state` 是 JSON API，必须使用 `SuccessResponse[RunStateResponse]`。
+- `/state` 必须显式返回 `terminal_event: null`，方便前端区分“未终止”和“字段被省略”；因此该 endpoint 不使用 `response_model_exclude_none=True`。
 - `RunStateResponse.draft_text` 只拼接 `text_delta.payload.text` 为字符串的内容。
 - terminal event 只由 `run_succeeded`、`run_failed`、`run_cancelled` 判定，不直接依赖 `runs.status`。
 - 如果 `runs.status` 已 terminal 但没有 terminal event，本次 SSE endpoint 不应擅自合成 event；后续 worker/状态机任务负责保证 terminal event 写入。
