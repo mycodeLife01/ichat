@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 from collections.abc import AsyncIterator
 from typing import Any, cast
@@ -348,22 +349,33 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
         client.get(f"/api/v1/runs/{run_id}/events?after_seq=0", headers=headers, timeout=3.0)
     )
 
-    await asyncio.sleep(0.3)
+    try:
+        await asyncio.sleep(0.3)
+        assert not response_task.done()
 
-    async with session_factory() as session:
-        await append_run_event(
-            session,
-            run_id=run_id,
-            event_type="text_delta",
-            payload={"text": "Late hello"},
-        )
-        await append_run_event(session, run_id=run_id, event_type="run_succeeded", payload={})
-        await session.commit()
+        async with session_factory() as session:
+            await append_run_event(
+                session,
+                run_id=run_id,
+                event_type="text_delta",
+                payload={"text": "Late hello"},
+            )
+            await append_run_event(session, run_id=run_id, event_type="run_succeeded", payload={})
+            await session.commit()
 
-    response = await asyncio.wait_for(response_task, timeout=3.0)
+        response = await asyncio.wait_for(response_task, timeout=3.0)
+    finally:
+        if not response_task.done():
+            response_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await response_task
 
     assert response.status_code == status.HTTP_200_OK
+    assert response.headers["content-type"].startswith("text/event-stream")
     body = response.text
+    assert "id: 1" in body
+    assert "id: 2" in body
     assert "event: text_delta" in body
     assert '"payload":{"text":"Late hello"}' in body
     assert "event: run_succeeded" in body
+    assert body.index("event: text_delta") < body.index("event: run_succeeded")
