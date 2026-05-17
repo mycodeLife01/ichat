@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from fastapi import status
@@ -8,6 +9,7 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation
 from app.models.run import Run, RunEvent
 from app.models.user import User
+from app.schemas.auth import CommandStatusResponse
 from app.schemas.runs import RunEventResponse, RunEventType, RunStateResponse, RunStatus
 
 RUN_NOT_FOUND_MESSAGE = "Run not found"
@@ -16,6 +18,9 @@ TERMINAL_EVENT_TYPES: tuple[RunEventType, ...] = (
     "run_failed",
     "run_cancelled",
 )
+CANCEL_DIRECT_STATUSES = ("queued",)
+CANCEL_REQUEST_STATUSES = ("started", "streaming")
+CANCEL_IDEMPOTENT_STATUSES = ("cancelling", "succeeded", "failed", "cancelled")
 
 
 def run_event_response(event: RunEvent) -> RunEventResponse:
@@ -40,6 +45,52 @@ async def get_owned_visible_run(
     if run is None:
         raise AppError(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_MESSAGE)
     return run
+
+
+async def cancel_owned_run(
+    session: AsyncSession,
+    *,
+    user: User,
+    run_id: int,
+) -> CommandStatusResponse:
+    run = await session.scalar(
+        select(Run)
+        .join(Conversation, Run.conversation_id == Conversation.id)
+        .where(
+            Run.id == run_id,
+            Conversation.user_id == user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if run is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_MESSAGE)
+
+    if run.status in CANCEL_DIRECT_STATUSES:
+        now = datetime.now(UTC)
+        run.status = "cancelled"
+        run.cancelled_at = now
+        run.completed_at = now
+        run.lease_owner = None
+        run.lease_expires_at = None
+        await session.flush()
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="run_cancelled",
+            payload={},
+        )
+        return CommandStatusResponse()
+
+    if run.status in CANCEL_REQUEST_STATUSES:
+        run.status = "cancelling"
+        await session.flush()
+        return CommandStatusResponse()
+
+    if run.status in CANCEL_IDEMPOTENT_STATUSES:
+        return CommandStatusResponse()
+
+    return CommandStatusResponse()
 
 
 async def append_run_event(

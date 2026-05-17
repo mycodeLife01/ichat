@@ -12,8 +12,10 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
+from app.schemas.runs import RunEventType
 from app.services.runs.service import (
     append_run_event,
+    cancel_owned_run,
     get_owned_run_state,
     get_owned_visible_run,
     list_owned_run_events_after,
@@ -242,6 +244,159 @@ async def test_deleted_conversation_run_access_returns_not_found(
 
         with pytest.raises(AppError) as exc_info:
             await get_owned_run_state(session, user=user, run_id=run.id)
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Run not found"
+
+
+async def test_cancel_owned_queued_run_marks_cancelled_and_writes_terminal_event(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        _, _, run = await create_run(session, user=user, status_value="queued")
+        run_id = run.id
+        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        await session.commit()
+
+    assert result.status == "ok"
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "cancelled"
+        assert updated.cancelled_at is not None
+        assert updated.completed_at is not None
+        assert updated.lease_owner is None
+        assert updated.lease_expires_at is None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [(event.seq, event.type, event.payload) for event in events] == [
+            (1, "run_cancelled", {})
+        ]
+
+
+@pytest.mark.parametrize("active_status", ["started", "streaming"])
+async def test_cancel_owned_active_run_marks_cancelling_without_terminal_event(
+    session_factory: async_sessionmaker[AsyncSession],
+    active_status: str,
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        _, _, run = await create_run(session, user=user, status_value=active_status)
+        run_id = run.id
+        await append_run_event(session, run_id=run_id, event_type="run_started", payload={})
+        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        await session.commit()
+
+    assert result.status == "ok"
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "cancelling"
+        assert updated.cancelled_at is None
+        assert updated.completed_at is None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == ["run_started"]
+
+
+@pytest.mark.parametrize(
+    ("terminal_status", "event_type"),
+    [
+        ("succeeded", "run_succeeded"),
+        ("failed", "run_failed"),
+        ("cancelled", "run_cancelled"),
+    ],
+)
+async def test_cancel_owned_terminal_run_is_idempotent(
+    session_factory: async_sessionmaker[AsyncSession],
+    terminal_status: str,
+    event_type: RunEventType,
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        _, _, run = await create_run(session, user=user, status_value=terminal_status)
+        run_id = run.id
+        await append_run_event(session, run_id=run_id, event_type=event_type, payload={})
+        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        await session.commit()
+
+    assert result.status == "ok"
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == terminal_status
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [event_type]
+
+
+async def test_cancel_owned_cancelling_run_is_idempotent(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        _, _, run = await create_run(session, user=user, status_value="cancelling")
+        run_id = run.id
+        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        await session.commit()
+
+    assert result.status == "ok"
+
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.status == "cancelling"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert events == []
+
+
+async def test_cancel_owned_run_cross_user_returns_not_found(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        owner = await create_user(session, "alice")
+        other_user = await create_user(session, "bob")
+        _, _, run = await create_run(session, user=owner, status_value="streaming")
+
+        with pytest.raises(AppError) as exc_info:
+            await cancel_owned_run(session, user=other_user, run_id=run.id)
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Run not found"
+
+
+async def test_cancel_owned_run_deleted_conversation_returns_not_found(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, _, run = await create_run(session, user=user, status_value="streaming")
+        conversation.deleted_at = datetime.now(UTC)
+        await session.flush()
+
+        with pytest.raises(AppError) as exc_info:
+            await cancel_owned_run(session, user=user, run_id=run.id)
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Run not found"
