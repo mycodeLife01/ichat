@@ -10,10 +10,10 @@ from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.providers import Finish, Provider, TextDelta
+from app.providers import Finish, Provider, ProviderChunk, ProviderError, ProviderMessage, TextDelta
 from app.services.runs.lifecycle import claim_next_queued_run
-from app.worker.executor import execute_run
-from tests.providers.fake import FakeProvider
+from app.worker.executor import ProviderResolver, execute_run
+from tests.providers.fake import FakeProvider, RaiseError
 
 TEST_DATABASE_URL = os.environ.get(
     "WORKER_TEST_DATABASE_URL",
@@ -93,8 +93,6 @@ async def queue_run(session: AsyncSession, provider_name: str = "fake") -> int:
     return run.id
 
 
-from app.worker.executor import ProviderResolver
-
 
 def make_resolver(provider: Provider) -> ProviderResolver:
     def resolve(name: str, *, settings: Settings) -> Provider:
@@ -173,3 +171,169 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert [m.role for m in messages] == ["user", "assistant"]
         assert messages[1].content == "Hello world"
         assert messages[1].run_id == run_id
+
+
+async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    call_count = {"n": 0}
+
+    class FlakyProvider(Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self, *, model: str, messages: list[ProviderMessage]
+        ) -> AsyncIterator[ProviderChunk]:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise ProviderError(code="transient", message="first attempt")
+            yield TextDelta(text="Recovered")
+            yield Finish(finish_reason="stop")
+
+    provider = FlakyProvider()
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(provider),
+    )
+
+    assert call_count["n"] == 2
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [e.type for e in events] == [
+            "run_started",
+            "text_delta",
+            "run_succeeded",
+        ]
+
+
+async def test_execute_run_does_not_retry_after_persisted_delta(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    fake = FakeProvider(
+        script=[
+            TextDelta(text="partial"),
+            RaiseError(code="upstream_5xx", message="boom mid-stream"),
+        ]
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_code == "upstream_5xx"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [e.type for e in events] == [
+            "run_started",
+            "text_delta",
+            "run_failed",
+        ]
+        assert events[1].payload == {"text": "partial"}
+
+        messages = (
+            await session.scalars(
+                select(Message).where(Message.conversation_id == run.conversation_id)
+            )
+        ).all()
+        roles = [m.role for m in messages]
+        assert "assistant" not in roles
+
+
+async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    call_count = {"n": 0}
+
+    class AlwaysFailProvider(Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self, *, model: str, messages: list[ProviderMessage]
+        ) -> AsyncIterator[ProviderChunk]:
+            call_count["n"] += 1
+            raise ProviderError(code="dead", message=f"attempt {call_count['n']}")
+            yield  # pragma: no cover
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(AlwaysFailProvider()),
+    )
+
+    assert call_count["n"] == 2
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_code == "dead"
