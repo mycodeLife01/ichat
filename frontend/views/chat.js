@@ -14,33 +14,84 @@ export function renderChatView(container, { onLoggedOut }) {
 }
 
 function buildShell({ onLoggedOut }) {
-  const root = el("div", { class: "h-full w-full flex bg-white" });
-  root.append(buildSidebar({ onLoggedOut }), buildMain());
+  const root = el("div", { class: "relative h-full min-h-0 w-full flex flex-col md:flex-row bg-white overflow-hidden" });
+  root.append(buildSidebarBackdrop(), buildSidebar({ onLoggedOut }), buildMain());
   return root;
+}
+
+function buildSidebarBackdrop() {
+  return el("button", {
+    id: "sidebar-backdrop",
+    type: "button",
+    class: sidebarBackdropClass(),
+    "aria-label": "隐藏历史对话",
+    onClick: closeSidebar,
+  });
+}
+
+function isSidebarOpen() {
+  return getState().sidebarOpen === true;
+}
+
+function toggleSidebar() {
+  setState({ sidebarOpen: !isSidebarOpen() });
+}
+
+function closeSidebar() {
+  if (isSidebarOpen()) setState({ sidebarOpen: false });
+}
+
+function sidebarClass() {
+  const mobileState = isSidebarOpen() ? "translate-x-0" : "-translate-x-full";
+  return [
+    "fixed inset-y-0 left-0 z-40",
+    "w-80 max-w-[82vw] md:w-72 md:max-w-none shrink-0",
+    "border-r border-zinc-200 flex flex-col min-h-0",
+    "bg-zinc-50/95 md:bg-zinc-50/40 shadow-xl md:shadow-none",
+    "transform transition-transform duration-200 ease-out",
+    "md:static md:translate-x-0",
+    mobileState,
+  ].join(" ");
+}
+
+function sidebarBackdropClass() {
+  return [
+    "fixed inset-0 z-30 md:hidden bg-zinc-900/20 transition-opacity duration-200",
+    isSidebarOpen() ? "opacity-100" : "pointer-events-none opacity-0",
+  ].join(" ");
 }
 
 function buildSidebar({ onLoggedOut }) {
   const sidebar = el("aside", {
-    class: "w-72 shrink-0 border-r border-zinc-200 flex flex-col bg-zinc-50/40",
     id: "sidebar",
+    class: sidebarClass(),
   });
 
-  const header = el("div", { class: "flex items-center justify-between px-4 py-4 border-b border-zinc-200" }, [
+  const header = el("div", { class: "shrink-0 flex items-center justify-between px-4 py-3 sm:py-4 border-b border-zinc-200" }, [
     el("span", { class: "text-base font-semibold text-zinc-900" }, ["iChat"]),
-    el("button", {
-      class: "text-xs px-2 py-1 rounded-md border border-zinc-200 hover:bg-white",
-      onClick: () => void createConversation(),
-    }, ["+ 新建"]),
+    el("div", { class: "flex items-center gap-2" }, [
+      el("button", {
+        class: "text-xs px-2 py-1 rounded-md border border-zinc-200 hover:bg-white",
+        onClick: () => void createConversation(),
+      }, ["+ 新建"]),
+      el("button", {
+        type: "button",
+        class: "md:hidden inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:bg-white hover:text-zinc-900",
+        title: "隐藏历史对话",
+        "aria-label": "隐藏历史对话",
+        onClick: closeSidebar,
+      }, ["×"]),
+    ]),
   ]);
 
   const list = el("nav", {
     id: "conversation-list",
-    class: "flex-1 overflow-y-auto scroll-thin px-2 py-2 space-y-1",
+    class: "min-h-0 flex-1 overflow-y-auto scroll-thin px-2 py-2 space-y-1",
   });
 
   const auth = getAuth();
   const footer = el("div", {
-    class: "px-4 py-3 border-t border-zinc-200 flex items-center justify-between",
+    class: "shrink-0 px-4 py-2 sm:py-3 border-t border-zinc-200 flex items-center justify-between",
   }, [
     el("div", { class: "min-w-0" }, [
       el("p", { class: "text-sm text-zinc-900 truncate" }, [auth?.user.username ?? ""]),
@@ -57,14 +108,36 @@ function buildSidebar({ onLoggedOut }) {
 }
 
 function buildMain() {
-  return el("section", { id: "main", class: "flex-1 flex flex-col min-w-0" }, [
+  return el("section", { id: "main", class: "min-h-0 flex-1 flex flex-col min-w-0" }, [
     el("header", {
       id: "main-header",
-      class: "h-14 px-6 flex items-center border-b border-zinc-200 text-sm font-medium text-zinc-900",
-    }, ["选择一个对话开始聊天"]),
-    el("div", { id: "messages", class: "flex-1 overflow-y-auto scroll-thin" }),
-    el("div", { id: "composer-mount", class: "border-t border-zinc-200" }),
+      class: "shrink-0 min-h-12 sm:h-14 px-4 sm:px-6 flex items-center gap-3 border-b border-zinc-200 text-sm font-medium text-zinc-900",
+    }, [buildSidebarToggle(), el("span", { id: "main-title", class: "min-w-0 truncate" }, ["New chat"])]),
+    el("div", { id: "messages", class: "min-h-0 flex-1 overflow-y-auto scroll-thin" }),
+    el("div", { id: "composer-mount", class: "shrink-0 border-t border-zinc-200" }),
   ]);
+}
+
+function buildSidebarToggle() {
+  return el("button", {
+    type: "button",
+    class: "md:hidden inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 hover:bg-zinc-50",
+    title: "显示历史对话",
+    "aria-label": "显示历史对话",
+    onClick: toggleSidebar,
+  }, ["☰"]);
+}
+
+function renderMainHeader(header, title) {
+  const titleNode = document.getElementById("main-title");
+  if (titleNode && titleNode.parentElement === header) {
+    titleNode.textContent = title;
+    return;
+  }
+  header.replaceChildren(
+    buildSidebarToggle(),
+    el("span", { id: "main-title", class: "min-w-0 truncate" }, [title]),
+  );
 }
 
 function rerenderMain() {
@@ -73,32 +146,34 @@ function rerenderMain() {
   if (!header || !messages) return;
 
   const { selectedId, detail } = getState();
+  header.ondblclick = null;
   if (!selectedId) {
-    header.textContent = "选择一个对话开始聊天";
-    messages.replaceChildren(emptyHero("从左侧选一个对话，或新建一个开始"));
+    renderMainHeader(header, "New chat");
+    messages.replaceChildren(emptyHero());
+    mountComposer();
     return;
   }
   if (!detail || detail.id !== selectedId) {
-    header.textContent = "加载中…";
+    renderMainHeader(header, "加载中…");
     messages.replaceChildren(emptyHero("加载中…"));
+    mountComposer();
     return;
   }
 
-  header.textContent = detail.title?.trim() || "新对话";
+  renderMainHeader(header, detail.title?.trim() || "新对话");
   header.ondblclick = () => {
     const conv = getState().detail;
     if (!conv) return;
     const input = el("input", {
       type: "text",
       value: conv.title || "",
-      class: "bg-transparent border-b border-zinc-400 outline-none text-sm font-medium w-full",
+      class: "bg-transparent border-b border-zinc-400 outline-none text-base sm:text-sm font-medium w-full",
     });
     header.replaceChildren(input);
     input.focus();
     input.select();
     const commit = async () => {
       const title = input.value.trim();
-      header.replaceChildren();
       if (title && title !== (conv.title || "")) {
         try {
           const updated = await withAuth((t) => api.conversations.rename(t, conv.id, title));
@@ -119,31 +194,39 @@ function rerenderMain() {
     });
   };
   if (detail.messages.length === 0) {
-    messages.replaceChildren(emptyHero("发出你的第一条消息开始对话"));
+    messages.replaceChildren(emptyHero());
   } else {
-    const list = el("div", { class: "max-w-3xl mx-auto px-6 py-8 space-y-6" },
+    const shouldStickToBottom = nearBottom(messages);
+    const list = el("div", { class: "w-full max-w-5xl mx-auto px-4 sm:px-8 py-5 sm:py-8 space-y-4 sm:space-y-6" },
       detail.messages.map(renderMessage));
     messages.replaceChildren(list);
-    requestAnimationFrame(() => scrollToBottom(messages));
+    if (shouldStickToBottom) requestAnimationFrame(() => scrollToBottom(messages));
   }
   mountComposer();
 }
 
-function emptyHero(text) {
+function emptyHero(text = "今天想聊点什么？") {
   return el("div", {
-    class: "h-full w-full flex items-center justify-center text-zinc-400 text-sm",
-  }, [text]);
+    class: "h-full w-full flex flex-col items-center justify-center gap-2 px-4 pb-16 text-center",
+  }, [
+    el("p", { class: "text-2xl sm:text-3xl font-semibold text-zinc-900" }, [text]),
+    el("p", { class: "text-sm text-zinc-400" }, ["发送一条消息开始新的对话"]),
+  ]);
 }
 
 function renderMessage(message) {
   const isUser = message.role === "user";
   const bubble = el("div", {
     class: isUser
-      ? "max-w-[80%] ml-auto bg-zinc-100 text-zinc-900 rounded-2xl rounded-tr-md px-4 py-3 text-sm whitespace-pre-wrap break-words"
-      : "max-w-[80%] mr-auto text-zinc-900 px-1 py-1 text-sm whitespace-pre-wrap break-words leading-relaxed",
+      ? "max-w-full bg-zinc-100 text-zinc-900 rounded-2xl rounded-tr-md px-3 sm:px-4 py-3 text-base whitespace-pre-wrap break-words"
+      : "markdown-body w-full text-zinc-900 px-1 py-1 text-base break-words leading-relaxed",
     dataset: { messageId: String(message.id), role: message.role },
   });
-  bubble.textContent = message.content;
+  if (isUser) {
+    bubble.textContent = message.content;
+  } else {
+    bubble.innerHTML = renderAssistantMarkdown(message.content);
+  }
   if (!isUser && message._pending) {
     bubble.insertAdjacentHTML("beforeend", `<span class="streaming-caret">▍</span>`);
   }
@@ -153,10 +236,81 @@ function renderMessage(message) {
   if (!isUser && message._terminal === "failed") {
     bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-red-500">失败</span>`);
   }
-  return el("div", { class: `flex ${isUser ? "justify-end" : "justify-start"}` }, [bubble]);
+
+  const actions = el("div", {
+    class: `message-actions flex ${isUser ? "justify-end" : "justify-start"} px-1`,
+  }, [buildCopyButton(message.content)]);
+  const roleClass = isUser ? "message-item user items-end" : "message-item assistant items-start";
+  const stack = el("div", {
+    class: `${roleClass} flex max-w-[92%] sm:max-w-[80%] flex-col`,
+  }, [bubble, actions]);
+
+  return el("div", { class: `flex ${isUser ? "justify-end" : "justify-start"}` }, [stack]);
+}
+
+function buildCopyButton(content) {
+  return el("button", {
+    type: "button",
+    class: "copy-message-button inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+    title: "Copy message",
+    "aria-label": "Copy message",
+    onClick: async (event) => {
+      event.stopPropagation();
+      if (await copyMessageText(content)) {
+        toast("Copied", "success");
+      } else {
+        toast("Copy failed", "error");
+      }
+    },
+  }, [el("span", { class: "copy-icon", "aria-hidden": "true" })]);
+}
+
+export async function copyMessageText(content) {
+  const text = String(content ?? "");
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall back below for browsers that expose Clipboard API but deny it on HTTP.
+  }
+  return copyTextWithSelectionFallback(text);
+}
+
+function copyTextWithSelectionFallback(text) {
+  if (!document?.body || typeof document.execCommand !== "function") return false;
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.width = "1px";
+  textarea.style.height = "1px";
+  textarea.style.opacity = "0";
+  textarea.style.fontSize = "16px";
+
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    textarea.remove();
+  }
+  return copied;
 }
 
 function rerenderSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) sidebar.className = sidebarClass();
+  const backdrop = document.getElementById("sidebar-backdrop");
+  if (backdrop) backdrop.className = sidebarBackdropClass();
   const list = document.getElementById("conversation-list");
   if (!list) return;
   const { conversations, selectedId } = getState();
@@ -169,7 +323,7 @@ function conversationRow(conv, isActive) {
     class: `group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer ${
       isActive ? "bg-zinc-100 text-zinc-900" : "text-zinc-700 hover:bg-zinc-100"
     }`,
-    onClick: () => void selectConversation(conv.id),
+    onClick: () => { closeSidebar(); void selectConversation(conv.id); },
   });
   row.append(
     el("span", { class: "flex-1 text-sm truncate" }, [title]),
@@ -198,12 +352,29 @@ async function loadConversations() {
 
 async function createConversation() {
   try {
-    const conv = await withAuth((t) => api.conversations.create(t, null));
-    setState({ conversations: [conv, ...getState().conversations] });
-    await selectConversation(conv.id);
+    await createEmptyConversation();
+    closeSidebar();
   } catch (err) {
-    toast(errorMessage(err, "创建对话失败"), "error");
+    toast(errorMessage(err, "Failed to create conversation"), "error");
   }
+}
+
+async function createEmptyConversation() {
+  const conv = await withAuth((t) => api.conversations.create(t, null));
+  setState({
+    conversations: [conv, ...getState().conversations],
+    selectedId: conv.id,
+    detail: { ...conv, messages: [] },
+  });
+  return conv;
+}
+
+async function ensureConversationForSubmit() {
+  const { selectedId } = getState();
+  if (selectedId) return selectedId;
+  const conv = await createEmptyConversation();
+  closeSidebar();
+  return conv.id;
 }
 
 async function selectConversation(id) {
@@ -273,14 +444,12 @@ async function deleteConversation(conv) {
 }
 
 function buildComposer() {
-  const { selectedId, activeRun } = getState();
-  const disabled = !selectedId;
+  const { activeRun } = getState();
 
   const textarea = el("textarea", {
     rows: "1",
-    placeholder: disabled ? "选择或新建一个对话后开始输入…" : "向 iChat 提问…",
-    class: "flex-1 resize-none max-h-40 px-3 py-2 text-sm outline-none bg-transparent disabled:text-zinc-400",
-    ...(disabled ? { disabled: "true" } : {}),
+    placeholder: "Ask iChat...",
+    class: "flex-1 resize-none max-h-40 px-3 py-2 text-base sm:text-sm outline-none bg-transparent disabled:text-zinc-400",
   });
 
   const sendButton = el("button", {
@@ -294,7 +463,7 @@ function buildComposer() {
     sendButton.textContent = "…";
   }
 
-  const wrapper = el("div", { class: "max-w-3xl mx-auto px-6 py-3" }, [
+  const wrapper = el("div", { class: "w-full max-w-5xl mx-auto px-4 sm:px-8 py-3" }, [
     el("div", {
       class: "flex items-end gap-2 border border-zinc-200 rounded-2xl px-2 py-1 bg-white shadow-sm focus-within:border-zinc-400",
     }, [textarea, sendButton]),
@@ -308,8 +477,17 @@ function buildComposer() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   });
 
+  let isComposing = false;
+  textarea.addEventListener("compositionstart", () => {
+    isComposing = true;
+  });
+  textarea.addEventListener("compositionend", () => {
+    isComposing = false;
+  });
+
   textarea.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
+      if (event.isComposing || isComposing || event.keyCode === 229) return;
       event.preventDefault();
       if (!activeRun) void submit();
     }
@@ -322,24 +500,25 @@ function buildComposer() {
 
   async function submit() {
     const content = textarea.value.trim();
-    if (!content || !selectedId) return;
+    if (!content) return;
     textarea.value = "";
     textarea.style.height = "auto";
     try {
-      const { message, run } = await withAuth((t) => api.conversations.sendMessage(t, selectedId, content));
-      // 把 user message 立刻 append 到 detail.messages
+      const conversationId = await ensureConversationForSubmit();
+      const { message, run } = await withAuth((t) => api.conversations.sendMessage(t, conversationId, content));
+      // Append the user message immediately while the assistant stream starts.
       const detail = getState().detail;
-      if (detail && detail.id === selectedId) {
+      if (detail && detail.id === conversationId) {
         setState({
           detail: { ...detail, messages: [...detail.messages, message] },
         });
       }
-      void attachRunStream({ conversationId: selectedId, runId: run.id, afterSeq: 0 });
+      void attachRunStream({ conversationId, runId: run.id, afterSeq: 0 });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast("当前对话已有未完成的生成任务，请稍候或取消后重试", "error");
+        toast("This conversation already has an active generation. Please wait or stop it before retrying.", "error");
       } else {
-        toast(errorMessage(err, "发送失败"), "error");
+        toast(errorMessage(err, "Failed to send message"), "error");
       }
     }
   }
@@ -432,7 +611,7 @@ async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
       runId, afterSeq, token, signal: controller.signal,
       onEvent: (event) => {
         if (event.type === "text_delta") {
-          const delta = event.payload?.delta ?? "";
+          const delta = readTextDelta(event);
           if (delta) {
             draft += delta;
             updateAssistantText(placeholderId, draft);
@@ -477,6 +656,30 @@ function maybeAutoScroll() {
   const messages = document.getElementById("messages");
   if (!messages) return;
   if (nearBottom(messages)) requestAnimationFrame(() => scrollToBottom(messages));
+}
+
+export function readTextDelta(event) {
+  return event.payload?.text ?? event.payload?.delta ?? "";
+}
+
+export function renderAssistantMarkdown(content) {
+  const text = String(content ?? "");
+  const markedParser = globalThis.marked;
+  const purifier = globalThis.DOMPurify;
+  if (!markedParser?.parse || !purifier?.sanitize) {
+    return renderEscapedText(text);
+  }
+
+  try {
+    const html = markedParser.parse(text, { breaks: true, gfm: true });
+    return purifier.sanitize(html);
+  } catch {
+    return renderEscapedText(text);
+  }
+}
+
+function renderEscapedText(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
 }
 
 function errorMessage(err, fallback) {

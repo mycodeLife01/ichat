@@ -10,9 +10,9 @@ export function renderLoginView(container, { onAuthenticated }) {
   }
 
   function build() {
-    const root = el("div", { class: "h-full w-full flex items-center justify-center bg-zinc-50 px-4" });
+    const root = el("div", { class: "h-full min-h-0 w-full overflow-y-auto flex items-center justify-center bg-zinc-50 px-4 py-6 sm:py-8" });
     const card = el("div", {
-      class: "max-w-sm w-full bg-white border border-zinc-200 rounded-xl p-8 shadow-sm",
+      class: "w-full max-w-sm bg-white border border-zinc-200 rounded-xl p-5 sm:p-8 shadow-sm",
     });
     const brand = el("h1", { class: "text-2xl font-semibold text-zinc-900 text-center mb-1" }, ["iChat"]);
     const subtitle = el("p", { class: "text-sm text-zinc-500 text-center mb-6" }, ["简洁的 AI 对话测试客户端"]);
@@ -42,7 +42,7 @@ export function renderLoginView(container, { onAuthenticated }) {
     const errorId = `err-${inputAttrs.name}`;
     const input = el("input", {
       ...inputAttrs,
-      class: "w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900",
+      class: "w-full px-3 py-2 border border-zinc-200 rounded-md text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900",
     });
     const error = el("p", { id: errorId, class: "text-red-600 text-xs mt-1 hidden" });
     return {

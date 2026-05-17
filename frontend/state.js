@@ -4,6 +4,7 @@ const state = {
   selectedId: null,             // number | null
   detail: null,                 // ConversationDetailResponse | null（选中 conversation 的完整消息）
   activeRun: null,              // { runId, status, controller, draftText, assistantPlaceholderId } | null
+  sidebarOpen: false,           // mobile conversation drawer state
 };
 
 export function getState() { return state; }
