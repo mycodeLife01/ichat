@@ -58,6 +58,7 @@ async def stream_run_events_route(
             if await run_has_terminal_event(session, run_id=run_id):
                 return
 
+            await session.rollback()
             await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
 
     return StreamingResponse(
