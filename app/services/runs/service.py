@@ -61,7 +61,7 @@ async def cancel_owned_run(
             Conversation.user_id == user.id,
             Conversation.deleted_at.is_(None),
         )
-        .with_for_update()
+        .with_for_update(of=Run)
     )
     if run is None:
         raise AppError(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_MESSAGE)

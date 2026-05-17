@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
@@ -537,6 +538,35 @@ async def test_cross_user_cancel_run_returns_not_found(
         await session.commit()
 
     response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=bob_headers)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Run not found"}
+
+
+async def test_cancel_run_for_deleted_conversation_returns_not_found(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-cancel-deleted-api",
+        email=f"alice-cancel-deleted@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        conversation = await session.get(Conversation, run.conversation_id)
+        assert conversation is not None
+        conversation.deleted_at = datetime.now(UTC)
+        run_id = run.id
+        await session.commit()
+
+    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}

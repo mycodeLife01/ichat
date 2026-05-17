@@ -1,6 +1,6 @@
 import os
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -255,6 +255,8 @@ async def test_cancel_owned_queued_run_marks_cancelled_and_writes_terminal_event
     async with session_factory() as session:
         user = await create_user(session, "alice")
         _, _, run = await create_run(session, user=user, status_value="queued")
+        run.lease_owner = "stale-worker"
+        run.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
         run_id = run.id
         result = await cancel_owned_run(session, user=user, run_id=run_id)
         await session.commit()
