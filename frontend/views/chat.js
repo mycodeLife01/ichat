@@ -177,10 +177,36 @@ async function selectConversation(id) {
   setState({ selectedId: id, detail: null });
   try {
     const detail = await withAuth((t) => api.conversations.detail(t, id));
-    if (getState().selectedId === id) setState({ detail });
+    if (getState().selectedId !== id) return;
+    setState({ detail });
+    await maybeResumeRun(detail);
   } catch (err) {
     toast(errorMessage(err, "加载对话失败"), "error");
   }
+}
+
+async function maybeResumeRun(detail) {
+  const lastUser = [...detail.messages].reverse().find((m) => m.role === "user");
+  if (!lastUser || !lastUser.run_id) return;
+  // 如果该 user message 之后已经存在 assistant message，且该 assistant 的 run_id 一致，
+  // 说明 run 早已 succeeded 并物化，无需 replay。
+  const hasAssistantAfter = detail.messages.some(
+    (m) => m.role === "assistant" && m.position > lastUser.position && m.run_id === lastUser.run_id,
+  );
+  if (hasAssistantAfter) return;
+
+  let state;
+  try {
+    state = await withAuth((t) => api.runs.state(t, lastUser.run_id));
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 403)) return;
+    toast(errorMessage(err, "恢复流式连接失败"), "error");
+    return;
+  }
+
+  // 任何状态都从 after_seq=0 拉一遍：active run → 接管 mid-stream；
+  // 已终止但无 assistant message（cancelled/failed）→ 拿到 partial deltas 后立即终止。
+  void attachRunStream({ conversationId: detail.id, runId: lastUser.run_id, afterSeq: 0 });
 }
 
 async function renameConversation(conv) {
