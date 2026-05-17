@@ -76,7 +76,7 @@
 
 - Create: `app/services/runs/__init__.py`，导出 runs service public API。
 - Create: `app/services/runs/service.py`，实现 ownership、event 写入、event 查询、terminal 判断和 state 聚合。
-- Create: `tests/services/runs/test_service.py`，覆盖 seq 分配、after_seq 查询、state 聚合、ownership 和软删除隔离。
+- Create: `tests/services/runs/test_run_service.py`，覆盖 seq 分配、after_seq 查询、state 聚合、ownership 和软删除隔离。使用唯一文件名，避免与 `tests/services/conversations/test_service.py` 在 pytest 全量收集时同名冲突。
 
 **API：**
 
@@ -235,11 +235,11 @@ Expected:
 
 - Create: `app/services/runs/__init__.py`
 - Create: `app/services/runs/service.py`
-- Create: `tests/services/runs/test_service.py`
+- Create: `tests/services/runs/test_run_service.py`
 
 - [ ] **Step 1: 写 service 失败测试**
 
-创建 `tests/services/runs/test_service.py`：
+创建 `tests/services/runs/test_run_service.py`：
 
 ```python
 import os
@@ -496,7 +496,7 @@ async def test_deleted_conversation_run_access_returns_not_found(
 Run:
 
 ```bash
-uv run pytest tests/services/runs/test_service.py -v
+uv run pytest tests/services/runs/test_run_service.py -v
 ```
 
 Expected:
@@ -693,7 +693,7 @@ async def get_next_run_event_seq(session: AsyncSession, *, run_id: int) -> int:
 Run:
 
 ```bash
-uv run pytest tests/services/runs/test_service.py -v
+uv run pytest tests/services/runs/test_run_service.py -v
 ```
 
 Expected:
@@ -705,7 +705,7 @@ Expected:
 Run:
 
 ```bash
-uv run pytest tests/schemas/test_run_schemas.py tests/services/runs/test_service.py -v
+uv run pytest tests/schemas/test_run_schemas.py tests/services/runs/test_run_service.py -v
 ```
 
 Expected:
@@ -717,7 +717,7 @@ Expected:
 Run:
 
 ```bash
-git add app/services/runs tests/services/runs/test_service.py
+git add app/services/runs tests/services/runs/test_run_service.py
 git commit -m "feat: add run event service"
 ```
 
@@ -1398,7 +1398,7 @@ Expected:
 Run:
 
 ```bash
-uv run pytest tests/schemas/test_run_schemas.py tests/services/runs/test_service.py tests/api/test_runs.py -v
+uv run pytest tests/schemas/test_run_schemas.py tests/services/runs/test_run_service.py tests/api/test_runs.py -v
 ```
 
 Expected:
@@ -1471,7 +1471,7 @@ Expected:
 如果 Task 6 中修复了问题，提交修复：
 
 ```bash
-git add app/schemas/runs.py app/services/runs app/api/v1/runs.py app/main.py tests/schemas/test_run_schemas.py tests/services/runs/test_service.py tests/api/test_runs.py
+git add app/schemas/runs.py app/services/runs app/api/v1/runs.py app/main.py tests/schemas/test_run_schemas.py tests/services/runs/test_run_service.py tests/api/test_runs.py
 git commit -m "chore: verify run events sse replay"
 ```
 
