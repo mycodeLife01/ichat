@@ -61,11 +61,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## 5. Implementation Workspace
+### 5. Implementation Workspace
 
 When entering the implementation phase, develop directly on the current branch by default. Do not create or switch to a git worktree.
 
 Use a worktree only when the user explicitly asks for one. If a generic workflow or external skill recommends using a worktree, this project rule takes precedence.
+
+### 6. Subagent Model Policy
+
+When the user explicitly authorizes subagent use, choose models by task role:
+- Orchestrator and reviewer subagents must use `claude-opus-4-7` with `high` thinking effort level.
+- Executor and worker subagents must use `claude-sonnet-4-6` with `medium` thinking effort level.
+- Read-only and explore subagents must use `claude-haiku-4-5-20251001` with `medium` thinking effort level.
 
 ## Documentations
 - All documentation must be written in Chinese.
