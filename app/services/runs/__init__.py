@@ -5,6 +5,7 @@ from app.services.runs.lifecycle import (
     mark_run_failed,
     mark_run_streaming,
     mark_run_succeeded,
+    recover_expired_runs,
     renew_lease,
     run_has_text_delta,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "mark_run_failed",
     "mark_run_streaming",
     "mark_run_succeeded",
+    "recover_expired_runs",
     "renew_lease",
     "run_has_terminal_event",
     "run_has_text_delta",

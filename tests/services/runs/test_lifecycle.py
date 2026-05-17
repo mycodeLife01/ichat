@@ -16,6 +16,7 @@ from app.services.runs.lifecycle import (
     mark_run_failed,
     mark_run_streaming,
     mark_run_succeeded,
+    recover_expired_runs,
     renew_lease,
     run_has_text_delta,
 )
@@ -321,3 +322,65 @@ async def test_run_has_text_delta_detects_persisted_deltas(
         )
         await session.commit()
         assert await run_has_text_delta(session, run_id=run_id) is True
+
+
+async def test_recover_expired_runs_marks_lease_expired_runs_failed(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        expired = await make_run(session, status_value="streaming")
+        expired.lease_owner = "worker-dead"
+        expired.lease_expires_at = datetime.now(UTC) - timedelta(seconds=10)
+        live = await make_run(session, status_value="streaming")
+        live.lease_owner = "worker-live"
+        live.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
+        expired_id = expired.id
+        live_id = live.id
+        await session.commit()
+
+    async with session_factory() as session:
+        recovered_ids = await recover_expired_runs(session)
+        await session.commit()
+
+    assert recovered_ids == [expired_id]
+
+    async with session_factory() as session:
+        expired_after = await session.get(Run, expired_id)
+        live_after = await session.get(Run, live_id)
+        assert expired_after is not None
+        assert live_after is not None
+        assert expired_after.status == "failed"
+        assert expired_after.error_code == "lease_expired"
+        assert live_after.status == "streaming"
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == expired_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert events[-1].type == "run_failed"
+        assert events[-1].payload == {
+            "code": "lease_expired",
+            "message": "worker lease expired",
+        }
+
+
+async def test_recover_expired_runs_skips_terminal_runs(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        finished = await make_run(session, status_value="succeeded")
+        finished.lease_expires_at = datetime.now(UTC) - timedelta(seconds=10)
+        finished_id = finished.id
+        await session.commit()
+
+    async with session_factory() as session:
+        recovered_ids = await recover_expired_runs(session)
+        await session.commit()
+
+    assert recovered_ids == []
+
+    async with session_factory() as session:
+        still_finished = await session.get(Run, finished_id)
+        assert still_finished is not None
+        assert still_finished.status == "succeeded"

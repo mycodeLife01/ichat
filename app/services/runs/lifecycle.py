@@ -150,3 +150,32 @@ async def run_has_text_delta(session: AsyncSession, *, run_id: int) -> bool:
         .limit(1)
     )
     return event_id is not None
+
+
+ACTIVE_STATUSES_FOR_RECOVERY = ("started", "streaming", "cancelling")
+
+
+async def recover_expired_runs(session: AsyncSession) -> list[int]:
+    now = datetime.now(UTC)
+    candidate_ids = (
+        await session.scalars(
+            select(Run.id)
+            .where(
+                Run.status.in_(ACTIVE_STATUSES_FOR_RECOVERY),
+                Run.lease_expires_at.is_not(None),
+                Run.lease_expires_at < now,
+            )
+            .with_for_update(skip_locked=True)
+        )
+    ).all()
+
+    recovered: list[int] = []
+    for run_id in candidate_ids:
+        await mark_run_failed(
+            session,
+            run_id=run_id,
+            code="lease_expired",
+            message="worker lease expired",
+        )
+        recovered.append(run_id)
+    return recovered
