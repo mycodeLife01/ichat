@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from typing import Any, cast
@@ -321,3 +322,48 @@ async def test_cross_user_run_events_returns_not_found(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}
+
+
+async def test_run_events_tails_new_persisted_events_until_terminal(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-tail-events-api",
+        email=f"alice-tail-events@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        run_id = run.id
+        await session.commit()
+
+    response_task = asyncio.create_task(
+        client.get(f"/api/v1/runs/{run_id}/events?after_seq=0", headers=headers, timeout=3.0)
+    )
+
+    await asyncio.sleep(0.3)
+
+    async with session_factory() as session:
+        await append_run_event(
+            session,
+            run_id=run_id,
+            event_type="text_delta",
+            payload={"text": "Late hello"},
+        )
+        await append_run_event(session, run_id=run_id, event_type="run_succeeded", payload={})
+        await session.commit()
+
+    response = await asyncio.wait_for(response_task, timeout=3.0)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.text
+    assert "event: text_delta" in body
+    assert '"payload":{"text":"Late hello"}' in body
+    assert "event: run_succeeded" in body
