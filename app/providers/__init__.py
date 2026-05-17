@@ -1,3 +1,4 @@
+from app.providers.registry import UnknownProviderError, resolve_provider
 from app.providers.types import (
     Finish,
     Provider,
@@ -16,4 +17,6 @@ __all__ = [
     "ProviderMessage",
     "ProviderRole",
     "TextDelta",
+    "UnknownProviderError",
+    "resolve_provider",
 ]
