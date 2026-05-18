@@ -44,6 +44,11 @@ jobs:
       - name: Type check (mypy)
         run: uv run mypy app
 
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat
+        run: uv run alembic upgrade head
+
       - name: Test (pytest)
         env:
           DATABASE_URL: postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat
