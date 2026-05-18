@@ -16,7 +16,7 @@ jobs:
       REFRESH_TOKEN_TTL_SECONDS: "2592000"
       DEEPSEEK_API_KEY: fake-key-for-ci
       DEEPSEEK_BASE_URL: https://api.deepseek.com
-      DEEPSEEK_MODEL: deepseek-chat
+      DEEPSEEK_MODEL: deepseek-test
       DEEPSEEK_THINKING_ENABLED: "false"
       DEFAULT_SYSTEM_PROMPT: "You are a helpful assistant."
       RUN_LEASE_SECONDS: "60"
