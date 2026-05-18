@@ -45,7 +45,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: production
 
     steps:
       - name: Deploy to server via SSH
