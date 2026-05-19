@@ -35,7 +35,6 @@ router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=SuccessResponse[ConversationResponse],
-    response_model_exclude_none=True,
 )
 async def create_conversation_route(
     request: ConversationCreateRequest,
@@ -54,7 +53,6 @@ async def create_conversation_route(
 @router.get(
     "",
     response_model=SuccessResponse[list[ConversationResponse]],
-    response_model_exclude_none=True,
 )
 async def list_conversations_route(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -67,7 +65,6 @@ async def list_conversations_route(
 @router.get(
     "/{conversation_id}",
     response_model=SuccessResponse[ConversationDetailResponse],
-    response_model_exclude_none=True,
 )
 async def get_conversation_route(
     conversation_id: int,
@@ -85,7 +82,6 @@ async def get_conversation_route(
 @router.patch(
     "/{conversation_id}",
     response_model=SuccessResponse[ConversationResponse],
-    response_model_exclude_none=True,
 )
 async def rename_conversation_route(
     conversation_id: int,

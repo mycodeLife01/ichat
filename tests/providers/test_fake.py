@@ -43,6 +43,34 @@ async def test_fake_provider_raises_when_script_says_to() -> None:
     assert exc_info.value.code == "boom"
 
 
+async def test_fake_provider_summarize_returns_configured_title() -> None:
+    provider = FakeProvider(script=[], summarize_result="A concise title")
+
+    result = await provider.summarize(
+        model="fake-summary",
+        messages=[ProviderMessage(role="user", content="hi")],
+        max_output_tokens=40,
+    )
+
+    assert result == "A concise title"
+
+
+async def test_fake_provider_summarize_can_raise_provider_error() -> None:
+    provider = FakeProvider(
+        script=[],
+        summarize_result=ProviderError(code="summary_failed", message="boom"),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.summarize(
+            model="fake-summary",
+            messages=[ProviderMessage(role="user", content="hi")],
+            max_output_tokens=40,
+        )
+
+    assert exc_info.value.code == "summary_failed"
+
+
 async def test_fake_provider_sleep_step_is_awaited(monkeypatch: MonkeyPatch) -> None:
     sleeps: list[float] = []
 

@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { copyMessageText, readTextDelta, renderAssistantMarkdown } from "./chat.js";
 
 const chatSource = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
+const stateSource = readFileSync(new URL("../state.js", import.meta.url), "utf8");
+const authSource = readFileSync(new URL("../auth.js", import.meta.url), "utf8");
 const loginSource = readFileSync(new URL("./login.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
@@ -142,6 +144,50 @@ test("allows the first message to create a conversation automatically", () => {
   assert.match(chatSource, /api\.conversations\.sendMessage\(t, conversationId, content\)/);
   assert.doesNotMatch(chatSource, /\.\.\.\(disabled \? \{ disabled: "true" \} : \{\}\)/);
   assert.doesNotMatch(chatSource, /if \(!content \|\| !selectedId\) return/);
+});
+
+test("keeps newly created draft conversations out of the sidebar list", () => {
+  assert.match(chatSource, /draftConversationId:\s*conv\.id/);
+  assert.doesNotMatch(chatSource, /conversations:\s*\[conv,\s*\.\.\.getState\(\)\.conversations\]/);
+});
+
+test("persists selected and draft conversation ids in localStorage", () => {
+  assert.match(stateSource, /ichat\.selectedId/);
+  assert.match(stateSource, /ichat\.draftConversationId/);
+  assert.match(stateSource, /readStoredConversationIds/);
+  assert.match(stateSource, /clearStoredConversationSelection/);
+});
+
+test("restores the selected draft conversation when chat view starts", () => {
+  assert.match(chatSource, /readStoredConversationIds/);
+  assert.match(chatSource, /void selectConversation\(persistedSelected\)/);
+});
+
+test("refreshes conversation list and clears draft marker after a successful run", () => {
+  assert.match(chatSource, /if \(terminalKind === "succeeded"\)[\s\S]*await loadConversations\(\)/);
+  assert.match(chatSource, /draftConversationId === conversationId/);
+  assert.match(chatSource, /draftConversationId:\s*null/);
+});
+
+test("polls for the generated summary title after a successful first run", () => {
+  assert.match(chatSource, /TITLE_REFRESH_ATTEMPTS/);
+  assert.match(chatSource, /waitForGeneratedTitle\(conversationId\)/);
+  assert.match(chatSource, /sleep\(TITLE_REFRESH_DELAY_MS\)/);
+  assert.ok(chatSource.includes("detail.title?.trim()"));
+});
+
+test("shows a shimmering title placeholder while summary title is pending", () => {
+  assert.match(stateSource, /pendingTitleConversationIds:\s*\[\]/);
+  assert.match(chatSource, /setTitlePending\(conversationId\)[\s\S]*await loadConversations\(\)/);
+  assert.match(chatSource, /pendingTitleConversationIds\.includes\(conv\.id\)/);
+  assert.match(chatSource, /conversation-title-skeleton/);
+  assert.match(stylesSource, /\.conversation-title-skeleton/);
+  assert.match(stylesSource, /animation:\s*ichat-title-shimmer/);
+});
+
+test("clears persisted conversation selection on logout", () => {
+  assert.match(authSource, /clearStoredConversationSelection/);
+  assert.match(authSource, /save\(null\)/);
 });
 
 test("uses 16px text on mobile text inputs to prevent iOS focus zoom", () => {

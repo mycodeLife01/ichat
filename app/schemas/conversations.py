@@ -41,6 +41,7 @@ class MessageCreateRequest(BaseModel):
 class ConversationResponse(BaseModel):
     id: int
     title: str | None
+    activated_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

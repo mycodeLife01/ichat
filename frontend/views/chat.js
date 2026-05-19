@@ -1,16 +1,37 @@
 import { ApiError } from "../api.js";
 import * as api from "../api.js";
 import { getAuth, logout, withAuth } from "../auth.js";
-import { getState, setState, subscribe } from "../state.js";
+import {
+  clearStoredConversationSelection,
+  getState,
+  readStoredConversationIds,
+  setState,
+  subscribe,
+} from "../state.js";
 import { el, toast } from "../ui.js";
 import { escapeHtml, nearBottom, scrollToBottom } from "../ui.js";
 import { streamRunEvents } from "../sse.js";
 
+const TITLE_REFRESH_ATTEMPTS = 20;
+const TITLE_REFRESH_DELAY_MS = 750;
+
 export function renderChatView(container, { onLoggedOut }) {
+  const { selectedId: persistedSelected, draftConversationId: persistedDraft } =
+    readStoredConversationIds();
+  if (persistedSelected) {
+    setState({
+      selectedId: persistedSelected,
+      draftConversationId: persistedDraft,
+      detail: null,
+    });
+  }
   container.replaceChildren(buildShell({ onLoggedOut }));
-  void loadConversations();
   const unsubscribe = subscribe(() => { rerenderSidebar(); rerenderMain(); });
   container._chatUnsubscribe = unsubscribe;
+  void loadConversations();
+  if (persistedSelected) {
+    void selectConversation(persistedSelected);
+  }
 }
 
 function buildShell({ onLoggedOut }) {
@@ -438,11 +459,13 @@ function rerenderSidebar() {
   if (backdrop) backdrop.className = sidebarBackdropClass();
   const list = document.getElementById("conversation-list");
   if (!list) return;
-  const { conversations, selectedId } = getState();
-  list.replaceChildren(...conversations.map((c) => conversationRow(c, c.id === selectedId)));
+  const { conversations, selectedId, pendingTitleConversationIds } = getState();
+  list.replaceChildren(...conversations.map((conv) =>
+    conversationRow(conv, conv.id === selectedId, pendingTitleConversationIds.includes(conv.id)),
+  ));
 }
 
-function conversationRow(conv, isActive) {
+function conversationRow(conv, isActive, isTitlePending = false) {
   const title = conv.title?.trim() || "新对话";
   const row = el("div", {
     class: `group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer ${
@@ -450,8 +473,14 @@ function conversationRow(conv, isActive) {
     }`,
     onClick: () => { closeSidebar(); void selectConversation(conv.id); },
   });
+  const titleNode = isTitlePending && !conv.title?.trim()
+    ? el("span", {
+        class: "conversation-title-skeleton flex-1 h-4 rounded-full",
+        "aria-label": "标题生成中",
+      })
+    : el("span", { class: "flex-1 text-sm truncate" }, [title]);
   row.append(
-    el("span", { class: "flex-1 text-sm truncate" }, [title]),
+    titleNode,
     el("button", {
       class: "opacity-0 group-hover:opacity-100 text-xs text-zinc-400 hover:text-zinc-900 px-1",
       title: "重命名",
@@ -487,8 +516,8 @@ async function createConversation() {
 async function createEmptyConversation() {
   const conv = await withAuth((t) => api.conversations.create(t, null));
   setState({
-    conversations: [conv, ...getState().conversations],
     selectedId: conv.id,
+    draftConversationId: conv.id,
     detail: { ...conv, messages: [] },
   });
   return conv;
@@ -507,7 +536,11 @@ async function selectConversation(id) {
   try {
     const detail = await withAuth((t) => api.conversations.detail(t, id));
     if (getState().selectedId !== id) return;
-    setState({ detail });
+    const patch = { detail };
+    if (detail.activated_at && getState().draftConversationId === id) {
+      patch.draftConversationId = null;
+    }
+    setState(patch);
     await maybeResumeRun(detail);
   } catch (err) {
     toast(errorMessage(err, "加载对话失败"), "error");
@@ -561,6 +594,10 @@ async function deleteConversation(conv) {
     setState({
       conversations: getState().conversations.filter((c) => c.id !== conv.id),
       selectedId: selectedId === conv.id ? null : selectedId,
+      draftConversationId:
+        getState().draftConversationId === conv.id ? null : getState().draftConversationId,
+      pendingTitleConversationIds:
+        getState().pendingTitleConversationIds.filter((id) => id !== conv.id),
       detail: selectedId === conv.id ? null : getState().detail,
     });
   } catch (err) {
@@ -761,7 +798,15 @@ async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
     if (terminalKind === "succeeded") {
       try {
         const detail = await withAuth((t) => api.conversations.detail(t, conversationId));
-        if (getState().selectedId === conversationId) setState({ detail });
+        const needsTitle = !detail.title?.trim();
+        if (needsTitle) {
+          setTitlePending(conversationId);
+        }
+        await loadConversations();
+        applyCompletedConversationDetail(conversationId, detail);
+        if (needsTitle) {
+          await waitForGeneratedTitle(conversationId);
+        }
       } catch {
         markAssistantTerminal(placeholderId, "succeeded");
       }
@@ -775,6 +820,57 @@ async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
     }
     rerenderMain();
   }
+}
+
+function applyCompletedConversationDetail(conversationId, detail) {
+  if (detail.title?.trim()) {
+    clearTitlePending(conversationId);
+  }
+  if (getState().selectedId === conversationId) {
+    const patch = { detail };
+    if (getState().draftConversationId === conversationId) {
+      patch.draftConversationId = null;
+    }
+    setState(patch);
+  } else if (getState().draftConversationId === conversationId) {
+    setState({ draftConversationId: null });
+  }
+}
+
+async function waitForGeneratedTitle(conversationId) {
+  for (let attempt = 0; attempt < TITLE_REFRESH_ATTEMPTS; attempt += 1) {
+    await sleep(TITLE_REFRESH_DELAY_MS);
+    let detail;
+    try {
+      detail = await withAuth((t) => api.conversations.detail(t, conversationId));
+    } catch {
+      clearTitlePending(conversationId);
+      return;
+    }
+    if (detail.title?.trim()) {
+      await loadConversations();
+      applyCompletedConversationDetail(conversationId, detail);
+      return;
+    }
+    applyCompletedConversationDetail(conversationId, detail);
+  }
+  clearTitlePending(conversationId);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setTitlePending(conversationId) {
+  const ids = getState().pendingTitleConversationIds;
+  if (ids.includes(conversationId)) return;
+  setState({ pendingTitleConversationIds: [...ids, conversationId] });
+}
+
+function clearTitlePending(conversationId) {
+  const ids = getState().pendingTitleConversationIds;
+  if (!ids.includes(conversationId)) return;
+  setState({ pendingTitleConversationIds: ids.filter((id) => id !== conversationId) });
 }
 
 function maybeAutoScroll() {

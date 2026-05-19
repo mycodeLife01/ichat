@@ -48,6 +48,7 @@ def test_conversation_detail_response_contains_visible_messages() -> None:
     conversation = ConversationResponse(
         id=1,
         title="Project chat",
+        activated_at=now,
         created_at=now,
         updated_at=now,
     )
@@ -66,7 +67,21 @@ def test_conversation_detail_response_contains_visible_messages() -> None:
     )
 
     assert detail.id == 1
+    assert detail.activated_at == now
     assert detail.messages == [message]
+
+
+def test_conversation_response_allows_null_activated_at() -> None:
+    now = datetime.now(UTC)
+    response = ConversationResponse(
+        id=1,
+        title=None,
+        activated_at=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+    assert response.activated_at is None
 
 
 def test_send_message_response_contains_message_and_run() -> None:

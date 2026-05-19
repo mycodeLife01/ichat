@@ -17,6 +17,17 @@ TEST_DATABASE_URL = os.environ.get(
 )
 
 
+class SummarizeMixin:
+    async def summarize(
+        self,
+        *,
+        model: str,
+        messages: list[ProviderMessage],
+        max_output_tokens: int,
+    ) -> str:
+        return "Fake Title"
+
+
 @pytest.fixture()
 async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine(TEST_DATABASE_URL, pool_pre_ping=True)
@@ -49,7 +60,7 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
         }
     )
 
-    class SlowProvider(Provider):
+    class SlowProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -125,7 +136,7 @@ async def test_worker_loop_respects_max_inflight_cap(
         }
     )
 
-    class SlowProvider(Provider):
+    class SlowProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"

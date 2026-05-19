@@ -27,9 +27,16 @@ ScriptItem = TextDelta | Finish | RaiseError | Sleep
 
 
 class FakeProvider(Provider):
-    def __init__(self, *, script: Sequence[ScriptItem], name: str = "fake") -> None:
+    def __init__(
+        self,
+        *,
+        script: Sequence[ScriptItem],
+        name: str = "fake",
+        summarize_result: str | ProviderError = "Fake Title",
+    ) -> None:
         self._script = list(script)
         self._name = name
+        self._summarize_result = summarize_result
 
     @property
     def name(self) -> str:
@@ -48,3 +55,14 @@ class FakeProvider(Provider):
                 await asyncio.sleep(item.seconds)
                 continue
             yield item
+
+    async def summarize(
+        self,
+        *,
+        model: str,
+        messages: list[ProviderMessage],
+        max_output_tokens: int,
+    ) -> str:
+        if isinstance(self._summarize_result, ProviderError):
+            raise self._summarize_result
+        return self._summarize_result

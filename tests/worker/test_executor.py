@@ -24,6 +24,17 @@ TEST_DATABASE_URL = os.environ.get(
 TEST_EMAIL_DOMAIN = "worker-test.example.com"
 
 
+class SummarizeMixin:
+    async def summarize(
+        self,
+        *,
+        model: str,
+        messages: list[ProviderMessage],
+        max_output_tokens: int,
+    ) -> str:
+        return "Fake Title"
+
+
 async def clean_test_data(session: AsyncSession) -> None:
     user_ids = select(User.id).where(User.email.like(f"%@{TEST_EMAIL_DOMAIN}")).scalar_subquery()
     conversation_ids = (
@@ -56,7 +67,11 @@ def settings() -> Settings:
     return get_settings()
 
 
-async def queue_run(session: AsyncSession, provider_name: str = "fake") -> int:
+async def queue_run(
+    session: AsyncSession,
+    provider_name: str = "fake",
+    conversation_title: str | None = "Chat",
+) -> int:
     suffix = uuid4().hex
     user = User(
         username=f"exec-{suffix}",
@@ -68,7 +83,7 @@ async def queue_run(session: AsyncSession, provider_name: str = "fake") -> int:
     session.add(user)
     await session.flush()
 
-    conversation = Conversation(user_id=user.id, title="Chat")
+    conversation = Conversation(user_id=user.id, title=conversation_title)
     session.add(conversation)
     await session.flush()
 
@@ -108,7 +123,7 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
     settings: Settings,
 ) -> None:
     async with session_factory() as session:
-        run_id = await queue_run(session)
+        run_id = await queue_run(session, conversation_title=None)
         await session.commit()
 
     async with session_factory() as session:
@@ -172,6 +187,11 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert messages[1].content == "Hello world"
         assert messages[1].run_id == run_id
 
+        conversation = await session.get(Conversation, run.conversation_id)
+        assert conversation is not None
+        assert conversation.activated_at is not None
+        assert conversation.title == "Fake Title"
+
 
 async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
     session_factory: async_sessionmaker[AsyncSession],
@@ -191,7 +211,7 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
 
     call_count = {"n": 0}
 
-    class FlakyProvider(Provider):
+    class FlakyProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -290,6 +310,9 @@ async def test_execute_run_does_not_retry_after_persisted_delta(
         ).all()
         roles = [m.role for m in messages]
         assert "assistant" not in roles
+        conversation = await session.get(Conversation, run.conversation_id)
+        assert conversation is not None
+        assert conversation.activated_at is None
 
 
 async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
@@ -310,7 +333,7 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
 
     call_count = {"n": 0}
 
-    class AlwaysFailProvider(Provider):
+    class AlwaysFailProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -460,6 +483,9 @@ async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
         ).all()
         roles = [m.role for m in messages]
         assert "assistant" not in roles
+        conversation = await session.get(Conversation, run.conversation_id)
+        assert conversation is not None
+        assert conversation.activated_at is None
 
 
 async def test_execute_run_cancels_blocked_provider_stream_promptly(
@@ -478,7 +504,7 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
         )
         await session.commit()
 
-    class BlockingProvider(Provider):
+    class BlockingProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -568,7 +594,7 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
 
     release_error = asyncio.Event()
 
-    class ErrorAfterCancellationProvider(Provider):
+    class ErrorAfterCancellationProvider(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"

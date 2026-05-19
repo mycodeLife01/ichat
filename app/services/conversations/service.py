@@ -60,6 +60,7 @@ async def list_conversations(
             .where(
                 Conversation.user_id == user.id,
                 Conversation.deleted_at.is_(None),
+                Conversation.activated_at.is_not(None),
             )
             .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         )
@@ -381,6 +382,24 @@ async def get_database_now(session: AsyncSession) -> datetime:
     return now
 
 
+async def ensure_conversation_activated(
+    session: AsyncSession,
+    *,
+    conversation_id: int,
+) -> None:
+    await session.execute(
+        update(Conversation)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.activated_at.is_(None),
+        )
+        .values(
+            activated_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+
+
 async def materialize_assistant_message(
     session: AsyncSession,
     *,
@@ -404,6 +423,8 @@ async def materialize_assistant_message(
     )
     session.add(message)
     await session.flush()
+
+    await ensure_conversation_activated(session, conversation_id=run.conversation_id)
 
     conversation = await session.get(Conversation, run.conversation_id)
     if conversation is not None:

@@ -1,5 +1,6 @@
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
@@ -8,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import create_app
 from app.models.conversation import Conversation, Message
@@ -55,6 +57,7 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 @pytest.fixture()
 async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[FastAPI]:
+    get_settings.cache_clear()
     app = create_app(database_ready_check=ready)
 
     async def override_get_session() -> AsyncIterator[AsyncSession]:
@@ -64,6 +67,7 @@ async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
     app.dependency_overrides[get_session] = override_get_session
     yield app
     app.dependency_overrides.clear()
+    get_settings.cache_clear()
 
 
 @pytest.fixture()
@@ -111,9 +115,10 @@ async def test_conversation_crud_flow(client: AsyncClient) -> None:
     assert create_response.status_code == status.HTTP_201_CREATED
     created = create_response.json()["data"]
     assert created["title"] == "Project chat"
-    assert set(created) == {"id", "title", "created_at", "updated_at"}
+    assert created["activated_at"] is None
+    assert set(created) == {"id", "title", "activated_at", "created_at", "updated_at"}
     assert list_response.status_code == status.HTTP_200_OK
-    assert [item["id"] for item in list_response.json()["data"]] == [created["id"]]
+    assert list_response.json()["data"] == []
 
     detail_response = await client.get(f"/api/v1/conversations/{created['id']}", headers=headers)
     rename_response = await client.patch(
@@ -138,6 +143,34 @@ async def test_conversation_crud_flow(client: AsyncClient) -> None:
     assert delete_response.json() == {"data": {"status": "ok"}}
     assert missing_after_delete_response.status_code == status.HTTP_404_NOT_FOUND
     assert missing_after_delete_response.json() == {"detail": "Conversation not found"}
+
+
+async def test_rename_draft_does_not_make_it_visible(client: AsyncClient) -> None:
+    alice = await register_user(
+        client,
+        username="alice-draft-rename-api",
+        email=f"alice-draft-rename@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+    rename_response = await client.patch(
+        f"/api/v1/conversations/{conversation_id}",
+        json={"title": "Draft title"},
+        headers=headers,
+    )
+    list_response = await client.get("/api/v1/conversations", headers=headers)
+    detail_response = await client.get(f"/api/v1/conversations/{conversation_id}", headers=headers)
+
+    assert rename_response.status_code == status.HTTP_200_OK
+    assert rename_response.json()["data"]["title"] == "Draft title"
+    assert rename_response.json()["data"]["activated_at"] is None
+    assert list_response.status_code == status.HTTP_200_OK
+    assert list_response.json()["data"] == []
+    assert detail_response.status_code == status.HTTP_200_OK
+    assert detail_response.json()["data"]["title"] == "Draft title"
+    assert detail_response.json()["data"]["activated_at"] is None
 
 
 async def test_send_message_creates_user_message_and_queued_run(client: AsyncClient) -> None:
@@ -232,7 +265,7 @@ async def seed_completed_turn(
     async with session_factory() as session:
         user = await session.scalar(select(User).where(User.email == user_email))
         assert user is not None, "register_user must run before seed_completed_turn"
-        conversation = Conversation(user_id=user.id, title="seeded")
+        conversation = Conversation(user_id=user.id, title="seeded", activated_at=datetime.now(UTC))
         session.add(conversation)
         await session.flush()
 

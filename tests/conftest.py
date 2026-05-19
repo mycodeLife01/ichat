@@ -14,4 +14,5 @@ def pytest_configure() -> None:
     environ.setdefault("RUN_LEASE_SECONDS", "60")
     environ.setdefault("WORKER_POLL_INTERVAL_SECONDS", "2")
     environ.setdefault("WORKER_HEARTBEAT_INTERVAL_SECONDS", "10")
+    environ.setdefault("SUMMARY_MODEL", "deepseek-test")
     environ.setdefault("LOG_LEVEL", "INFO")

@@ -27,6 +27,7 @@ def test_get_session_factory_is_cached(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("RUN_LEASE_SECONDS", "12")
     monkeypatch.setenv("WORKER_POLL_INTERVAL_SECONDS", "3")
     monkeypatch.setenv("WORKER_HEARTBEAT_INTERVAL_SECONDS", "4")
+    monkeypatch.setenv("SUMMARY_MODEL", "deepseek-test")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
 
     get_settings.cache_clear()

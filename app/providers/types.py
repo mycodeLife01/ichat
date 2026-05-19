@@ -46,3 +46,13 @@ class Provider(ABC):
         model: str,
         messages: list[ProviderMessage],
     ) -> AsyncIterator[ProviderChunk]: ...
+
+    @abstractmethod
+    async def summarize(
+        self,
+        *,
+        model: str,
+        messages: list[ProviderMessage],
+        max_output_tokens: int,
+    ) -> str:
+        raise NotImplementedError

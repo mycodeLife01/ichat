@@ -175,3 +175,78 @@ async def test_deepseek_provider_enables_thinking_when_config_true() -> None:
 
     assert isinstance(chunks[0], Finish)
     assert captured_payload["thinking"] == {"type": "enabled"}
+
+
+async def test_deepseek_provider_summarize_returns_message_content() -> None:
+    captured_payload: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payload.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Project Plan"}}]},
+        )
+
+    provider = DeepSeekProvider(settings=make_settings(), transport=httpx.MockTransport(handler))
+
+    title = await provider.summarize(
+        model="deepseek-summary",
+        messages=[ProviderMessage(role="user", content="summarize this")],
+        max_output_tokens=40,
+    )
+
+    assert title == "Project Plan"
+    assert captured_payload["model"] == "deepseek-summary"
+    assert captured_payload["stream"] is False
+    assert captured_payload["thinking"] == {"type": "disabled"}
+    assert captured_payload["max_tokens"] == 40
+    assert captured_payload["temperature"] == 0.3
+
+
+async def test_deepseek_provider_summarize_raises_on_empty_content() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "   "}}]})
+
+    provider = DeepSeekProvider(settings=make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.summarize(
+            model="deepseek-summary",
+            messages=[ProviderMessage(role="user", content="hi")],
+            max_output_tokens=40,
+        )
+
+    assert exc_info.value.code == "deepseek_summarize_empty"
+
+
+async def test_deepseek_provider_summarize_raises_on_http_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+    provider = DeepSeekProvider(settings=make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.summarize(
+            model="deepseek-summary",
+            messages=[ProviderMessage(role="user", content="hi")],
+            max_output_tokens=40,
+        )
+
+    assert exc_info.value.code == "deepseek_summarize_http_error"
+    assert "429" in exc_info.value.message
+
+
+async def test_deepseek_provider_summarize_raises_on_transport_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("network down", request=request)
+
+    provider = DeepSeekProvider(settings=make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.summarize(
+            model="deepseek-summary",
+            messages=[ProviderMessage(role="user", content="hi")],
+            max_output_tokens=40,
+        )
+
+    assert exc_info.value.code == "deepseek_summarize_transport_error"

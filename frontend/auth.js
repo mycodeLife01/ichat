@@ -1,4 +1,5 @@
 import { ApiError, auth as authApi, request } from "./api.js";
+import { clearStoredConversationSelection } from "./state.js";
 
 const STORAGE_KEY = "ichat.auth";
 const listeners = new Set();
@@ -53,6 +54,7 @@ export async function logout() {
   const state = current;
   current = null;
   save(null);
+  clearStoredConversationSelection();
   if (state?.refreshToken) {
     try { await authApi.logout(state.refreshToken); } catch {}
   }
@@ -78,6 +80,7 @@ export async function withAuth(callWithToken) {
     } catch (refreshErr) {
       current = null;
       save(null);
+      clearStoredConversationSelection();
       throw refreshErr;
     }
     return await callWithToken(token);

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
     db_pool_timeout_seconds: float = 30.0
     sse_fallback_interval_seconds: float = 5.0
+    auto_title_enabled: bool = True
+    summary_provider_name: str
+    summary_model: str
+    auto_title_max_chars: int = 32
+    auto_title_max_output_tokens: int = 40
     log_level: str
 
     model_config = SettingsConfigDict(

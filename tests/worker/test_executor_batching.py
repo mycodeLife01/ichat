@@ -11,7 +11,12 @@ from app.providers import Finish, Provider, ProviderChunk, ProviderMessage, Text
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import execute_run
 from tests.providers.fake import FakeProvider, Sleep
-from tests.worker.test_executor import clean_test_data, make_resolver, queue_run
+from tests.worker.test_executor import (
+    SummarizeMixin,
+    clean_test_data,
+    make_resolver,
+    queue_run,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "WORKER_TEST_DATABASE_URL",
@@ -158,7 +163,7 @@ async def test_provider_error_flushes_pending_before_failing(
     """A ProviderError mid-stream still persists buffered text before recording failure."""
     call_count = {"n": 0}
 
-    class FailingAfterDelta(Provider):
+    class FailingAfterDelta(SummarizeMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"

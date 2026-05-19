@@ -9,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.services.conversations import materialize_assistant_message
+from app.services.conversations import (
+    ensure_conversation_activated,
+    materialize_assistant_message,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "MATERIALIZE_TEST_DATABASE_URL",
@@ -110,6 +113,37 @@ async def test_materialize_assistant_message_appends_assistant_with_run_link(
         assert saved.run_id == run_id
         assert saved.conversation_id == conversation_id
         assert saved.position == 2
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None
+        assert conversation.activated_at is not None
+
+
+async def test_ensure_conversation_activated_sets_timestamp_once(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session)
+        conversation_id = run.conversation_id
+        await session.commit()
+
+    async with session_factory() as session:
+        await ensure_conversation_activated(session, conversation_id=conversation_id)
+        await session.commit()
+
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None
+        first_activated_at = conversation.activated_at
+        assert first_activated_at is not None
+
+    async with session_factory() as session:
+        await ensure_conversation_activated(session, conversation_id=conversation_id)
+        await session.commit()
+
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None
+        assert conversation.activated_at == first_activated_at
 
 
 async def test_materialize_assistant_message_rejects_unknown_run(

@@ -23,6 +23,7 @@ from app.services.runs.lifecycle import (
     run_has_text_delta,
 )
 from app.services.runs.service import append_run_event
+from app.worker.title import maybe_generate_title
 
 _STREAM_DONE = object()  # sentinel posted on the provider-stream queue
 
@@ -92,6 +93,8 @@ async def execute_run(
                 cancel_event=cancel_event,
                 batch_window_seconds=settings.worker_delta_batch_window_ms / 1000.0,
                 batch_max_chars=settings.worker_delta_batch_max_chars,
+                settings=settings,
+                resolve_provider=resolve_provider,
             )
             if outcome.status == "succeeded":
                 return
@@ -202,6 +205,8 @@ async def _run_provider_stream_until_done_or_cancelled(
     cancel_event: asyncio.Event,
     batch_window_seconds: float,
     batch_max_chars: int,
+    settings: Settings,
+    resolve_provider: ProviderResolver,
 ) -> _StreamOutcome:
     stream_task = asyncio.create_task(
         _run_provider_stream(
@@ -213,6 +218,8 @@ async def _run_provider_stream_until_done_or_cancelled(
             cancel_event=cancel_event,
             batch_window_seconds=batch_window_seconds,
             batch_max_chars=batch_max_chars,
+            settings=settings,
+            resolve_provider=resolve_provider,
         )
     )
     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -252,6 +259,8 @@ async def _run_provider_stream(
     cancel_event: asyncio.Event,
     batch_window_seconds: float,
     batch_max_chars: int,
+    settings: Settings,
+    resolve_provider: ProviderResolver,
 ) -> _StreamOutcome:
     text_parts: list[str] = []
     pending: list[str] = []
@@ -402,6 +411,12 @@ async def _run_provider_stream(
                         before_first_delta=not first_flush_done,
                         delta_persisted=first_flush_done,
                     )
+                await maybe_generate_title(
+                    session_factory=session_factory,
+                    run_id=run_id,
+                    settings=settings,
+                    resolve_provider=resolve_provider,
+                )
                 return _StreamOutcome(
                     status="succeeded",
                     before_first_delta=not first_flush_done,

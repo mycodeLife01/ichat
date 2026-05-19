@@ -86,3 +86,66 @@ class DeepSeekProvider(Provider):
                     code="deepseek_transport_error",
                     message=str(exc),
                 ) from exc
+
+    async def summarize(
+        self,
+        *,
+        model: str,
+        messages: list[ProviderMessage],
+        max_output_tokens: int,
+    ) -> str:
+        payload = {
+            "model": model,
+            "stream": False,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "thinking": {"type": "disabled"},
+            "max_tokens": max_output_tokens,
+            "temperature": 0.3,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._settings.deepseek_api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        client_kwargs: dict[str, Any] = {
+            "base_url": self._settings.deepseek_base_url,
+            "timeout": httpx.Timeout(15.0, connect=5.0),
+        }
+        if self._transport is not None:
+            client_kwargs["transport"] = self._transport
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
+            try:
+                response = await client.post(
+                    "/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                if response.status_code >= 400:
+                    raise ProviderError(
+                        code="deepseek_summarize_http_error",
+                        message=(
+                            f"DeepSeek summarize returned {response.status_code}: "
+                            f"{response.text[:500]}"
+                        ),
+                    )
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                if not isinstance(content, str) or not content.strip():
+                    raise ProviderError(
+                        code="deepseek_summarize_empty",
+                        message="DeepSeek summarize returned empty content",
+                    )
+                return content
+            except ProviderError:
+                raise
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise ProviderError(
+                    code="deepseek_summarize_empty",
+                    message="DeepSeek summarize response did not contain message content",
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise ProviderError(
+                    code="deepseek_summarize_transport_error",
+                    message=str(exc),
+                ) from exc

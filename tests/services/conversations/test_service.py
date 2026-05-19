@@ -15,6 +15,7 @@ from app.models.user import User
 from app.services.conversations.service import (
     create_conversation,
     delete_conversation,
+    ensure_conversation_activated,
     get_conversation_detail,
     list_conversations,
     rename_conversation,
@@ -70,23 +71,40 @@ async def create_user(session: AsyncSession, username: str) -> User:
     return user
 
 
-async def test_create_and_list_conversations_for_owner(
+async def test_list_conversations_hides_drafts_and_returns_activated_only(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory() as session:
         user = await create_user(session, "alice")
         other_user = await create_user(session, "bob")
 
-        first = await create_conversation(session, user=user, title=None)
-        second = await create_conversation(session, user=user, title="Project chat")
+        draft = await create_conversation(session, user=user, title=None)
+        activated = await create_conversation(session, user=user, title="Project chat")
         await create_conversation(session, user=other_user, title="Other chat")
+        await ensure_conversation_activated(session, conversation_id=activated.id)
         await session.commit()
 
         conversations = await list_conversations(session, user=user)
 
-    assert [conversation.id for conversation in conversations] == [second.id, first.id]
+    assert [conversation.id for conversation in conversations] == [activated.id]
     assert conversations[0].title == "Project chat"
-    assert conversations[1].title is None
+    assert conversations[0].activated_at is not None
+    assert draft.activated_at is None
+
+
+async def test_get_conversation_detail_allows_owner_to_open_draft(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        draft = await create_conversation(session, user=user, title=None)
+        await session.commit()
+
+        detail = await get_conversation_detail(session, user=user, conversation_id=draft.id)
+
+    assert detail.id == draft.id
+    assert detail.activated_at is None
+    assert detail.messages == []
 
 
 async def test_deleted_conversation_detail_returns_not_found(

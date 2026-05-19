@@ -20,6 +20,7 @@ ENV_KEYS = [
     "RUN_LEASE_SECONDS",
     "WORKER_POLL_INTERVAL_SECONDS",
     "WORKER_HEARTBEAT_INTERVAL_SECONDS",
+    "SUMMARY_MODEL",
     "LOG_LEVEL",
 ]
 
@@ -58,6 +59,11 @@ def test_settings_parse_environment_values(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("RUN_LEASE_SECONDS", "12")
     monkeypatch.setenv("WORKER_POLL_INTERVAL_SECONDS", "3")
     monkeypatch.setenv("WORKER_HEARTBEAT_INTERVAL_SECONDS", "4")
+    monkeypatch.setenv("AUTO_TITLE_ENABLED", "false")
+    monkeypatch.setenv("SUMMARY_PROVIDER_NAME", "deepseek")
+    monkeypatch.setenv("SUMMARY_MODEL", "deepseek-summary")
+    monkeypatch.setenv("AUTO_TITLE_MAX_CHARS", "24")
+    monkeypatch.setenv("AUTO_TITLE_MAX_OUTPUT_TOKENS", "36")
     monkeypatch.setenv("LOG_LEVEL", "debug")
 
     get_settings.cache_clear()
@@ -75,6 +81,11 @@ def test_settings_parse_environment_values(monkeypatch: MonkeyPatch) -> None:
     assert settings.run_lease_seconds == 12
     assert settings.worker_poll_interval_seconds == 3
     assert settings.worker_heartbeat_interval_seconds == 4
+    assert settings.auto_title_enabled is False
+    assert settings.summary_provider_name == "deepseek"
+    assert settings.summary_model == "deepseek-summary"
+    assert settings.auto_title_max_chars == 24
+    assert settings.auto_title_max_output_tokens == 36
     assert settings.log_level == "DEBUG"
 
 
@@ -95,6 +106,13 @@ def test_env_example_values_match_settings_shape(monkeypatch: MonkeyPatch) -> No
         env_value(example_values, "REFRESH_TOKEN_TTL_SECONDS")
     )
     assert settings.deepseek_thinking_enabled is False
+    assert settings.auto_title_enabled is True
+    assert settings.summary_provider_name == env_value(example_values, "SUMMARY_PROVIDER_NAME")
+    assert settings.summary_model == env_value(example_values, "SUMMARY_MODEL")
+    assert settings.auto_title_max_chars == int(env_value(example_values, "AUTO_TITLE_MAX_CHARS"))
+    assert settings.auto_title_max_output_tokens == int(
+        env_value(example_values, "AUTO_TITLE_MAX_OUTPUT_TOKENS")
+    )
     assert settings.log_level == env_value(example_values, "LOG_LEVEL")
 
 
@@ -112,6 +130,7 @@ def test_settings_can_be_constructed_directly() -> None:
         run_lease_seconds=60,
         worker_poll_interval_seconds=2,
         worker_heartbeat_interval_seconds=10,
+        summary_model="deepseek-summary",
         log_level="info",
     )
 
