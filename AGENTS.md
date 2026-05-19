@@ -83,6 +83,7 @@ The `docs/` directory holds authoritative project documentation. Consult it **be
 
 | Situation | Read this first |
 |-----------|-----------------|
+| Understanding overall runtime architecture, data flow, service topology | `docs/architecture/overview.md` |
 | Refactoring, crossing module boundaries, or reviewing structural changes | `docs/architecture/module-boundaries.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
@@ -96,6 +97,7 @@ The `docs/` directory holds authoritative project documentation. Consult it **be
 
 Authoritative architectural rules.
 
+- `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
 - `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, `app/worker`, and forbidden cross-module dependencies.
 
 ### `docs/handover/`
@@ -113,6 +115,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-17-deepseek-smoke.md` — real DeepSeek end-to-end smoke test results (happy path, replay, cancel, error recovery)
 - `2026-05-17-test-frontend.md` — frontend test setup
 - `2026-05-18-cicd-and-domain-deployment.md` — GitHub Actions pipeline, Nginx reverse proxy, Cloudflare SSL
+- `2026-05-19-concurrency-and-listen-notify.md` — delta batching, single-worker concurrency, claim/SSE LISTEN/NOTIFY, multi-worker compose, DB pool tuning
 
 ### `docs/superpowers/specs/`
 
