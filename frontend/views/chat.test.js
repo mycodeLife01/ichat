@@ -209,3 +209,20 @@ test("does not submit while the user is composing text with an IME", () => {
     /if \(event\.isComposing \|\| isComposing \|\| event\.keyCode === 229\) return;[\s\S]*event\.preventDefault\(\)/,
   );
 });
+
+test("user messages expose an edit-and-regenerate affordance", () => {
+  assert.match(chatSource, /buildEditButton\(message\)/);
+  assert.match(chatSource, /message-edit-button/);
+  assert.match(chatSource, /editAndRegenerate\(t, detail\.id, message\.id, next\)/);
+});
+
+test("assistant messages expose a regenerate affordance", () => {
+  assert.match(chatSource, /buildRegenerateButton\(message\)/);
+  assert.match(chatSource, /message-regenerate-button/);
+  assert.match(chatSource, /api\.conversations\.regenerate\(t, detail\.id, message\.id\)/);
+});
+
+test("edit and regenerate actions are disabled while a run is active", () => {
+  assert.match(chatSource, /buildEditButton[\s\S]{0,200}disabled\s*=\s*Boolean\(activeRun\)/);
+  assert.match(chatSource, /buildRegenerateButton[\s\S]{0,200}disabled\s*=\s*Boolean\(activeRun\)/);
+});

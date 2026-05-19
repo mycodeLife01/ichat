@@ -237,9 +237,17 @@ function renderMessage(message) {
     bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-red-500">失败</span>`);
   }
 
+  const actionButtons = [buildCopyButton(message.content)];
+  if (typeof message.id === "number") {
+    if (isUser) {
+      actionButtons.push(buildEditButton(message));
+    } else {
+      actionButtons.push(buildRegenerateButton(message));
+    }
+  }
   const actions = el("div", {
     class: `message-actions flex ${isUser ? "justify-end" : "justify-start"} px-1`,
-  }, [buildCopyButton(message.content)]);
+  }, actionButtons);
   const roleClass = isUser ? "message-item user items-end" : "message-item assistant items-start";
   const stack = el("div", {
     class: `${roleClass} flex max-w-[92%] sm:max-w-[80%] flex-col`,
@@ -263,6 +271,113 @@ function buildCopyButton(content) {
       }
     },
   }, [el("span", { class: "copy-icon", "aria-hidden": "true" })]);
+}
+
+function buildEditButton(message) {
+  const { activeRun } = getState();
+  const disabled = Boolean(activeRun);
+  const button = el("button", {
+    type: "button",
+    class: "message-edit-button inline-flex h-7 items-center justify-center rounded-md px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50",
+    title: disabled ? "请先停止当前生成" : "编辑并重新生成",
+    "aria-label": "Edit and regenerate",
+    onClick: (event) => {
+      event.stopPropagation();
+      startEditingUserMessage(message);
+    },
+  }, ["编辑"]);
+  if (disabled) button.disabled = true;
+  return button;
+}
+
+function buildRegenerateButton(message) {
+  const { activeRun } = getState();
+  const disabled = Boolean(activeRun);
+  const button = el("button", {
+    type: "button",
+    class: "message-regenerate-button inline-flex h-7 items-center justify-center rounded-md px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50",
+    title: disabled ? "请先停止当前生成" : "重新生成",
+    "aria-label": "Regenerate",
+    onClick: (event) => {
+      event.stopPropagation();
+      void triggerRegenerate(message);
+    },
+  }, ["重新生成"]);
+  if (disabled) button.disabled = true;
+  return button;
+}
+
+function startEditingUserMessage(message) {
+  const detail = getState().detail;
+  if (!detail) return;
+  const bubble = document.querySelector(
+    `[data-message-id="${message.id}"][data-role="user"]`,
+  );
+  if (!bubble) return;
+
+  const original = message.content;
+  const textarea = el("textarea", {
+    rows: "3",
+    class: "w-full min-h-[3rem] resize-y border border-zinc-300 rounded-md px-3 py-2 text-base sm:text-sm outline-none focus:border-zinc-500 bg-white",
+  });
+  textarea.value = original;
+
+  const confirmButton = el("button", {
+    type: "button",
+    class: "h-7 px-2 rounded-md bg-zinc-900 text-white text-xs hover:bg-zinc-800 disabled:opacity-50",
+  }, ["保存并重生"]);
+  const cancelButton = el("button", {
+    type: "button",
+    class: "h-7 px-2 rounded-md border border-zinc-200 text-xs text-zinc-600 hover:bg-zinc-100",
+  }, ["取消"]);
+  const buttonRow = el("div", { class: "mt-2 flex gap-2 justify-end" }, [cancelButton, confirmButton]);
+  const editor = el("div", { class: "w-full" }, [textarea, buttonRow]);
+  bubble.replaceWith(editor);
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+  cancelButton.addEventListener("click", () => { rerenderMain(); });
+  confirmButton.addEventListener("click", async () => {
+    const next = textarea.value.trim();
+    if (!next) { toast("内容不能为空", "error"); return; }
+    if (next === original) { rerenderMain(); return; }
+    confirmButton.disabled = true;
+    cancelButton.disabled = true;
+    try {
+      const { run } = await withAuth((t) =>
+        api.conversations.editAndRegenerate(t, detail.id, message.id, next),
+      );
+      const refreshed = await withAuth((t) => api.conversations.detail(t, detail.id));
+      if (getState().selectedId === detail.id) setState({ detail: refreshed });
+      void attachRunStream({ conversationId: detail.id, runId: run.id, afterSeq: 0 });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        toast("当前对话有生成进行中，请先停止后再试", "error");
+      } else {
+        toast(errorMessage(err, "编辑失败"), "error");
+      }
+      rerenderMain();
+    }
+  });
+}
+
+async function triggerRegenerate(message) {
+  const detail = getState().detail;
+  if (!detail) return;
+  try {
+    const { run } = await withAuth((t) =>
+      api.conversations.regenerate(t, detail.id, message.id),
+    );
+    const refreshed = await withAuth((t) => api.conversations.detail(t, detail.id));
+    if (getState().selectedId === detail.id) setState({ detail: refreshed });
+    void attachRunStream({ conversationId: detail.id, runId: run.id, afterSeq: 0 });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      toast("当前对话有生成进行中，请先停止后再试", "error");
+    } else {
+      toast(errorMessage(err, "重新生成失败"), "error");
+    }
+  }
 }
 
 export async function copyMessageText(content) {
