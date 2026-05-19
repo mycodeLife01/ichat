@@ -249,6 +249,73 @@ async def edit_user_message_and_regenerate(
     )
 
 
+async def regenerate_from_message(
+    session: AsyncSession,
+    *,
+    user: User,
+    conversation_id: int,
+    message_id: int,
+    provider_name: str,
+    provider_model: str,
+) -> SendMessageResponse:
+    conversation = await get_owned_visible_conversation_for_update(
+        session,
+        user=user,
+        conversation_id=conversation_id,
+    )
+    target = await _get_owned_unarchived_message_for_update(
+        session,
+        conversation_id=conversation.id,
+        message_id=message_id,
+    )
+
+    if target.role == "assistant":
+        if target.run_id is None:
+            raise AppError(status.HTTP_409_CONFLICT, CANNOT_RESOLVE_USER_MESSAGE)
+        target_run = await session.get(Run, target.run_id)
+        if target_run is None:
+            raise AppError(status.HTTP_409_CONFLICT, CANNOT_RESOLVE_USER_MESSAGE)
+        anchor = await _get_owned_unarchived_message_for_update(
+            session,
+            conversation_id=conversation.id,
+            message_id=target_run.user_message_id,
+        )
+        if anchor.role != "user":
+            raise AppError(status.HTTP_409_CONFLICT, CANNOT_RESOLVE_USER_MESSAGE)
+    else:
+        anchor = target
+
+    await ensure_no_active_run(session, conversation_id=conversation.id)
+    await _archive_messages_after_position(
+        session,
+        conversation_id=conversation.id,
+        position=anchor.position,
+    )
+
+    run = Run(
+        conversation_id=conversation.id,
+        user_message_id=anchor.id,
+        status="queued",
+        provider_name=provider_name,
+        provider_model=provider_model,
+    )
+    session.add(run)
+    await session.flush()
+
+    conversation.updated_at = await get_database_now(session)
+    await session.flush()
+
+    await session.execute(
+        text("SELECT pg_notify('runs_queued', :payload)"),
+        {"payload": str(run.id)},
+    )
+
+    return SendMessageResponse(
+        message=message_response(anchor),
+        run=run_response(run),
+    )
+
+
 async def get_owned_visible_conversation(
     session: AsyncSession,
     *,
