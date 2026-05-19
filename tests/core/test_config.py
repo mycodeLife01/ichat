@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 from dotenv import dotenv_values
@@ -20,6 +21,7 @@ ENV_KEYS = [
     "RUN_LEASE_SECONDS",
     "WORKER_POLL_INTERVAL_SECONDS",
     "WORKER_HEARTBEAT_INTERVAL_SECONDS",
+    "SUMMARY_PROVIDER_NAME",
     "SUMMARY_MODEL",
     "LOG_LEVEL",
 ]
@@ -116,6 +118,13 @@ def test_env_example_values_match_settings_shape(monkeypatch: MonkeyPatch) -> No
     assert settings.log_level == env_value(example_values, "LOG_LEVEL")
 
 
+def test_ci_workflow_provides_required_settings_env() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text()
+
+    for key in ENV_KEYS:
+        assert f"{key}:" in workflow
+
+
 def test_settings_can_be_constructed_directly() -> None:
     settings = Settings(
         database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
@@ -130,6 +139,7 @@ def test_settings_can_be_constructed_directly() -> None:
         run_lease_seconds=60,
         worker_poll_interval_seconds=2,
         worker_heartbeat_interval_seconds=10,
+        summary_provider_name="deepseek",
         summary_model="deepseek-summary",
         log_level="info",
     )
