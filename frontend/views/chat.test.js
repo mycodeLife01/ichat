@@ -226,3 +226,19 @@ test("edit and regenerate actions are disabled while a run is active", () => {
   assert.match(chatSource, /buildEditButton[\s\S]{0,200}disabled\s*=\s*Boolean\(activeRun\)/);
   assert.match(chatSource, /buildRegenerateButton[\s\S]{0,200}disabled\s*=\s*Boolean\(activeRun\)/);
 });
+
+test("edit panel reuses the user bubble look", () => {
+  assert.match(chatSource, /edit-bubble[\s\S]{0,400}bg-zinc-100[\s\S]{0,200}rounded-2xl/);
+  assert.match(chatSource, /edit-bubble-textarea[\s\S]{0,200}bg-transparent/);
+  assert.doesNotMatch(chatSource, /border-zinc-300\s+rounded-md\s+px-3\s+py-2[\s\S]{0,80}focus:border-zinc-500/);
+});
+
+test("edit confirm button reads as send", () => {
+  assert.match(chatSource, /\["发送"\]/);
+  assert.doesNotMatch(chatSource, /保存并重生/);
+});
+
+test("regenerate action uses an icon instead of label text", () => {
+  assert.match(chatSource, /class="regenerate-icon"/);
+  assert.doesNotMatch(chatSource, /\["重新生成"\]/);
+});

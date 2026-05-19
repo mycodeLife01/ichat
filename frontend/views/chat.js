@@ -295,14 +295,15 @@ function buildRegenerateButton(message) {
   const disabled = Boolean(activeRun);
   const button = el("button", {
     type: "button",
-    class: "message-regenerate-button inline-flex h-7 items-center justify-center rounded-md px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50",
+    class: "message-regenerate-button inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50",
     title: disabled ? "请先停止当前生成" : "重新生成",
     "aria-label": "Regenerate",
     onClick: (event) => {
       event.stopPropagation();
       void triggerRegenerate(message);
     },
-  }, ["重新生成"]);
+  });
+  button.innerHTML = `<svg class="regenerate-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>`;
   if (disabled) button.disabled = true;
   return button;
 }
@@ -317,22 +318,31 @@ function startEditingUserMessage(message) {
 
   const original = message.content;
   const textarea = el("textarea", {
-    rows: "3",
-    class: "w-full min-h-[3rem] resize-y border border-zinc-300 rounded-md px-3 py-2 text-base sm:text-sm outline-none focus:border-zinc-500 bg-white",
+    rows: "1",
+    class: "edit-bubble-textarea w-full resize-none outline-none bg-transparent text-base whitespace-pre-wrap break-words",
   });
   textarea.value = original;
 
   const confirmButton = el("button", {
     type: "button",
-    class: "h-7 px-2 rounded-md bg-zinc-900 text-white text-xs hover:bg-zinc-800 disabled:opacity-50",
-  }, ["保存并重生"]);
+    class: "h-8 px-4 rounded-full bg-zinc-900 text-white text-sm hover:bg-zinc-800 disabled:opacity-50",
+  }, ["发送"]);
   const cancelButton = el("button", {
     type: "button",
-    class: "h-7 px-2 rounded-md border border-zinc-200 text-xs text-zinc-600 hover:bg-zinc-100",
+    class: "h-8 px-4 rounded-full border border-zinc-200 text-sm text-zinc-700 hover:bg-zinc-100",
   }, ["取消"]);
   const buttonRow = el("div", { class: "mt-2 flex gap-2 justify-end" }, [cancelButton, confirmButton]);
-  const editor = el("div", { class: "w-full" }, [textarea, buttonRow]);
+  const editor = el("div", {
+    class: "edit-bubble w-full max-w-full bg-zinc-100 rounded-2xl rounded-tr-md px-3 sm:px-4 py-3",
+  }, [textarea, buttonRow]);
   bubble.replaceWith(editor);
+
+  const autosize = () => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+  textarea.addEventListener("input", autosize);
+  autosize();
   textarea.focus();
   textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
