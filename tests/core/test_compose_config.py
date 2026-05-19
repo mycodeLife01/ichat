@@ -4,8 +4,9 @@ from pathlib import Path
 def test_compose_uses_explicit_env_file() -> None:
     compose = Path("compose.yml").read_text()
 
-    assert compose.count("env_file:") == 3
-    assert compose.count("- .env") == 3
+    # postgres + migrate + api + worker
+    assert compose.count("env_file:") == 4
+    assert compose.count("- .env") == 4
 
 
 def test_compose_requires_referenced_environment_variables() -> None:
