@@ -162,7 +162,7 @@ async def test_edit_user_message_archives_target_and_inserts_new_message_and_run
     assert new_message.run_id == result.run.id
 
     assert new_run is not None
-    assert new_run.status == "queued"
+    assert result.run.status == "queued"
     assert new_run.user_message_id == new_message.id
     assert new_run.provider_name == "deepseek"
     assert new_run.provider_model == "deepseek-chat"
@@ -307,7 +307,7 @@ async def test_regenerate_from_user_message_archives_following_only(
     # No new message inserted; reply will materialize when worker runs.
     assert result.message.id == anchor.id
     assert new_run is not None
-    assert new_run.status == "queued"
+    assert result.run.status == "queued"
     assert new_run.user_message_id == anchor.id
 
 
