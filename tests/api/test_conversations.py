@@ -218,3 +218,185 @@ async def test_cross_user_conversation_access_returns_not_found(client: AsyncCli
     assert get_response.status_code == status.HTTP_404_NOT_FOUND
     assert patch_response.status_code == status.HTTP_404_NOT_FOUND
     assert send_response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def seed_completed_turn(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    user_email: str,
+) -> dict[str, int]:
+    """Insert a finished turn (user + assistant + succeeded run) for the user.
+
+    Returns the ids of conversation, user_message, assistant_message.
+    """
+    async with session_factory() as session:
+        user = await session.scalar(select(User).where(User.email == user_email))
+        assert user is not None, "register_user must run before seed_completed_turn"
+        conversation = Conversation(user_id=user.id, title="seeded")
+        session.add(conversation)
+        await session.flush()
+
+        user_message = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="hello",
+            position=1,
+        )
+        session.add(user_message)
+        await session.flush()
+
+        run = Run(
+            conversation_id=conversation.id,
+            user_message_id=user_message.id,
+            status="succeeded",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        session.add(run)
+        await session.flush()
+        user_message.run_id = run.id
+
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            run_id=run.id,
+            role="assistant",
+            content="world",
+            position=2,
+        )
+        session.add(assistant_message)
+        await session.commit()
+
+        return {
+            "conversation_id": conversation.id,
+            "user_message_id": user_message.id,
+            "assistant_message_id": assistant_message.id,
+        }
+
+
+async def test_edit_and_regenerate_endpoint_creates_new_message_and_run(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-edit-regen",
+        email=f"alice-edit@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-edit@{TEST_EMAIL_DOMAIN}"
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{seeded['user_message_id']}/edit-and-regenerate",
+        json={"content": "rewritten"},
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()["data"]
+    assert body["message"]["role"] == "user"
+    assert body["message"]["content"] == "rewritten"
+    assert body["message"]["id"] != seeded["user_message_id"]
+    assert body["run"]["status"] == "queued"
+
+    async with session_factory() as session:
+        old_user = await session.get(Message, seeded["user_message_id"])
+        old_assistant = await session.get(Message, seeded["assistant_message_id"])
+        assert old_user is not None and old_user.archived_at is not None
+        assert old_assistant is not None and old_assistant.archived_at is not None
+
+
+async def test_regenerate_endpoint_reuses_user_message_for_assistant_target(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-regen",
+        email=f"alice-regen@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-regen@{TEST_EMAIL_DOMAIN}"
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{seeded['assistant_message_id']}/regenerate",
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()["data"]
+    assert body["message"]["id"] == seeded["user_message_id"]
+    assert body["run"]["status"] == "queued"
+    assert body["run"]["user_message_id"] == seeded["user_message_id"]
+
+    async with session_factory() as session:
+        anchor = await session.get(Message, seeded["user_message_id"])
+        archived_assistant = await session.get(Message, seeded["assistant_message_id"])
+        assert anchor is not None and anchor.archived_at is None
+        assert archived_assistant is not None and archived_assistant.archived_at is not None
+
+
+async def test_edit_and_regenerate_rejects_cross_user(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await register_user(
+        client,
+        username="alice-cross",
+        email=f"alice-cross@{TEST_EMAIL_DOMAIN}",
+    )
+    bob = await register_user(
+        client,
+        username="bob-cross",
+        email=f"bob-cross@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-cross@{TEST_EMAIL_DOMAIN}"
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{seeded['user_message_id']}/edit-and-regenerate",
+        json={"content": "intrusion"},
+        headers=auth_headers(bob),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_regenerate_endpoint_conflicts_with_active_run(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-active",
+        email=f"alice-active@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-active@{TEST_EMAIL_DOMAIN}"
+    )
+
+    async with session_factory() as session:
+        session.add(
+            Run(
+                conversation_id=seeded["conversation_id"],
+                user_message_id=seeded["user_message_id"],
+                status="queued",
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+        )
+        await session.commit()
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{seeded['assistant_message_id']}/regenerate",
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["detail"] == "Active run already exists"
