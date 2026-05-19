@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -20,6 +20,9 @@ from app.schemas.conversations import (
 CONVERSATION_NOT_FOUND_MESSAGE = "Conversation not found"
 ACTIVE_RUN_STATUSES = ("queued", "started", "streaming", "cancelling")
 ACTIVE_RUN_EXISTS_MESSAGE = "Active run already exists"
+MESSAGE_NOT_FOUND_MESSAGE = "Message not found"
+EDIT_TARGET_NOT_USER_MESSAGE = "Edit target must be a user message"
+CANNOT_RESOLVE_USER_MESSAGE = "Cannot resolve user message to regenerate from"
 
 
 def conversation_response(conversation: Conversation) -> ConversationResponse:
@@ -181,6 +184,71 @@ async def submit_user_message(
     )
 
 
+async def edit_user_message_and_regenerate(
+    session: AsyncSession,
+    *,
+    user: User,
+    conversation_id: int,
+    message_id: int,
+    new_content: str,
+    provider_name: str,
+    provider_model: str,
+) -> SendMessageResponse:
+    conversation = await get_owned_visible_conversation_for_update(
+        session,
+        user=user,
+        conversation_id=conversation_id,
+    )
+    target = await _get_owned_unarchived_message_for_update(
+        session,
+        conversation_id=conversation.id,
+        message_id=message_id,
+    )
+    if target.role != "user":
+        raise AppError(status.HTTP_409_CONFLICT, EDIT_TARGET_NOT_USER_MESSAGE)
+
+    await ensure_no_active_run(session, conversation_id=conversation.id)
+    await _archive_messages_at_or_after_position(
+        session,
+        conversation_id=conversation.id,
+        position=target.position,
+    )
+
+    next_position = await get_next_message_position(session, conversation_id=conversation.id)
+    new_message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=new_content,
+        position=next_position,
+    )
+    session.add(new_message)
+    await session.flush()
+
+    run = Run(
+        conversation_id=conversation.id,
+        user_message_id=new_message.id,
+        status="queued",
+        provider_name=provider_name,
+        provider_model=provider_model,
+    )
+    session.add(run)
+    await session.flush()
+
+    new_message.run_id = run.id
+    conversation.updated_at = await get_database_now(session)
+    await session.flush()
+
+    await session.execute(
+        text("SELECT pg_notify('runs_queued', :payload)"),
+        {"payload": str(run.id)},
+    )
+
+    return SendMessageResponse(
+        message=message_response(new_message),
+        run=run_response(run),
+    )
+
+
 async def get_owned_visible_conversation(
     session: AsyncSession,
     *,
@@ -274,6 +342,62 @@ async def materialize_assistant_message(
     if conversation is not None:
         conversation.updated_at = await get_database_now(session)
         await session.flush()
+    return message
+
+
+async def _archive_messages_at_or_after_position(
+    session: AsyncSession,
+    *,
+    conversation_id: int,
+    position: int,
+) -> None:
+    now = await get_database_now(session)
+    await session.execute(
+        update(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.position >= position,
+            Message.archived_at.is_(None),
+        )
+        .values(archived_at=now)
+    )
+
+
+async def _archive_messages_after_position(
+    session: AsyncSession,
+    *,
+    conversation_id: int,
+    position: int,
+) -> None:
+    now = await get_database_now(session)
+    await session.execute(
+        update(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.position > position,
+            Message.archived_at.is_(None),
+        )
+        .values(archived_at=now)
+    )
+
+
+async def _get_owned_unarchived_message_for_update(
+    session: AsyncSession,
+    *,
+    conversation_id: int,
+    message_id: int,
+) -> Message:
+    message = await session.scalar(
+        select(Message)
+        .where(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id,
+            Message.archived_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if message is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, MESSAGE_NOT_FOUND_MESSAGE)
     return message
 
 
