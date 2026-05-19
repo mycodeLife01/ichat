@@ -251,7 +251,7 @@ Worker heartbeat（每 N 秒）查 `cancelling` 状态，set `cancel_event`，ex
 - claim 批量化（一次 `LIMIT N` 拉多条）：当前每次拉一条。
 - seq 原子化（SEQUENCE）：当前 `MAX(seq)+1`，仅在"同 run 单写者"假设下安全。
 - 监控指标（Prometheus / OTel）：未集成。
-- Conversation branch / Last-Event-ID / regenerate：未实现。
+- Conversation branch / Last-Event-ID：未实现。
 - Redis / Celery / LangChain / LangGraph：明确不引入。
 
 ## 关联文档
