@@ -50,6 +50,16 @@ export const conversations = {
   remove: (token, id) => request(`/conversations/${id}`, { method: "DELETE", token }),
   sendMessage: (token, id, content) =>
     request(`/conversations/${id}/messages`, { method: "POST", token, body: { content } }),
+  editAndRegenerate: (token, conversationId, messageId, content) =>
+    request(
+      `/conversations/${conversationId}/messages/${messageId}/edit-and-regenerate`,
+      { method: "POST", token, body: { content } },
+    ),
+  regenerate: (token, conversationId, messageId) =>
+    request(
+      `/conversations/${conversationId}/messages/${messageId}/regenerate`,
+      { method: "POST", token },
+    ),
 };
 
 export const runs = {
