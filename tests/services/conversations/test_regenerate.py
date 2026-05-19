@@ -12,7 +12,10 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.services.conversations.service import edit_user_message_and_regenerate
+from app.services.conversations.service import (
+    edit_user_message_and_regenerate,
+    regenerate_from_message,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "REGENERATE_TEST_DATABASE_URL",
@@ -260,6 +263,176 @@ async def test_edit_rejects_when_active_run_exists(
                 conversation_id=conversation.id,
                 message_id=messages[0].id,
                 new_content="changed",
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+
+    assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+    assert exc_info.value.detail == "Active run already exists"
+
+
+async def test_regenerate_from_user_message_archives_following_only(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        anchor = messages[2]  # user at position 3
+        assistant_after = messages[3]
+        first_user = messages[0]
+        first_assistant = messages[1]
+
+        result = await regenerate_from_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            message_id=anchor.id,
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        anchor_after = await session.get(Message, anchor.id)
+        assistant_archived = await session.get(Message, assistant_after.id)
+        kept_user = await session.get(Message, first_user.id)
+        kept_assistant = await session.get(Message, first_assistant.id)
+        new_run = await session.get(Run, result.run.id)
+
+    assert anchor_after is not None and anchor_after.archived_at is None
+    assert kept_user is not None and kept_user.archived_at is None
+    assert kept_assistant is not None and kept_assistant.archived_at is None
+    assert assistant_archived is not None and assistant_archived.archived_at is not None
+
+    # No new message inserted; reply will materialize when worker runs.
+    assert result.message.id == anchor.id
+    assert new_run is not None
+    assert new_run.status == "queued"
+    assert new_run.user_message_id == anchor.id
+
+
+async def test_regenerate_from_assistant_message_resolves_to_parent_user(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        target_assistant = messages[3]  # assistant at position 4
+        expected_user_anchor = messages[2]
+
+        result = await regenerate_from_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            message_id=target_assistant.id,
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        anchor_after = await session.get(Message, expected_user_anchor.id)
+        assistant_archived = await session.get(Message, target_assistant.id)
+        new_run = await session.get(Run, result.run.id)
+
+    assert anchor_after is not None and anchor_after.archived_at is None
+    assert assistant_archived is not None and assistant_archived.archived_at is not None
+    assert new_run is not None
+    assert new_run.user_message_id == expected_user_anchor.id
+    assert result.message.id == expected_user_anchor.id
+
+
+async def test_regenerate_rejects_assistant_without_run_id(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        messages[3].run_id = None  # corrupt the link
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await regenerate_from_message(
+                session,
+                user=user,
+                conversation_id=conversation.id,
+                message_id=messages[3].id,
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+
+    assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+    assert exc_info.value.detail == "Cannot resolve user message to regenerate from"
+
+
+async def test_regenerate_rejects_archived_target(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        messages[3].archived_at = datetime.now(UTC)
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await regenerate_from_message(
+                session,
+                user=user,
+                conversation_id=conversation.id,
+                message_id=messages[3].id,
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Message not found"
+
+
+async def test_regenerate_rejects_cross_user_target(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        owner = await create_user(session, "alice")
+        intruder = await create_user(session, "bob")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=owner)
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await regenerate_from_message(
+                session,
+                user=intruder,
+                conversation_id=conversation.id,
+                message_id=messages[3].id,
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+            )
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert exc_info.value.detail == "Conversation not found"
+
+
+async def test_regenerate_rejects_when_active_run_exists(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        active = Run(
+            conversation_id=conversation.id,
+            user_message_id=messages[2].id,
+            status="streaming",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        session.add(active)
+        await session.commit()
+
+        with pytest.raises(AppError) as exc_info:
+            await regenerate_from_message(
+                session,
+                user=user,
+                conversation_id=conversation.id,
+                message_id=messages[3].id,
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
             )
