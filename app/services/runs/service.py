@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -113,6 +113,12 @@ async def append_run_event(
     )
     session.add(event)
     await session.flush()
+    # Wake any SSE subscribers listening for this run. The notify is queued
+    # in the transaction and delivered on commit, matching row visibility.
+    await session.execute(
+        text("SELECT pg_notify('run_events', :payload)"),
+        {"payload": str(run.id)},
+    )
     return run_event_response(event)
 
 

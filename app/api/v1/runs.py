@@ -1,17 +1,20 @@
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.responses import SuccessResponse
 from app.schemas.runs import RunEventResponse, RunStateResponse
 from app.services.auth.dependencies import get_current_user
+from app.services.run_events.subscription import RunEventSubscriptionManager
 from app.services.runs.service import (
     TERMINAL_EVENT_TYPES,
     cancel_owned_run,
@@ -22,7 +25,10 @@ from app.services.runs.service import (
 )
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
-SSE_POLL_INTERVAL_SECONDS = 0.2
+
+
+def _get_subscription_manager(request: Request) -> RunEventSubscriptionManager | None:
+    return getattr(request.app.state, "run_event_subscriptions", None)
 
 
 @router.get(
@@ -58,25 +64,42 @@ async def stream_run_events_route(
     run_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    manager: Annotated[
+        RunEventSubscriptionManager | None, Depends(_get_subscription_manager)
+    ],
     after_seq: Annotated[int, Query(ge=0)] = 0,
 ) -> StreamingResponse:
     await get_owned_visible_run(session, user=current_user, run_id=run_id)
+    fallback_interval = get_settings().sse_fallback_interval_seconds
 
     async def event_stream() -> AsyncIterator[str]:
         cursor = after_seq
-        while True:
-            events = await list_run_events_after(session, run_id=run_id, after_seq=cursor)
-            for event in events:
-                cursor = event.seq
-                yield format_sse_event(event)
-                if event.type in TERMINAL_EVENT_TYPES:
+        wake = manager.subscribe(run_id) if manager is not None else None
+        try:
+            while True:
+                events = await list_run_events_after(
+                    session, run_id=run_id, after_seq=cursor
+                )
+                for event in events:
+                    cursor = event.seq
+                    yield format_sse_event(event)
+                    if event.type in TERMINAL_EVENT_TYPES:
+                        return
+
+                if await run_has_terminal_event(session, run_id=run_id):
                     return
 
-            if await run_has_terminal_event(session, run_id=run_id):
-                return
+                await session.rollback()
 
-            await session.rollback()
-            await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+                if wake is not None:
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(wake.wait(), timeout=fallback_interval)
+                    wake.clear()
+                else:
+                    await asyncio.sleep(fallback_interval)
+        finally:
+            if manager is not None and wake is not None:
+                manager.unsubscribe(run_id, wake)
 
     return StreamingResponse(
         event_stream(),

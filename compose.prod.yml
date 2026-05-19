@@ -6,6 +6,12 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # Bumped from default 100 to cover 2 worker replicas (each ~40 pool conns),
+    # API replica (~40), and LISTEN connections (api + each worker).
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -43,6 +49,8 @@ services:
     env_file:
       - .env
     command: ["python", "-m", "app.worker"]
+    deploy:
+      replicas: 2
     depends_on:
       postgres:
         condition: service_healthy

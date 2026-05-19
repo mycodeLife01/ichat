@@ -157,11 +157,9 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert [e.type for e in events] == [
             "run_started",
             "text_delta",
-            "text_delta",
             "run_succeeded",
         ]
-        assert events[1].payload == {"text": "Hello"}
-        assert events[2].payload == {"text": " world"}
+        assert events[1].payload == {"text": "Hello world"}
 
         messages = (
             await session.scalars(

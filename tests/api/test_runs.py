@@ -16,6 +16,7 @@ from app.main import create_app
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
+from app.services.run_events.subscription import RunEventSubscriptionManager
 from app.services.runs.service import append_run_event
 
 TEST_DATABASE_URL = os.environ.get(
@@ -69,8 +70,18 @@ async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
-    yield app
-    app.dependency_overrides.clear()
+
+    # ASGITransport does not run FastAPI lifespan, so start the SSE
+    # subscription manager manually so SSE handlers receive pg_notify wakeups.
+    manager = RunEventSubscriptionManager(TEST_DATABASE_URL)
+    await manager.start()
+    app.state.run_event_subscriptions = manager
+
+    try:
+        yield app
+    finally:
+        await manager.stop()
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture()

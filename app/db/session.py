@@ -10,24 +10,56 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.logging import logger
 
 SessionFactory = Callable[[], Any]
 
 
-def create_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(database_url, pool_pre_ping=True)
+def create_engine(
+    database_url: str,
+    *,
+    pool_size: int = 20,
+    max_overflow: int = 20,
+    pool_timeout: float = 30.0,
+) -> AsyncEngine:
+    return create_async_engine(
+        database_url,
+        pool_pre_ping=True,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        pool_timeout=pool_timeout,
+    )
 
 
-def create_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
-    engine = create_engine(database_url)
+def create_session_factory(
+    database_url: str,
+    *,
+    pool_size: int = 20,
+    max_overflow: int = 20,
+    pool_timeout: float = 30.0,
+) -> async_sessionmaker[AsyncSession]:
+    engine = create_engine(
+        database_url,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        pool_timeout=pool_timeout,
+    )
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+def _factory_from_settings(settings: Settings) -> async_sessionmaker[AsyncSession]:
+    return create_session_factory(
+        settings.database_url,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout_seconds,
+    )
 
 
 @lru_cache
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return create_session_factory(get_settings().database_url)
+    return _factory_from_settings(get_settings())
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

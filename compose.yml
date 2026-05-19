@@ -5,6 +5,12 @@ services:
     image: postgres:16-alpine
     env_file:
       - .env
+    # Match compose.prod.yml: leave headroom for multiple worker replicas and
+    # LISTEN connections (one per worker + one per API process for SSE fanout).
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
     ports:
       - "${POSTGRES_PORT:?POSTGRES_PORT is required}:5432"
     volumes:
@@ -14,6 +20,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  migrate:
+    build:
+      context: .
+    image: ichat-api:local
+    env_file:
+      - .env
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   api:
     build:
@@ -27,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -35,9 +55,13 @@ services:
     env_file:
       - .env
     command: ["python", "-m", "app.worker"]
+    deploy:
+      replicas: 2
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

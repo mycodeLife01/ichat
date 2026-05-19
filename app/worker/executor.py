@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -22,6 +23,8 @@ from app.services.runs.lifecycle import (
     run_has_text_delta,
 )
 from app.services.runs.service import append_run_event
+
+_STREAM_DONE = object()  # sentinel posted on the provider-stream queue
 
 
 class ProviderResolver(Protocol):
@@ -87,6 +90,8 @@ async def execute_run(
                 provider_model=provider_model,
                 messages=messages,
                 cancel_event=cancel_event,
+                batch_window_seconds=settings.worker_delta_batch_window_ms / 1000.0,
+                batch_max_chars=settings.worker_delta_batch_max_chars,
             )
             if outcome.status == "succeeded":
                 return
@@ -195,6 +200,8 @@ async def _run_provider_stream_until_done_or_cancelled(
     provider_model: str,
     messages: list[ProviderMessage],
     cancel_event: asyncio.Event,
+    batch_window_seconds: float,
+    batch_max_chars: int,
 ) -> _StreamOutcome:
     stream_task = asyncio.create_task(
         _run_provider_stream(
@@ -204,6 +211,8 @@ async def _run_provider_stream_until_done_or_cancelled(
             provider_model=provider_model,
             messages=messages,
             cancel_event=cancel_event,
+            batch_window_seconds=batch_window_seconds,
+            batch_max_chars=batch_max_chars,
         )
     )
     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -241,45 +250,137 @@ async def _run_provider_stream(
     provider_model: str,
     messages: list[ProviderMessage],
     cancel_event: asyncio.Event,
+    batch_window_seconds: float,
+    batch_max_chars: int,
 ) -> _StreamOutcome:
     text_parts: list[str] = []
-    first_delta_seen = False
+    pending: list[str] = []
+    pending_chars = 0
+    first_flush_done = False
+    window_started_at = 0.0
+
+    async def flush_pending() -> bool:
+        nonlocal pending_chars, first_flush_done
+        if not pending:
+            return True
+        text = "".join(pending)
+        async with session_factory() as session:
+            if not first_flush_done:
+                changed = await mark_run_streaming(session, run_id=run_id)
+                if not changed:
+                    await session.commit()
+                    return False
+                first_flush_done = True
+            await append_run_event(
+                session,
+                run_id=run_id,
+                event_type="text_delta",
+                payload={"text": text},
+            )
+            await session.commit()
+        pending.clear()
+        pending_chars = 0
+        return True
+
+    # Drive the provider stream from a background producer task so that the
+    # main loop can flush on a time window without cancelling the stream's
+    # coroutine. (asyncio.wait_for around stream.__anext__() would cancel the
+    # underlying task on timeout, poisoning the generator and dropping any
+    # remaining chunks.) The producer forwards chunks into an asyncio.Queue;
+    # a ProviderError is forwarded as an item, then _STREAM_DONE terminates.
+    queue: asyncio.Queue[object] = asyncio.Queue()
+
+    async def _producer() -> None:
+        try:
+            async for produced in provider.stream(
+                model=provider_model, messages=messages
+            ):
+                await queue.put(produced)
+        except ProviderError as exc:
+            await queue.put(exc)
+        finally:
+            await queue.put(_STREAM_DONE)
+
+    producer_task = asyncio.create_task(_producer())
 
     try:
-        async for chunk in provider.stream(model=provider_model, messages=messages):
-            if cancel_event.is_set():
-                return _StreamOutcome(
-                    status="cancelled",
-                    before_first_delta=not first_delta_seen,
-                    delta_persisted=first_delta_seen,
-                )
-            if isinstance(chunk, TextDelta):
-                async with session_factory() as session:
-                    if not first_delta_seen:
-                        changed = await mark_run_streaming(session, run_id=run_id)
-                        if not changed:
-                            await session.commit()
-                            return _StreamOutcome(
-                                status="cancelled",
-                                before_first_delta=True,
-                                delta_persisted=False,
-                            )
-                        first_delta_seen = True
-                    await append_run_event(
-                        session,
-                        run_id=run_id,
-                        event_type="text_delta",
-                        payload={"text": chunk.text},
-                    )
-                    await session.commit()
-                text_parts.append(chunk.text)
-                if cancel_event.is_set():
+        while True:
+            if pending:
+                elapsed = time.monotonic() - window_started_at
+                timeout: float | None = max(batch_window_seconds - elapsed, 0.0)
+            else:
+                timeout = None
+
+            try:
+                if timeout is None:
+                    item = await queue.get()
+                else:
+                    item = await asyncio.wait_for(queue.get(), timeout=timeout)
+            except TimeoutError:
+                if not await flush_pending():
                     return _StreamOutcome(
                         status="cancelled",
-                        before_first_delta=False,
-                        delta_persisted=True,
+                        before_first_delta=not first_flush_done,
+                        delta_persisted=first_flush_done,
+                    )
+                continue
+
+            if item is _STREAM_DONE:
+                break
+
+            if isinstance(item, ProviderError):
+                if pending:
+                    with contextlib.suppress(Exception):
+                        await flush_pending()
+                async with session_factory() as session:
+                    delta_persisted = await run_has_text_delta(session, run_id=run_id)
+                return _StreamOutcome(
+                    status="failed",
+                    before_first_delta=not first_flush_done,
+                    delta_persisted=delta_persisted,
+                    code=item.code,
+                    message=item.message,
+                )
+
+            chunk = item
+
+            if cancel_event.is_set():
+                if pending:
+                    await flush_pending()
+                return _StreamOutcome(
+                    status="cancelled",
+                    before_first_delta=not first_flush_done,
+                    delta_persisted=first_flush_done,
+                )
+
+            if isinstance(chunk, TextDelta):
+                if not pending:
+                    window_started_at = time.monotonic()
+                text_parts.append(chunk.text)
+                pending.append(chunk.text)
+                pending_chars += len(chunk.text)
+                if pending_chars >= batch_max_chars:
+                    if not await flush_pending():
+                        return _StreamOutcome(
+                            status="cancelled",
+                            before_first_delta=True,
+                            delta_persisted=False,
+                        )
+                if cancel_event.is_set():
+                    if pending:
+                        await flush_pending()
+                    return _StreamOutcome(
+                        status="cancelled",
+                        before_first_delta=not first_flush_done,
+                        delta_persisted=first_flush_done,
                     )
             elif isinstance(chunk, Finish):
+                if pending and not await flush_pending():
+                    return _StreamOutcome(
+                        status="cancelled",
+                        before_first_delta=not first_flush_done,
+                        delta_persisted=first_flush_done,
+                    )
                 full_text = "".join(text_parts)
                 async with session_factory() as session:
                     changed = await mark_run_succeeded(
@@ -298,30 +399,29 @@ async def _run_provider_stream(
                 if not changed:
                     return _StreamOutcome(
                         status="cancelled",
-                        before_first_delta=not first_delta_seen,
-                        delta_persisted=first_delta_seen,
+                        before_first_delta=not first_flush_done,
+                        delta_persisted=first_flush_done,
                     )
                 return _StreamOutcome(
                     status="succeeded",
-                    before_first_delta=not first_delta_seen,
-                    delta_persisted=first_delta_seen,
+                    before_first_delta=not first_flush_done,
+                    delta_persisted=first_flush_done,
                 )
-    except ProviderError as exc:
-        async with session_factory() as session:
-            delta_persisted = await run_has_text_delta(session, run_id=run_id)
-        return _StreamOutcome(
-            status="failed",
-            before_first_delta=not first_delta_seen,
-            delta_persisted=delta_persisted,
-            code=exc.code,
-            message=exc.message,
-        )
+    finally:
+        if not producer_task.done():
+            producer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await producer_task
 
+    # Stream ended without Finish
+    if pending:
+        with contextlib.suppress(Exception):
+            await flush_pending()
     async with session_factory() as session:
         delta_persisted = await run_has_text_delta(session, run_id=run_id)
     return _StreamOutcome(
         status="failed",
-        before_first_delta=not first_delta_seen,
+        before_first_delta=not first_flush_done,
         delta_persisted=delta_persisted,
         code="no_finish",
         message="Provider stream ended without finish chunk",

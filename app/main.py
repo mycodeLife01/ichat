@@ -1,4 +1,5 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
 from app.db.session import check_database_ready
+from app.services.run_events.subscription import RunEventSubscriptionManager
 
 DatabaseReadyCheck = Callable[[], Awaitable[bool]]
 
@@ -24,7 +26,25 @@ def create_app(
     configure_logging(app_settings.log_level)
     readiness_check = database_ready_check or check_database_ready
 
-    app = FastAPI(title="iChat API")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        manager = RunEventSubscriptionManager(app_settings.database_url)
+        try:
+            await manager.start()
+            app.state.run_event_subscriptions = manager
+        except Exception:
+            logger.exception(
+                "RunEventSubscriptionManager failed to start; SSE will use polling fallback"
+            )
+            app.state.run_event_subscriptions = None
+        try:
+            yield
+        finally:
+            existing = getattr(app.state, "run_event_subscriptions", None)
+            if existing is not None:
+                await existing.stop()
+
+    app = FastAPI(title="iChat API", lifespan=lifespan)
     app.include_router(auth_router)
     app.include_router(conversations_router)
     app.include_router(runs_router)

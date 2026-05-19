@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -167,6 +167,13 @@ async def submit_user_message(
     message.run_id = run.id
     conversation.updated_at = await get_database_now(session)
     await session.flush()
+
+    # Notify worker(s) that a new run is queued. NOTIFY is delivered on COMMIT,
+    # so it's safe to enqueue here — the API handler commits the transaction.
+    await session.execute(
+        text("SELECT pg_notify('runs_queued', :payload)"),
+        {"payload": str(run.id)},
+    )
 
     return SendMessageResponse(
         message=message_response(message),
