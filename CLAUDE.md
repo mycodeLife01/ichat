@@ -154,8 +154,8 @@ Use a worktree only when the user explicitly asks for one. If a generic workflow
 ## Subagent Model Policy
 
 When the user explicitly authorizes subagent use, choose models by task role:
-- Orchestrator and reviewer subagents must use `claude-opus-4-7` with `high` thinking effort level.
-- Executor and worker subagents must use `claude-sonnet-4-6` with `medium` thinking effort level.
+- Orchestrator and reviewer subagents must use `claude-opus-4-7` with `xhigh` thinking effort level.
+- Executor and worker subagents must use `claude-sonnet-4-6` with `max` thinking effort level.
 - Read-only and explore subagents must use `claude-haiku-4-5-20251001` with `medium` thinking effort level.
 
 ## Development Guidelines
