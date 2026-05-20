@@ -116,6 +116,8 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-17-test-frontend.md` — frontend test setup
 - `2026-05-18-cicd-and-domain-deployment.md` — GitHub Actions pipeline, Nginx reverse proxy, Cloudflare SSL
 - `2026-05-19-concurrency-and-listen-notify.md` — delta batching, single-worker concurrency, claim/SSE LISTEN/NOTIFY, multi-worker compose, DB pool tuning
+- `2026-05-19-regenerate.md` — regenerate assistant message by editting user message or from the current response
+- `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
 
 ### `docs/superpowers/specs/`
 
