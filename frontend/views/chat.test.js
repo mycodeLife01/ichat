@@ -186,8 +186,34 @@ test("shows a shimmering title placeholder while summary title is pending", () =
 });
 
 test("clears persisted conversation selection on logout", () => {
-  assert.match(authSource, /clearStoredConversationSelection/);
+  assert.match(authSource, /resetState/);
   assert.match(authSource, /save\(null\)/);
+});
+
+test("logout aborts in-flight streams and resets chat state", () => {
+  // state.js exposes a resetState() that aborts any active run controller and
+  // wipes the in-memory chat singleton so a new user cannot inherit the prior
+  // user's conversation / streaming output.
+  assert.match(stateSource, /export function resetState/);
+  assert.match(stateSource, /state\.activeRun\?\.controller[\s\S]{0,80}abort\(\)/);
+  assert.match(stateSource, /state\.detail\s*=\s*null/);
+  assert.match(stateSource, /state\.activeRun\s*=\s*null/);
+
+  // auth.js calls resetState before save(null) on both logout paths so the
+  // active SSE fetch is torn down before the login view mounts.
+  assert.match(authSource, /import\s*\{[^}]*resetState[^}]*\}\s*from\s*["']\.\/state\.js["']/);
+  assert.match(authSource, /resetState\(\);[\s\S]{0,80}current\s*=\s*null;[\s\S]{0,40}save\(null\)/);
+});
+
+test("selectConversation silently drops a stale selection on 404/403", () => {
+  // A persisted selectedId can outlive the user it belonged to (cross-account
+  // switch via refresh, deletion in another tab, etc.). When the detail call
+  // 404/403s we must clear the selection silently instead of surfacing the
+  // raw "Conversation not found" / "Forbidden" toast.
+  assert.match(
+    chatSource,
+    /async function selectConversation[\s\S]+catch \(err\)[\s\S]{0,400}err\.status === 404[\s\S]{0,600}setState\(\{[\s\S]{0,200}selectedId:\s*null/,
+  );
 });
 
 test("uses 16px text on mobile text inputs to prevent iOS focus zoom", () => {

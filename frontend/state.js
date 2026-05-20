@@ -44,6 +44,25 @@ export function clearStoredConversationSelection() {
   store.removeItem(DRAFT_KEY);
 }
 
+// Hard reset the in-memory state singleton. Used when the auth identity
+// changes (logout, refresh-token failure) so the next user starts clean and
+// cannot inherit the previous user's conversation or streaming output. Any
+// active SSE run is aborted so its callbacks stop writing into state.
+export function resetState() {
+  if (state.activeRun?.controller) {
+    try { state.activeRun.controller.abort(); } catch {}
+  }
+  state.conversations = [];
+  state.selectedId = null;
+  state.draftConversationId = null;
+  state.pendingTitleConversationIds = [];
+  state.detail = null;
+  state.activeRun = null;
+  state.sidebarOpen = false;
+  clearStoredConversationSelection();
+  for (const l of listeners) l(state);
+}
+
 function persistNumber(key, value) {
   const store = storage();
   if (!store) return;

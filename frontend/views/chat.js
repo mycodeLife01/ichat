@@ -543,6 +543,16 @@ async function selectConversation(id) {
     setState(patch);
     await maybeResumeRun(detail);
   } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+      // Stale selection: the conversation was deleted, never belonged to this
+      // user (e.g., a persisted selectedId carried over from a previous
+      // account), or is otherwise inaccessible. Drop it silently instead of
+      // surfacing the raw backend message ("Conversation not found").
+      if (getState().selectedId === id) {
+        setState({ selectedId: null, draftConversationId: null, detail: null });
+      }
+      return;
+    }
     toast(errorMessage(err, "加载对话失败"), "error");
   }
 }
