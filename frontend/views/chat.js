@@ -235,6 +235,24 @@ function emptyHero(text = "今天想聊点什么？") {
   ]);
 }
 
+function buildThinkingPanel(message) {
+  const reasoning = message.reasoning;
+  if (!reasoning) return null;
+  const active = message._thinking === "active";
+  const details = el("details", {
+    class: "thinking-panel mb-2 rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-2",
+  }, [
+    el("summary", {
+      class: "thinking-summary cursor-pointer select-none text-xs text-zinc-500",
+    }, [active ? "思考中…" : "思考过程"]),
+    el("div", {
+      class: "thinking-content mt-2 whitespace-pre-wrap break-words text-xs text-zinc-500 leading-relaxed",
+    }, [reasoning]),
+  ]);
+  details.open = active;
+  return details;
+}
+
 function renderMessage(message) {
   const isUser = message.role === "user";
   const bubble = el("div", {
@@ -270,9 +288,10 @@ function renderMessage(message) {
     class: `message-actions flex ${isUser ? "justify-end" : "justify-start"} px-1`,
   }, actionButtons);
   const roleClass = isUser ? "message-item user items-end" : "message-item assistant items-start";
+  const thinkingPanel = isUser ? null : buildThinkingPanel(message);
   const stack = el("div", {
     class: `${roleClass} flex max-w-[92%] sm:max-w-[80%] flex-col`,
-  }, [bubble, actions]);
+  }, [thinkingPanel, bubble, actions]);
 
   return el("div", { class: `flex ${isUser ? "justify-end" : "justify-start"}` }, [stack]);
 }
@@ -746,6 +765,15 @@ function updateAssistantText(placeholderId, text) {
   setState({ detail: { ...detail, messages: next } });
 }
 
+function updateAssistantReasoning(placeholderId, reasoning, phase) {
+  const detail = getState().detail;
+  if (!detail) return;
+  const next = detail.messages.map((m) =>
+    m.id === placeholderId ? { ...m, reasoning, _thinking: phase } : m,
+  );
+  setState({ detail: { ...detail, messages: next } });
+}
+
 function markAssistantTerminal(placeholderId, kind) {
   // kind: "succeeded" | "failed" | "cancelled"
   const detail = getState().detail;
@@ -766,6 +794,7 @@ async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
 
   const controller = new AbortController();
   let draft = "";
+  let reasoningDraft = "";
   let terminalKind = null;
   let failureMessage = null;
 
@@ -782,9 +811,19 @@ async function attachRunStream({ conversationId, runId, afterSeq = 0 }) {
     await streamRunEvents({
       runId, afterSeq, token, signal: controller.signal,
       onEvent: (event) => {
-        if (event.type === "text_delta") {
+        if (event.type === "reasoning_delta") {
+          const delta = readReasoningDelta(event);
+          if (delta) {
+            reasoningDraft += delta;
+            updateAssistantReasoning(placeholderId, reasoningDraft, "active");
+            maybeAutoScroll();
+          }
+        } else if (event.type === "text_delta") {
           const delta = readTextDelta(event);
           if (delta) {
+            if (reasoningDraft) {
+              updateAssistantReasoning(placeholderId, reasoningDraft, "done");
+            }
             draft += delta;
             updateAssistantText(placeholderId, draft);
             maybeAutoScroll();
@@ -891,6 +930,10 @@ function maybeAutoScroll() {
 
 export function readTextDelta(event) {
   return event.payload?.text ?? event.payload?.delta ?? "";
+}
+
+export function readReasoningDelta(event) {
+  return event.payload?.text ?? event.payload?.reasoning ?? "";
 }
 
 export function renderAssistantMarkdown(content) {

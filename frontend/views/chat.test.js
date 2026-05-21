@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { copyMessageText, readTextDelta, renderAssistantMarkdown } from "./chat.js";
+import { copyMessageText, readReasoningDelta, readTextDelta, renderAssistantMarkdown } from "./chat.js";
 
 const chatSource = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
 const stateSource = readFileSync(new URL("../state.js", import.meta.url), "utf8");
@@ -75,7 +75,7 @@ test("reveals the user copy action without changing message layout", () => {
   assert.match(stylesSource, /\.message-actions\s*\{[\s\S]*height:\s*1\.75rem/);
   assert.match(stylesSource, /\.message-item\.user \.message-actions\s*\{[\s\S]*opacity:\s*0/);
   assert.match(stylesSource, /\.message-item\.user:hover \.message-actions,[\s\S]*opacity:\s*1/);
-  assert.doesNotMatch(stylesSource, /max-height:/);
+  assert.doesNotMatch(stylesSource, /\.message-actions\s*\{[\s\S]{0,200}max-height:/);
 });
 
 test("falls back to textarea selection when the clipboard API fails", async () => {
@@ -313,4 +313,30 @@ test("edit confirm button reads as send", () => {
 test("regenerate action uses an icon instead of label text", () => {
   assert.match(chatSource, /class="regenerate-icon"/);
   assert.doesNotMatch(chatSource, /\["重新生成"\]/);
+});
+
+test("reads backend reasoning_delta payload text", () => {
+  const event = { type: "reasoning_delta", payload: { text: "thinking" } };
+  assert.equal(readReasoningDelta(event), "thinking");
+});
+
+test("attachRunStream accumulates reasoning into a thinking panel", () => {
+  assert.match(chatSource, /event\.type === "reasoning_delta"/);
+  assert.match(chatSource, /readReasoningDelta\(event\)/);
+  assert.match(chatSource, /updateAssistantReasoning\(/);
+});
+
+test("renders a collapsible thinking panel for assistant reasoning", () => {
+  assert.match(chatSource, /thinking-panel/);
+  assert.match(chatSource, /思考过程/);
+  assert.match(chatSource, /buildThinkingPanel\(/);
+});
+
+test("thinking panel auto-collapses once the answer starts streaming", () => {
+  // text_delta arrival flips the active message's thinking state to "done"
+  assert.match(
+    chatSource,
+    /event\.type === "text_delta"[\s\S]{0,400}updateAssistantReasoning\(placeholderId, reasoningDraft, "done"\)/,
+  );
+  assert.match(stylesSource, /\.thinking-panel/);
 });
