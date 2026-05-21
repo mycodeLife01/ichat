@@ -6,6 +6,7 @@ from app.providers.types import (
     ProviderError,
     ProviderMessage,
     ProviderRole,
+    ReasoningDelta,
     TextDelta,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "ProviderError",
     "ProviderMessage",
     "ProviderRole",
+    "ReasoningDelta",
     "TextDelta",
     "UnknownProviderError",
     "resolve_provider",
