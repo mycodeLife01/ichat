@@ -235,22 +235,81 @@ function emptyHero(text = "今天想聊点什么？") {
   ]);
 }
 
+export function isThinkingPanelOpen(message) {
+  if (typeof message?._thinkingOpen === "boolean") return message._thinkingOpen;
+  return message?._thinking === "active";
+}
+
 function buildThinkingPanel(message) {
   const reasoning = message.reasoning;
   if (!reasoning) return null;
   const active = message._thinking === "active";
-  const details = el("details", {
-    class: "thinking-panel mb-2 rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-2",
+  const open = isThinkingPanelOpen(message);
+  const contentId = thinkingContentId(message.id);
+  const toggle = el("button", {
+    type: "button",
+    class: "thinking-toggle inline-flex min-h-8 items-center gap-2 text-left text-sm text-zinc-500 transition hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+    "aria-expanded": String(open),
+    "aria-controls": contentId,
+    onClick: (event) => {
+      event.stopPropagation();
+      setAssistantThinkingOpen(message.id, !open);
+    },
   }, [
-    el("summary", {
-      class: "thinking-summary cursor-pointer select-none text-xs text-zinc-500",
-    }, [active ? "思考中…" : "思考过程"]),
-    el("div", {
-      class: "thinking-content mt-2 whitespace-pre-wrap break-words text-xs text-zinc-500 leading-relaxed",
-    }, [reasoning]),
+    buildThinkingIcon(),
+    el("span", { class: "thinking-title" }, [active ? "思考中…" : "已思考"]),
+    buildThinkingChevron(open),
   ]);
-  details.open = active;
-  return details;
+  const children = [toggle];
+  if (open) {
+    children.push(buildThinkingContent(contentId, reasoning));
+  }
+  return el("div", {
+    class: "thinking-panel mb-2",
+    dataset: { messageId: String(message.id) },
+  }, children);
+}
+
+function thinkingContentId(messageId) {
+  return `thinking-content-${String(messageId).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function buildThinkingContent(contentId, reasoning) {
+  return el("div", {
+    id: contentId,
+    class: "thinking-content ml-4 mt-2 border-l border-zinc-200 pl-4 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-500",
+  }, [reasoning]);
+}
+
+function buildThinkingIcon() {
+  const icon = el("span", {
+    class: "thinking-icon inline-flex h-5 w-5 shrink-0 items-center justify-center text-indigo-500",
+    "aria-hidden": "true",
+  });
+  icon.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="8.5" ry="3.4"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" transform="rotate(120 12 12)"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>`;
+  return icon;
+}
+
+function buildThinkingChevron(open) {
+  const chevron = el("span", {
+    class: thinkingChevronClass(open),
+    "aria-hidden": "true",
+  });
+  chevron.innerHTML = `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 8 4 4 4-4"/></svg>`;
+  return chevron;
+}
+
+function thinkingChevronClass(open) {
+  return `thinking-chevron inline-flex h-4 w-4 shrink-0 items-center justify-center ${open ? "is-open" : ""}`;
+}
+
+function setAssistantThinkingOpen(messageId, open) {
+  const detail = getState().detail;
+  if (!detail) return;
+  const next = detail.messages.map((m) =>
+    m.id === messageId ? { ...m, _thinkingOpen: open } : m,
+  );
+  setState({ detail: { ...detail, messages: next } });
 }
 
 function renderMessage(message) {
@@ -757,21 +816,111 @@ function ensureAssistantPlaceholder(conversationId, runId) {
 }
 
 function updateAssistantText(placeholderId, text) {
-  const detail = getState().detail;
-  if (!detail) return;
-  const next = detail.messages.map((m) =>
-    m.id === placeholderId ? { ...m, content: text } : m,
-  );
-  setState({ detail: { ...detail, messages: next } });
+  const message = updateAssistantMessageSilently(placeholderId, { content: text });
+  if (message) patchAssistantMessageInPlace(message);
 }
 
 function updateAssistantReasoning(placeholderId, reasoning, phase) {
-  const detail = getState().detail;
-  if (!detail) return;
-  const next = detail.messages.map((m) =>
-    m.id === placeholderId ? { ...m, reasoning, _thinking: phase } : m,
-  );
-  setState({ detail: { ...detail, messages: next } });
+  const message = updateAssistantMessageSilently(placeholderId, {
+    reasoning,
+    _thinking: phase,
+  });
+  if (message) patchAssistantMessageInPlace(message);
+}
+
+function updateAssistantMessageSilently(messageId, patch) {
+  const state = getState();
+  const detail = state.detail;
+  if (!detail) return null;
+
+  let updated = null;
+  const next = detail.messages.map((m) => {
+    if (m.id !== messageId) return m;
+    updated = { ...m, ...patch };
+    return updated;
+  });
+  if (!updated) return null;
+
+  state.detail = { ...detail, messages: next };
+  return updated;
+}
+
+function patchAssistantMessageInPlace(message) {
+  patchThinkingPanelInPlace(message);
+  patchAssistantBubbleInPlace(message);
+}
+
+function patchAssistantBubbleInPlace(message) {
+  const bubble = findAssistantBubble(message.id);
+  if (!bubble) return;
+
+  bubble.innerHTML = renderAssistantMarkdown(message.content);
+  if (message._pending) {
+    bubble.insertAdjacentHTML("beforeend", `<span class="streaming-caret">▍</span>`);
+  }
+  if (message._terminal === "cancelled") {
+    bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-zinc-400">已取消</span>`);
+  }
+  if (message._terminal === "failed") {
+    bubble.insertAdjacentHTML("beforeend", `<span class="ml-2 text-xs text-red-500">失败</span>`);
+  }
+}
+
+function patchThinkingPanelInPlace(message) {
+  const bubble = findAssistantBubble(message.id);
+  if (!bubble) return;
+
+  let panel = findThinkingPanel(message.id);
+  if (!message.reasoning) {
+    panel?.remove();
+    return;
+  }
+
+  if (!panel) {
+    panel = buildThinkingPanel(message);
+    bubble.parentElement?.insertBefore(panel, bubble);
+    return;
+  }
+
+  const open = isThinkingPanelOpen(message);
+  const active = message._thinking === "active";
+  const contentId = thinkingContentId(message.id);
+  const toggle = panel.querySelector(".thinking-toggle");
+  toggle?.setAttribute("aria-expanded", String(open));
+  toggle?.setAttribute("aria-controls", contentId);
+
+  const title = panel.querySelector(".thinking-title");
+  if (title) title.textContent = active ? "思考中…" : "已思考";
+
+  const chevron = panel.querySelector(".thinking-chevron");
+  if (chevron) chevron.className = thinkingChevronClass(open);
+
+  const content = panel.querySelector(".thinking-content");
+  if (!open) {
+    content?.remove();
+    return;
+  }
+  if (content) {
+    content.id = contentId;
+    content.textContent = message.reasoning;
+  } else {
+    panel.append(buildThinkingContent(contentId, message.reasoning));
+  }
+}
+
+function findAssistantBubble(messageId) {
+  return findByMessageId('[data-role="assistant"][data-message-id]', messageId);
+}
+
+function findThinkingPanel(messageId) {
+  return findByMessageId(".thinking-panel", messageId);
+}
+
+function findByMessageId(selector, messageId) {
+  const id = String(messageId);
+  return Array.from(document.querySelectorAll(selector)).find(
+    (node) => node.dataset.messageId === id,
+  ) ?? null;
 }
 
 function markAssistantTerminal(placeholderId, kind) {

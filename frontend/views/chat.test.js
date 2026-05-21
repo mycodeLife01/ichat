@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { copyMessageText, readReasoningDelta, readTextDelta, renderAssistantMarkdown } from "./chat.js";
+import {
+  copyMessageText,
+  isThinkingPanelOpen,
+  readReasoningDelta,
+  readTextDelta,
+  renderAssistantMarkdown,
+} from "./chat.js";
 
 const chatSource = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
 const stateSource = readFileSync(new URL("../state.js", import.meta.url), "utf8");
@@ -328,8 +334,24 @@ test("attachRunStream accumulates reasoning into a thinking panel", () => {
 
 test("renders a collapsible thinking panel for assistant reasoning", () => {
   assert.match(chatSource, /thinking-panel/);
-  assert.match(chatSource, /思考过程/);
+  assert.match(chatSource, /thinking-toggle/);
+  assert.match(chatSource, /已思考/);
   assert.match(chatSource, /buildThinkingPanel\(/);
+  assert.match(chatSource, /aria-expanded/);
+  assert.doesNotMatch(chatSource, /el\("details"/);
+  assert.doesNotMatch(chatSource, /rounded-xl\s+border\s+border-zinc-200\s+bg-zinc-50/);
+});
+
+test("active thinking panel respects a manual close while streaming", () => {
+  assert.equal(isThinkingPanelOpen({ reasoning: "thinking", _thinking: "active" }), true);
+  assert.equal(
+    isThinkingPanelOpen({
+      reasoning: "thinking",
+      _thinking: "active",
+      _thinkingOpen: false,
+    }),
+    false,
+  );
 });
 
 test("thinking panel auto-collapses once the answer starts streaming", () => {
@@ -338,5 +360,20 @@ test("thinking panel auto-collapses once the answer starts streaming", () => {
     chatSource,
     /event\.type === "text_delta"[\s\S]{0,400}updateAssistantReasoning\(placeholderId, reasoningDraft, "done"\)/,
   );
-  assert.match(stylesSource, /\.thinking-panel/);
+  assert.equal(isThinkingPanelOpen({ reasoning: "thinking", _thinking: "done" }), false);
+  assert.match(stylesSource, /\.thinking-chevron/);
+});
+
+test("streaming assistant updates patch the message in place instead of rerendering the list", () => {
+  const textUpdateSource = chatSource.match(
+    /function updateAssistantText[\s\S]*?\n}\n\nfunction updateAssistantReasoning/,
+  )?.[0] ?? "";
+  const reasoningUpdateSource = chatSource.match(
+    /function updateAssistantReasoning[\s\S]*?\n}\n\nfunction markAssistantTerminal/,
+  )?.[0] ?? "";
+
+  assert.match(textUpdateSource, /patchAssistantMessageInPlace/);
+  assert.match(reasoningUpdateSource, /patchAssistantMessageInPlace/);
+  assert.doesNotMatch(textUpdateSource, /setState\(/);
+  assert.doesNotMatch(reasoningUpdateSource, /setState\(/);
 });

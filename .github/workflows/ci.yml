@@ -18,6 +18,7 @@ jobs:
       DEEPSEEK_BASE_URL: https://api.deepseek.com
       DEEPSEEK_MODEL: deepseek-test
       DEEPSEEK_THINKING_ENABLED: "false"
+      DEEPSEEK_REASONING_EFFORT: "high"
       SUMMARY_PROVIDER_NAME: deepseek
       SUMMARY_MODEL: deepseek-test
       DEFAULT_SYSTEM_PROMPT: "You are a helpful assistant."
