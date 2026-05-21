@@ -1,6 +1,6 @@
 import pytest
 
-from app.providers import Finish, ProviderError, TextDelta
+from app.providers import Finish, ProviderError, ReasoningDelta, TextDelta
 from app.providers.deepseek_parser import parse_sse_line
 
 
@@ -48,3 +48,26 @@ def test_parse_sse_line_raises_provider_error_on_invalid_json() -> None:
         parse_sse_line("data: {not valid")
 
     assert exc_info.value.code == "deepseek_invalid_json"
+
+
+def test_parse_sse_line_returns_reasoning_delta_for_reasoning_content_chunk() -> None:
+    line = (
+        'data: {"id":"x","choices":[{"index":0,'
+        '"delta":{"reasoning_content":"Let me think"},"finish_reason":null}]}'
+    )
+
+    result = parse_sse_line(line)
+
+    assert result == ReasoningDelta(text="Let me think")
+
+
+def test_parse_sse_line_prefers_content_when_both_present() -> None:
+    # DeepSeek does not interleave the two in one delta, but be deterministic.
+    line = (
+        'data: {"id":"x","choices":[{"index":0,'
+        '"delta":{"content":"answer","reasoning_content":"thought"},"finish_reason":null}]}'
+    )
+
+    result = parse_sse_line(line)
+
+    assert result == TextDelta(text="answer")
