@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import Settings, get_settings
 from app.models.run import Run, RunEvent
-from app.providers import Finish, Provider, ProviderChunk, ProviderMessage, TextDelta
+from app.providers import (
+    Finish,
+    Provider,
+    ProviderChunk,
+    ProviderMessage,
+    ReasoningDelta,
+    TextDelta,
+)
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import execute_run
 from tests.providers.fake import FakeProvider, Sleep
@@ -195,3 +202,85 @@ async def test_provider_error_flushes_pending_before_failing(
         assert run is not None
         assert run.status == "failed"
         assert run.error_code == "upstream_5xx"
+
+
+async def _fetch_event_types(
+    session_factory: async_sessionmaker[AsyncSession], run_id: int
+) -> list[tuple[str, str]]:
+    async with session_factory() as session:
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+    return [(e.type, e.payload.get("text", "")) for e in events]
+
+
+async def test_reasoning_then_text_persist_as_separate_ordered_events(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    run_id = await _setup_claimed_run(session_factory, settings)
+    fake = FakeProvider(
+        script=[
+            ReasoningDelta(text="th"),
+            ReasoningDelta(text="ink"),
+            TextDelta(text="ans"),
+            TextDelta(text="wer"),
+            Finish(finish_reason="stop"),
+        ]
+    )
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    typed = await _fetch_event_types(session_factory, run_id)
+    assert typed == [
+        ("run_started", ""),
+        ("reasoning_delta", "think"),
+        ("text_delta", "answer"),
+        ("run_succeeded", ""),
+    ]
+
+
+async def test_reasoning_only_then_error_does_not_retry(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    """Once reasoning has flushed (run is streaming), a failure must not retry."""
+    call_count = {"n": 0}
+
+    class ReasoningThenError(SummarizeMixin, Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self, *, model: str, messages: list[ProviderMessage]
+        ) -> AsyncIterator[ProviderChunk]:
+            from app.providers import ProviderError
+
+            call_count["n"] += 1
+            yield ReasoningDelta(text="thinking hard")
+            raise ProviderError(code="upstream_5xx", message="boom")
+
+    run_id = await _setup_claimed_run(session_factory, settings)
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(ReasoningThenError()),
+    )
+
+    assert call_count["n"] == 1  # no retry: reasoning flush already marked run streaming
+    typed = await _fetch_event_types(session_factory, run_id)
+    assert ("reasoning_delta", "thinking hard") in typed
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "failed"

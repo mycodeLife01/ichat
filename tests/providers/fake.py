@@ -8,6 +8,7 @@ from app.providers import (
     ProviderChunk,
     ProviderError,
     ProviderMessage,
+    ReasoningDelta,
     TextDelta,
 )
 
@@ -23,7 +24,7 @@ class Sleep:
     seconds: float
 
 
-ScriptItem = TextDelta | Finish | RaiseError | Sleep
+ScriptItem = TextDelta | ReasoningDelta | Finish | RaiseError | Sleep
 
 
 class FakeProvider(Provider):
