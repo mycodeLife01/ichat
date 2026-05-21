@@ -405,6 +405,7 @@ async def materialize_assistant_message(
     *,
     run_id: int,
     content: str,
+    reasoning: str | None = None,
 ) -> Message:
     run = await session.get(Run, run_id)
     if run is None:
@@ -419,6 +420,7 @@ async def materialize_assistant_message(
         run_id=run.id,
         role="assistant",
         content=content,
+        reasoning=reasoning,
         position=next_position,
     )
     session.add(message)

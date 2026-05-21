@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { copyMessageText, readTextDelta, renderAssistantMarkdown } from "./chat.js";
+import {
+  copyMessageText,
+  isThinkingPanelOpen,
+  readReasoningDelta,
+  readTextDelta,
+  renderAssistantMarkdown,
+} from "./chat.js";
 
 const chatSource = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
 const stateSource = readFileSync(new URL("../state.js", import.meta.url), "utf8");
@@ -75,7 +81,7 @@ test("reveals the user copy action without changing message layout", () => {
   assert.match(stylesSource, /\.message-actions\s*\{[\s\S]*height:\s*1\.75rem/);
   assert.match(stylesSource, /\.message-item\.user \.message-actions\s*\{[\s\S]*opacity:\s*0/);
   assert.match(stylesSource, /\.message-item\.user:hover \.message-actions,[\s\S]*opacity:\s*1/);
-  assert.doesNotMatch(stylesSource, /max-height:/);
+  assert.doesNotMatch(stylesSource, /\.message-actions\s*\{[\s\S]{0,200}max-height:/);
 });
 
 test("falls back to textarea selection when the clipboard API fails", async () => {
@@ -313,4 +319,61 @@ test("edit confirm button reads as send", () => {
 test("regenerate action uses an icon instead of label text", () => {
   assert.match(chatSource, /class="regenerate-icon"/);
   assert.doesNotMatch(chatSource, /\["重新生成"\]/);
+});
+
+test("reads backend reasoning_delta payload text", () => {
+  const event = { type: "reasoning_delta", payload: { text: "thinking" } };
+  assert.equal(readReasoningDelta(event), "thinking");
+});
+
+test("attachRunStream accumulates reasoning into a thinking panel", () => {
+  assert.match(chatSource, /event\.type === "reasoning_delta"/);
+  assert.match(chatSource, /readReasoningDelta\(event\)/);
+  assert.match(chatSource, /updateAssistantReasoning\(/);
+});
+
+test("renders a collapsible thinking panel for assistant reasoning", () => {
+  assert.match(chatSource, /thinking-panel/);
+  assert.match(chatSource, /thinking-toggle/);
+  assert.match(chatSource, /已思考/);
+  assert.match(chatSource, /buildThinkingPanel\(/);
+  assert.match(chatSource, /aria-expanded/);
+  assert.doesNotMatch(chatSource, /el\("details"/);
+  assert.doesNotMatch(chatSource, /rounded-xl\s+border\s+border-zinc-200\s+bg-zinc-50/);
+});
+
+test("active thinking panel respects a manual close while streaming", () => {
+  assert.equal(isThinkingPanelOpen({ reasoning: "thinking", _thinking: "active" }), true);
+  assert.equal(
+    isThinkingPanelOpen({
+      reasoning: "thinking",
+      _thinking: "active",
+      _thinkingOpen: false,
+    }),
+    false,
+  );
+});
+
+test("thinking panel auto-collapses once the answer starts streaming", () => {
+  // text_delta arrival flips the active message's thinking state to "done"
+  assert.match(
+    chatSource,
+    /event\.type === "text_delta"[\s\S]{0,400}updateAssistantReasoning\(placeholderId, reasoningDraft, "done"\)/,
+  );
+  assert.equal(isThinkingPanelOpen({ reasoning: "thinking", _thinking: "done" }), false);
+  assert.match(stylesSource, /\.thinking-chevron/);
+});
+
+test("streaming assistant updates patch the message in place instead of rerendering the list", () => {
+  const textUpdateSource = chatSource.match(
+    /function updateAssistantText[\s\S]*?\n}\n\nfunction updateAssistantReasoning/,
+  )?.[0] ?? "";
+  const reasoningUpdateSource = chatSource.match(
+    /function updateAssistantReasoning[\s\S]*?\n}\n\nfunction markAssistantTerminal/,
+  )?.[0] ?? "";
+
+  assert.match(textUpdateSource, /patchAssistantMessageInPlace/);
+  assert.match(reasoningUpdateSource, /patchAssistantMessageInPlace/);
+  assert.doesNotMatch(textUpdateSource, /setState\(/);
+  assert.doesNotMatch(reasoningUpdateSource, /setState\(/);
 });

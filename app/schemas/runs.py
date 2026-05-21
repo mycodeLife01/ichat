@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 RunEventType = Literal[
     "run_started",
     "text_delta",
+    "reasoning_delta",
     "run_succeeded",
     "run_failed",
     "run_cancelled",
@@ -36,4 +37,5 @@ class RunStateResponse(BaseModel):
     status: RunStatus
     latest_seq: int
     draft_text: str
+    draft_reasoning: str = ""
     terminal_event: RunEventResponse | None

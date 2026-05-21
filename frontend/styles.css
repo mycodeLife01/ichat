@@ -142,3 +142,17 @@
 
 .scroll-thin::-webkit-scrollbar { width: 8px; }
 .scroll-thin::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 999px; }
+
+.thinking-chevron {
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+}
+
+.thinking-chevron.is-open {
+  transform: rotate(0deg);
+}
+
+.thinking-content {
+  max-height: 18rem;
+  overflow-y: auto;
+}

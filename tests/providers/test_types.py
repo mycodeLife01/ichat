@@ -1,3 +1,5 @@
+import pytest
+
 from app.providers.types import (
     Finish,
     ProviderError,
@@ -37,3 +39,14 @@ def test_provider_error_carries_code_and_message() -> None:
     assert error.code == "upstream_5xx"
     assert error.message == "boom"
     assert str(error) == "boom"
+
+
+def test_reasoning_delta_is_a_frozen_value() -> None:
+    from app.providers import ReasoningDelta
+
+    a = ReasoningDelta(text="step 1")
+    b = ReasoningDelta(text="step 1")
+    assert a == b
+    assert a.text == "step 1"
+    with pytest.raises(AttributeError):
+        a.text = "mutated"  # frozen dataclass

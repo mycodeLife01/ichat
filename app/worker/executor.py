@@ -10,7 +10,14 @@ from app.context import build_context
 from app.core.config import Settings
 from app.core.logging import logger
 from app.models.run import Run
-from app.providers import Finish, Provider, ProviderError, ProviderMessage, TextDelta
+from app.providers import (
+    Finish,
+    Provider,
+    ProviderError,
+    ProviderMessage,
+    ReasoningDelta,
+    TextDelta,
+)
 from app.services.conversations import materialize_assistant_message
 from app.services.runs.lifecycle import (
     is_cancelling,
@@ -263,13 +270,15 @@ async def _run_provider_stream(
     resolve_provider: ProviderResolver,
 ) -> _StreamOutcome:
     text_parts: list[str] = []
+    reasoning_parts: list[str] = []
     pending: list[str] = []
     pending_chars = 0
+    pending_channel: str | None = None  # "text" | "reasoning"
     first_flush_done = False
     window_started_at = 0.0
 
     async def flush_pending() -> bool:
-        nonlocal pending_chars, first_flush_done
+        nonlocal pending_chars, first_flush_done, pending_channel
         if not pending:
             return True
         text = "".join(pending)
@@ -280,15 +289,20 @@ async def _run_provider_stream(
                     await session.commit()
                     return False
                 first_flush_done = True
-            await append_run_event(
-                session,
-                run_id=run_id,
-                event_type="text_delta",
-                payload={"text": text},
-            )
+            # Pass the event type as a literal (not a variable) so it satisfies the
+            # RunEventType Literal accepted by append_run_event under mypy.
+            if pending_channel == "reasoning":
+                await append_run_event(
+                    session, run_id=run_id, event_type="reasoning_delta", payload={"text": text}
+                )
+            else:
+                await append_run_event(
+                    session, run_id=run_id, event_type="text_delta", payload={"text": text}
+                )
             await session.commit()
         pending.clear()
         pending_chars = 0
+        pending_channel = None
         return True
 
     # Drive the provider stream from a background producer task so that the
@@ -362,10 +376,24 @@ async def _run_provider_stream(
                     delta_persisted=first_flush_done,
                 )
 
-            if isinstance(chunk, TextDelta):
+            if isinstance(chunk, (TextDelta, ReasoningDelta)):
+                channel = "reasoning" if isinstance(chunk, ReasoningDelta) else "text"
+                # Channel switch: flush the previous channel before buffering the new one,
+                # so reasoning_delta events strictly precede text_delta events in seq order.
+                if pending and pending_channel != channel:
+                    if not await flush_pending():
+                        return _StreamOutcome(
+                            status="cancelled",
+                            before_first_delta=not first_flush_done,
+                            delta_persisted=first_flush_done,
+                        )
                 if not pending:
                     window_started_at = time.monotonic()
-                text_parts.append(chunk.text)
+                    pending_channel = channel
+                if channel == "reasoning":
+                    reasoning_parts.append(chunk.text)
+                else:
+                    text_parts.append(chunk.text)
                 pending.append(chunk.text)
                 pending_chars += len(chunk.text)
                 if pending_chars >= batch_max_chars:
@@ -391,6 +419,7 @@ async def _run_provider_stream(
                         delta_persisted=first_flush_done,
                     )
                 full_text = "".join(text_parts)
+                full_reasoning = "".join(reasoning_parts)
                 async with session_factory() as session:
                     changed = await mark_run_succeeded(
                         session,
@@ -403,6 +432,7 @@ async def _run_provider_stream(
                             session,
                             run_id=run_id,
                             content=full_text,
+                            reasoning=full_reasoning or None,
                         )
                     await session.commit()
                 if not changed:

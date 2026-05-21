@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from app.providers.types import Finish, ProviderChunk, ProviderError, TextDelta
+from app.providers.types import Finish, ProviderChunk, ProviderError, ReasoningDelta, TextDelta
 
 
 def parse_sse_line(line: str) -> ProviderChunk | None:
@@ -26,6 +26,7 @@ def parse_sse_line(line: str) -> ProviderChunk | None:
     finish_reason = first.get("finish_reason")
     delta = first.get("delta") or {}
     content = delta.get("content")
+    reasoning_content = delta.get("reasoning_content")
 
     if finish_reason is not None:
         usage = data.get("usage")
@@ -34,4 +35,6 @@ def parse_sse_line(line: str) -> ProviderChunk | None:
         return Finish(finish_reason=finish_reason, usage=usage, provider_request_id=None)
     if isinstance(content, str) and content != "":
         return TextDelta(text=content)
+    if isinstance(reasoning_content, str) and reasoning_content != "":
+        return ReasoningDelta(text=reasoning_content)
     return None

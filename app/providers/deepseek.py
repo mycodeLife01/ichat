@@ -34,7 +34,7 @@ class DeepSeekProvider(Provider):
         model: str,
         messages: list[ProviderMessage],
     ) -> AsyncIterator[ProviderChunk]:
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "stream": True,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -42,6 +42,8 @@ class DeepSeekProvider(Provider):
                 "type": "enabled" if self._settings.deepseek_thinking_enabled else "disabled"
             },
         }
+        if self._settings.deepseek_thinking_enabled:
+            payload["reasoning_effort"] = self._settings.deepseek_reasoning_effort
         headers = {
             "Authorization": f"Bearer {self._settings.deepseek_api_key}",
             "Accept": "text/event-stream",

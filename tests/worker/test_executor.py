@@ -12,7 +12,15 @@ from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.providers import Finish, Provider, ProviderChunk, ProviderError, ProviderMessage, TextDelta
+from app.providers import (
+    Finish,
+    Provider,
+    ProviderChunk,
+    ProviderError,
+    ProviderMessage,
+    ReasoningDelta,
+    TextDelta,
+)
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
 from tests.providers.fake import FakeProvider, RaiseError, Sleep
@@ -711,3 +719,47 @@ async def test_execute_run_renews_lease_during_long_stream(
         assert run.heartbeat_at is not None
         assert original_expiry is not None
         assert run.heartbeat_at >= original_expiry - timedelta(seconds=settings.run_lease_seconds)
+
+
+async def test_execute_run_materializes_reasoning_on_success(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session, conversation_title="Chat")
+        await session.commit()
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    fake = FakeProvider(
+        script=[
+            ReasoningDelta(text="Because "),
+            ReasoningDelta(text="reasons"),
+            TextDelta(text="Hello"),
+            Finish(finish_reason="stop"),
+        ]
+    )
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        messages = (
+            await session.scalars(
+                select(Message)
+                .where(Message.conversation_id == run.conversation_id)
+                .order_by(Message.position.asc())
+            )
+        ).all()
+        assert messages[1].role == "assistant"
+        assert messages[1].content == "Hello"
+        assert messages[1].reasoning == "Because reasons"

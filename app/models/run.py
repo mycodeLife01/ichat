@@ -89,7 +89,8 @@ class RunEvent(Base):
     __table_args__ = (
         CheckConstraint("seq > 0", name="seq_positive"),
         CheckConstraint(
-            "type IN ('run_started', 'text_delta', 'run_succeeded', 'run_failed', 'run_cancelled')",
+            "type IN ('run_started', 'text_delta', 'reasoning_delta', "
+            "'run_succeeded', 'run_failed', 'run_cancelled')",
             name="type_valid",
         ),
         UniqueConstraint("run_id", "seq", name="uq_run_events_run_seq"),

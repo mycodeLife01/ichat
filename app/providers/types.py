@@ -18,13 +18,18 @@ class TextDelta:
 
 
 @dataclass(frozen=True)
+class ReasoningDelta:
+    text: str
+
+
+@dataclass(frozen=True)
 class Finish:
     finish_reason: str
     usage: dict[str, Any] | None = None
     provider_request_id: str | None = None
 
 
-ProviderChunk = TextDelta | Finish
+ProviderChunk = TextDelta | ReasoningDelta | Finish
 
 
 class ProviderError(Exception):

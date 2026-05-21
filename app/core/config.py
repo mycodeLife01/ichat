@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str
     deepseek_model: str
     deepseek_thinking_enabled: bool
+    deepseek_reasoning_effort: str = "high"
     default_system_prompt: str
     run_lease_seconds: int
     worker_poll_interval_seconds: float
@@ -41,6 +42,17 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("deepseek_reasoning_effort")
+    @classmethod
+    def normalize_reasoning_effort(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"low", "medium", "high", "xhigh", "max"}
+        if normalized not in allowed:
+            raise ValueError(
+                f"deepseek_reasoning_effort must be one of {sorted(allowed)}, got {value!r}"
+            )
+        return normalized
 
 
 @lru_cache
