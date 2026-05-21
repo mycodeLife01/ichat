@@ -145,3 +145,68 @@ def test_settings_can_be_constructed_directly() -> None:
     )
 
     assert settings.log_level == "INFO"
+
+
+def test_reasoning_effort_defaults_to_high_and_normalizes_case(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
+        jwt_secret="secret",
+        jwt_access_token_ttl_seconds=900,
+        refresh_token_ttl_seconds=2_592_000,
+        deepseek_api_key="key",
+        deepseek_base_url="https://deepseek.example",
+        deepseek_model="deepseek-test",
+        deepseek_thinking_enabled=True,
+        default_system_prompt="Be helpful.",
+        run_lease_seconds=60,
+        worker_poll_interval_seconds=2,
+        worker_heartbeat_interval_seconds=10,
+        summary_provider_name="deepseek",
+        summary_model="deepseek-summary",
+        log_level="info",
+    )
+    assert settings.deepseek_reasoning_effort == "high"
+
+    # model_copy bypasses validators; assert case-normalization via construction instead:
+    built = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
+        jwt_secret="secret",
+        jwt_access_token_ttl_seconds=900,
+        refresh_token_ttl_seconds=2_592_000,
+        deepseek_api_key="key",
+        deepseek_base_url="https://deepseek.example",
+        deepseek_model="deepseek-test",
+        deepseek_thinking_enabled=True,
+        default_system_prompt="Be helpful.",
+        run_lease_seconds=60,
+        worker_poll_interval_seconds=2,
+        worker_heartbeat_interval_seconds=10,
+        summary_provider_name="deepseek",
+        summary_model="deepseek-summary",
+        log_level="info",
+        deepseek_reasoning_effort="HIGH",
+    )
+    assert built.deepseek_reasoning_effort == "high"
+
+
+def test_reasoning_effort_rejects_invalid_value() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
+            jwt_secret="secret",
+            jwt_access_token_ttl_seconds=900,
+            refresh_token_ttl_seconds=2_592_000,
+            deepseek_api_key="key",
+            deepseek_base_url="https://deepseek.example",
+            deepseek_model="deepseek-test",
+            deepseek_thinking_enabled=True,
+            default_system_prompt="Be helpful.",
+            run_lease_seconds=60,
+            worker_poll_interval_seconds=2,
+            worker_heartbeat_interval_seconds=10,
+            summary_provider_name="deepseek",
+            summary_model="deepseek-summary",
+            log_level="info",
+            deepseek_reasoning_effort="ludicrous",
+        )
