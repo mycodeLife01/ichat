@@ -156,3 +156,49 @@ async def test_materialize_assistant_message_rejects_unknown_run(
                 run_id=999_999_999,
                 content="hi",
             )
+
+
+async def test_materialize_assistant_message_stores_reasoning(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session)
+        run_id = run.id
+        await session.commit()
+
+    async with session_factory() as session:
+        message = await materialize_assistant_message(
+            session,
+            run_id=run_id,
+            content="Final answer",
+            reasoning="Chain of thought",
+        )
+        await session.commit()
+        message_id = message.id
+
+    async with session_factory() as session:
+        saved = await session.get(Message, message_id)
+        assert saved is not None
+        assert saved.content == "Final answer"
+        assert saved.reasoning == "Chain of thought"
+
+
+async def test_materialize_assistant_message_reasoning_defaults_to_none(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session)
+        run_id = run.id
+        await session.commit()
+
+    async with session_factory() as session:
+        message = await materialize_assistant_message(
+            session, run_id=run_id, content="Only answer"
+        )
+        await session.commit()
+        message_id = message.id
+
+    async with session_factory() as session:
+        saved = await session.get(Message, message_id)
+        assert saved is not None
+        assert saved.reasoning is None
