@@ -186,6 +186,7 @@ async def test_get_run_state_returns_current_draft(
         "status": "streaming",
         "latest_seq": 3,
         "draft_text": "Hello world",
+        "draft_reasoning": "",
         "terminal_event": None,
     }
 
