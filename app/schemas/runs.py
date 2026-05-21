@@ -37,4 +37,5 @@ class RunStateResponse(BaseModel):
     status: RunStatus
     latest_seq: int
     draft_text: str
+    draft_reasoning: str = ""
     terminal_event: RunEventResponse | None

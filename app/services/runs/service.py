@@ -167,6 +167,7 @@ async def get_owned_run_state(
 
     latest_seq = 0
     draft_parts: list[str] = []
+    reasoning_parts: list[str] = []
     terminal_event: RunEventResponse | None = None
 
     for event in events:
@@ -175,6 +176,10 @@ async def get_owned_run_state(
             text = event.payload.get("text")
             if isinstance(text, str):
                 draft_parts.append(text)
+        if event.type == "reasoning_delta":
+            text = event.payload.get("text")
+            if isinstance(text, str):
+                reasoning_parts.append(text)
         if event.type in TERMINAL_EVENT_TYPES:
             terminal_event = run_event_response(event)
 
@@ -183,6 +188,7 @@ async def get_owned_run_state(
         status=cast(RunStatus, run.status),
         latest_seq=latest_seq,
         draft_text="".join(draft_parts),
+        draft_reasoning="".join(reasoning_parts),
         terminal_event=terminal_event,
     )
 

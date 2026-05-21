@@ -388,6 +388,30 @@ async def test_cancel_owned_run_cross_user_returns_not_found(
     assert exc_info.value.detail == "Run not found"
 
 
+async def test_get_owned_run_state_builds_draft_reasoning_from_reasoning_delta_events(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        _, _, run = await create_run(session, user=user, status_value="succeeded")
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(
+            session, run_id=run.id, event_type="reasoning_delta", payload={"text": "think "}
+        )
+        await append_run_event(
+            session, run_id=run.id, event_type="reasoning_delta", payload={"text": "more"}
+        )
+        await append_run_event(
+            session, run_id=run.id, event_type="text_delta", payload={"text": "answer"}
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
+
+        state = await get_owned_run_state(session, user=user, run_id=run.id)
+
+    assert state.draft_text == "answer"
+    assert state.draft_reasoning == "think more"
+
+
 async def test_cancel_owned_run_deleted_conversation_returns_not_found(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
