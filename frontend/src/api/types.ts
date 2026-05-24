@@ -94,3 +94,9 @@ export type RunStateResponse = {
   draft_reasoning: string;
   terminal_event: RunEventResponse | null;
 };
+
+export type RunStreamEvent = {
+  seq: number;
+  type: RunEventType;
+  data: RunEventResponse;
+};
