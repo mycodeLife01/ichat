@@ -73,3 +73,65 @@ describe("ApiClient JSON requests", () => {
     await expect(client.request("/conversations")).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe("ApiClient refresh retry", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("refreshes once and retries the original request after 401", async () => {
+    tokenStore.save({
+      user: authTokenResponse.user,
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      tokenType: "bearer",
+      expiresAt: Date.now() - 1,
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "expired" }, { status: 401 }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          envelope({
+            ...authTokenResponse,
+            access_token: "new-access",
+            refresh_token: "new-refresh",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(envelope(conversationResponse)));
+    const client = new ApiClient({ baseUrl: "http://api.test/api/v1", fetchImpl, tokenStore });
+
+    await expect(client.request("/conversations")).resolves.toEqual(conversationResponse);
+    expect(tokenStore.getAccessToken()).toBe("new-access");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears tokens and calls onAuthExpired when refresh fails", async () => {
+    tokenStore.save({
+      user: authTokenResponse.user,
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      tokenType: "bearer",
+      expiresAt: Date.now() - 1,
+    });
+    const onAuthExpired = vi.fn();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "expired" }, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ detail: "invalid refresh" }, { status: 401 }));
+    const client = new ApiClient({
+      baseUrl: "http://api.test/api/v1",
+      fetchImpl,
+      tokenStore,
+      onAuthExpired,
+    });
+
+    await expect(client.request("/conversations")).rejects.toMatchObject({
+      status: 401,
+      isAuthExpired: true,
+    });
+    expect(tokenStore.read()).toBeNull();
+    expect(onAuthExpired).toHaveBeenCalledOnce();
+  });
+});

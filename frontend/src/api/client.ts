@@ -1,7 +1,11 @@
-import { tokenStore as defaultTokenStore, type TokenStore } from "../auth/tokenStore";
+import {
+  createAuthSession,
+  tokenStore as defaultTokenStore,
+  type TokenStore,
+} from "../auth/tokenStore";
 import { getApiBaseUrl } from "./env";
 import { ApiError, getDefaultErrorMessage, getErrorDetail, toApiError } from "./errors";
-import type { SuccessEnvelope } from "./types";
+import type { AuthTokenResponse, SuccessEnvelope } from "./types";
 
 type QueryValue = string | number | boolean | null | undefined;
 
@@ -27,6 +31,7 @@ export class ApiClient {
   private readonly fetchImpl: typeof fetch;
   private readonly tokenStore: TokenStore;
   private readonly onAuthExpired?: () => void;
+  private refreshPromise: Promise<AuthTokenResponse> | null = null;
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? getApiBaseUrl();
@@ -55,6 +60,14 @@ export class ApiClient {
   }
 
   async fetchRaw(path: string, options: ApiRequestOptions = {}): Promise<Response> {
+    return this.fetchRawInternal(path, options, false);
+  }
+
+  private async fetchRawInternal(
+    path: string,
+    options: ApiRequestOptions,
+    hasRetried: boolean,
+  ): Promise<Response> {
     const response = await this.fetchImpl(this.buildUrl(path, options.query), {
       method: options.method ?? "GET",
       headers: this.buildHeaders(options),
@@ -62,11 +75,64 @@ export class ApiClient {
       signal: options.signal,
     });
 
+    if (
+      response.status === 401 &&
+      options.auth !== false &&
+      options.retryOnUnauthorized !== false &&
+      !hasRetried
+    ) {
+      await this.refreshSession();
+      return this.fetchRawInternal(path, options, true);
+    }
+
     if (!response.ok) {
       throw await this.createResponseError(response);
     }
 
     return response;
+  }
+
+  private async refreshSession(): Promise<void> {
+    const refreshToken = this.tokenStore.getRefreshToken();
+
+    if (!refreshToken) {
+      this.expireAuth();
+      throw new ApiError({
+        status: 401,
+        message: "登录状态已失效，请重新登录",
+        isAuthExpired: true,
+      });
+    }
+
+    try {
+      this.refreshPromise ??= this.request<AuthTokenResponse>("/auth/refresh", {
+        method: "POST",
+        body: { refresh_token: refreshToken },
+        auth: false,
+        retryOnUnauthorized: false,
+      }).finally(() => {
+        this.refreshPromise = null;
+      });
+
+      const refreshed = await this.refreshPromise;
+      this.tokenStore.save(createAuthSession(refreshed));
+    } catch (error) {
+      this.expireAuth();
+      const apiError = toApiError(error);
+      throw new ApiError({
+        status: apiError.status || 401,
+        message: "登录状态已失效，请重新登录",
+        detail: apiError.detail,
+        payload: apiError.payload,
+        isAuthExpired: true,
+        cause: error,
+      });
+    }
+  }
+
+  private expireAuth(): void {
+    this.tokenStore.clear();
+    this.onAuthExpired?.();
   }
 
   private buildUrl(path: string, query?: Record<string, QueryValue>): string {
