@@ -116,6 +116,10 @@ def test_env_example_values_match_settings_shape(monkeypatch: MonkeyPatch) -> No
         env_value(example_values, "AUTO_TITLE_MAX_OUTPUT_TOKENS")
     )
     assert settings.log_level == env_value(example_values, "LOG_LEVEL")
+    assert settings.cors_allowed_origins_list == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 
 def test_ci_workflow_provides_required_settings_env() -> None:
@@ -210,3 +214,51 @@ def test_reasoning_effort_rejects_invalid_value() -> None:
             log_level="info",
             deepseek_reasoning_effort="ludicrous",
         )
+
+
+def test_cors_allowed_origins_parses_comma_separated_list() -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
+        jwt_secret="secret",
+        jwt_access_token_ttl_seconds=900,
+        refresh_token_ttl_seconds=2_592_000,
+        deepseek_api_key="key",
+        deepseek_base_url="https://deepseek.example",
+        deepseek_model="deepseek-test",
+        deepseek_thinking_enabled=False,
+        default_system_prompt="Be helpful.",
+        run_lease_seconds=60,
+        worker_poll_interval_seconds=2,
+        worker_heartbeat_interval_seconds=10,
+        summary_provider_name="deepseek",
+        summary_model="deepseek-summary",
+        log_level="info",
+        cors_allowed_origins="http://localhost:5173, http://127.0.0.1:5173 ,",
+    )
+
+    assert settings.cors_allowed_origins_list == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+
+def test_cors_allowed_origins_defaults_to_empty_list() -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost:5432/db",
+        jwt_secret="secret",
+        jwt_access_token_ttl_seconds=900,
+        refresh_token_ttl_seconds=2_592_000,
+        deepseek_api_key="key",
+        deepseek_base_url="https://deepseek.example",
+        deepseek_model="deepseek-test",
+        deepseek_thinking_enabled=False,
+        default_system_prompt="Be helpful.",
+        run_lease_seconds=60,
+        worker_poll_interval_seconds=2,
+        worker_heartbeat_interval_seconds=10,
+        summary_provider_name="deepseek",
+        summary_model="deepseek-summary",
+        log_level="info",
+    )
+
+    assert settings.cors_allowed_origins_list == []

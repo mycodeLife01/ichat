@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     auto_title_max_chars: int = 32
     auto_title_max_output_tokens: int = 40
     log_level: str
+    cors_allowed_origins: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -53,6 +54,14 @@ class Settings(BaseSettings):
                 f"deepseek_reasoning_effort must be one of {sorted(allowed)}, got {value!r}"
             )
         return normalized
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache
