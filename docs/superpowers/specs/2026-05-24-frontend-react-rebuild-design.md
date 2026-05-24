@@ -17,6 +17,8 @@
 | 技术栈 | Vite + React + TypeScript + 标准前端测试工具 |
 | 状态管理 | 首期使用 React Context + reducer + custom hooks，不先引入 Redux/Zustand |
 | 后端接入 | 直接接真实 API 与 fetch-based SSE stream |
+| UI 落地目标 | 生产化实现 `uiux_v1.html` 已确认的首版设计，不重新设计一套新界面 |
+| 登录/注册页 | 沿用 `uiux_v1.html` 的认证入口设计，接入真实登录/注册 API |
 | 部署边界 | 前后端完全分离，FastAPI 不再绑定前端资源 |
 | 生产前端托管 | Cloudflare Pages 托管 `feslia.com` |
 | 生产 API 暴露 | `api.feslia.com` 指向现有服务器 Nginx → FastAPI |
@@ -34,7 +36,7 @@
 - 用户消息编辑并重新生成、助手消息重新生成。
 - Markdown 安全渲染、复制 fallback、移动端抽屉基础适配。
 
-`uiux_v1.html` 是一个打包后的 React mockup。解包后可见它已经包含接近目标视觉结构的组件：`Sidebar`、`Topbar`、`Message`、`ThinkingBlock`、`Composer`、`BottomSheet`、`ConfirmDialog`、`Toast`、`AuthScreen`。该 mockup 适合作为视觉和组件边界参考，但其中的 demo 数据、tweaks 面板、假状态机、未实现入口不应进入生产应用。
+`uiux_v1.html` 是一个打包后的 React mockup。解包后可见它已经包含接近目标视觉结构的组件：`Sidebar`、`Topbar`、`Message`、`ThinkingBlock`、`Composer`、`BottomSheet`、`ConfirmDialog`、`Toast`、`AuthScreen`。本次 React 重构应把它作为首版 UI 的实现基准：视觉语言、布局结构、组件边界和认证入口都以 `uiux_v1` 为准做生产化落地。实现阶段不重新设计另一套界面；只移除 demo-only 内容，并把假状态机替换为真实 API、SSE 和业务状态。
 
 ## 范围
 
@@ -42,7 +44,7 @@
 
 - 新建 `frontend/` 下的 Vite React TypeScript 应用。
 - 迁移并类型化真实 API client、认证刷新、SSE parser/stream client。
-- 实现生产版登录/注册页和聊天工作区。
+- 将 `uiux_v1` 中的登录/注册页和聊天工作区生产化，接入真实认证、会话和 run API。
 - 实现桌面侧栏、移动抽屉、消息列表、输入框、思考过程、消息操作、确认框、toast、底部操作面板。
 - 保留并测试草稿、标题 pending、SSE replay、刷新恢复、停止生成、失败/取消 partial 内容、编辑/重新生成语义。
 - 后端移除静态前端挂载，增加 CORS 配置。
@@ -317,7 +319,7 @@ React 应用启动时：
 
 ## UI 设计落地
 
-生产 UI 以 UI/UX spec 和 `uiux_v1` 的成熟部分为基准：
+生产 UI 以 UI/UX spec 和 `uiux_v1` 的成熟部分为基准。这里的“基准”是验收约束，而不是灵感参考：首版 React 应用应实现 `uiux_v1` 已确认的视觉布局、组件层次、交互密度和认证入口，只在生产化过程中删除未实现能力入口、demo tweaks 和假数据逻辑。
 
 - 浅色温和主题，背景 `#fbfbfa` 一类中性浅色。
 - 左侧低对比历史侧栏，桌面常驻，移动端抽屉。
@@ -326,7 +328,7 @@ React 应用启动时：
 - 助手消息使用靠左正文排版，不使用厚重气泡。
 - 思考过程是次要信息层，折叠区在正文上方。
 - 消息操作默认不抢正文注意力：桌面 hover/focus 出现，移动端更多按钮打开底部 sheet。
-- 登录/注册页认真但从简，不承担营销页任务。
+- 登录/注册页沿用 `uiux_v1` 已实现的认证入口设计，不另起一轮页面设计；实现阶段只补真实表单校验、真实 API 调用、提交中状态和中文错误反馈。
 
 从 `uiux_v1` 吸收的组件边界：
 
