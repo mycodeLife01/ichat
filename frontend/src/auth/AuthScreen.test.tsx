@@ -11,17 +11,20 @@ describe("AuthScreen", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
-  it("shows login fields by default and register fields after switching", async () => {
+  it("activates login fields by default and register fields after switching", async () => {
     const user = userEvent.setup();
     renderWithApp(<AuthScreen />, createFakeServices());
 
-    expect(screen.getByLabelText("用户名或邮箱")).toBeInTheDocument();
-    expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
+    // Mode-specific fields stay mounted (to animate the card height); the
+    // inactive set is collapsed and removed from the tab order.
+    expect(screen.getByLabelText("用户名或邮箱")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("邮箱")).toHaveAttribute("tabindex", "-1");
 
     await user.click(screen.getByRole("tab", { name: "注册" }));
 
-    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
-    expect(screen.getByLabelText("邮箱")).toBeInTheDocument();
+    expect(screen.getByLabelText("用户名")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("邮箱")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("用户名或邮箱")).toHaveAttribute("tabindex", "-1");
   });
 
   it("shows field errors when submitting an empty login form", async () => {
