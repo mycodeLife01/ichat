@@ -24,6 +24,30 @@ describe("ApiClient JSON requests", () => {
     await expect(client.request("/conversations")).resolves.toEqual(conversationResponse);
   });
 
+  it("invokes the default global fetch with a global `this`, not the client", async () => {
+    // Regression: storing the global fetch and calling it as `this.fetchImpl(...)`
+    // runs fetch with `this === ApiClient`, which throws "Illegal invocation" in
+    // browsers (no network request is even made). The default path must bind fetch
+    // to the global. Injected fetchImpl (the other tests) never exercised this.
+    const original = globalThis.fetch;
+    let calledWithGlobalThis = false;
+    const spy = function (this: unknown): Promise<Response> {
+      calledWithGlobalThis = this === globalThis;
+      return Promise.resolve(jsonResponse(envelope(conversationResponse)));
+    };
+    globalThis.fetch = spy as unknown as typeof fetch;
+    try {
+      // No fetchImpl injected -> exercises the real default-fetch path.
+      const client = new ApiClient({ baseUrl: "http://api.test/api/v1" });
+      await client.request("/conversations");
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    // With the bug, fetch runs with `this === ApiClient` (false here).
+    expect(calledWithGlobalThis).toBe(true);
+  });
+
   it("builds method, JSON body, query, and authorization headers", async () => {
     tokenStore.save({
       user: authTokenResponse.user,

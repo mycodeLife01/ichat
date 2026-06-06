@@ -35,7 +35,10 @@ export class ApiClient {
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? getApiBaseUrl();
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Bind the global fetch to the global object: it is invoked as
+    // `this.fetchImpl(...)`, which would otherwise run with `this === ApiClient`
+    // and throw "Illegal invocation" in browsers. Injected impls are used as-is.
+    this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
     this.tokenStore = options.tokenStore ?? defaultTokenStore;
     this.onAuthExpired = options.onAuthExpired;
   }
