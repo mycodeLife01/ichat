@@ -13,3 +13,4 @@ deploy/certs/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
+chatapp_demo
