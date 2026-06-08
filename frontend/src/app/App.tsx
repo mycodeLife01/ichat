@@ -1,6 +1,6 @@
 import { AuthScreen } from "../auth/AuthScreen";
 import { useAuthSession } from "../auth/useAuthSession";
-import { AuthedPlaceholder } from "./AuthedPlaceholder";
+import { AppShell } from "./AppShell";
 
 export function App() {
   const { bootstrapped, isAuthenticated } = useAuthSession();
@@ -9,5 +9,5 @@ export function App() {
     return null;
   }
 
-  return isAuthenticated ? <AuthedPlaceholder /> : <AuthScreen />;
+  return isAuthenticated ? <AppShell /> : <AuthScreen />;
 }

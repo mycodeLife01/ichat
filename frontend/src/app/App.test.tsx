@@ -17,12 +17,13 @@ describe("App auth gate", () => {
     expect(await screen.findByRole("tab", { name: "登录" })).toBeInTheDocument();
   });
 
-  it("shows the authenticated placeholder when a session is restored", async () => {
+  it("shows the chat shell when a session is restored", async () => {
     tokenStore.save(createAuthSession(authTokenResponse));
 
     renderWithApp(<App />, createFakeServices());
 
-    expect(await screen.findByText("已登录：alice")).toBeInTheDocument();
+    // The empty-state welcome heading appears in the chat shell.
+    expect(await screen.findByText("我们先从哪里开始呢？")).toBeInTheDocument();
   });
 
   it("returns to the auth screen after logout", async () => {
