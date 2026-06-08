@@ -1,0 +1,52 @@
+/* Shared design tokens — warm-neutral light theme, ported from chatapp_demo. */
+:root {
+  --bg: #fbfbfa;
+  --bg-sunken: #f4f3f0;
+  --bg-raised: #ffffff;
+  --bg-hover: rgba(20, 20, 19, 0.04);
+  --bg-active: rgba(20, 20, 19, 0.07);
+
+  --fg: #1a1a19;
+  --fg-muted: #6b6a66;
+  --fg-subtle: #95938e;
+  --fg-faint: #b8b6b0;
+
+  --border: rgba(20, 20, 19, 0.08);
+  --border-strong: rgba(20, 20, 19, 0.14);
+  --border-focus: rgba(20, 20, 19, 0.55);
+
+  --accent: #1a1a19;
+  --accent-fg: #fbfbfa;
+  --accent-soft: rgba(20, 20, 19, 0.07);
+
+  --danger: #b54a2e;
+  --danger-soft: rgba(181, 74, 46, 0.08);
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", serif;
+
+  /* Fixed values (previously Tweaks-driven). */
+  --density: 1.1;
+  --reading-width: 820px;
+  --sidebar-width: 280px;
+  --row-pad-y: calc(7px * var(--density));
+  --row-pad-x: calc(10px * var(--density));
+  --msg-gap: calc(32px * var(--density));
+
+  --composer-radius: 18px;
+  --send-radius: 18px;
+  --history-radius: 6px;
+  --menu-radius: 8px;
+  --user-bubble-radius: 10px;
+  --composer-max-height: 240px;
+  --composer-border-width: 1px;
+
+  --scrollbar-thumb: rgba(20, 20, 19, 0.18);
+  --scrollbar-thumb-hover: rgba(20, 20, 19, 0.32);
+}

@@ -1,22 +1,7 @@
 /* Auth screen — warm-neutral editor-feel design, ported from the demo. */
 
 .auth-shell {
-  /* Design tokens scoped to the auth surface (also reused by AuthedPlaceholder). */
-  --bg: #fbfbfa;
-  --bg-raised: #ffffff;
-  --fg: #1a1a19;
-  --fg-muted: #6b6a66;
-  --fg-subtle: #95938e;
-  --border: rgb(20 20 19 / 8%);
-  --border-strong: rgb(20 20 19 / 14%);
-  --accent: #1a1a19;
-  --accent-fg: #fbfbfa;
-  --danger: #b54a2e;
-  --danger-soft: rgb(181 74 46 / 8%);
-  --font-sans: "Inter", -apple-system, blinkmacsystemfont, "PingFang SC",
-    "Microsoft YaHei", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, sfmono-regular, menlo, monospace;
-
+  /* Design tokens now come from the global :root (styles/tokens.css). */
   position: relative;
   display: flex;
   align-items: center;
