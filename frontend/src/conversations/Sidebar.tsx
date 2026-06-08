@@ -133,11 +133,16 @@ export function Sidebar({
               zIndex: 10,
               minWidth: 120,
               boxShadow: "0 6px 20px rgba(20,20,19,0.08)",
+              transition: "border-radius 140ms",
             }}
           >
             <button
               className="sheet-item"
-              style={{ padding: "7px 10px", fontSize: 13 }}
+              style={{
+                padding: "7px 10px",
+                fontSize: 13,
+                borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
+              }}
               onClick={() => {
                 setRenameId(c.id);
                 setMenuFor(null);
@@ -148,7 +153,11 @@ export function Sidebar({
             </button>
             <button
               className="sheet-item destructive"
-              style={{ padding: "7px 10px", fontSize: 13 }}
+              style={{
+                padding: "7px 10px",
+                fontSize: 13,
+                borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
+              }}
               onClick={() => {
                 onRequestDelete(c.id);
                 setMenuFor(null);

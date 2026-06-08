@@ -926,3 +926,26 @@ textarea:focus-visible,
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ============ Menu / sheet items (used by the row dropdown) ============ */
+.sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 22px;
+  font-size: 15px;
+  color: var(--fg);
+  text-align: left;
+}
+.sheet-item:hover,
+.sheet-item:active {
+  background: var(--bg-hover);
+}
+.sheet-item.destructive {
+  color: var(--danger);
+}
+.sheet-item:disabled {
+  color: var(--fg-faint);
+  cursor: not-allowed;
+}
