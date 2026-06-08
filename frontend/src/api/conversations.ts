@@ -64,4 +64,6 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
   };
 }
 
+export type ConversationApi = ReturnType<typeof createConversationApi>;
+
 export const conversationApi = createConversationApi();

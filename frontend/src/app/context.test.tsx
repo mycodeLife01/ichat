@@ -39,7 +39,10 @@ describe("useAppActions", () => {
   it("returns the provided actions", () => {
     const actions: AppActions = {
       dispatch: vi.fn(),
-      services: { authApi: {} as AppActions["services"]["authApi"] },
+      services: {
+        authApi: {} as AppActions["services"]["authApi"],
+        conversationApi: {} as AppActions["services"]["conversationApi"],
+      },
       streamAbort: { register: vi.fn(), abort: vi.fn() },
     };
     const wrapper = ({ children }: { children: ReactNode }) => (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 
 import { createAuthApi } from "../api/auth";
 import { ApiClient } from "../api/client";
+import { createConversationApi } from "../api/conversations";
 import { tokenStore } from "../auth/tokenStore";
 import { createAuthExpiryHandler } from "./authExpiry";
 import {
@@ -40,7 +41,10 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
     const client = new ApiClient({
       onAuthExpired: createAuthExpiryHandler({ dispatch, abort: streamAbort.abort }),
     });
-    return { authApi: createAuthApi(client) };
+    return {
+      authApi: createAuthApi(client),
+      conversationApi: createConversationApi(client),
+    };
   }, [injectedServices, dispatch, streamAbort]);
 
   const actions = useMemo<AppActions>(
