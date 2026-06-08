@@ -1,0 +1,88 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+
+import type { ConversationResponse } from "../api/types";
+import { Sidebar } from "./Sidebar";
+
+function makeConversation(
+  id: number,
+  title: string,
+  updatedAt: string,
+): ConversationResponse {
+  return {
+    id,
+    title,
+    activated_at: updatedAt,
+    created_at: updatedAt,
+    updated_at: updatedAt,
+  };
+}
+
+const today = new Date().toISOString();
+
+function baseProps() {
+  return {
+    items: [makeConversation(1, "今天的对话", today)],
+    selectedId: 1,
+    user: { email: "a@b.com", name: "alice" },
+    isMobile: false,
+    collapsed: false,
+    mobileOpen: false,
+    onSelect: vi.fn(),
+    onNew: vi.fn(),
+    onRename: vi.fn(),
+    onRequestDelete: vi.fn(),
+    onLogout: vi.fn(),
+    onToggleCollapsed: vi.fn(),
+    onCloseMobile: vi.fn(),
+  };
+}
+
+describe("Sidebar", () => {
+  it("groups conversations and renders rows", () => {
+    render(<Sidebar {...baseProps()} />);
+    expect(screen.getByText("今天")).toBeInTheDocument();
+    expect(screen.getByText("今天的对话")).toBeInTheDocument();
+  });
+
+  it("shows empty placeholder when no conversations", () => {
+    render(<Sidebar {...baseProps()} items={[]} />);
+    expect(
+      screen.getByText(/还没有已保存的对话/),
+    ).toBeInTheDocument();
+  });
+
+  it("renames in place on Enter", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "重命名" }));
+    const input = screen.getByDisplayValue("今天的对话");
+    await user.clear(input);
+    await user.type(input, "新名字{Enter}");
+
+    expect(props.onRename).toHaveBeenCalledWith(1, "新名字");
+  });
+
+  it("requests delete via the row menu", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "删除对话" }));
+
+    expect(props.onRequestDelete).toHaveBeenCalledWith(1);
+  });
+
+  it("logs out", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} />);
+    await user.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(props.onLogout).toHaveBeenCalled();
+  });
+});
