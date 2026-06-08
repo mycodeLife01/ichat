@@ -180,6 +180,9 @@ textarea:focus-visible,
   padding: var(--row-pad-y) var(--row-pad-x);
   border-radius: var(--history-radius, 6px);
   font-size: 13.5px;
+  /* Stable line box (>= the 22px menu button) so revealing the button on
+     hover never changes row height and shifts the rows below. */
+  line-height: 22px;
   color: var(--fg-muted);
   cursor: pointer;
   position: relative;
