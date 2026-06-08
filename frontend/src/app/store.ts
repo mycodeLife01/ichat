@@ -10,12 +10,11 @@ import {
 } from "../conversations/state";
 import { authReducer, initialAuthState, type AuthAction, type AuthState } from "../auth/state";
 import { activeRunReducer, initialActiveRunState, type ActiveRunState } from "../runs/state";
+import { initialUiState, uiReducer, type UiAction, type UiState } from "../ui/state";
 
 export type ComposerState = { input: string; isComposing: boolean };
-export type UiState = { mobileSidebarOpen: boolean };
 
 const initialComposerState: ComposerState = { input: "", isComposing: false };
-const initialUiState: UiState = { mobileSidebarOpen: false };
 
 export type AppState = {
   auth: AuthState;
@@ -31,6 +30,7 @@ export type AppAction =
   | AuthAction
   | ConversationIndexAction
   | ConversationDetailAction
+  | UiAction
   | AppResetAction;
 
 export const initialState: AppState = {
@@ -44,11 +44,6 @@ export const initialState: AppState = {
 
 function composerReducer(state: ComposerState, action: AppAction): ComposerState {
   if (action.type === "app/reset") return initialComposerState;
-  return state;
-}
-
-function uiReducer(state: UiState, action: AppAction): UiState {
-  if (action.type === "app/reset") return initialUiState;
   return state;
 }
 
