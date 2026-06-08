@@ -4,6 +4,7 @@ import {
   initialConversationDetailState,
   initialConversationIndexState,
   type ConversationDetailState,
+  type ConversationIndexAction,
   type ConversationIndexState,
 } from "../conversations/state";
 import { authReducer, initialAuthState, type AuthAction, type AuthState } from "../auth/state";
@@ -25,7 +26,7 @@ export type AppState = {
 };
 
 export type AppResetAction = { type: "app/reset" };
-export type AppAction = AuthAction | AppResetAction;
+export type AppAction = AuthAction | ConversationIndexAction | AppResetAction;
 
 export const initialState: AppState = {
   auth: initialAuthState,

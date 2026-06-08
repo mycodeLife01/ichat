@@ -29,13 +29,41 @@ export const initialConversationDetailState: ConversationDetailState = {
   status: "idle",
 };
 
-// Placeholder reducers: only RESET is handled now; feature actions land in later steps.
+export type ConversationIndexAction =
+  | { type: "conversations/listLoading" }
+  | { type: "conversations/listLoaded"; items: ConversationResponse[] }
+  | { type: "conversations/listError" }
+  | { type: "conversations/selected"; id: number | null }
+  | { type: "conversations/renamed"; conversation: ConversationResponse }
+  | { type: "conversations/removed"; id: number };
+
 export function conversationIndexReducer(
   state: ConversationIndexState,
   action: AppAction,
 ): ConversationIndexState {
-  if (action.type === "app/reset") return initialConversationIndexState;
-  return state;
+  switch (action.type) {
+    case "conversations/listLoading":
+      return { ...state, status: "loading" };
+    case "conversations/listLoaded":
+      return { ...state, items: action.items, status: "idle" };
+    case "conversations/listError":
+      return { ...state, status: "error" };
+    case "conversations/selected":
+      return { ...state, selectedId: action.id };
+    case "conversations/renamed":
+      return {
+        ...state,
+        items: state.items.map((c) =>
+          c.id === action.conversation.id ? action.conversation : c,
+        ),
+      };
+    case "conversations/removed":
+      return { ...state, items: state.items.filter((c) => c.id !== action.id) };
+    case "app/reset":
+      return initialConversationIndexState;
+    default:
+      return state;
+  }
 }
 
 export function conversationDetailReducer(
