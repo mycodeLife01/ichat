@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { conversationResponse } from "../test/apiFixtures";
 import {
+  conversationDetailResponse,
+  conversationResponse,
+} from "../test/apiFixtures";
+import {
+  conversationDetailReducer,
   conversationIndexReducer,
+  initialConversationDetailState,
   initialConversationIndexState,
 } from "./state";
 
@@ -74,5 +79,67 @@ describe("conversationIndexReducer", () => {
     });
     const next = conversationIndexReducer(base, { type: "app/reset" });
     expect(next).toEqual(initialConversationIndexState);
+  });
+});
+
+describe("conversationDetailReducer", () => {
+  const { messages, ...conversation } = conversationDetailResponse;
+
+  it("loads detail into ready state", () => {
+    const loading = conversationDetailReducer(initialConversationDetailState, {
+      type: "conversations/detailLoading",
+    });
+    expect(loading.status).toBe("loading");
+
+    const ready = conversationDetailReducer(loading, {
+      type: "conversations/detailLoaded",
+      conversation,
+      messages,
+    });
+    expect(ready.status).toBe("ready");
+    expect(ready.conversation).toEqual(conversation);
+    expect(ready.messages).toEqual(messages);
+  });
+
+  it("clears to forbidden", () => {
+    const ready = conversationDetailReducer(initialConversationDetailState, {
+      type: "conversations/detailLoaded",
+      conversation,
+      messages,
+    });
+    const next = conversationDetailReducer(ready, {
+      type: "conversations/detailForbidden",
+    });
+    expect(next.status).toBe("forbidden");
+    expect(next.conversation).toBeNull();
+    expect(next.messages).toEqual([]);
+  });
+
+  it("resets to initial on detailReset and app/reset", () => {
+    const ready = conversationDetailReducer(initialConversationDetailState, {
+      type: "conversations/detailLoaded",
+      conversation,
+      messages,
+    });
+    expect(
+      conversationDetailReducer(ready, { type: "conversations/detailReset" }),
+    ).toEqual(initialConversationDetailState);
+    expect(conversationDetailReducer(ready, { type: "app/reset" })).toEqual(
+      initialConversationDetailState,
+    );
+  });
+
+  it("syncs the current conversation on rename", () => {
+    const ready = conversationDetailReducer(initialConversationDetailState, {
+      type: "conversations/detailLoaded",
+      conversation,
+      messages,
+    });
+    const renamed = { ...conversation, title: "改名后" };
+    const next = conversationDetailReducer(ready, {
+      type: "conversations/renamed",
+      conversation: renamed,
+    });
+    expect(next.conversation?.title).toBe("改名后");
   });
 });

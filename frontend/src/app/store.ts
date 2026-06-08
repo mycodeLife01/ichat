@@ -3,6 +3,7 @@ import {
   conversationIndexReducer,
   initialConversationDetailState,
   initialConversationIndexState,
+  type ConversationDetailAction,
   type ConversationDetailState,
   type ConversationIndexAction,
   type ConversationIndexState,
@@ -26,7 +27,11 @@ export type AppState = {
 };
 
 export type AppResetAction = { type: "app/reset" };
-export type AppAction = AuthAction | ConversationIndexAction | AppResetAction;
+export type AppAction =
+  | AuthAction
+  | ConversationIndexAction
+  | ConversationDetailAction
+  | AppResetAction;
 
 export const initialState: AppState = {
   auth: initialAuthState,

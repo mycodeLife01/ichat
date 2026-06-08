@@ -66,10 +66,40 @@ export function conversationIndexReducer(
   }
 }
 
+export type ConversationDetailAction =
+  | { type: "conversations/detailLoading" }
+  | {
+      type: "conversations/detailLoaded";
+      conversation: ConversationResponse;
+      messages: MessageResponse[];
+    }
+  | { type: "conversations/detailForbidden" }
+  | { type: "conversations/detailReset" };
+
 export function conversationDetailReducer(
   state: ConversationDetailState,
   action: AppAction,
 ): ConversationDetailState {
-  if (action.type === "app/reset") return initialConversationDetailState;
-  return state;
+  switch (action.type) {
+    case "conversations/detailLoading":
+      return { ...state, status: "loading" };
+    case "conversations/detailLoaded":
+      return {
+        conversation: action.conversation,
+        messages: action.messages,
+        status: "ready",
+      };
+    case "conversations/detailForbidden":
+      return { conversation: null, messages: [], status: "forbidden" };
+    case "conversations/detailReset":
+      return initialConversationDetailState;
+    case "conversations/renamed":
+      return state.conversation && state.conversation.id === action.conversation.id
+        ? { ...state, conversation: action.conversation }
+        : state;
+    case "app/reset":
+      return initialConversationDetailState;
+    default:
+      return state;
+  }
 }
