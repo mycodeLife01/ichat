@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  type Dispatch,
+  type ReactNode,
+} from "react";
 
 import { createAuthApi } from "../api/auth";
 import { ApiClient } from "../api/client";
@@ -13,7 +21,7 @@ import {
   type Services,
   type StreamAbortController,
 } from "./context";
-import { initialState, rootReducer } from "./store";
+import { initialState, rootReducer, type AppAction, type AppState } from "./store";
 
 type AppProviderProps = {
   children: ReactNode;
@@ -22,7 +30,16 @@ type AppProviderProps = {
 };
 
 export function AppProvider({ children, services: injectedServices }: AppProviderProps) {
-  const [state, dispatch] = useReducer(rootReducer, initialState);
+  const [state, rawDispatch] = useReducer(rootReducer, initialState);
+
+  // Advance a mirror of state synchronously on each dispatch so async handlers
+  // can read the latest selection without waiting for a render to commit. The
+  // reducer is pure, so recomputing here yields the same value React commits.
+  const stateRef = useRef<AppState>(initialState);
+  const dispatch = useCallback<Dispatch<AppAction>>((action) => {
+    stateRef.current = rootReducer(stateRef.current, action);
+    rawDispatch(action);
+  }, []);
 
   const abortRef = useRef<() => void>(() => {});
   const streamAbort = useMemo<StreamAbortController>(
@@ -50,7 +67,7 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
   }, [injectedServices, dispatch, streamAbort]);
 
   const actions = useMemo<AppActions>(
-    () => ({ dispatch, services, streamAbort }),
+    () => ({ dispatch, services, streamAbort, stateRef }),
     [dispatch, services, streamAbort],
   );
 

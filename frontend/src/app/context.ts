@@ -1,4 +1,4 @@
-import { createContext, useContext, type Dispatch } from "react";
+import { createContext, useContext, type Dispatch, type MutableRefObject } from "react";
 
 import type { LoginRequest, RegisterRequest } from "../api/auth";
 import type { ConversationApi } from "../api/conversations";
@@ -30,6 +30,10 @@ export type AppActions = {
   dispatch: Dispatch<AppAction>;
   services: Services;
   streamAbort: StreamAbortController;
+  // Mirrors committed state but is advanced synchronously on every dispatch, so
+  // async handlers (e.g. useRunStream) can read the latest state without waiting
+  // for a React render to commit.
+  stateRef: MutableRefObject<AppState>;
 };
 
 export const StateContext = createContext<AppState | null>(null);

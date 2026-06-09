@@ -45,6 +45,7 @@ describe("useAppActions", () => {
         runApi: {} as AppActions["services"]["runApi"],
       },
       streamAbort: { register: vi.fn(), abort: vi.fn() },
+      stateRef: { current: initialState },
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
       <ActionsContext.Provider value={actions}>{children}</ActionsContext.Provider>

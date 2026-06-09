@@ -4,7 +4,11 @@ import { Sidebar } from "../conversations/Sidebar";
 import { Topbar } from "../conversations/Topbar";
 import { selectionStore } from "../conversations/selectionStore";
 import { useConversationLoader } from "../conversations/useConversationLoader";
+import { useSendMessage } from "../conversations/useSendMessage";
 import { MessageThread } from "../messages/MessageThread";
+import { StreamingMessage } from "../messages/StreamingMessage";
+import { useStickToBottom } from "../messages/useStickToBottom";
+import { useRunStream } from "../runs/useRunStream";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -26,7 +30,7 @@ function useIsMobile() {
 
 export function AppShell() {
   const { user, logout } = useAuthSession();
-  const { ui } = useAppState();
+  const { ui, activeRun } = useAppState();
   const { dispatch } = useAppActions();
   const {
     items,
@@ -41,6 +45,37 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+
+  const { start, cancel } = useRunStream();
+  const send = useSendMessage(start);
+  const threadRef = useStickToBottom<HTMLDivElement>([
+    detail.messages.length,
+    activeRun?.draftText,
+    activeRun?.draftReasoning,
+    activeRun?.status,
+  ]);
+
+  const onSend = () => {
+    const text = composerValue;
+    setComposerValue("");
+    void send(text);
+  };
+
+  const onStop = () => {
+    if (activeRun) void cancel(activeRun.runId);
+  };
+
+  // demo Composer state: idle / streaming / stopping
+  const composerState: "idle" | "streaming" | "stopping" =
+    activeRun != null && activeRun.conversationId === selectedId
+      ? activeRun.cancelRequested || activeRun.status === "cancelling"
+        ? "stopping"
+        : activeRun.status === "queued" ||
+            activeRun.status === "started" ||
+            activeRun.status === "streaming"
+          ? "streaming"
+          : "idle"
+      : "idle";
 
   // Bootstrap: load list, then restore stored selection (non-streaming).
   useEffect(() => {
@@ -75,7 +110,7 @@ export function AppShell() {
 
   const activeConversation = detail.conversation;
   const messages = detail.messages;
-  const showWelcome = selectedId == null || messages.length === 0;
+  const showWelcome = (selectedId == null || messages.length === 0) && activeRun == null;
   const sidebarCollapsed = ui.sidebarCollapsed;
 
   const confirmTarget =
@@ -117,15 +152,27 @@ export function AppShell() {
           onNewMobile={newConversation}
         />
 
-        <div className="thread-region">
-          {!showWelcome && <MessageThread messages={messages} />}
+        <div className="thread-region" ref={threadRef}>
+          {!showWelcome && (
+            <MessageThread messages={messages}>
+              {activeRun && activeRun.conversationId === selectedId && (
+                <StreamingMessage run={activeRun} />
+              )}
+            </MessageThread>
+          )}
         </div>
 
         <div className="composer-area">
           <div className={`welcome-section${showWelcome ? "" : " hidden"}`}>
             <h1 className="welcome-heading">我们先从哪里开始呢？</h1>
           </div>
-          <Composer value={composerValue} onChange={setComposerValue} />
+          <Composer
+            value={composerValue}
+            onChange={setComposerValue}
+            onSend={onSend}
+            onStop={onStop}
+            state={composerState}
+          />
         </div>
         <div className={`spacer-below${showWelcome ? " show" : ""}`} />
       </main>

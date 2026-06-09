@@ -1,17 +1,16 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 
 import { isAbortError } from "../api/errors";
-import { useAppActions, useAppState } from "../app/context";
+import { useAppActions } from "../app/context";
 
 export function useRunStream() {
-  const { conversationIndex } = useAppState();
-  const { dispatch, services, streamAbort } = useAppActions();
+  const { dispatch, services, streamAbort, stateRef } = useAppActions();
   const { conversationApi, runApi } = services;
 
-  // Latest selected conversation, read inside the async terminal handler so a
-  // run that finishes after the user navigated away does not overwrite detail.
-  const selectedIdRef = useRef(conversationIndex.selectedId);
-  selectedIdRef.current = conversationIndex.selectedId;
+  // stateRef is advanced synchronously on every dispatch, so the async terminal
+  // handler reads the latest selected conversation even when the stream finishes
+  // before React commits a render — a run that ends after the user navigated away
+  // must not overwrite detail.
 
   const start = useCallback(
     async (runId: number, conversationId: number, afterSeq: number): Promise<void> => {
@@ -49,7 +48,7 @@ export function useRunStream() {
               ]);
               dispatch({ type: "conversations/listLoaded", items: list });
               dispatch({ type: "conversations/draftActivated" });
-              if (selectedIdRef.current === conversationId) {
+              if (stateRef.current.conversationIndex.selectedId === conversationId) {
                 const { messages, ...conversation } = detail;
                 dispatch({ type: "conversations/detailLoaded", conversation, messages });
               }
@@ -62,7 +61,7 @@ export function useRunStream() {
         dispatch({ type: "run/terminal", status: "failed" });
       }
     },
-    [dispatch, conversationApi, runApi, streamAbort],
+    [dispatch, conversationApi, runApi, streamAbort, stateRef],
   );
 
   // Optimistically flip to "停止中" and ask the server to cancel. We do NOT abort
