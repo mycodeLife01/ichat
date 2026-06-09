@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   conversationDetailResponse,
   conversationResponse,
+  sendMessageResponse,
 } from "../test/apiFixtures";
 import {
   conversationDetailReducer,
@@ -141,5 +142,32 @@ describe("conversationDetailReducer", () => {
       conversation: renamed,
     });
     expect(next.conversation?.title).toBe("改名后");
+  });
+});
+
+describe("conversation slices - streaming additions", () => {
+  it("appends a message to detail", () => {
+    const ready = conversationDetailReducer(initialConversationDetailState, {
+      type: "conversations/detailLoaded",
+      conversation: conversationResponse,
+      messages: [],
+    });
+    const next = conversationDetailReducer(ready, {
+      type: "conversations/messageAppended",
+      message: sendMessageResponse.message,
+    });
+    expect(next.messages).toEqual([sendMessageResponse.message]);
+  });
+
+  it("sets and clears draftId", () => {
+    const created = conversationIndexReducer(initialConversationIndexState, {
+      type: "conversations/draftCreated",
+      id: 42,
+    });
+    expect(created.draftId).toBe(42);
+    const activated = conversationIndexReducer(created, {
+      type: "conversations/draftActivated",
+    });
+    expect(activated.draftId).toBeNull();
   });
 });

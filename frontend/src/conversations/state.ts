@@ -35,7 +35,9 @@ export type ConversationIndexAction =
   | { type: "conversations/listError" }
   | { type: "conversations/selected"; id: number | null }
   | { type: "conversations/renamed"; conversation: ConversationResponse }
-  | { type: "conversations/removed"; id: number };
+  | { type: "conversations/removed"; id: number }
+  | { type: "conversations/draftCreated"; id: number }
+  | { type: "conversations/draftActivated" };
 
 export function conversationIndexReducer(
   state: ConversationIndexState,
@@ -59,6 +61,10 @@ export function conversationIndexReducer(
       };
     case "conversations/removed":
       return { ...state, items: state.items.filter((c) => c.id !== action.id) };
+    case "conversations/draftCreated":
+      return { ...state, draftId: action.id };
+    case "conversations/draftActivated":
+      return { ...state, draftId: null };
     case "app/reset":
       return initialConversationIndexState;
     default:
@@ -73,6 +79,7 @@ export type ConversationDetailAction =
       conversation: ConversationResponse;
       messages: MessageResponse[];
     }
+  | { type: "conversations/messageAppended"; message: MessageResponse }
   | { type: "conversations/detailForbidden" }
   | { type: "conversations/detailReset" };
 
@@ -89,6 +96,8 @@ export function conversationDetailReducer(
         messages: action.messages,
         status: "ready",
       };
+    case "conversations/messageAppended":
+      return { ...state, messages: [...state.messages, action.message] };
     case "conversations/detailForbidden":
       return { conversation: null, messages: [], status: "forbidden" };
     case "conversations/detailReset":
