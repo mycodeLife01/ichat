@@ -628,10 +628,11 @@ textarea:focus-visible,
 .md pre {
   font-family: var(--font-mono);
   font-size: 13px;
-  background: #1a1a19;
-  color: #ededeb;
+  background: #f7f7f5;
+  color: var(--fg);
   padding: 14px 16px;
   border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
   overflow-x: auto;
   line-height: 1.55;
 }
