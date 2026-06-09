@@ -31,7 +31,6 @@ export function ThinkingBlock({ content, streaming }: ThinkingBlockProps) {
           }
         }}
       >
-        {streaming && <span className="pulse" />}
         <Icons.Chevron size={11} className="chev" />
         {streaming ? "思考中…" : "已思考"}
       </div>

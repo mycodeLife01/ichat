@@ -516,8 +516,7 @@ textarea:focus-visible,
 
 /* ============ Thinking ============ */
 .thinking {
-  border-left: 2px solid var(--border-strong);
-  padding: 2px 0 2px 14px;
+  padding: 2px 0;
   margin-bottom: 14px;
   color: var(--fg-muted);
   font-size: 13px;
@@ -551,18 +550,6 @@ textarea:focus-visible,
 }
 .thinking.collapsed .thinking-body {
   display: none;
-}
-
-.thinking-header .pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
 }
 
 /* ============ Streaming caret ============ */
