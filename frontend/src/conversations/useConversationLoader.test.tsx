@@ -43,6 +43,24 @@ describe("useConversationLoader", () => {
     expect(selectionStore.read()).toBe(conversationResponse.id);
   });
 
+  it("does not refetch when the already-selected conversation is clicked again", async () => {
+    const detail = vi.fn(async () => conversationDetailResponse);
+    const services = createFakeServices({}, { detail });
+    const { result } = renderHook(() => useConversationLoader(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      await result.current.selectConversation(conversationResponse.id);
+    });
+    expect(detail).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.selectConversation(conversationResponse.id);
+    });
+    expect(detail).toHaveBeenCalledTimes(1);
+  });
+
   it("clears selection when detail is forbidden (404)", async () => {
     selectionStore.save(999);
     const services = createFakeServices(

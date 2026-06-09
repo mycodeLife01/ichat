@@ -29,6 +29,12 @@ export function useConversationLoader() {
 
   const selectConversation = useCallback(
     async (id: number) => {
+      // Re-clicking the active conversation is a no-op: avoid a redundant refetch.
+      // Users who want to reload the current conversation should refresh the page.
+      if (id === conversationIndex.selectedId) {
+        dispatch({ type: "ui/setMobileSidebar", open: false });
+        return;
+      }
       dispatch({ type: "run/cleared" });
       dispatch({ type: "conversations/selected", id });
       dispatch({ type: "conversations/detailLoading" });
@@ -47,7 +53,7 @@ export function useConversationLoader() {
         }
       }
     },
-    [dispatch, conversationApi],
+    [dispatch, conversationApi, conversationIndex.selectedId],
   );
 
   const renameConversation = useCallback(
