@@ -2,15 +2,19 @@ import { useEffect, useRef } from "react";
 
 import { Icons } from "./icons";
 
+type ComposerState = "idle" | "streaming" | "stopping";
+
 type ComposerProps = {
   value: string;
   onChange: (value: string) => void;
+  onSend: () => void;
+  onStop: () => void;
+  state: ComposerState;
 };
 
 const MAX_HEIGHT = 240;
 
-// Send is intentionally disabled this step; SSE submit lands in step 8.
-export function Composer({ value, onChange }: ComposerProps) {
+export function Composer({ value, onChange, onSend, onStop, state }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -19,6 +23,11 @@ export function Composer({ value, onChange }: ComposerProps) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
+
+  const send = () => {
+    if (!value.trim() || state !== "idle") return;
+    onSend();
+  };
 
   return (
     <div className="composer-wrap">
@@ -31,13 +40,13 @@ export function Composer({ value, onChange }: ComposerProps) {
           rows={1}
           style={{ maxHeight: `${MAX_HEIGHT}px` }}
           onKeyDown={(event) => {
-            // Keyboard wiring reserved for step 8; Enter must not submit yet.
             if (
               event.key === "Enter" &&
               !event.shiftKey &&
               !event.nativeEvent.isComposing
             ) {
               event.preventDefault();
+              send();
             }
           }}
         />
@@ -55,9 +64,27 @@ export function Composer({ value, onChange }: ComposerProps) {
             <button className="composer-tool" type="button" aria-label="语音输入">
               <Icons.Mic size={16} />
             </button>
-            <button className="send-btn" type="button" aria-label="发送" disabled>
-              <Icons.ArrowUp size={15} />
-            </button>
+            {state === "idle" ? (
+              <button
+                className="send-btn"
+                type="button"
+                aria-label="发送"
+                disabled={!value.trim()}
+                onClick={send}
+              >
+                <Icons.ArrowUp size={15} />
+              </button>
+            ) : (
+              <button
+                className="stop-btn"
+                type="button"
+                aria-label={state === "stopping" ? "停止中" : "停止生成"}
+                disabled={state === "stopping"}
+                onClick={onStop}
+              >
+                <Icons.Stop size={11} />
+              </button>
+            )}
           </div>
         </div>
       </div>
