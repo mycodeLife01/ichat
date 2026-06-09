@@ -6,9 +6,9 @@
 
 承接 `2026-06-08-frontend-conversation-list-and-detail-design.md`（已实现：会话列表 + 只读详情 + 会话管理）。本设计落地前端重构总计划（`2026-05-24-frontend-react-rebuild-design.md`）第 8 步：**发送消息 + SSE 基础流式**。
 
-用户在选中会话或空白（草稿）态下输入并发送 → 立即显示用户消息 → 实时流式渲染助手的思考过程与正文 → run 成功后用服务端物化的真实助手消息替换流式气泡，并刷新侧栏列表。失败 / 取消按最小处理（停流、保留 partial、状态文字、恢复输入），不做重试与重连。
+用户在选中会话或空白（草稿）态下输入并发送 → 立即显示用户消息 → 实时流式渲染助手的思考过程与正文 → run 成功后用服务端物化的真实助手消息替换流式气泡，并刷新侧栏列表。流式中 Composer 显示停止按钮，点击经 `runApi.cancel` 最小取消，等 `run_cancelled` 终态显示「已停止」。失败 / 取消保留 partial、显示对应 `.status-pill`、恢复输入，不做重试与重连。**全部 UI 严格复刻 `chatapp_demo`**（标记、类名、文案、交互逐项对齐）。
 
-这是整个剩余重构工作（停止生成、刷新恢复、编辑 / 重新生成、自动标题）的基石：run 生命周期的状态转移、`useRunStream` 流式消费、Composer 发送链路在本轮全部打通并被测试覆盖，后续步骤在其上扩展。
+这是整个剩余重构工作（刷新恢复、编辑 / 重新生成、自动标题）的基石：run 生命周期的状态转移、`useRunStream` 流式消费、Composer 发送链路在本轮全部打通并被测试覆盖，后续步骤在其上扩展。
 
 ## 背景与现状
 
@@ -37,10 +37,12 @@
 
 | 决策点 | 选择 |
 |--------|------|
-| 失败终态处理深度 | 最小处理：停流、保留 partial 正文 / 思考、显示状态文字、恢复输入；不重试、不重连 |
-| 流式助手内容的渲染方式 | 方案 A：`conversationDetail.messages` 保持服务端事实源；流式内容由独立的 `activeRun` 切片驱动、渲染为挂在消息列表之后的临时气泡；成功后重拉 detail 替换 |
+| UI/UX 复刻 | **严格复刻 `chatapp_demo`**：标记、类名、文案、交互密度逐项对齐 `chatapp_demo/components.jsx` 与 `styles.css`；计划验证阶段需逐项核对并做视觉 smoke |
+| 失败终态处理深度 | 最小处理：停流、保留 partial 正文 / 思考、显示 `.status-pill failed`（`生成失败 · 请稍后重试`）、恢复输入；不重试、不重连 |
+| 流式助手内容的渲染方式 | 方案 A：`conversationDetail.messages` 保持服务端事实源；流式内容由独立的 `activeRun` 切片驱动、渲染为挂在消息列表之后的临时气泡（复用 demo 的 `.caret` + `.status-pill` 标记）；成功后重拉 detail 替换 |
+| 停止生成 | 纳入本轮**最小可用**（与严格复刻一致）：Composer 按 demo 渲染 `idle/streaming/stopping` 三态；`onStop` 调 `runApi.cancel(runId)` + 置 `cancelRequested`，等服务端 `run_cancelled` 终态后显示 `.status-pill stopped`（`已停止`）。`cancelRequested` 期间按钮显示「停止中」且禁用。刷新恢复仍留步骤 9 |
 | 自动滚动 | 纳入本轮，最小 near-bottom 跟随（用户上滚阅读时不打断） |
-| ComposerState reducer 化 | 本轮不做，`composer.input` 留在 AppShell 局部 state；随步骤 9 的发送 / 停止 sendability 一起做 |
+| ComposerState reducer 化 | 本轮不做，`composer.input` 留在 AppShell 局部 state |
 
 ### 为什么选方案 A（而非合成占位 / 折叠进 detail 切片）
 
@@ -60,10 +62,11 @@
 | `run/reasoningDelta` `{seq, text}` | `draftReasoning += text`，`latestSeq=seq`，`status:"streaming"` |
 | `run/textDelta` `{seq, text}` | `draftText += text`，`latestSeq=seq`，`status:"streaming"` |
 | `run/terminal` `{status}` | 设 `status` 为 `succeeded` / `failed` / `cancelled`，**保留** drafts |
+| `run/cancelRequested` | 置 `cancelRequested:true`、`status:"cancelling"`（乐观态，等服务端 `run_cancelled` 才真正终止） |
 | `run/cleared` | → `null` |
 | `app/reset` | → `null`（已有） |
 
-`run/reasoningDelta` / `run/textDelta` / `run/terminal` 在 `state === null` 时为 no-op（防御性：用户已切走会话清空了 activeRun，但 in-flight 事件仍在到达）。
+`run/reasoningDelta` / `run/textDelta` / `run/terminal` / `run/cancelRequested` 在 `state === null` 时为 no-op（防御性：用户已切走会话清空了 activeRun，但 in-flight 事件仍在到达）。
 
 ### `conversations/state.ts` — 新增 action
 
@@ -80,21 +83,25 @@
 
 ### `runs/useRunStream.ts` — 做实
 
-返回 `start(runId, conversationId, afterSeq)`：
+返回 `{ start, cancel }`。
 
-1. 建 `AbortController` 存入 ref（卸载时 abort）。
+`start(runId, conversationId, afterSeq)`：
+
+1. 建 `AbortController`，经 `streamAbort.register(() => controller.abort())` 注册（既有基建：logout / 身份失效已调 `streamAbort.abort()`，无需另写卸载 effect）。
 2. 异步迭代 `runApi.streamEvents(runId, afterSeq, {signal})`。
 3. `run_started` 忽略；`reasoning_delta` / `text_delta` → 派发 `run/reasoningDelta` / `run/textDelta`（取 `event.data.payload.text`，缺失时按空串）。
 4. 终态：派发 `run/terminal{status}`，并：
    - **succeeded**：`await conversationApi.detail(conversationId)` + `conversationApi.list()` → 派发 `conversations/listLoaded` + `conversations/draftActivated` + `run/cleared`（均无条件）；**仅当用户仍停留在该会话**（`selectedIdRef.current === conversationId`）时才派发 `conversations/detailLoaded`，否则跳过——避免把 A 的助手消息覆盖到用户已切去的 B（用户返回 A 时 `selectConversation` 会重拉到含助手消息的最新 detail）。
-   - **failed / cancelled**：保留 `activeRun`（partial 与状态文字可见），不重拉、不清理；输入恢复。
+   - **failed / cancelled**：保留 `activeRun`（partial 与 `.status-pill` 可见），不重拉、不清理；输入恢复。
 5. 异常：`AbortError` 静默停止；其它 stream 错误按 `failed` 处理（派发 `run/terminal{failed}`）。
 
-`useRunStream` 通过 `useAppActions().services` 直接拿 `conversationApi` / `runApi` 做成功重拉，不复用 `selectConversation`（后者含选择持久化等多余副作用）。`selectedIdRef` 每次渲染同步 `conversationIndex.selectedId`，供终态回调读取最新选择。
+`cancel(runId)`：派发 `run/cancelRequested`（乐观置「停止中」），`await runApi.cancel(runId)`（失败吞掉，终态仍会经 SSE 到达）。**不**主动 abort 本地流——等服务端 `run_cancelled` event 经 SSE 到达，再走终态显示「已停止」（符合「terminal 到达前不显示已停止」）。
+
+`useRunStream` 通过 `useAppActions().services` 直接拿 `conversationApi` / `runApi`，不复用 `selectConversation`（后者含选择持久化等多余副作用）。`selectedIdRef` 每次渲染同步 `conversationIndex.selectedId`，供终态回调读取最新选择。
 
 ### `conversations/useSendMessage.ts`（新增）
 
-返回 `send(content)`：
+`useSendMessage(start)` 接收 `useRunStream` 的 `start` 作为参数（AppShell 只实例化一次 `useRunStream`，把 `start` 注入本 hook、把 `cancel` 用于停止），返回 `send(content)`：
 
 1. `content.trim()` 为空 → return。
 2. 确保有会话：
@@ -105,27 +112,33 @@
 5. 派发 `run/started{runId: run.id, conversationId: targetId}`，调 `start(run.id, targetId, 0)` 开流。
 6. 步骤 2 / 3 抛错：保留输入、不启动流、不崩溃（用户可重试）；本轮仅 `console` + 恢复，中文错误提示走步骤 11 Toast。
 
-AppShell 组合 `useSendMessage` 与 `useRunStream`，把 `send` 与 `disabled` 传入 Composer。
+AppShell：`const { start, cancel } = useRunStream(); const send = useSendMessage(start);`，把 `onSend` / `onStop` / `state` 传入 Composer。
 
 ## 展示组件
 
+> **严格复刻基准**：本节所有标记、类名、文案以 `chatapp_demo/components.jsx` 的 `Message`（助手分支，第 471–571 行）与 `Composer`（第 576–664 行）为准；样式类（`.caret` / `.status-pill.stopped` / `.status-pill.failed` / `.stop-btn` / `.body.md`）已存在于 `frontend/src/styles/chat.css`，**本轮不新增 CSS**。
+
 ### `messages/StreamingMessage.tsx`（新增）
 
-仅当 `activeRun != null && activeRun.conversationId === selectedId` 时渲染，挂在 `MessageThread` 之后。复用助手消息版式：
-- `draftReasoning` 非空 → `ThinkingBlock`，`streaming = (status ∈ {started, streaming}) && draftText === ""`（思考阶段展开「思考中…」，正文一到自动收起为「已思考」）。
-- `draftText` → `Markdown`。
-- `status === "failed"` → 末尾一行 `生成失败`；`status === "cancelled"` → `已停止`（小号状态文字，新增最小 `.run-status` 样式，置于 `chat.css`）。
+仅当 `activeRun != null && activeRun.conversationId === selectedId` 时渲染，挂在 `MessageThread` 之后。结构与 demo 助手消息逐项对齐（`.msg.assistant` → flex 容器 → 思考区 + `.body.md` + caret + status-pill）：
+- `draftReasoning` 非空 → `ThinkingBlock`，`streaming = isStreaming && draftText === ""`（思考阶段展开「思考中…」，正文一到自动收起为「已思考」）。
+- `draftText` → `Markdown`（输出 `.body.md`）。
+- `isStreaming`（`status ∈ {queued, started, streaming, cancelling}`）时，正文后渲染 `<span className="caret" />`（demo 的闪烁光标）。
+- `status === "cancelled"` → `<div className="status-pill stopped">`：小方点 span + `已停止`（demo 第 530–535 行原样）。
+- `status === "failed"` → `<div className="status-pill failed">`：`<Icons.Close size={12} />` + `生成失败 · 请稍后重试`（demo 第 536–541 行原样）。
 
 ### `messages/ThinkingBlock.tsx` — 小改
 
-加一个随 `streaming` 翻转的 effect：`streaming` 真 → 展开，假 → 收起；期间仍允许手动切换。使「正文到达 → 自动收起」生效，历史消息（`streaming` 恒为 false）默认收起。
+加一个随 `streaming` 翻转的 effect：`streaming` 真 → 展开，假 → 收起；期间仍允许手动切换。等价于 demo `ThinkingBlock` 的 `autoCollapseOnDone` 行为（demo 第 277–282 行）：正文到达自动收起，历史消息（`streaming` 恒为 false）默认收起。
 
-### `ui/Composer.tsx` — 接线
+### `ui/Composer.tsx` — 逐行对齐 demo Composer
 
-新增 props `onSubmit(text: string)` 与 `disabled: boolean`：
-- Enter（非 Shift、非 `isComposing`）→ `onSubmit(value)` 并清空；Shift+Enter 换行。
-- 发送按钮：`value.trim() !== "" && !disabled` 时可用，点击 → `onSubmit`。
-- `disabled` 由 AppShell 传入：`activeRun?.conversationId === selectedId && activeRun.status ∈ {queued, started, streaming}`（成功 / 失败后即恢复）。
+改为 demo `Composer` 的 props 形状：`{ value, onChange, onSend, onStop, state }`，`state: "idle" | "streaming" | "stopping"`。
+- `send()`：`if (!value.trim() || state !== "idle") return; onSend();`（demo 第 594–597 行）。
+- Enter（非 Shift、非 `isComposing`）→ `send()`；Shift+Enter 换行。
+- `state === "idle"` → 渲染 `.send-btn`（`disabled={!value.trim()}`，点击 `send`）；否则渲染 `.stop-btn`（`disabled={state === "stopping"}`，点击 `onStop`，`aria-label` 为 `停止中`/`停止生成`），含 `<Icons.Stop size={11} />`（demo 第 640–658 行）。
+
+AppShell 派生 `state`：当 `activeRun?.conversationId === selectedId` 时——`cancelRequested`（即 `status === "cancelling"`）→ `"stopping"`；`status ∈ {queued, started, streaming}` → `"streaming"`；否则 `"idle"`（终态 succeeded/failed/cancelled 后回 `idle`，发送按钮恢复）。`onSend = () => { const t = composerValue; setComposerValue(""); void send(t); }`；`onStop = () => { if (activeRun) void cancel(activeRun.runId); }`。
 
 ### 自动滚动
 
@@ -137,9 +150,13 @@ AppShell 组合 `useSendMessage` 与 `useRunStream`，把 `send` 与 `disabled` 
 
 输入 → `send` →（无选中则建草稿）→ `sendMessage` → 插入用户消息 + 清空输入 → `run/started` → `start` 开流 → reasoning/text delta 累加（思考中 → 正文到达收起、near-bottom 贴底）→ `run_succeeded` → 重拉 detail + list → `detailLoaded`（真实助手消息）+ `draftActivated` + `run/cleared` → 流式气泡消失、服务端消息接管、侧栏出现该会话。
 
+### Stop path
+
+流式中点击停止 → `onStop` → `cancel(runId)`：派发 `run/cancelRequested`（按钮转「停止中」、禁用）+ `runApi.cancel(runId)` → 服务端写入 `run_cancelled` → SSE 送达 → `run/terminal{cancelled}` → 保留 partial，显示 `.status-pill stopped`「已停止」，Composer 回 `idle`。
+
 ### Failure path
 
-…→ `run_failed` 或流错误 → `run/terminal{failed}` → partial 保留、显示 `生成失败`、输入恢复。（切换会话 / 刷新会丢该 partial —— 步骤 9 再补 partial 持久化与刷新恢复。）
+…→ `run_failed` 或流错误 → `run/terminal{failed}` → partial 保留、显示 `.status-pill failed`「生成失败 · 请稍后重试」、输入恢复。（切换会话 / 刷新会丢该 partial —— 步骤 9 再补 partial 持久化与刷新恢复。）
 
 ## 错误处理
 
@@ -150,38 +167,45 @@ AppShell 组合 `useSendMessage` 与 `useRunStream`，把 `send` 与 `disabled` 
 
 ## 非目标（明确留给后续步骤）
 
-- 「停止生成」按钮与 `runApi.cancel`（步骤 9）。
 - 进行中 run 的刷新恢复（`runApi.state` + `after_seq` 续流）（步骤 9）。
 - partial 内容跨导航 / 刷新保留（步骤 9）。
+- 取消的健壮化：cancel 请求失败的中文错误反馈与重试（步骤 9 / 11）；本轮 cancel 失败仅吞掉，依赖 SSE 终态。
 - 编辑并重发 / 重新生成（步骤 10）。
 - 自动标题 pending 骨架与轮询（步骤 10）。
 - Toast / BottomSheet（步骤 11）。
-- 并发 run 的 UI 守卫——后端保证每会话单 active run，UI 仅在流式中禁用发送。
-- ComposerState 的 reducer 化（随步骤 9）。
+- 并发 run 的 UI 守卫——后端保证每会话单 active run，UI 仅在流式中以停止按钮取代发送。
+- ComposerState 的 reducer 化。
+
+> 注：「停止生成」按钮 + `runApi.cancel` 原属步骤 9，因严格复刻 demo Composer 的 `stopping` 三态而提前到本轮（最小可用版）。
 
 ## 测试策略
 
 按 TDD，每项 RED → GREEN → commit。全部通过 `createFakeServices` 注入 fake，不触达真实 HTTP / SSE。
 
-- `activeRunReducer`：started、reasoningDelta 累加、textDelta 累加、terminal × 3、cleared、app/reset、`state === null` 时 delta/terminal 为 no-op。
+- `activeRunReducer`：started、reasoningDelta 累加、textDelta 累加、terminal × 3、cancelRequested（status cancelling）、cleared、app/reset、`state === null` 时 delta/terminal/cancelRequested 为 no-op。
 - conversations reducer：`messageAppended`、`draftCreated` / `draftActivated`。
-- `useConversationLoader`：`selectConversation` / `newConversation` 派发 `run/cleared`（已有用例基础上补断言）。
-- `useRunStream`：用可控的 fake `streamEvents` 异步生成器驱动 → 断言 delta 派发、succeeded 触发 detail + list 重拉与 `cleared`、failed 保留 activeRun、`AbortError` 静默、**run 终态时用户已切到别的会话则不派发 `detailLoaded`（但仍 list + cleared）**。
-- `useSendMessage`：无选中 → 建草稿全链路（create + detailLoaded + selected + draftCreated + save）；已选中路径；空内容 guard；`sendMessage` 失败保留输入。
-- `Composer`：Enter 提交 / Shift+Enter 换行 / IME 不提交 / 流式中 disabled / 非空启用。
-- `StreamingMessage`：渲染 Markdown + 思考；failed 显示 `生成失败`、cancelled 显示 `已停止`；仅当 activeRun 属于当前会话时渲染。
+- `useConversationLoader`：`selectConversation` / `newConversation` 派发 `run/cleared`。
+- `useRunStream`：用可控的 fake `streamEvents` 异步生成器驱动 → 断言 delta 派发、succeeded 触发 detail + list 重拉与 `cleared`、failed 保留 activeRun、`AbortError` 静默、**run 终态时用户已切到别的会话则不派发 `detailLoaded`（但仍 list + cleared）**；`cancel` 派发 `cancelRequested` 并调 `runApi.cancel`。
+- `useSendMessage`：无选中 → 建草稿全链路（create + detailLoaded + selected + draftCreated + save）；已选中路径不建草稿；空内容 guard；`sendMessage` 失败保留输入。
+- `Composer`：Enter 提交 / Shift+Enter 换行 / IME 不提交；`state==="idle"` 非空启用 send-btn；`state==="streaming"` 渲染 stop-btn（点击 onStop）；`state==="stopping"` stop-btn 禁用。
+- `StreamingMessage`：渲染 `.body.md` + 思考；流式中有 `.caret`；failed 显示 `.status-pill.failed`「生成失败 · 请稍后重试」、cancelled 显示 `.status-pill.stopped`「已停止」；仅当 activeRun 属于当前会话时渲染。
 - `ThinkingBlock`：`streaming` true→false 自动收起，且期间可手动切换。
-- `useStickToBottom`：near-bottom 时贴底、上滚时不打断（基于可控 scroll 容器断言）。
-- AppShell 集成：fake 流跑通一条 happy path（输入 → 发送 → 看到流式正文 → 终态被服务端消息替换）。
+- `useStickToBottom`：near-bottom 时贴底、上滚时不打断（`isNearBottom` 纯函数断言）。
+- AppShell 集成：fake 流跑通一条 happy path（输入 → 发送 → 看到流式正文 → 终态被服务端消息替换）；并断言流式中出现 stop-btn、点击后转「停止中」。
 
 ### 测试基建
 
-`src/test/appHarness.tsx` 的 `createFakeServices` 增加 `runApi`：新增 `createFakeRunApi`，提供
-- 默认数组驱动的 `streamEvents`（同步产出一组预设事件），
-- 一个可手动逐条推送事件、由测试控制终止时机的受控变体（供时序断言用），
-- `state` / `cancel` 桩。
+`src/test/appHarness.tsx` 的 `createFakeServices` 增加第三参数 `runApi`：新增 `createFakeRunApi`（`state` / `cancel` 桩 + 默认空 `streamEvents`）与 `fakeStream(events)` 数组驱动的异步生成器助手。`renderWithApp` / `makeWrapper` 同步透传。
 
-`createFakeServices(authApi, conversationApi, runApi)` 第三参数注入；`renderWithApp` / `makeWrapper` 同步透传。
+## 严格复刻 chatapp_demo
+
+UI/UX 以 `chatapp_demo` 为唯一基准，实现阶段只做生产化（接真实 state/API），不重新设计：
+
+- 标记与类名逐项对齐 `chatapp_demo/components.jsx`：`Message` 助手分支（思考区 / `.body.md` / `.caret` / `.status-pill`）、`Composer`（`.send-btn` ↔ `.stop-btn` 三态）、`ThinkingBlock`（自动收起）。
+- 文案原样：`思考中…` / `已思考` / `已停止` / `生成失败 · 请稍后重试` / 占位「有问题，尽管问」 / stop 按钮 `停止生成`·`停止中`。
+- 样式不新增：`.caret` / `.status-pill(.stopped/.failed)` / `.stop-btn` / `.body.md` 均已在 `frontend/src/styles/chat.css`（由前序步骤从 demo 移植）。如发现缺失类，从 `chatapp_demo/styles.css` 对应段补齐，不自创。
+- 自动化保真断言：组件测试以 demo 类名（`.caret` / `.status-pill.failed` / `.status-pill.stopped` / `.stop-btn`）作为断言锚点。
+- 视觉 smoke（验证阶段必做）：浏览器并排打开 `chatapp_demo/index.html` 与本地运行的应用，逐项比对流式气泡、光标、思考折叠、停止按钮、状态 pill 的外观与交互。
 
 ## 验证
 
@@ -193,7 +217,7 @@ pnpm run lint           # 通过
 pnpm run build          # 通过
 ```
 
-可选本地跨域 smoke：起后端（`VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1`、`CORS_ALLOWED_ORIGINS` 含 `http://localhost:5173`）+ `pnpm dev`，手动发一条消息看流式与终态替换。
+复刻保真验证（必做）：按「严格复刻 chatapp_demo」节，跑组件测试的类名锚点断言 + 浏览器并排视觉 smoke。本地跨域 smoke：起后端（`VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1`、`CORS_ALLOWED_ORIGINS` 含 `http://localhost:5173`）+ `pnpm dev`，手动发消息看流式、停止、终态替换，并与 demo 比对。
 
 ## 关联文档
 
