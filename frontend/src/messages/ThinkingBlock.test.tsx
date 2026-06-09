@@ -18,4 +18,14 @@ describe("ThinkingBlock", () => {
     await user.click(header);
     expect(header).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("auto-collapses when streaming turns false", () => {
+    const { container, rerender } = render(
+      <ThinkingBlock content="想法" streaming={true} />,
+    );
+    expect(container.querySelector(".thinking")?.className).not.toContain("collapsed");
+
+    rerender(<ThinkingBlock content="想法" streaming={false} />);
+    expect(container.querySelector(".thinking")?.className).toContain("collapsed");
+  });
 });
