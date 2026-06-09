@@ -73,7 +73,7 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
 
   useEffect(() => {
     dispatch({ type: "auth/restored", session: tokenStore.read() });
-  }, []);
+  }, [dispatch]);
 
   return (
     <StateContext.Provider value={state}>
