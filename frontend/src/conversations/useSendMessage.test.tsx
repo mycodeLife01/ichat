@@ -1,0 +1,106 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useAppActions, useAppState } from "../app/context";
+import type { ConversationResponse } from "../api/types";
+import { sendMessageResponse } from "../test/apiFixtures";
+import { createFakeServices, makeWrapper } from "../test/appHarness";
+import { selectionStore } from "./selectionStore";
+import { useSendMessage } from "./useSendMessage";
+
+const draft: ConversationResponse = {
+  id: 77,
+  title: null,
+  activated_at: null,
+  created_at: "t",
+  updated_at: "t",
+};
+
+type Start = (runId: number, conversationId: number, afterSeq: number) => void;
+
+function useSendProbe(start: Start) {
+  const send = useSendMessage(start);
+  const { conversationIndex, conversationDetail, activeRun } = useAppState();
+  const { dispatch } = useAppActions();
+  return { send, conversationIndex, conversationDetail, activeRun, dispatch };
+}
+
+describe("useSendMessage", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("creates a draft conversation when none is selected", async () => {
+    const start = vi.fn();
+    const create = vi.fn(async () => draft);
+    const sendMessage = vi.fn(async () => sendMessageResponse);
+    const services = createFakeServices({}, { create, sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      await result.current.send("你好");
+    });
+
+    expect(create).toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(77, "你好");
+    expect(result.current.conversationIndex.selectedId).toBe(77);
+    expect(result.current.conversationIndex.draftId).toBe(77);
+    expect(selectionStore.read()).toBe(77);
+    expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, 77, 0);
+    await waitFor(() =>
+      expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id),
+    );
+  });
+
+  it("sends to the already-selected conversation without creating a draft", async () => {
+    const start = vi.fn();
+    const create = vi.fn(async () => draft);
+    const sendMessage = vi.fn(async () => sendMessageResponse);
+    const services = createFakeServices({}, { create, sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: 55 });
+    });
+    await act(async () => {
+      await result.current.send("世界");
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(55, "世界");
+    expect(result.current.conversationDetail.messages.at(-1)).toEqual(
+      sendMessageResponse.message,
+    );
+  });
+
+  it("ignores empty content", async () => {
+    const start = vi.fn();
+    const sendMessage = vi.fn(async () => sendMessageResponse);
+    const services = createFakeServices({}, { sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      await result.current.send("   ");
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("keeps state usable when sendMessage rejects", async () => {
+    const start = vi.fn();
+    const create = vi.fn(async () => draft);
+    const sendMessage = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const services = createFakeServices({}, { create, sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      await result.current.send("会失败");
+    });
+
+    expect(sendMessage).toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(result.current.activeRun).toBeNull();
+  });
+});
