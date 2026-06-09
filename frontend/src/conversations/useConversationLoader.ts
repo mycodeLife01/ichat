@@ -20,6 +20,7 @@ export function useConversationLoader() {
   }, [dispatch, conversationApi]);
 
   const newConversation = useCallback(() => {
+    dispatch({ type: "run/cleared" });
     dispatch({ type: "conversations/selected", id: null });
     dispatch({ type: "conversations/detailReset" });
     dispatch({ type: "ui/setMobileSidebar", open: false });
@@ -28,6 +29,7 @@ export function useConversationLoader() {
 
   const selectConversation = useCallback(
     async (id: number) => {
+      dispatch({ type: "run/cleared" });
       dispatch({ type: "conversations/selected", id });
       dispatch({ type: "conversations/detailLoading" });
       dispatch({ type: "ui/setMobileSidebar", open: false });

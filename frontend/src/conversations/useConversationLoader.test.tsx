@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/errors";
+import { useAppActions, useAppState } from "../app/context";
 import { conversationDetailResponse, conversationResponse } from "../test/apiFixtures";
 import { createFakeServices, makeWrapper } from "../test/appHarness";
 import { selectionStore } from "./selectionStore";
@@ -125,5 +126,49 @@ describe("useConversationLoader", () => {
     expect(remove).toHaveBeenCalledWith(conversationResponse.id);
     expect(result.current.items).toHaveLength(0);
     expect(result.current.selectedId).toBeNull();
+  });
+
+  function useClearProbe() {
+    const loader = useConversationLoader();
+    const { activeRun } = useAppState();
+    const { dispatch } = useAppActions();
+    return { loader, activeRun, dispatch };
+  }
+
+  it("clears the active run when selecting another conversation", async () => {
+    const services = createFakeServices(
+      {},
+      { detail: async () => conversationDetailResponse },
+    );
+    const { result } = renderHook(() => useClearProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 1, conversationId: 10 });
+    });
+    expect(result.current.activeRun).not.toBeNull();
+
+    await act(async () => {
+      await result.current.loader.selectConversation(conversationResponse.id);
+    });
+    expect(result.current.activeRun).toBeNull();
+  });
+
+  it("clears the active run on newConversation", async () => {
+    const services = createFakeServices();
+    const { result } = renderHook(() => useClearProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 1, conversationId: 10 });
+    });
+    expect(result.current.activeRun).not.toBeNull();
+
+    act(() => {
+      result.current.loader.newConversation();
+    });
+    expect(result.current.activeRun).toBeNull();
   });
 });
