@@ -9,7 +9,12 @@ import {
   type ConversationIndexState,
 } from "../conversations/state";
 import { authReducer, initialAuthState, type AuthAction, type AuthState } from "../auth/state";
-import { activeRunReducer, initialActiveRunState, type ActiveRunState } from "../runs/state";
+import {
+  activeRunReducer,
+  initialActiveRunState,
+  type ActiveRunAction,
+  type ActiveRunState,
+} from "../runs/state";
 import { initialUiState, uiReducer, type UiAction, type UiState } from "../ui/state";
 
 export type ComposerState = { input: string; isComposing: boolean };
@@ -31,6 +36,7 @@ export type AppAction =
   | ConversationIndexAction
   | ConversationDetailAction
   | UiAction
+  | ActiveRunAction
   | AppResetAction;
 
 export const initialState: AppState = {

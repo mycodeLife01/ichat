@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+
+import { activeRunReducer, initialActiveRunState, type ActiveRunState } from "./state";
+
+const started: ActiveRunState = {
+  runId: 100,
+  conversationId: 10,
+  latestSeq: 0,
+  draftText: "",
+  draftReasoning: "",
+  status: "started",
+  cancelRequested: false,
+};
+
+describe("activeRunReducer", () => {
+  it("starts a run from null", () => {
+    const next = activeRunReducer(null, {
+      type: "run/started",
+      runId: 100,
+      conversationId: 10,
+    });
+    expect(next).toEqual(started);
+  });
+
+  it("accumulates reasoning deltas", () => {
+    const a = activeRunReducer(started, { type: "run/reasoningDelta", seq: 1, text: "想" });
+    const b = activeRunReducer(a, { type: "run/reasoningDelta", seq: 2, text: "法" });
+    expect(b?.draftReasoning).toBe("想法");
+    expect(b?.latestSeq).toBe(2);
+    expect(b?.status).toBe("streaming");
+  });
+
+  it("accumulates text deltas", () => {
+    const a = activeRunReducer(started, { type: "run/textDelta", seq: 3, text: "Hel" });
+    const b = activeRunReducer(a, { type: "run/textDelta", seq: 4, text: "lo" });
+    expect(b?.draftText).toBe("Hello");
+    expect(b?.latestSeq).toBe(4);
+    expect(b?.status).toBe("streaming");
+  });
+
+  it("sets terminal status but keeps drafts", () => {
+    const streaming = activeRunReducer(started, { type: "run/textDelta", seq: 1, text: "x" });
+    const failed = activeRunReducer(streaming, { type: "run/terminal", status: "failed" });
+    expect(failed?.status).toBe("failed");
+    expect(failed?.draftText).toBe("x");
+  });
+
+  it("marks cancel requested", () => {
+    const next = activeRunReducer(started, { type: "run/cancelRequested" });
+    expect(next?.cancelRequested).toBe(true);
+    expect(next?.status).toBe("cancelling");
+  });
+
+  it("clears to null", () => {
+    expect(activeRunReducer(started, { type: "run/cleared" })).toBeNull();
+  });
+
+  it("resets on app/reset", () => {
+    expect(activeRunReducer(started, { type: "app/reset" })).toBe(initialActiveRunState);
+  });
+
+  it("ignores actions when state is null", () => {
+    expect(activeRunReducer(null, { type: "run/textDelta", seq: 1, text: "x" })).toBeNull();
+    expect(activeRunReducer(null, { type: "run/terminal", status: "failed" })).toBeNull();
+    expect(activeRunReducer(null, { type: "run/cancelRequested" })).toBeNull();
+  });
+});
