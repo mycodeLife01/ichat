@@ -42,6 +42,7 @@ describe("useAppActions", () => {
       services: {
         authApi: {} as AppActions["services"]["authApi"],
         conversationApi: {} as AppActions["services"]["conversationApi"],
+        runApi: {} as AppActions["services"]["runApi"],
       },
       streamAbort: { register: vi.fn(), abort: vi.fn() },
     };

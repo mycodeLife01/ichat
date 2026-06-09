@@ -73,6 +73,20 @@ export const succeededEvent: RunEventResponse = {
   created_at: "2026-05-24T10:02:02Z",
 };
 
+export const reasoningDeltaEvent: RunEventResponse = {
+  seq: 1,
+  type: "reasoning_delta",
+  payload: { text: "思考中" },
+  created_at: "2026-05-24T10:02:00Z",
+};
+
+export const failedEvent: RunEventResponse = {
+  seq: 3,
+  type: "run_failed",
+  payload: {},
+  created_at: "2026-05-24T10:02:03Z",
+};
+
 export const runStateResponse: RunStateResponse = {
   run_id: assistantRun.id,
   status: "streaming",

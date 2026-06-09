@@ -61,4 +61,6 @@ export function createRunApi(
   };
 }
 
+export type RunApi = ReturnType<typeof createRunApi>;
+
 export const runApi = createRunApi();

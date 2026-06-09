@@ -2,6 +2,7 @@ import { createContext, useContext, type Dispatch } from "react";
 
 import type { LoginRequest, RegisterRequest } from "../api/auth";
 import type { ConversationApi } from "../api/conversations";
+import type { RunApi } from "../api/runs";
 import type { AuthTokenResponse, CommandStatusResponse } from "../api/types";
 import type { AppAction, AppState } from "./store";
 
@@ -15,6 +16,7 @@ export type AuthApi = {
 export type Services = {
   authApi: AuthApi;
   conversationApi: ConversationApi;
+  runApi: RunApi;
 };
 
 // Lets useRunStream (later step) register its abort, and lets logout / auth

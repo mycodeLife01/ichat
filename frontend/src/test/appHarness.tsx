@@ -2,12 +2,15 @@ import { render, type RenderOptions, type RenderResult } from "@testing-library/
 import type { ReactElement, ReactNode } from "react";
 
 import type { ConversationApi } from "../api/conversations";
+import type { RunApi } from "../api/runs";
+import type { RunEventResponse, RunStreamEvent } from "../api/types";
 import { AppProvider } from "../app/AppProvider";
 import type { AuthApi, Services } from "../app/context";
 import {
   authTokenResponse,
   conversationDetailResponse,
   conversationResponse,
+  runStateResponse,
   sendMessageResponse,
 } from "./apiFixtures";
 
@@ -37,13 +40,32 @@ export function createFakeConversationApi(
   };
 }
 
+export async function* fakeStream(
+  events: RunEventResponse[],
+): AsyncGenerator<RunStreamEvent> {
+  for (const data of events) {
+    yield { seq: data.seq, type: data.type, data };
+  }
+}
+
+export function createFakeRunApi(overrides: Partial<RunApi> = {}): RunApi {
+  return {
+    state: async () => runStateResponse,
+    cancel: async () => ({ status: "ok" }),
+    streamEvents: () => fakeStream([]),
+    ...overrides,
+  };
+}
+
 export function createFakeServices(
   authApi: Partial<AuthApi> = {},
   conversationApi: Partial<ConversationApi> = {},
+  runApi: Partial<RunApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
     conversationApi: createFakeConversationApi(conversationApi),
+    runApi: createFakeRunApi(runApi),
   };
 }
 

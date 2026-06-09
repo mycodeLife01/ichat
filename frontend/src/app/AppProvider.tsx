@@ -3,6 +3,7 @@ import { useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { createAuthApi } from "../api/auth";
 import { ApiClient } from "../api/client";
 import { createConversationApi } from "../api/conversations";
+import { createRunApi } from "../api/runs";
 import { tokenStore } from "../auth/tokenStore";
 import { createAuthExpiryHandler } from "./authExpiry";
 import {
@@ -44,6 +45,7 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
     return {
       authApi: createAuthApi(client),
       conversationApi: createConversationApi(client),
+      runApi: createRunApi(client),
     };
   }, [injectedServices, dispatch, streamAbort]);
 
