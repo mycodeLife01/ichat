@@ -45,6 +45,10 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  // Gates the center → bottom composer transition. Only true while a brand-new
+  // conversation sends its first message; navigating to an existing conversation
+  // leaves it false so the final layout renders without animating.
+  const [animateComposer, setAnimateComposer] = useState(false);
 
   const { start, cancel } = useRunStream();
   const send = useSendMessage(start);
@@ -57,12 +61,28 @@ export function AppShell() {
 
   const onSend = () => {
     const text = composerValue;
+    // Animate the composer only for the first message of a brand-new conversation
+    // (the empty/welcome state). Follow-up messages keep the composer pinned.
+    if (selectedId == null || messages.length === 0) {
+      setAnimateComposer(true);
+    }
     setComposerValue("");
     void send(text);
   };
 
   const onStop = () => {
     if (activeRun) void cancel(activeRun.runId);
+  };
+
+  // Switching to / creating a conversation must not inherit a pending animation:
+  // the target layout should render immediately.
+  const onSelectConversation = (id: number) => {
+    setAnimateComposer(false);
+    void selectConversation(id);
+  };
+  const onNewConversation = () => {
+    setAnimateComposer(false);
+    newConversation();
   };
 
   // demo Composer state: idle / streaming / stopping
@@ -101,11 +121,12 @@ export function AppShell() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        newConversation();
+        onNewConversation();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newConversation]);
 
   const activeConversation = detail.conversation;
@@ -127,8 +148,8 @@ export function AppShell() {
         isMobile={isMobile}
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
-        onSelect={(id) => void selectConversation(id)}
-        onNew={newConversation}
+        onSelect={onSelectConversation}
+        onNew={onNewConversation}
         onRename={(id, title) => void renameConversation(id, title)}
         onRequestDelete={(id) =>
           dispatch({
@@ -141,7 +162,7 @@ export function AppShell() {
         onCloseMobile={() => dispatch({ type: "ui/setMobileSidebar", open: false })}
       />
 
-      <main className="main">
+      <main className={`main${animateComposer ? " composer-animate" : ""}`}>
         <Topbar
           title={activeConversation?.title ?? null}
           titlePending={false}
@@ -149,7 +170,7 @@ export function AppShell() {
           sidebarCollapsed={sidebarCollapsed}
           onOpenMobile={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
           onToggleSidebar={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
-          onNewMobile={newConversation}
+          onNewMobile={onNewConversation}
         />
 
         <div className="thread-region" ref={threadRef}>

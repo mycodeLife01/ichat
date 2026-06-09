@@ -351,12 +351,13 @@ textarea:focus-visible,
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
-  transition: flex-grow 520ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Reserve the scrollbar gutter so expanding a thinking block (which adds
+     height and toggles the scrollbar) does not narrow the chat column. */
+  scrollbar-gutter: stable;
 }
 .spacer-below {
   flex: 0 1 0;
   min-height: 0;
-  transition: flex-grow 520ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .spacer-below.show {
   flex-grow: 1;
@@ -370,10 +371,23 @@ textarea:focus-visible,
   overflow: hidden;
   opacity: 1;
   max-height: 120px;
-  transition: opacity 320ms ease, max-height 480ms cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* The center → bottom composer transition is intentional ONLY when a brand-new
+   conversation sends its first message. Opening an existing conversation (click
+   or refresh-restore) must jump straight to the final layout, so transitions are
+   gated behind .composer-animate, which AppShell adds only for that one flow. */
+.main.composer-animate .thread-region {
+  transition: flex-grow 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.main.composer-animate .spacer-below {
+  transition: flex-grow 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.main.composer-animate .welcome-section {
+  transition: opacity 320ms ease, max-height 480ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .welcome-section.hidden {
   opacity: 0;
@@ -544,6 +558,9 @@ textarea:focus-visible,
   margin-top: 6px;
   max-height: 360px;
   overflow-y: auto;
+  /* Reserve the scrollbar gutter so toggling the scrollbar on/off does not
+     resize the body and shift the chat column width. */
+  scrollbar-gutter: stable;
   white-space: pre-wrap;
   color: var(--fg-muted);
   font-size: 13px;
