@@ -87,10 +87,12 @@ export function AppShell() {
     newConversation();
   };
 
-  // demo Composer state: idle / streaming / stopping
+  // demo Composer state: idle / streaming / stopping. Derived from status alone:
+  // cancelRequested stays true after the run_cancelled terminal, so checking it
+  // would leave the composer stuck on a disabled "停止中" after the stop lands.
   const composerState: "idle" | "streaming" | "stopping" =
     activeRun != null && activeRun.conversationId === selectedId
-      ? activeRun.cancelRequested || activeRun.status === "cancelling"
+      ? activeRun.status === "cancelling"
         ? "stopping"
         : activeRun.status === "queued" ||
             activeRun.status === "started" ||
