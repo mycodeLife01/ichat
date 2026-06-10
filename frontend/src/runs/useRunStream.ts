@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import { isAbortError } from "../api/errors";
 import { useAppActions } from "../app/context";
@@ -12,9 +12,16 @@ export function useRunStream() {
   // before React commits a render — a run that ends after the user navigated away
   // must not overwrite detail.
 
+  // At most one stream is consumed at a time: starting a new one (send, or
+  // recovery re-attaching to a run we may already be reading in the background)
+  // aborts the previous consumer so events are never dispatched twice.
+  const controllerRef = useRef<AbortController | null>(null);
+
   const start = useCallback(
     async (runId: number, conversationId: number, afterSeq: number): Promise<void> => {
+      controllerRef.current?.abort();
       const controller = new AbortController();
+      controllerRef.current = controller;
       streamAbort.register(() => controller.abort());
 
       try {
@@ -73,7 +80,9 @@ export function useRunStream() {
       try {
         await runApi.cancel(runId);
       } catch {
-        // Swallow: the SSE terminal still arrives, or the user can retry.
+        // The server never got the cancel: revert the optimistic "停止中" so the
+        // user can press stop again. (Chinese error feedback lands with Toast.)
+        dispatch({ type: "run/cancelFailed" });
       }
     },
     [dispatch, runApi],

@@ -116,4 +116,54 @@ describe("useRunStream", () => {
     expect(result.current.activeRun?.cancelRequested).toBe(true);
     expect(result.current.activeRun?.status).toBe("cancelling");
   });
+
+  it("reverts to streaming when the cancel request fails", async () => {
+    const cancel = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const services = createFakeServices({}, {}, { cancel });
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 100, conversationId: 10 });
+    });
+    await act(async () => {
+      await result.current.cancel(100);
+    });
+
+    expect(cancel).toHaveBeenCalledWith(100);
+    // The stop button recovers so the user can retry.
+    expect(result.current.activeRun?.cancelRequested).toBe(false);
+    expect(result.current.activeRun?.status).toBe("streaming");
+  });
+
+  it("aborts the previous stream when starting a new one", async () => {
+    const signals: AbortSignal[] = [];
+    const services = createFakeServices(
+      {},
+      {},
+      {
+        streamEvents: (_runId, _afterSeq, options) => {
+          if (options?.signal) signals.push(options.signal);
+          return fakeStream([]);
+        },
+      },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      await result.current.start(100, 10, 0);
+    });
+    await act(async () => {
+      await result.current.start(101, 11, 0);
+    });
+
+    expect(signals).toHaveLength(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+  });
 });
