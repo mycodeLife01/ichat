@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { MessageResponse } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
+import { ghostBtn, msgAction, primaryBtn } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
@@ -21,6 +22,10 @@ type MessageProps = {
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {});
 }
+
+// `group` drives the action bar's hover/focus reveal; `scroll-mt-[60px]`
+// preserves the .msg scroll-margin used by intent-based thread scrolling.
+const msgBase = "msg group flex scroll-mt-[60px] flex-col gap-1.5";
 
 export function Message({
   message,
@@ -64,7 +69,7 @@ export function Message({
   const sheetActions = (afterAction: () => void) => (
     <>
       <button
-        className="msg-action"
+        className={`${msgAction} px-2 py-1`}
         onClick={() => {
           copy(message.content);
           afterAction();
@@ -74,7 +79,7 @@ export function Message({
         复制
       </button>
       <button
-        className="msg-action"
+        className={`${msgAction} px-2 py-1`}
         disabled={disabled}
         title={mutateDisabledReason ?? undefined}
         onClick={() => {
@@ -92,14 +97,27 @@ export function Message({
   // bar is always visible (resident); the user bar reveals on message hover.
   // Copy cross-fades to a check (已复制); both icons stay mounted so the swap
   // doesn't remount a node under the cursor (which would re-open the dropdown).
+  // The bar reveals on message hover/focus via the parent `group`; the
+  // assistant bar is always visible (resident).
+  const actionsBase =
+    "msg-actions mt-1 flex gap-0.5 transition-opacity duration-[120ms] " +
+    "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
   const desktopBar = (
-    <div className={`msg-actions${isUser ? "" : " resident"}`}>
+    <div
+      className={`${actionsBase}${isUser ? " justify-end" : " resident opacity-100"}`}
+    >
       <MessageAction
         label={copied ? "已复制" : "复制"}
         icon={
-          <span className="copy-swap" data-copied={copied}>
-            <Icons.Copy size={15} />
-            <Icons.Check size={15} />
+          <span className="copy-swap relative inline-flex h-[15px] w-[15px]" data-copied={copied}>
+            <Icons.Copy
+              size={15}
+              className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? " opacity-0" : ""}`}
+            />
+            <Icons.Check
+              size={15}
+              className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? "" : " opacity-0"}`}
+            />
           </span>
         }
         onClick={handleCopy}
@@ -115,8 +133,12 @@ export function Message({
   );
 
   const actionBar = isMobile ? (
-    <div className="msg-actions">
-      <button className="msg-action" aria-label="更多" onClick={() => setSheetOpen(true)}>
+    <div className={`${actionsBase}${isUser ? " justify-end" : ""}`}>
+      <button
+        className={`${msgAction} px-2 py-1`}
+        aria-label="更多"
+        onClick={() => setSheetOpen(true)}
+      >
         <Icons.More size={14} />
       </button>
       <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)}>
@@ -139,10 +161,11 @@ export function Message({
       setEditing(false);
     };
     return (
-      <div className="msg user">
-        <div className="edit-box">
+      <div className={`${msgBase} user items-end`}>
+        <div className="w-full max-w-[78%] rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
           <textarea
             autoFocus
+            className="block min-h-6 w-full resize-none border-none bg-transparent text-[14.5px] leading-[1.55] text-fg outline-none"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -153,11 +176,11 @@ export function Message({
               if (event.key === "Escape") cancel();
             }}
           />
-          <div className="edit-actions">
-            <button className="ghost-btn" onClick={cancel}>
+          <div className="mt-2 flex justify-end gap-1.5">
+            <button className={ghostBtn} onClick={cancel}>
               取消
             </button>
-            <button className="primary-btn" onClick={save} disabled={draft.trim() === ""}>
+            <button className={primaryBtn} onClick={save} disabled={draft.trim() === ""}>
               保存
             </button>
           </div>
@@ -168,16 +191,18 @@ export function Message({
 
   if (isUser) {
     return (
-      <div className="msg user">
-        <div className="bubble">{message.content}</div>
+      <div className={`${msgBase} user items-end`}>
+        <div className="max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3.5 py-2.5 text-[14.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[15px]">
+          {message.content}
+        </div>
         {actionBar}
       </div>
     );
   }
 
   return (
-    <div className="msg assistant">
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className={`${msgBase} assistant items-stretch`}>
+      <div className="min-w-0 flex-1">
         {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
         <Markdown content={message.content} />
         {actionBar}

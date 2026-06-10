@@ -117,6 +117,90 @@ textarea:focus-visible,
   border-radius: var(--radius-sm);
 }
 
+/* Markdown typography — rendered by react-markdown, so per-element utilities
+   are not an option; this block stays as handwritten CSS. */
+.md > * + * { margin-top: 0.85em; }
+.md > * { margin-top: 0; margin-bottom: 0; }
+.md h1, .md h2, .md h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin-top: 1.3em;
+}
+.md h1 { font-size: 22px; }
+.md h2 { font-size: 18px; }
+.md h3 { font-size: 15.5px; }
+.md p { font-size: 15px; line-height: 1.75; text-wrap: pretty; }
+.md ul, .md ol { padding-left: 22px; }
+.md li { margin: 4px 0; }
+.md li::marker { color: var(--color-fg-subtle); }
+.md a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--color-border-strong);
+}
+.md a:hover { text-decoration-color: var(--color-accent); }
+.md blockquote {
+  border-left: 2px solid var(--color-border-strong);
+  padding: 2px 0 2px 14px;
+  color: var(--color-fg-muted);
+  font-style: normal;
+}
+.md code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--color-bg-sunken);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+}
+.md pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: #f7f7f5;
+  color: var(--color-fg);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  overflow-x: auto;
+  line-height: 1.55;
+}
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.md table {
+  border-collapse: collapse;
+  font-size: 13.5px;
+  width: 100%;
+}
+.md th, .md td {
+  border: 1px solid var(--color-border);
+  padding: 7px 10px;
+  text-align: left;
+}
+.md th {
+  background: var(--color-bg-sunken);
+  font-weight: 600;
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
+}
+
+/* Syntax highlighting (very light) */
+.tok-kw { color: #c678dd; }
+.tok-str { color: #98c379; }
+.tok-num { color: #d19a66; }
+.tok-com { color: #7f7f7f; font-style: italic; }
+.tok-fn { color: #61afef; }
+
 /* Global scrollbar styling (pseudo-elements stay as handwritten CSS). */
 * {
   scrollbar-width: thin;

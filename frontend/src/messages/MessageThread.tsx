@@ -21,7 +21,7 @@ export function MessageThread({
   children,
 }: MessageThreadProps) {
   return (
-    <div className="thread-inner">
+    <div className="thread-inner mx-auto flex w-full max-w-[var(--reading-width)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:px-[18px] max-[760px]:pt-6 max-[760px]:pb-[18px]">
       {messages.map((message) => (
         <Message
           key={message.id}

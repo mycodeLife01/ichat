@@ -6,7 +6,7 @@ type MarkdownProps = { content: string };
 
 export function Markdown({ content }: MarkdownProps) {
   return (
-    <div className="body md">
+    <div className="body md text-[15px] leading-[1.75] text-fg">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
         {content}
       </ReactMarkdown>
