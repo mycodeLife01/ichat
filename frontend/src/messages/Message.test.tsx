@@ -55,8 +55,93 @@ describe("Message", () => {
     expect(writeText).toHaveBeenCalledWith("你好");
   });
 
-  it("disables edit/regenerate this step", () => {
-    render(<Message message={assistantMessage} />);
-    expect(screen.getByRole("button", { name: /重新生成/ })).toBeDisabled();
+  it("edits a user message and submits the new content", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={userMessage}
+        mutateDisabledReason={null}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("你好");
+    await user.clear(textarea);
+    await user.type(textarea, "改写后的问题");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "改写后的问题");
+  });
+
+  it("cancels editing without calling back", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={userMessage}
+        mutateDisabledReason={null}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(onEditAndRegenerate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("你好")).toBeInTheDocument();
+  });
+
+  it("does not submit an empty edit", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={userMessage}
+        mutateDisabledReason={null}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.clear(screen.getByRole("textbox"));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onEditAndRegenerate).not.toHaveBeenCalled();
+  });
+
+  it("regenerates an assistant message", async () => {
+    const user = userEvent.setup();
+    const onRegenerate = vi.fn();
+    render(
+      <Message
+        message={assistantMessage}
+        mutateDisabledReason={null}
+        onRegenerate={onRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /重新生成/ }));
+    expect(onRegenerate).toHaveBeenCalledWith(assistantMessage.id);
+  });
+
+  it("disables mutate buttons with a reason while a run is active", () => {
+    const reason = "请先停止当前生成";
+    const { rerender } = render(
+      <Message message={userMessage} mutateDisabledReason={reason} />,
+    );
+    const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
+    expect(editBtn).toBeDisabled();
+    expect(editBtn).toHaveAttribute("title", reason);
+    // Copy stays enabled.
+    expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
+
+    rerender(<Message message={assistantMessage} mutateDisabledReason={reason} />);
+    const regenBtn = screen.getByRole("button", { name: /重新生成/ });
+    expect(regenBtn).toBeDisabled();
+    expect(regenBtn).toHaveAttribute("title", reason);
   });
 });
