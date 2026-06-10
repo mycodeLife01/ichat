@@ -4,7 +4,9 @@ import { Sidebar } from "../conversations/Sidebar";
 import { Topbar } from "../conversations/Topbar";
 import { selectionStore } from "../conversations/selectionStore";
 import { useConversationLoader } from "../conversations/useConversationLoader";
+import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
+import { useTitlePolling } from "../conversations/useTitlePolling";
 import { MessageThread } from "../messages/MessageThread";
 import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
@@ -31,7 +33,7 @@ function useIsMobile() {
 
 export function AppShell() {
   const { user, logout } = useAuthSession();
-  const { ui, activeRun } = useAppState();
+  const { ui, activeRun, conversationIndex } = useAppState();
   const { dispatch, stateRef } = useAppActions();
   const {
     items,
@@ -53,7 +55,10 @@ export function AppShell() {
 
   const { start, cancel } = useRunStream();
   const send = useSendMessage(start);
+  const { editAndRegenerate, regenerate } = useRegenerate(start);
   const recover = useRunRecovery(start);
+  const pollTitle = useTitlePolling();
+  const pendingTitleIds = conversationIndex.pendingTitleIds;
   const threadRef = useStickToBottom<HTMLDivElement>([
     detail.messages.length,
     activeRun?.draftText,
@@ -136,10 +141,24 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newConversation]);
 
+  // Drive the auto-title poll loop for any conversation marked pending (e.g. by
+  // useRunStream after a draft's first run succeeds). pollTitle dedups per id.
+  useEffect(() => {
+    for (const id of pendingTitleIds) {
+      void pollTitle(id);
+    }
+  }, [pendingTitleIds, pollTitle]);
+
   const activeConversation = detail.conversation;
   const messages = detail.messages;
   const showWelcome = (selectedId == null || messages.length === 0) && activeRun == null;
   const sidebarCollapsed = ui.sidebarCollapsed;
+  // Edit / regenerate mutate the thread by queuing a new run; block them while a
+  // run for this conversation is in flight (the backend would 409 anyway).
+  const mutateDisabledReason =
+    activeRun != null && activeRun.conversationId === selectedId
+      ? "请先停止当前生成"
+      : null;
 
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"
@@ -155,6 +174,7 @@ export function AppShell() {
         isMobile={isMobile}
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
+        pendingTitleIds={pendingTitleIds}
         onSelect={onSelectConversation}
         onNew={onNewConversation}
         onRename={(id, title) => void renameConversation(id, title)}
@@ -172,7 +192,7 @@ export function AppShell() {
       <main className={`main${animateComposer ? " composer-animate" : ""}`}>
         <Topbar
           title={activeConversation?.title ?? null}
-          titlePending={false}
+          titlePending={selectedId != null && pendingTitleIds.includes(selectedId)}
           isMobile={isMobile}
           sidebarCollapsed={sidebarCollapsed}
           onOpenMobile={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
@@ -182,7 +202,12 @@ export function AppShell() {
 
         <div className="thread-region" ref={threadRef}>
           {!showWelcome && (
-            <MessageThread messages={messages}>
+            <MessageThread
+              messages={messages}
+              mutateDisabledReason={mutateDisabledReason}
+              onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
+              onRegenerate={(id) => void regenerate(id)}
+            >
               {activeRun && activeRun.conversationId === selectedId && (
                 <StreamingMessage run={activeRun} />
               )}

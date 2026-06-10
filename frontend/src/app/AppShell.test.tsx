@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -302,5 +302,122 @@ describe("AppShell", () => {
     expect(streamEvents.mock.calls[0]).toEqual([100, 1, expect.anything()]);
     // Terminal success swaps in the materialized assistant reply.
     expect(await screen.findByText("Hello there!")).toBeInTheDocument();
+  });
+
+  it("edits a user message and streams the regenerated reply", async () => {
+    selectionStore.save(conversationResponse.id);
+    const titled = { ...conversationResponse, title: "对话A" };
+    const userMsg: MessageResponse = {
+      id: 1, conversation_id: conversationResponse.id, run_id: 100, role: "user",
+      content: "原问题", reasoning: null, position: 1, created_at: "t",
+    };
+    const assistantMsg: MessageResponse = {
+      id: 2, conversation_id: conversationResponse.id, run_id: 100, role: "assistant",
+      content: "旧答案", reasoning: null, position: 2, created_at: "t",
+    };
+    const editedUser: MessageResponse = { ...userMsg, id: 3, content: "新问题", run_id: 101 };
+    const newAssistant: MessageResponse = { ...assistantMsg, id: 4, content: "新答案", run_id: 101 };
+    const newRun: RunResponse = {
+      id: 101, conversation_id: conversationResponse.id, user_message_id: 3, status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+
+    const detail = vi
+      .fn()
+      .mockResolvedValueOnce({ ...titled, messages: [userMsg, assistantMsg] }) // initial select
+      .mockResolvedValueOnce({ ...titled, messages: [editedUser] }) // post-edit truncated
+      .mockResolvedValue({ ...titled, messages: [editedUser, newAssistant] }); // post-success
+    const editAndRegenerate = vi.fn(async () => ({ message: editedUser, run: newRun }));
+    const services = createFakeServices(
+      {},
+      { list: async () => [titled], detail, editAndRegenerate },
+      { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "新答案" } }, { ...succeededEvent, seq: 2 }]) },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    expect(await screen.findByText("旧答案")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    const editor = screen.getByDisplayValue("原问题");
+    await user.clear(editor);
+    await user.type(editor, "新问题");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 1, "新问题");
+    // Old answer truncated away; the regenerated answer streams in and replaces.
+    expect(await screen.findByText("新答案")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("旧答案")).toBeNull());
+  });
+
+  it("regenerates an assistant reply", async () => {
+    selectionStore.save(conversationResponse.id);
+    const titled = { ...conversationResponse, title: "对话A" };
+    const userMsg: MessageResponse = {
+      id: 1, conversation_id: conversationResponse.id, run_id: 100, role: "user",
+      content: "问题", reasoning: null, position: 1, created_at: "t",
+    };
+    const oldAssistant: MessageResponse = {
+      id: 2, conversation_id: conversationResponse.id, run_id: 100, role: "assistant",
+      content: "第一版答案", reasoning: null, position: 2, created_at: "t",
+    };
+    const newAssistant: MessageResponse = { ...oldAssistant, id: 3, content: "第二版答案", run_id: 101 };
+    const newRun: RunResponse = {
+      id: 101, conversation_id: conversationResponse.id, user_message_id: 1, status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+
+    const detail = vi
+      .fn()
+      .mockResolvedValueOnce({ ...titled, messages: [userMsg, oldAssistant] }) // initial
+      .mockResolvedValueOnce({ ...titled, messages: [userMsg] }) // post-regenerate truncated
+      .mockResolvedValue({ ...titled, messages: [userMsg, newAssistant] }); // post-success
+    const regenerate = vi.fn(async () => ({ message: userMsg, run: newRun }));
+    const services = createFakeServices(
+      {},
+      { list: async () => [titled], detail, regenerate },
+      { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "第二版答案" } }, { ...succeededEvent, seq: 2 }]) },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    expect(await screen.findByText("第一版答案")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /重新生成/ }));
+
+    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2);
+    expect(await screen.findByText("第二版答案")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("第一版答案")).toBeNull());
+  });
+
+  it("disables the mutate buttons while a run is streaming", async () => {
+    const draft: ConversationResponse = {
+      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const userMessage: MessageResponse = {
+      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      content: "你好", reasoning: null, position: 1, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    const services = createFakeServices(
+      {},
+      { list: async () => [], create: async () => draft, sendMessage: async () => ({ message: userMessage, run }) },
+      { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "正在回答" } }]) }, // no terminal: stays streaming
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    // The just-sent user message is in the thread; its edit button is disabled.
+    const sentMsg = (await screen.findByText("你好")).closest(".msg") as HTMLElement;
+    await waitFor(() => {
+      const editBtn = within(sentMsg).getByRole("button", { name: /编辑并重发/ });
+      expect(editBtn).toBeDisabled();
+      expect(editBtn).toHaveAttribute("title", "请先停止当前生成");
+    });
   });
 });

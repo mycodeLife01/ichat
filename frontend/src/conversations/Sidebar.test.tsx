@@ -29,6 +29,7 @@ function baseProps() {
     isMobile: false,
     collapsed: false,
     mobileOpen: false,
+    pendingTitleIds: [] as number[],
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onRename: vi.fn(),
@@ -44,6 +45,21 @@ describe("Sidebar", () => {
     render(<Sidebar {...baseProps()} />);
     expect(screen.getByText("今天")).toBeInTheDocument();
     expect(screen.getByText("今天的对话")).toBeInTheDocument();
+  });
+
+  it("renders a title skeleton for a title-pending row", () => {
+    const props = baseProps();
+    // A conversation whose auto-title hasn't been written back yet (title empty)
+    // and is in pendingTitleIds shows the skeleton, not a 新对话 fallback.
+    const { container } = render(
+      <Sidebar
+        {...props}
+        items={[makeConversation(1, "", today)]}
+        pendingTitleIds={[1]}
+      />,
+    );
+    expect(container.querySelector(".title-skeleton")).toBeTruthy();
+    expect(screen.queryByText("新对话")).toBeNull();
   });
 
   it("shows empty placeholder when no conversations", () => {

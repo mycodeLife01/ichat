@@ -13,6 +13,7 @@ type SidebarProps = {
   isMobile: boolean;
   collapsed: boolean;
   mobileOpen: boolean;
+  pendingTitleIds: number[];
   onSelect: (id: number) => void;
   onNew: () => void;
   onRename: (id: number, title: string) => void;
@@ -50,6 +51,7 @@ export function Sidebar({
   isMobile,
   collapsed,
   mobileOpen,
+  pendingTitleIds,
   onSelect,
   onNew,
   onRename,
@@ -101,9 +103,12 @@ export function Sidebar({
               if (event.key === "Escape") setRenameId(null);
             }}
           />
+        ) : pendingTitleIds.includes(c.id) ? (
+          // Auto-title is still being generated for this freshly-activated draft.
+          <span className="title muted">
+            <span className="title-skeleton" style={{ width: 120, verticalAlign: "middle" }} />
+          </span>
         ) : (
-          // Title-pending skeleton is wired in step 10 (pendingTitleIds); this
-          // step shows a "新对话" fallback for activated rows with no title.
           <span className="title">{c.title || "新对话"}</span>
         )}
         {!isRenaming && (
