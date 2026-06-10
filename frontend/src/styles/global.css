@@ -1,9 +1,6 @@
 @import "tailwindcss";
-/* Legacy token sheet — kept during the utility migration so chat.css /
-   AuthScreen.css keep resolving var(--bg) etc.; deleted at cleanup. */
-@import "./tokens.css";
 
-/* Design tokens — warm-neutral light theme (values mirror tokens.css). */
+/* Design tokens — warm-neutral light theme, ported from chatapp_demo. */
 @theme {
   --color-bg: #fbfbfa;
   --color-bg-sunken: #f4f3f0;
@@ -161,6 +158,10 @@ textarea:focus-visible,
 .md h3 { font-size: 15.5px; }
 .md p { font-size: 15px; line-height: 1.75; text-wrap: pretty; }
 .md ul, .md ol { padding-left: 22px; }
+/* Preflight unstyles lists (ol,ul{list-style:none}) — restore the markers
+   markdown content relies on. */
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
 .md li { margin: 4px 0; }
 .md li::marker { color: var(--color-fg-subtle); }
 .md a {
@@ -173,10 +174,15 @@ textarea:focus-visible,
 .md a:hover { text-decoration-color: var(--color-accent); }
 .md blockquote {
   border-left: 2px solid var(--color-border-strong);
+  /* Preflight zeroes the UA's 40px side margins the old look relied on. */
+  margin-inline: 40px;
   padding: 2px 0 2px 14px;
   color: var(--color-fg-muted);
   font-style: normal;
 }
+/* h1–h3 are styled above; keep deeper headings bold where preflight would
+   flatten them to plain text. */
+.md h4, .md h5, .md h6 { font-weight: 600; }
 .md code {
   font-family: var(--font-mono);
   font-size: 13px;

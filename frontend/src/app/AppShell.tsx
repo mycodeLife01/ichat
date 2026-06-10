@@ -243,8 +243,11 @@ export function AppShell() {
         </div>
 
         <div className="flex shrink-0 flex-col">
+          {/* The collapsed state keeps the node mounted (opacity/max-height, not
+              display:none) so the welcome fade can animate; Tailwind's `hidden`
+              utility would kill the transition. */}
           <div
-            className={`flex flex-col items-center overflow-hidden [.composer-animate_&]:[transition:opacity_320ms_ease,max-height_480ms_cubic-bezier(0.4,0,0.2,1)] ${
+            className={`welcome-section flex flex-col items-center overflow-hidden [.composer-animate_&]:[transition:opacity_320ms_ease,max-height_480ms_cubic-bezier(0.4,0,0.2,1)] ${
               showWelcome ? "max-h-[120px] opacity-100" : "pointer-events-none max-h-0 opacity-0"
             }`}
           >
