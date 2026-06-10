@@ -51,6 +51,23 @@ describe("activeRunReducer", () => {
     expect(next?.status).toBe("cancelling");
   });
 
+  it("keeps cancelling status while deltas continue to arrive", () => {
+    // The server keeps streaming until the cancel lands; in-flight deltas must
+    // still render but must not flip the run back to "streaming" (which would
+    // re-enable the stop button mid-cancel).
+    const cancelling = activeRunReducer(started, { type: "run/cancelRequested" });
+    const afterReasoning = activeRunReducer(cancelling, {
+      type: "run/reasoningDelta", seq: 1, text: "想",
+    });
+    expect(afterReasoning?.status).toBe("cancelling");
+    expect(afterReasoning?.draftReasoning).toBe("想");
+    const afterText = activeRunReducer(afterReasoning, {
+      type: "run/textDelta", seq: 2, text: "Hel",
+    });
+    expect(afterText?.status).toBe("cancelling");
+    expect(afterText?.draftText).toBe("Hel");
+  });
+
   it("clears to null", () => {
     expect(activeRunReducer(started, { type: "run/cleared" })).toBeNull();
   });

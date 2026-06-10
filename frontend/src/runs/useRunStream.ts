@@ -98,6 +98,11 @@ export function useRunStream() {
   // drives the terminal transition (so "已停止" only shows after the real terminal).
   const cancel = useCallback(
     async (runId: number): Promise<void> => {
+      // The stop button disables on "stopping", but that only lands after a
+      // render — rapid double clicks (or other callers) can get here first.
+      // stateRef advances synchronously on dispatch, so this dedups reliably.
+      const run = stateRef.current.activeRun;
+      if (run?.runId === runId && run.cancelRequested) return;
       dispatch({ type: "run/cancelRequested" });
       try {
         await runApi.cancel(runId);
@@ -108,7 +113,7 @@ export function useRunStream() {
         dispatch({ type: "ui/showToast", message: "停止失败，请重试" });
       }
     },
-    [dispatch, runApi],
+    [dispatch, runApi, stateRef],
   );
 
   return { start, cancel };

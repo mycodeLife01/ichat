@@ -54,7 +54,9 @@ export function activeRunReducer(
         ...state,
         draftReasoning: state.draftReasoning + action.text,
         latestSeq: action.seq,
-        status: "streaming",
+        // Deltas keep arriving while a cancel is in flight; don't let them
+        // flip "cancelling" back to "streaming" (re-enabling the stop button).
+        status: state.status === "cancelling" ? state.status : "streaming",
       };
     case "run/textDelta":
       if (state === null) return state;
@@ -62,7 +64,7 @@ export function activeRunReducer(
         ...state,
         draftText: state.draftText + action.text,
         latestSeq: action.seq,
-        status: "streaming",
+        status: state.status === "cancelling" ? state.status : "streaming",
       };
     case "run/terminal":
       if (state === null) return state;

@@ -159,6 +159,27 @@ describe("useRunStream", () => {
     expect(result.current.activeRun?.status).toBe("cancelling");
   });
 
+  it("ignores repeated cancel calls while one is already pending", async () => {
+    // The first cancel request parks unresolved so the second click lands
+    // while the run is still "cancelling".
+    const cancel = vi.fn(() => new Promise<{ status: string }>(() => {}));
+    const services = createFakeServices({}, {}, { cancel });
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 100, conversationId: 10 });
+    });
+    await act(async () => {
+      void result.current.cancel(100);
+      void result.current.cancel(100);
+    });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(result.current.activeRun?.status).toBe("cancelling");
+  });
+
   it("reverts to streaming when the cancel request fails", async () => {
     const cancel = vi.fn(async () => {
       throw new Error("network");
