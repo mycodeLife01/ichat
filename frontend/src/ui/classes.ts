@@ -20,6 +20,12 @@ export const msgAction =
   "transition-[background,color] duration-100 hover:bg-bg-hover hover:text-fg " +
   "disabled:cursor-not-allowed disabled:text-fg-faint disabled:hover:bg-transparent disabled:hover:text-fg-faint";
 
+// Shimmering placeholder while an auto-generated title is pending.
+export const titleSkeleton =
+  "title-skeleton inline-block h-[11px] animate-skel rounded-[2px] " +
+  "bg-[linear-gradient(90deg,rgba(20,20,19,0.06)_0%,rgba(20,20,19,0.12)_50%,rgba(20,20,19,0.06)_100%)] " +
+  "[background-size:200%_100%]";
+
 // Menu / bottom-sheet row.
 export const sheetItem =
   "flex w-full items-center gap-3 px-[22px] py-3.5 text-left text-[15px] text-fg " +

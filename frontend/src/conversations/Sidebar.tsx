@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import type { ConversationResponse } from "../api/types";
+import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -45,6 +46,9 @@ function groupByDate(items: ConversationResponse[]): Groups {
   return { today, yesterday, older };
 }
 
+const sectionLabel =
+  "px-2.5 pt-3.5 pb-1 text-[11px] font-medium tracking-[0.04em] text-fg-subtle uppercase";
+
 export function Sidebar({
   items,
   selectedId,
@@ -72,18 +76,31 @@ export function Sidebar({
 
   const groups = useMemo(() => groupByDate(items), [items]);
 
-  const sidebarClasses = ["sidebar"];
-  if (collapsed) sidebarClasses.push("collapsed");
-  if (mobileOpen) sidebarClasses.push("open");
+  // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
+  // states branch on isMobile (drawer) vs desktop (collapsible column).
+  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg-sunken"];
+  if (isMobile) {
+    sidebarClasses.push(
+      "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] border-r border-border " +
+        "shadow-[0_0_30px_rgba(0,0,0,0.08)] transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+      mobileOpen ? "open translate-x-0" : "-translate-x-full",
+    );
+  } else {
+    sidebarClasses.push(
+      "shrink-0 transition-[width,margin-left] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+      collapsed ? "collapsed w-0" : "w-[var(--sidebar-width)] border-r border-border",
+    );
+  }
 
   const renderRow = (c: ConversationResponse) => {
     const isRenaming = renameId === c.id;
     const menuOpen = menuFor === c.id;
+    const active = selectedId === c.id;
     // The same two actions, rendered into a desktop dropdown or a mobile sheet.
     const rowActions = (itemStyle?: CSSProperties) => (
       <>
         <button
-          className="sheet-item"
+          className={sheetItem}
           style={itemStyle}
           onClick={() => {
             setRenameId(c.id);
@@ -94,7 +111,7 @@ export function Sidebar({
           重命名
         </button>
         <button
-          className="sheet-item destructive"
+          className={`${sheetItem} text-danger`}
           style={itemStyle}
           onClick={() => {
             onRequestDelete(c.id);
@@ -109,7 +126,13 @@ export function Sidebar({
     return (
       <div
         key={c.id}
-        className={`history-row${selectedId === c.id ? " active" : ""}`}
+        // leading-[22px] keeps a stable line box (>= the 22px menu button) so
+        // revealing the button on hover never shifts the rows below.
+        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-md px-[11px] py-[7.7px] text-[13.5px] leading-[22px] transition-[background,color] duration-100 ${
+          active
+            ? "active bg-bg-active font-medium text-fg"
+            : "text-fg-muted hover:bg-bg-hover hover:text-fg"
+        }`}
         onClick={() => {
           if (isRenaming) return;
           onSelect(c.id);
@@ -121,7 +144,8 @@ export function Sidebar({
             autoFocus
             ref={(el) => el?.select()}
             defaultValue={c.title ?? ""}
-            className="history-rename"
+            // Inline rename input — looks identical to the title text.
+            className="m-0 min-w-0 flex-1 border-none bg-transparent p-0 font-[inherit] text-inherit outline-none selection:bg-[rgba(120,170,240,0.45)] selection:text-inherit focus:shadow-none focus:outline-none focus-visible:outline-none"
             onClick={(event) => event.stopPropagation()}
             onBlur={(event) => {
               onRename(c.id, event.target.value);
@@ -134,15 +158,17 @@ export function Sidebar({
           />
         ) : pendingTitleIds.includes(c.id) ? (
           // Auto-title is still being generated for this freshly-activated draft.
-          <span className="title muted">
-            <span className="title-skeleton" style={{ width: 120, verticalAlign: "middle" }} />
+          <span className="flex-1 truncate text-fg-subtle">
+            <span className={titleSkeleton} style={{ width: 120, verticalAlign: "middle" }} />
           </span>
         ) : (
-          <span className="title">{c.title || "新对话"}</span>
+          <span className="flex-1 truncate">{c.title || "新对话"}</span>
         )}
         {!isRenaming && (
           <button
-            className="menu-btn"
+            className={`h-[22px] w-[22px] shrink-0 items-center justify-center rounded-sm text-fg-subtle hover:text-fg ${
+              active ? "inline-flex" : "hidden group-hover/row:inline-flex"
+            }`}
             aria-label="更多"
             onClick={(event) => {
               event.stopPropagation();
@@ -155,26 +181,13 @@ export function Sidebar({
         {/* Desktop: an anchored dropdown. Mobile: a bottom sheet. */}
         {!isRenaming && menuOpen && !isMobile && (
           <div
-            className="history-menu"
+            className="history-menu absolute top-[calc(100%-4px)] right-1.5 z-10 min-w-[120px] rounded-lg border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
             onClick={(event) => event.stopPropagation()}
-            style={{
-              position: "absolute",
-              right: 6,
-              top: "calc(100% - 4px)",
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: "var(--menu-radius, 6px)",
-              padding: 4,
-              zIndex: 10,
-              minWidth: 120,
-              boxShadow: "0 6px 20px rgba(20,20,19,0.08)",
-              transition: "border-radius 140ms",
-            }}
           >
             {rowActions({
               padding: "7px 10px",
               fontSize: 13,
-              borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
+              borderRadius: 6,
             })}
           </div>
         )}
@@ -190,18 +203,18 @@ export function Sidebar({
   return (
     <>
       <aside className={sidebarClasses.join(" ")}>
-        <div className="sidebar-inner">
-          <div className="brand">
+        <div className="flex h-full w-[var(--sidebar-width)] flex-col px-3 pt-4 pb-3">
+          <div className="flex items-center justify-between pt-1 pr-2 pb-4 pl-2">
             <Wordmark />
             {!isMobile && (
-              <button className="icon-btn" aria-label="收起侧栏" onClick={onToggleCollapsed}>
+              <button className={iconBtn} aria-label="收起侧栏" onClick={onToggleCollapsed}>
                 <Icons.PanelLeft size={15} />
               </button>
             )}
           </div>
 
           <button
-            className="new-chat"
+            className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-raised px-2.5 py-2 text-left text-sm font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong hover:bg-bg"
             onClick={() => {
               onNew();
               if (isMobile) onCloseMobile();
@@ -209,46 +222,45 @@ export function Sidebar({
           >
             <Icons.Plus size={14} />
             新建对话
-            {!isMobile && <span className="kbd">⌘ N</span>}
+            {!isMobile && (
+              <span className="ml-auto font-mono text-[11px] text-fg-subtle">⌘ N</span>
+            )}
           </button>
 
-          <div className="history">
+          <div className="mt-[18px] flex flex-1 flex-col gap-px overflow-y-auto">
             {groups.today.length > 0 && (
               <>
-                <div className="history-section-label">今天</div>
+                <div className={sectionLabel}>今天</div>
                 {groups.today.map(renderRow)}
               </>
             )}
             {groups.yesterday.length > 0 && (
               <>
-                <div className="history-section-label">昨天</div>
+                <div className={sectionLabel}>昨天</div>
                 {groups.yesterday.map(renderRow)}
               </>
             )}
             {groups.older.length > 0 && (
               <>
-                <div className="history-section-label">更早</div>
+                <div className={sectionLabel}>更早</div>
                 {groups.older.map(renderRow)}
               </>
             )}
             {items.length === 0 && (
-              <div
-                style={{
-                  padding: "16px 10px",
-                  fontSize: 12.5,
-                  color: "var(--fg-subtle)",
-                  lineHeight: 1.6,
-                }}
-              >
+              <div className="px-2.5 py-4 text-[12.5px] leading-[1.6] text-fg-subtle">
                 还没有已保存的对话。开始一次对话后会自动出现在这里。
               </div>
             )}
           </div>
 
-          <div className="account">
-            <div className="avatar">{(user?.name || "U").slice(0, 1).toUpperCase()}</div>
-            <div className="account-name">{user?.email || "you@example.com"}</div>
-            <button className="icon-btn" aria-label="退出登录" onClick={onLogout}>
+          <div className="mt-2 flex items-center gap-2.5 border-t border-border px-2 pt-3 pb-1">
+            <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg">
+              {(user?.name || "U").slice(0, 1).toUpperCase()}
+            </div>
+            <div className="flex-1 truncate text-[13px] text-fg">
+              {user?.email || "you@example.com"}
+            </div>
+            <button className={iconBtn} aria-label="退出登录" onClick={onLogout}>
               <Icons.LogOut size={14} />
             </button>
           </div>
@@ -256,7 +268,9 @@ export function Sidebar({
       </aside>
       {isMobile && (
         <div
-          className={`scrim${mobileOpen ? " show" : ""}`}
+          className={`scrim fixed inset-0 z-[29] bg-[rgba(20,20,19,0.32)] transition-opacity duration-200 ${
+            mobileOpen ? "show pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          }`}
           onClick={onCloseMobile}
           aria-hidden={!mobileOpen}
         />

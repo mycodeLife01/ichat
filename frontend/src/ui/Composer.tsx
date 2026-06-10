@@ -14,6 +14,10 @@ type ComposerProps = {
 
 const MAX_HEIGHT = 240;
 
+const composerTool =
+  "inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-fg-muted " +
+  "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
+
 export function Composer({ value, onChange, onSend, onStop, state }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -30,10 +34,11 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
   };
 
   return (
-    <div className="composer-wrap">
-      <div className="composer">
+    <div className="composer-wrap bg-bg px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
+      <div className="composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 rounded-[18px] border border-border-strong bg-bg-raised py-2.5 pr-3.5 pl-[18px]">
         <textarea
           ref={ref}
+          className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[15px] leading-[1.55] text-fg outline-none placeholder:text-fg-faint"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="有问题，尽管问"
@@ -50,23 +55,27 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
             }
           }}
         />
-        <div className="composer-actions">
-          <div className="composer-actions-left">
-            <button className="composer-tool" type="button" aria-label="添加附件">
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="flex items-center gap-1">
+            <button className={composerTool} type="button" aria-label="添加附件">
               <Icons.Plus size={16} />
             </button>
           </div>
-          <div className="composer-actions-right">
-            <button className="composer-mode" type="button" aria-label="模型模式">
+          <div className="flex items-center gap-1">
+            <button
+              className="inline-flex h-8 items-center gap-1 rounded-full bg-transparent px-2.5 text-[13px] font-medium text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
+              type="button"
+              aria-label="模型模式"
+            >
               <span>Instant</span>
               <Icons.Chevron size={14} />
             </button>
-            <button className="composer-tool" type="button" aria-label="语音输入">
+            <button className={composerTool} type="button" aria-label="语音输入">
               <Icons.Mic size={16} />
             </button>
             {state === "idle" ? (
               <button
-                className="send-btn"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-accent-fg transition-[opacity,transform,background] duration-[120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:bg-bg-sunken disabled:text-fg-faint"
                 type="button"
                 aria-label="发送"
                 disabled={!value.trim()}
@@ -76,7 +85,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
               </button>
             ) : (
               <button
-                className="stop-btn"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[18px] border border-border-strong bg-bg-raised p-0 text-fg transition-[background] duration-[120ms] hover:bg-bg-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
                 type="button"
                 aria-label={state === "stopping" ? "停止中" : "停止生成"}
                 disabled={state === "stopping"}

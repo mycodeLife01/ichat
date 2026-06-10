@@ -17,7 +17,6 @@ import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
-import "../styles/chat.css";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -183,7 +182,7 @@ export function AppShell() {
       : null;
 
   return (
-    <div className="app">
+    <div className="app flex h-full bg-bg">
       <Sidebar
         items={items}
         selectedId={selectedId}
@@ -206,7 +205,12 @@ export function AppShell() {
         onCloseMobile={() => dispatch({ type: "ui/setMobileSidebar", open: false })}
       />
 
-      <main className={`main${animateComposer ? " composer-animate" : ""}`}>
+      {/* "composer-animate" gates the center → bottom composer transition via
+          [.composer-animate_&]: variants on the children below — intentional
+          ONLY when a brand-new conversation sends its first message. */}
+      <main
+        className={`main relative flex min-w-0 flex-1 flex-col${animateComposer ? " composer-animate" : ""}`}
+      >
         <Topbar
           title={activeConversation?.title ?? null}
           titlePending={selectedId != null && pendingTitleIds.includes(selectedId)}
@@ -217,7 +221,12 @@ export function AppShell() {
           onNewMobile={onNewConversation}
         />
 
-        <div className="thread-region" ref={threadRef}>
+        {/* scrollbar-gutter reserved so expanding a thinking block (which adds
+            height and toggles the scrollbar) does not narrow the chat column. */}
+        <div
+          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [scrollbar-gutter:stable] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+          ref={threadRef}
+        >
           {!showWelcome && (
             <MessageThread
               messages={messages}
@@ -233,9 +242,15 @@ export function AppShell() {
           )}
         </div>
 
-        <div className="composer-area">
-          <div className={`welcome-section${showWelcome ? "" : " hidden"}`}>
-            <h1 className="welcome-heading">我们先从哪里开始呢？</h1>
+        <div className="flex shrink-0 flex-col">
+          <div
+            className={`flex flex-col items-center overflow-hidden [.composer-animate_&]:[transition:opacity_320ms_ease,max-height_480ms_cubic-bezier(0.4,0,0.2,1)] ${
+              showWelcome ? "max-h-[120px] opacity-100" : "pointer-events-none max-h-0 opacity-0"
+            }`}
+          >
+            <h1 className="mt-0 mb-[22px] text-center text-2xl font-medium tracking-[-0.01em] text-fg">
+              我们先从哪里开始呢？
+            </h1>
           </div>
           <Composer
             value={composerValue}
@@ -245,7 +260,9 @@ export function AppShell() {
             state={composerState}
           />
         </div>
-        <div className={`spacer-below${showWelcome ? " show" : ""}`} />
+        <div
+          className={`min-h-0 shrink basis-0 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)] ${showWelcome ? "grow" : "grow-0"}`}
+        />
       </main>
 
       {confirmTarget != null && (
