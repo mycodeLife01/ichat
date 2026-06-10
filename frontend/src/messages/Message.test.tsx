@@ -144,4 +144,64 @@ describe("Message", () => {
     expect(regenBtn).toBeDisabled();
     expect(regenBtn).toHaveAttribute("title", reason);
   });
+
+  it("desktop: does not render a more button", () => {
+    render(<Message message={userMessage} />);
+    expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
+  });
+
+  it("mobile: hides actions behind a more button that opens a sheet (user)", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={userMessage}
+        isMobile
+        mutateDisabledReason={null}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    // Actions live behind the sheet; only the more button shows directly.
+    expect(screen.queryByRole("button", { name: /复制/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /更多/ }));
+    expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    // The mobile edit action enters the same inline editor.
+    expect(screen.getByRole("textbox")).toHaveValue("你好");
+  });
+
+  it("mobile: copies from the sheet", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    render(<Message message={userMessage} isMobile />);
+
+    await user.click(screen.getByRole("button", { name: /更多/ }));
+    await user.click(screen.getByRole("button", { name: /复制/ }));
+    expect(writeText).toHaveBeenCalledWith("你好");
+  });
+
+  it("mobile: regenerates an assistant message from the sheet", async () => {
+    const user = userEvent.setup();
+    const onRegenerate = vi.fn();
+    render(<Message message={assistantMessage} isMobile onRegenerate={onRegenerate} />);
+
+    await user.click(screen.getByRole("button", { name: /更多/ }));
+    await user.click(screen.getByRole("button", { name: /重新生成/ }));
+    expect(onRegenerate).toHaveBeenCalledWith(assistantMessage.id);
+  });
+
+  it("mobile: disables the mutate action in the sheet with a reason", async () => {
+    const reason = "请先停止当前生成";
+    const user = userEvent.setup();
+    render(<Message message={userMessage} isMobile mutateDisabledReason={reason} />);
+
+    await user.click(screen.getByRole("button", { name: /更多/ }));
+    const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
+    expect(editBtn).toBeDisabled();
+    expect(editBtn).toHaveAttribute("title", reason);
+    expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
+  });
 });

@@ -21,4 +21,10 @@ describe("MessageThread", () => {
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
   });
+
+  it("passes isMobile down so messages render the more button", () => {
+    render(<MessageThread messages={messages} isMobile />);
+    // One "更多" button per message on mobile.
+    expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(messages.length);
+  });
 });
