@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import type { ConversationResponse } from "../api/types";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
+import { BottomSheet } from "../ui/BottomSheet";
 
 export type SidebarUser = { email: string; name: string };
 
@@ -77,6 +78,34 @@ export function Sidebar({
 
   const renderRow = (c: ConversationResponse) => {
     const isRenaming = renameId === c.id;
+    const menuOpen = menuFor === c.id;
+    // The same two actions, rendered into a desktop dropdown or a mobile sheet.
+    const rowActions = (itemStyle?: CSSProperties) => (
+      <>
+        <button
+          className="sheet-item"
+          style={itemStyle}
+          onClick={() => {
+            setRenameId(c.id);
+            setMenuFor(null);
+          }}
+        >
+          <Icons.Pen size={13} />
+          重命名
+        </button>
+        <button
+          className="sheet-item destructive"
+          style={itemStyle}
+          onClick={() => {
+            onRequestDelete(c.id);
+            setMenuFor(null);
+          }}
+        >
+          <Icons.Trash size={13} />
+          删除对话
+        </button>
+      </>
+    );
     return (
       <div
         key={c.id}
@@ -117,13 +146,14 @@ export function Sidebar({
             aria-label="更多"
             onClick={(event) => {
               event.stopPropagation();
-              setMenuFor(menuFor === c.id ? null : c.id);
+              setMenuFor(menuOpen ? null : c.id);
             }}
           >
             <Icons.More size={14} />
           </button>
         )}
-        {menuFor === c.id && (
+        {/* Desktop: an anchored dropdown. Mobile: a bottom sheet. */}
+        {!isRenaming && menuOpen && !isMobile && (
           <div
             className="history-menu"
             onClick={(event) => event.stopPropagation()}
@@ -141,37 +171,17 @@ export function Sidebar({
               transition: "border-radius 140ms",
             }}
           >
-            <button
-              className="sheet-item"
-              style={{
-                padding: "7px 10px",
-                fontSize: 13,
-                borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
-              }}
-              onClick={() => {
-                setRenameId(c.id);
-                setMenuFor(null);
-              }}
-            >
-              <Icons.Pen size={13} />
-              重命名
-            </button>
-            <button
-              className="sheet-item destructive"
-              style={{
-                padding: "7px 10px",
-                fontSize: 13,
-                borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
-              }}
-              onClick={() => {
-                onRequestDelete(c.id);
-                setMenuFor(null);
-              }}
-            >
-              <Icons.Trash size={13} />
-              删除对话
-            </button>
+            {rowActions({
+              padding: "7px 10px",
+              fontSize: 13,
+              borderRadius: "calc(var(--menu-radius, 6px) - 2px)",
+            })}
           </div>
+        )}
+        {!isRenaming && isMobile && (
+          <BottomSheet open={menuOpen} onClose={() => setMenuFor(null)}>
+            {rowActions()}
+          </BottomSheet>
         )}
       </div>
     );

@@ -94,6 +94,34 @@ describe("Sidebar", () => {
     expect(props.onRequestDelete).toHaveBeenCalledWith(1);
   });
 
+  it("mobile: opens a bottom sheet with rename / delete", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    const { container } = render(<Sidebar {...props} isMobile />);
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    // The actions live in a bottom sheet on mobile, not the desktop dropdown.
+    expect(container.querySelector(".sheet")).not.toBeNull();
+    expect(container.querySelector(".history-menu")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "删除对话" }));
+    expect(props.onRequestDelete).toHaveBeenCalledWith(1);
+  });
+
+  it("mobile: rename from the sheet enters in-place editing", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} isMobile />);
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "重命名" }));
+    const input = screen.getByDisplayValue("今天的对话");
+    await user.clear(input);
+    await user.type(input, "改名{Enter}");
+
+    expect(props.onRename).toHaveBeenCalledWith(1, "改名");
+  });
+
   it("logs out", async () => {
     const props = baseProps();
     const user = userEvent.setup();
