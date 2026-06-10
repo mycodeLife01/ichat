@@ -242,9 +242,9 @@
    rule in chat.css (which otherwise leaks a 2px accent outline + a 4px radius
    onto these inputs on focus). */
 .auth-card .field input {
-  padding: 11px 18px;
+  padding: 11px 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--bg);
   color: var(--fg);
   font-size: 14.5px;
