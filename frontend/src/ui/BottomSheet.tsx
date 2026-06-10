@@ -15,9 +15,15 @@ type BottomSheetProps = {
 export function BottomSheet({ open, onClose, children }: BottomSheetProps) {
   if (!open) return null;
   return createPortal(
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" />
+    <div
+      className="sheet-backdrop fixed inset-0 z-40 flex items-end justify-center bg-[rgba(20,20,19,0.32)]"
+      onClick={onClose}
+    >
+      <div
+        className="sheet w-full max-w-[480px] animate-sheet-in rounded-t-2xl bg-bg-raised pt-2 pb-[max(16px,env(safe-area-inset-bottom))]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sheet-handle mx-auto mb-2.5 h-1 w-9 rounded-full bg-border-strong" />
         {children}
       </div>
     </div>,

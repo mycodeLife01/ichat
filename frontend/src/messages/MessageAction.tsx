@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 
+import { msgAction } from "../ui/classes";
+
 type MessageActionProps = {
   // Accessible name of the action and the text shown in the hover dropdown.
   label: string;
@@ -31,12 +33,12 @@ export function MessageAction({
 
   return (
     <div
-      className="msg-action-wrap"
+      className="relative inline-flex"
       onMouseEnter={() => setShowTip(true)}
       onMouseLeave={() => setShowTip(false)}
     >
       <button
-        className="msg-action icon-only"
+        className={`${msgAction} p-[5px]`}
         aria-label={label}
         disabled={disabled}
         onClick={() => {
@@ -46,7 +48,11 @@ export function MessageAction({
       >
         {icon}
       </button>
-      {showTip && <span className="msg-action-tip">{tip}</span>}
+      {showTip && (
+        <span className="pointer-events-none absolute top-[calc(100%+4px)] left-1/2 z-20 [transform:translateX(-50%)] rounded-sm bg-fg px-2 py-[3px] text-[11.5px] leading-[1.4] whitespace-nowrap text-bg">
+          {tip}
+        </span>
+      )}
     </div>
   );
 }
