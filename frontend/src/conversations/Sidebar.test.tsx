@@ -97,12 +97,13 @@ describe("Sidebar", () => {
   it("mobile: opens a bottom sheet with rename / delete", async () => {
     const props = baseProps();
     const user = userEvent.setup();
-    const { container } = render(<Sidebar {...props} isMobile />);
+    render(<Sidebar {...props} isMobile />);
 
     await user.click(screen.getByRole("button", { name: "更多" }));
     // The actions live in a bottom sheet on mobile, not the desktop dropdown.
-    expect(container.querySelector(".sheet")).not.toBeNull();
-    expect(container.querySelector(".history-menu")).toBeNull();
+    // The sheet is portaled to <body>, so query the document, not the container.
+    expect(document.querySelector(".sheet")).not.toBeNull();
+    expect(document.querySelector(".history-menu")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "删除对话" }));
     expect(props.onRequestDelete).toHaveBeenCalledWith(1);
