@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import type { ConversationResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
+import { newChatHotkeyLabel } from "../ui/hotkeys";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -223,11 +224,15 @@ export function Sidebar({
             <Icons.Plus size={14} />
             新建对话
             {!isMobile && (
-              <span className="ml-auto font-mono text-[11px] text-fg-subtle">⌘ N</span>
+              <span className="ml-auto font-mono text-[11px] text-fg-subtle">
+                {newChatHotkeyLabel}
+              </span>
             )}
           </button>
 
-          <div className="mt-[18px] flex flex-1 flex-col gap-px overflow-y-auto">
+          {/* -mr-3/pr-3 cancel the parent's px-3 so the scrollbar sits flush
+              against the sidebar's right border; rows keep their position. */}
+          <div className="mt-[18px] -mr-3 flex flex-1 flex-col gap-px overflow-y-auto pr-3">
             {groups.today.length > 0 && (
               <>
                 <div className={sectionLabel}>今天</div>

@@ -49,6 +49,12 @@ export function useTitlePolling() {
           if (detail.title?.trim()) {
             const list = await conversationApi.list();
             dispatch({ type: "conversations/listLoaded", items: list });
+            // The topbar reads conversationDetail (not the sidebar list) — sync
+            // its title too; the renamed action updates detail when ids match.
+            const updated = list.find((c) => c.id === conversationId);
+            if (updated) {
+              dispatch({ type: "conversations/renamed", conversation: updated });
+            }
             dispatch({ type: "conversations/titleResolved", id: conversationId });
             return;
           }

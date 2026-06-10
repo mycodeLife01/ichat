@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ConversationDetailResponse } from "../api/types";
-import { useAppState } from "../app/context";
+import { useAppActions, useAppState } from "../app/context";
 import { conversationResponse } from "../test/apiFixtures";
 import { createFakeServices, makeWrapper } from "../test/appHarness";
 import { useTitlePolling } from "./useTitlePolling";
@@ -15,8 +15,14 @@ function detailWithTitle(title: string | null): ConversationDetailResponse {
 
 function useTitleProbe() {
   const poll = useTitlePolling();
-  const { conversationIndex } = useAppState();
-  return { poll, pendingTitleIds: conversationIndex.pendingTitleIds };
+  const { dispatch } = useAppActions();
+  const { conversationIndex, conversationDetail } = useAppState();
+  return {
+    poll,
+    dispatch,
+    pendingTitleIds: conversationIndex.pendingTitleIds,
+    detailConversation: conversationDetail.conversation,
+  };
 }
 
 const immediate = () => Promise.resolve();
@@ -59,6 +65,28 @@ describe("useTitlePolling", () => {
     expect(detail).toHaveBeenCalledTimes(2); // polled until the title showed up
     expect(list).toHaveBeenCalled(); // sidebar refreshed with the real title
     expect(result.current.pendingTitleIds).not.toContain(cid);
+  });
+
+  it("syncs the loaded detail's title so the topbar updates without a reload", async () => {
+    const detail = vi.fn(async () => detailWithTitle("自动标题"));
+    const list = vi.fn(async () => [{ ...conversationResponse, title: "自动标题" }]);
+    const services = createFakeServices({}, { detail, list });
+    const { result } = renderHook(() => useTitleProbe(), { wrapper: makeWrapper(services) });
+
+    // The conversation is open in the thread (topbar reads this state), still untitled.
+    await act(async () => {
+      result.current.dispatch({
+        type: "conversations/detailLoaded",
+        conversation: { ...conversationResponse, title: null },
+        messages: [],
+      });
+    });
+
+    await act(async () => {
+      await result.current.poll(cid, { sleep: immediate });
+    });
+
+    expect(result.current.detailConversation?.title).toBe("自动标题");
   });
 
   it("resolves (clears pending) when a detail poll fails", async () => {

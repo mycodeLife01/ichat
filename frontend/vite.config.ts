@@ -4,6 +4,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [tailwindcss(), react()],
+  server: {
+    host: "0.0.0.0",
+  },
   test: {
     css: true,
     environment: "jsdom",

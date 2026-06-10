@@ -123,6 +123,30 @@ describe("useConversationLoader", () => {
     expect(result.current.items[0].title).toBe("新名");
   });
 
+  it("skips the rename API when the trimmed title is unchanged", async () => {
+    const rename = vi.fn(async () => conversationResponse);
+    const services = createFakeServices(
+      {},
+      { list: async () => [conversationResponse], rename },
+    );
+    const { result } = renderHook(() => useConversationLoader(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      await result.current.loadList();
+    });
+    await act(async () => {
+      // Same title with surrounding whitespace — blur without a real edit.
+      await result.current.renameConversation(
+        conversationResponse.id,
+        `  ${conversationResponse.title}  `,
+      );
+    });
+
+    expect(rename).not.toHaveBeenCalled();
+  });
+
   it("deletes the selected conversation and falls back to empty", async () => {
     const remove = vi.fn(async () => ({ status: "ok" }));
     const services = createFakeServices(

@@ -3,6 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // iOS Safari auto-zooms the page when focusing inputs with font-size
+      // < 16px (all of ours are). maximum-scale=1 suppresses only that zoom —
+      // iOS ignores it for user pinch gestures, so accessibility is intact.
+      // Applied via JS on iOS only: Android Chrome would honor maximum-scale
+      // and actually block pinch-zoom.
+      if (
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.userAgent.includes("Mac") && navigator.maxTouchPoints > 1)
+      ) {
+        document
+          .querySelector('meta[name="viewport"]')
+          .setAttribute(
+            "content",
+            "width=device-width, initial-scale=1.0, maximum-scale=1.0",
+          );
+      }
+    </script>
     <title>iChat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

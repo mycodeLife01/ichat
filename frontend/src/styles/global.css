@@ -171,10 +171,10 @@ body {
   line-height: 1.35;
   margin-top: 1.3em;
 }
-.md h1 { font-size: 22px; }
-.md h2 { font-size: 18px; }
-.md h3 { font-size: 15.5px; }
-.md p { font-size: 15px; line-height: 1.75; text-wrap: pretty; }
+.md h1 { font-size: 23px; }
+.md h2 { font-size: 19px; }
+.md h3 { font-size: 16.5px; }
+.md p { font-size: 16px; line-height: 1.75; text-wrap: pretty; }
 .md ul, .md ol { padding-left: 22px; }
 /* Preflight unstyles lists (ol,ul{list-style:none}) — restore the markers
    markdown content relies on. */
@@ -203,7 +203,7 @@ body {
 .md h4, .md h5, .md h6 { font-weight: 600; }
 .md code {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 13.5px;
   background: var(--color-bg-sunken);
   padding: 1px 5px;
   border-radius: 3px;
@@ -211,7 +211,7 @@ body {
 }
 .md pre {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 13.5px;
   background: #f7f7f5;
   color: var(--color-fg);
   padding: 14px 16px;
@@ -229,7 +229,7 @@ body {
 }
 .md table {
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 14.5px;
   width: 100%;
 }
 .md th, .md td {
@@ -273,14 +273,25 @@ body {
   mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%);
 }
 
-/* Global scrollbar styling (pseudo-elements stay as handwritten CSS). */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
+/* Global scrollbar styling (pseudo-elements stay as handwritten CSS).
+   The standard properties are scoped to Firefox only: in Chromium, setting
+   scrollbar-width/scrollbar-color disables ALL ::-webkit-scrollbar-* styling,
+   which would bring back the native scrollbar (arrow buttons included). */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
+}
+/* Remove the up/down arrow buttons (visible on Windows). */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 ::-webkit-scrollbar-track {
   background: transparent;

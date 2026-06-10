@@ -60,10 +60,13 @@ export function useConversationLoader() {
     async (id: number, title: string) => {
       const trimmed = title.trim();
       if (trimmed === "") return;
+      // Unchanged after trimming (e.g. blur without editing) — skip the API call.
+      const current = conversationIndex.items.find((c) => c.id === id);
+      if (current && current.title === trimmed) return;
       const conversation = await conversationApi.rename(id, trimmed);
       dispatch({ type: "conversations/renamed", conversation });
     },
-    [dispatch, conversationApi],
+    [dispatch, conversationApi, conversationIndex.items],
   );
 
   const deleteConversation = useCallback(

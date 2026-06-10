@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { MessageResponse } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
-import { ghostBtn, msgAction, primaryBtn } from "../ui/classes";
+import { ghostBtn, msgAction, primaryBtn, sheetItem } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
@@ -65,11 +65,11 @@ export function Message({
     copiedTimer.current = setTimeout(() => setCopied(false), 1500);
   };
 
-  // Mobile sheet keeps readable text rows (icon + label).
+  // Mobile sheet rows match the sidebar's conversation menu sheet (sheetItem).
   const sheetActions = (afterAction: () => void) => (
     <>
       <button
-        className={`${msgAction} px-2 py-1`}
+        className={`${sheetItem} text-fg`}
         onClick={() => {
           copy(message.content);
           afterAction();
@@ -79,7 +79,7 @@ export function Message({
         复制
       </button>
       <button
-        className={`${msgAction} px-2 py-1`}
+        className={`${sheetItem} text-fg`}
         disabled={disabled}
         title={mutateDisabledReason ?? undefined}
         onClick={() => {
@@ -168,7 +168,7 @@ export function Message({
               (the default — no `block`) keeps the old baseline gap below the box. */}
           <textarea
             autoFocus
-            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[14.5px] leading-[1.55] text-fg outline-none"
+            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -195,7 +195,7 @@ export function Message({
   if (isUser) {
     return (
       <div className={`${msgBase} user items-end`}>
-        <div className="max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3.5 py-2.5 text-[14.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[15px]">
+        <div className="max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3.5 py-2.5 text-[15.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[16px]">
           {message.content}
         </div>
         {actionBar}

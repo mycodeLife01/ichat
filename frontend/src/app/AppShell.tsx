@@ -15,6 +15,7 @@ import { useRunStream } from "../runs/useRunStream";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
 
@@ -144,10 +145,10 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cmd/Ctrl+N starts a new conversation.
+  // Ctrl/⌘+Shift+O starts a new conversation (see ui/hotkeys.ts for why not N).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+      if (isNewChatHotkey(event)) {
         event.preventDefault();
         onNewConversation();
       }
@@ -222,9 +223,11 @@ export function AppShell() {
         />
 
         {/* scrollbar-gutter reserved so expanding a thinking block (which adds
-            height and toggles the scrollbar) does not narrow the chat column. */}
+            height and toggles the scrollbar) does not narrow the chat column.
+            both-edges keeps the column centered: a right-only gutter would
+            shift it 5px left of the composer's axis. */}
         <div
-          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [scrollbar-gutter:stable] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [scrollbar-gutter:stable_both-edges] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
           ref={threadRef}
         >
           {!showWelcome && (
