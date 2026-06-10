@@ -52,11 +52,15 @@
 
 停止 → 「停止中」→ cancel 请求失败 → `run/cancelFailed` → 按钮回「停止生成」可重试；若失败与服务端终态竞态，终态优先（reducer 只在 cancelling 时回退）。
 
+## 计划外修复
+
+**`e66d9b4`** Chrome smoke 发现步骤 8 遗留 bug：点击停止并收到 `run_cancelled` 终态后，Composer 永远卡在禁用的「停止中」按钮——`composerState` 推导先检查 `cancelRequested`，而该标志在终态后仍为 true，终态分支永远走不到 idle。修复为仅由 `status` 推导（`cancelling` 是唯一 stopping 态），并补了一个走完整「点停止 → 服务端终态」序列的集成测试（用可控的挂起流模拟真实时序）。
+
 ## 验证结果
 
 ```bash
 cd frontend
-pnpm exec vitest run    # 171 个测试全部通过（38 个测试文件）
+pnpm exec vitest run    # 172 个测试全部通过（38 个测试文件）
 pnpm run typecheck      # 通过
 pnpm run lint           # 通过
 pnpm run build          # 通过
@@ -66,7 +70,12 @@ pnpm run build          # 通过
 
 既有用例适配 1 处：AppShell「选择加载详情」的 detail fixture 补了物化 assistant 消息（接入恢复后，原 fixture 的孤立 user message 会真实触发恢复，导致文案重复匹配——这正是恢复逻辑在工作）。
 
-**未做本地跨域手动 smoke**（需起后端 + 真实 DeepSeek key）。建议下次任务开始前按惯例跑一遍：刷新进行中 run 看续流不重不丢、停止后刷新看「已停止」partial、切走切回看重新挂接。
+**已做本地跨域 Chrome smoke**（真实 DeepSeek、CDP 驱动真实 Chrome，docker compose 后端 + Vite dev 前端跨域）：
+
+- 流式中刷新：刷新前 1103 字符 → 恢复 1262 字符并续流增长，开头文本仅出现一次（不重不丢）；终态后物化替换，仅 1 条助手消息，草稿激活进侧栏，自动标题正常。
+- 停止 → 刷新：「停止中」→「已停止」pill；刷新后 192 字符 partial 原样恢复 + pill，无续流，Composer 可用。
+- 流式中切走再切回：切走后空白态无流式泄漏；切回时从服务端 cursor 恢复（65 → 1044 字符）并继续流式，终态物化正常。
+- 期间发现并修复 Composer 停止后卡死 bug（见「计划外修复」）。
 
 ## 当前边界
 
