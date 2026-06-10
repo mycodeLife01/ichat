@@ -957,3 +957,64 @@ textarea:focus-visible,
   color: var(--fg-faint);
   cursor: not-allowed;
 }
+
+/* ============ Bottom sheet (mobile action panel) ============ */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.32);
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  background: var(--bg-raised);
+  width: 100%;
+  max-width: 480px;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding: 8px 0 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  animation: sheet-in 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border-strong);
+  border-radius: 99px;
+  margin: 0 auto 10px;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ============ Toast ============ */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  z-index: 60;
+  animation: toast-in 200ms;
+}
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, 8px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}

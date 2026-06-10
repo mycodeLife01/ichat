@@ -420,4 +420,28 @@ describe("AppShell", () => {
       expect(editBtn).toHaveAttribute("title", "请先停止当前生成");
     });
   });
+
+  it("surfaces a toast when sending fails", async () => {
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [],
+        create: async () => ({
+          id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+        }),
+        sendMessage: async () => {
+          throw new Error("network");
+        },
+      },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent("发送失败，请重试");
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Sidebar } from "../conversations/Sidebar";
 import { Topbar } from "../conversations/Topbar";
@@ -15,6 +15,7 @@ import { useRunStream } from "../runs/useRunStream";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
 import "../styles/chat.css";
 
@@ -80,6 +81,12 @@ export function AppShell() {
   const onStop = () => {
     if (activeRun) void cancel(activeRun.runId);
   };
+
+  // Stable so Toast's auto-dismiss effect doesn't re-arm on every render.
+  const dismissToast = useCallback(
+    () => dispatch({ type: "ui/hideToast" }),
+    [dispatch],
+  );
 
   // Switching to / creating a conversation must not inherit a pending animation:
   // the target layout should render immediately.
@@ -204,6 +211,7 @@ export function AppShell() {
           {!showWelcome && (
             <MessageThread
               messages={messages}
+              isMobile={isMobile}
               mutateDisabledReason={mutateDisabledReason}
               onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
               onRegenerate={(id) => void regenerate(id)}
@@ -247,6 +255,8 @@ export function AppShell() {
           onCancel={() => dispatch({ type: "ui/closeConfirm" })}
         />
       )}
+
+      <Toast toast={ui.toast} onDismiss={dismissToast} />
     </div>
   );
 }
