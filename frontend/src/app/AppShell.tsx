@@ -161,11 +161,11 @@ export function AppShell() {
   const showWelcome = (selectedId == null || messages.length === 0) && activeRun == null;
   const sidebarCollapsed = ui.sidebarCollapsed;
   // Edit / regenerate mutate the thread by queuing a new run; block them while a
-  // run for this conversation is in flight (the backend would 409 anyway).
+  // run for this conversation is in flight (the backend would 409 anyway). A
+  // terminal activeRun (stopped/failed partial kept on screen) must not block —
+  // composerState is already "idle" for those.
   const mutateDisabledReason =
-    activeRun != null && activeRun.conversationId === selectedId
-      ? "请先停止当前生成"
-      : null;
+    composerState !== "idle" ? "请先停止当前生成" : null;
 
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"

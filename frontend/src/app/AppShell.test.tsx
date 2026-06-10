@@ -419,6 +419,64 @@ describe("AppShell", () => {
     });
   });
 
+  it("re-enables the mutate buttons after a stop completes", async () => {
+    const user = userEvent.setup();
+
+    const draft: ConversationResponse = {
+      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const userMessage: MessageResponse = {
+      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      content: "你好", reasoning: null, position: 1, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    const sent: SendMessageResponse = { message: userMessage, run };
+
+    // Same stop sequence as the composer test: stall after the first delta
+    // until cancel, then deliver the server's run_cancelled terminal.
+    let releaseCancel = () => {};
+    const cancelRequested = new Promise<void>((resolve) => {
+      releaseCancel = resolve;
+    });
+    async function* stream() {
+      yield { seq: 1, type: "text_delta" as const, data: { ...textDeltaEvent, seq: 1 } };
+      await cancelRequested;
+      yield {
+        seq: 2,
+        type: "run_cancelled" as const,
+        data: { seq: 2, type: "run_cancelled" as const, payload: {}, created_at: "t" },
+      };
+    }
+    const services = createFakeServices(
+      {},
+      { list: async () => [], create: async () => draft, sendMessage: async () => sent },
+      {
+        streamEvents: () => stream(),
+        cancel: async () => {
+          releaseCancel();
+          return { status: "ok" };
+        },
+      },
+    );
+
+    const { container } = renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await user.click(await screen.findByRole("button", { name: "停止生成" }));
+
+    await waitFor(() =>
+      expect(container.querySelector(".status-pill.stopped")).toBeTruthy(),
+    );
+    // The run is terminal: editing the user message must be allowed again.
+    const sentMsg = screen.getByText("你好").closest(".msg") as HTMLElement;
+    expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();
+  });
+
   it("surfaces a toast when sending fails", async () => {
     const services = createFakeServices(
       {},
