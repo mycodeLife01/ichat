@@ -67,7 +67,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
               type="button"
               aria-label="模型模式"
             >
-              <span>Instant</span>
+              <span>Fast</span>
               <Icons.Chevron size={14} />
             </button>
             <button className={composerTool} type="button" aria-label="语音输入">
