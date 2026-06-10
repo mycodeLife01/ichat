@@ -82,7 +82,7 @@ export function AuthScreen() {
     <main className="auth-shell">
       <AuthBackground />
 
-      <section className="auth-card" data-focus="ring">
+      <section className="auth-card">
         <div className="auth-brand">
           <span className="wordmark">iChat</span>
           <p className="auth-tag">

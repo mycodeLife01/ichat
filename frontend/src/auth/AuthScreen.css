@@ -238,26 +238,27 @@
   font-weight: 500;
 }
 
-.field input {
-  padding: 11px 14px;
+/* Scoped to .auth-card so this wins over the app-wide `input:focus-visible`
+   rule in chat.css (which otherwise leaks a 2px accent outline + a 4px radius
+   onto these inputs on focus). */
+.auth-card .field input {
+  padding: 11px 18px;
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--bg);
   color: var(--fg);
   font-size: 14.5px;
   outline: none;
-  transition: border-color 140ms, background 140ms, box-shadow 140ms,
-    border-width 140ms;
+  transition: border-color 140ms;
 }
 
 .field input::placeholder {
   color: var(--fg-faint, #b8b6b0);
 }
 
-.auth-card[data-focus="ring"] .field input:focus {
-  border-color: var(--fg-muted);
-  background: var(--bg-raised);
-  box-shadow: 0 0 0 3px rgb(20 20 19 / 7%);
+/* Clean focus: a single thin gray border, no ring/outline/background change. */
+.auth-card .field input:focus {
+  border-color: var(--fg-subtle);
 }
 
 .field .err {
