@@ -17,10 +17,20 @@ export const initialActiveRunState: ActiveRunState = null;
 
 export type ActiveRunAction =
   | { type: "run/started"; runId: number; conversationId: number }
+  | {
+      type: "run/restored";
+      runId: number;
+      conversationId: number;
+      latestSeq: number;
+      draftText: string;
+      draftReasoning: string;
+      status: RunStatus;
+    }
   | { type: "run/reasoningDelta"; seq: number; text: string }
   | { type: "run/textDelta"; seq: number; text: string }
   | { type: "run/terminal"; status: "succeeded" | "failed" | "cancelled" }
   | { type: "run/cancelRequested" }
+  | { type: "run/cancelFailed" }
   | { type: "run/cleared" };
 
 export function activeRunReducer(
@@ -57,9 +67,24 @@ export function activeRunReducer(
     case "run/terminal":
       if (state === null) return state;
       return { ...state, status: action.status };
+    case "run/restored":
+      return {
+        runId: action.runId,
+        conversationId: action.conversationId,
+        latestSeq: action.latestSeq,
+        draftText: action.draftText,
+        draftReasoning: action.draftReasoning,
+        status: action.status,
+        cancelRequested: action.status === "cancelling",
+      };
     case "run/cancelRequested":
       if (state === null) return state;
       return { ...state, cancelRequested: true, status: "cancelling" };
+    case "run/cancelFailed":
+      // Only meaningful while the optimistic "stopping" state is showing; a
+      // terminal that raced in must not be reverted.
+      if (state === null || state.status !== "cancelling") return state;
+      return { ...state, cancelRequested: false, status: "streaming" };
     case "run/cleared":
       return null;
     case "app/reset":

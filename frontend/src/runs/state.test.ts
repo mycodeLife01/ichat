@@ -64,4 +64,51 @@ describe("activeRunReducer", () => {
     expect(activeRunReducer(null, { type: "run/terminal", status: "failed" })).toBeNull();
     expect(activeRunReducer(null, { type: "run/cancelRequested" })).toBeNull();
   });
+
+  it("restores a run from server state", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: 100,
+      conversationId: 10,
+      latestSeq: 5,
+      draftText: "Hel",
+      draftReasoning: "想",
+      status: "streaming",
+    });
+    expect(next).toEqual({
+      runId: 100,
+      conversationId: 10,
+      latestSeq: 5,
+      draftText: "Hel",
+      draftReasoning: "想",
+      status: "streaming",
+      cancelRequested: false,
+    });
+  });
+
+  it("marks cancelRequested when restoring a cancelling run", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: 100,
+      conversationId: 10,
+      latestSeq: 5,
+      draftText: "",
+      draftReasoning: "",
+      status: "cancelling",
+    });
+    expect(next?.cancelRequested).toBe(true);
+  });
+
+  it("reverts cancelling to streaming on cancelFailed", () => {
+    const cancelling = activeRunReducer(started, { type: "run/cancelRequested" });
+    const next = activeRunReducer(cancelling, { type: "run/cancelFailed" });
+    expect(next?.status).toBe("streaming");
+    expect(next?.cancelRequested).toBe(false);
+  });
+
+  it("ignores cancelFailed when not cancelling", () => {
+    const cancelled = activeRunReducer(started, { type: "run/terminal", status: "cancelled" });
+    expect(activeRunReducer(cancelled, { type: "run/cancelFailed" })).toBe(cancelled);
+    expect(activeRunReducer(null, { type: "run/cancelFailed" })).toBeNull();
+  });
 });
