@@ -1,15 +1,57 @@
+@import "tailwindcss";
+/* Legacy token sheet — kept during the utility migration so chat.css /
+   AuthScreen.css keep resolving var(--bg) etc.; deleted at cleanup. */
 @import "./tokens.css";
 
-* {
-  box-sizing: border-box;
+/* Design tokens — warm-neutral light theme (values mirror tokens.css). */
+@theme {
+  --color-bg: #fbfbfa;
+  --color-bg-sunken: #f4f3f0;
+  --color-bg-raised: #ffffff;
+  --color-bg-hover: rgba(20, 20, 19, 0.04);
+  --color-bg-active: rgba(20, 20, 19, 0.07);
+
+  --color-fg: #1a1a19;
+  --color-fg-muted: #6b6a66;
+  --color-fg-subtle: #95938e;
+  --color-fg-faint: #b8b6b0;
+
+  --color-border: rgba(20, 20, 19, 0.08);
+  --color-border-strong: rgba(20, 20, 19, 0.14);
+  --color-border-focus: rgba(20, 20, 19, 0.55);
+
+  --color-accent: #1a1a19;
+  --color-accent-fg: #fbfbfa;
+  --color-accent-soft: rgba(20, 20, 19, 0.07);
+
+  --color-danger: #b54a2e;
+  --color-danger-soft: rgba(181, 74, 46, 0.08);
+
+  /* rounded-sm / rounded-md / rounded-lg (legacy --radius-sm / --radius / --radius-lg) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", serif;
+}
+
+/* Layout variables referenced by arbitrary values (not theme namespaces). */
+:root {
+  --reading-width: 820px;
+  --sidebar-width: 280px;
+  --scrollbar-thumb: rgba(20, 20, 19, 0.18);
+  --scrollbar-thumb-hover: rgba(20, 20, 19, 0.32);
 }
 
 html,
 body {
   height: 100%;
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--color-bg);
+  color: var(--color-fg);
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.6;
@@ -27,4 +69,9 @@ button,
 input,
 textarea {
   font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
 }
