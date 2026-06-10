@@ -37,7 +37,9 @@ export type ConversationIndexAction =
   | { type: "conversations/renamed"; conversation: ConversationResponse }
   | { type: "conversations/removed"; id: number }
   | { type: "conversations/draftCreated"; id: number }
-  | { type: "conversations/draftActivated" };
+  | { type: "conversations/draftActivated" }
+  | { type: "conversations/titlePending"; id: number }
+  | { type: "conversations/titleResolved"; id: number };
 
 export function conversationIndexReducer(
   state: ConversationIndexState,
@@ -65,6 +67,15 @@ export function conversationIndexReducer(
       return { ...state, draftId: action.id };
     case "conversations/draftActivated":
       return { ...state, draftId: null };
+    case "conversations/titlePending":
+      return state.pendingTitleIds.includes(action.id)
+        ? state
+        : { ...state, pendingTitleIds: [...state.pendingTitleIds, action.id] };
+    case "conversations/titleResolved":
+      return {
+        ...state,
+        pendingTitleIds: state.pendingTitleIds.filter((id) => id !== action.id),
+      };
     case "app/reset":
       return initialConversationIndexState;
     default:

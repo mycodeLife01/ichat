@@ -170,4 +170,37 @@ describe("conversation slices - streaming additions", () => {
     });
     expect(activated.draftId).toBeNull();
   });
+
+  it("adds and removes title-pending ids without duplicates", () => {
+    const one = conversationIndexReducer(initialConversationIndexState, {
+      type: "conversations/titlePending",
+      id: 7,
+    });
+    expect(one.pendingTitleIds).toEqual([7]);
+    // Idempotent: re-adding the same id does not duplicate it.
+    const stillOne = conversationIndexReducer(one, {
+      type: "conversations/titlePending",
+      id: 7,
+    });
+    expect(stillOne.pendingTitleIds).toEqual([7]);
+    const two = conversationIndexReducer(stillOne, {
+      type: "conversations/titlePending",
+      id: 9,
+    });
+    expect(two.pendingTitleIds).toEqual([7, 9]);
+    const resolved = conversationIndexReducer(two, {
+      type: "conversations/titleResolved",
+      id: 7,
+    });
+    expect(resolved.pendingTitleIds).toEqual([9]);
+  });
+
+  it("clears pendingTitleIds on app/reset", () => {
+    const pending = conversationIndexReducer(initialConversationIndexState, {
+      type: "conversations/titlePending",
+      id: 7,
+    });
+    const reset = conversationIndexReducer(pending, { type: "app/reset" });
+    expect(reset.pendingTitleIds).toEqual([]);
+  });
 });
