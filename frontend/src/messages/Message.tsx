@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { MessageResponse } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
-import { ghostBtn, msgAction, primaryBtn, sheetItem } from "../ui/classes";
+import { ghostBtn, primaryBtn, sheetItem } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
@@ -10,8 +10,9 @@ import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
   message: MessageResponse;
-  // On mobile, actions move behind a "更多" button into a BottomSheet; desktop
-  // shows an icon-only action bar with hover-dropdown labels.
+  // On mobile, assistant actions stay resident; user actions open in a
+  // BottomSheet via long-press on the bubble. Desktop shows an icon-only
+  // action bar with hover-dropdown labels.
   isMobile?: boolean;
   // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
@@ -39,15 +40,29 @@ export function Message({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mobile user messages have no visible action button (no hover on touch);
+  // a long-press on the bubble opens the action sheet instead.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disabled = mutateDisabledReason !== null;
   const isUser = message.role === "user";
 
   useEffect(
     () => () => {
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
     },
     [],
   );
+
+  const startLongPress = () => {
+    longPressTimer.current = setTimeout(() => setSheetOpen(true), 450);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
 
   const startEditing = () => {
     setDraft(message.content);
@@ -132,22 +147,16 @@ export function Message({
     </div>
   );
 
-  const actionBar = isMobile ? (
-    <div className={`${actionsBase}${isUser ? " justify-end" : ""}`}>
-      <button
-        className={`${msgAction} px-2 py-1`}
-        aria-label="更多"
-        onClick={() => setSheetOpen(true)}
-      >
-        <Icons.More size={14} />
-      </button>
+  // Mobile: assistant actions stay resident (the desktop bar already is — no
+  // hover exists on touch); user actions open via long-press on the bubble.
+  const actionBar =
+    isMobile && isUser ? (
       <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)}>
         {sheetActions(() => setSheetOpen(false))}
       </BottomSheet>
-    </div>
-  ) : (
-    desktopBar
-  );
+    ) : (
+      desktopBar
+    );
 
   if (isUser && editing) {
     const save = () => {
@@ -162,13 +171,13 @@ export function Message({
     };
     return (
       <div className={`${msgBase} user items-end`}>
-        <div className="w-full max-w-[78%] rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
+        <div className="w-full max-w-[78%] animate-edit-in rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
           {/* p-[2px] preserves the UA default padding the pre-Tailwind version
               never reset (preflight zeroes it, shifting text wrapping); inline-block
               (the default — no `block`) keeps the old baseline gap below the box. */}
           <textarea
             autoFocus
-            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none"
+            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none max-[760px]:text-[17px]"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -195,7 +204,18 @@ export function Message({
   if (isUser) {
     return (
       <div className={`${msgBase} user items-end`}>
-        <div className="max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3.5 py-2.5 text-[15.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[16px]">
+        <div
+          className={`max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
+            isMobile ? " select-none [-webkit-touch-callout:none]" : ""
+          }`}
+          onTouchStart={isMobile ? startLongPress : undefined}
+          onTouchEnd={isMobile ? cancelLongPress : undefined}
+          onTouchMove={isMobile ? cancelLongPress : undefined}
+          onTouchCancel={isMobile ? cancelLongPress : undefined}
+          // Android fires contextmenu on long-press — keep the sheet, not the
+          // system menu. (select-none/touch-callout cover iOS selection.)
+          onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
+        >
           {message.content}
         </div>
         {actionBar}

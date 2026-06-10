@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +26,16 @@ const assistantMessage: MessageResponse = {
   position: 2,
   created_at: "2026-06-08T10:00:01Z",
 };
+
+// Simulates a touch held past the 450ms long-press window.
+function longPress(el: HTMLElement) {
+  vi.useFakeTimers();
+  fireEvent.touchStart(el);
+  act(() => {
+    vi.advanceTimersByTime(500);
+  });
+  vi.useRealTimers();
+}
 
 describe("Message", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -177,8 +187,7 @@ describe("Message", () => {
     expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
   });
 
-  it("mobile: hides actions behind a more button that opens a sheet (user)", async () => {
-    const user = userEvent.setup();
+  it("mobile: long-press on the user bubble opens the action sheet", async () => {
     const onEditAndRegenerate = vi.fn();
     render(
       <Message
@@ -189,14 +198,31 @@ describe("Message", () => {
       />,
     );
 
-    // Actions live behind the sheet; only the more button shows directly.
+    // No visible action button; actions live behind the long-press sheet.
     expect(screen.queryByRole("button", { name: /复制/ })).toBeNull();
-    await user.click(screen.getByRole("button", { name: /更多/ }));
+    expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
+    longPress(screen.getByText("你好"));
     expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
 
+    const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
     // The mobile edit action enters the same inline editor.
     expect(screen.getByRole("textbox")).toHaveValue("你好");
+  });
+
+  it("mobile: a released touch does not open the sheet", () => {
+    render(<Message message={userMessage} isMobile />);
+
+    const bubble = screen.getByText("你好");
+    vi.useFakeTimers();
+    fireEvent.touchStart(bubble);
+    fireEvent.touchEnd(bubble); // lifted before the long-press window
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    vi.useRealTimers();
+
+    expect(screen.queryByRole("button", { name: /复制/ })).toBeNull();
   });
 
   it("mobile: copies from the sheet", async () => {
@@ -204,27 +230,26 @@ describe("Message", () => {
     const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     render(<Message message={userMessage} isMobile />);
 
-    await user.click(screen.getByRole("button", { name: /更多/ }));
+    longPress(screen.getByText("你好"));
     await user.click(screen.getByRole("button", { name: /复制/ }));
     expect(writeText).toHaveBeenCalledWith("你好");
   });
 
-  it("mobile: regenerates an assistant message from the sheet", async () => {
+  it("mobile: assistant actions are resident, no sheet involved", async () => {
     const user = userEvent.setup();
     const onRegenerate = vi.fn();
     render(<Message message={assistantMessage} isMobile onRegenerate={onRegenerate} />);
 
-    await user.click(screen.getByRole("button", { name: /更多/ }));
+    expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
     expect(onRegenerate).toHaveBeenCalledWith(assistantMessage.id);
   });
 
   it("mobile: disables the mutate action in the sheet with a reason", async () => {
     const reason = "请先停止当前生成";
-    const user = userEvent.setup();
     render(<Message message={userMessage} isMobile mutateDisabledReason={reason} />);
 
-    await user.click(screen.getByRole("button", { name: /更多/ }));
+    longPress(screen.getByText("你好"));
     const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
     expect(editBtn).toBeDisabled();
     expect(editBtn).toHaveAttribute("title", reason);

@@ -38,7 +38,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
       <div className="composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 rounded-[18px] border border-border-strong bg-bg-raised py-2.5 pr-3.5 pl-[18px]">
         <textarea
           ref={ref}
-          className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[16px] leading-[1.55] text-fg outline-none placeholder:text-fg-faint"
+          className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[16px] leading-[1.55] text-fg outline-none placeholder:text-fg-faint max-[760px]:text-[17px]"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="有问题，尽管问"

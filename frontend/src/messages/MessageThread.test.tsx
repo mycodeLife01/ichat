@@ -22,9 +22,12 @@ describe("MessageThread", () => {
     expect(screen.getByText("答案")).toBeInTheDocument();
   });
 
-  it("passes isMobile down so messages render the more button", () => {
+  it("passes isMobile down: assistant actions resident, user actions behind long-press", () => {
     render(<MessageThread messages={messages} isMobile />);
-    // One "更多" button per message on mobile.
-    expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(messages.length);
+    // The assistant bar renders resident copy/regenerate; the user message
+    // shows no action button (its sheet opens via long-press on the bubble).
+    expect(screen.getByRole("button", { name: /重新生成/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /复制/ })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
   });
 });

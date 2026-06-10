@@ -51,6 +51,7 @@
   --animate-toast-in: toast-in 200ms;
   --animate-sheet-in: sheet-in 220ms cubic-bezier(0.4, 0, 0.2, 1);
   --animate-skel: skel 1.4s ease-in-out infinite;
+  --animate-edit-in: edit-in 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   @keyframes toast-in {
     from {
@@ -76,6 +77,17 @@
     }
     100% {
       background-position: -100% 0;
+    }
+  }
+  /* User-message inline editor mount: fade in with a slight rise. */
+  @keyframes edit-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 
@@ -245,6 +257,18 @@ body {
   border: none;
   border-top: 1px solid var(--color-border);
   margin: 1.5em 0;
+}
+
+/* Mobile reading sizes — one notch up from desktop, same proportions. The
+   wrapper div (lists inherit from it) is bumped in Markdown.tsx. */
+@media (max-width: 760px) {
+  .md p { font-size: 17px; }
+  .md h1 { font-size: 24px; }
+  .md h2 { font-size: 20px; }
+  .md h3 { font-size: 17.5px; }
+  .md code { font-size: 14px; }
+  .md pre { font-size: 14px; }
+  .md table { font-size: 15.5px; }
 }
 
 /* Syntax highlighting (very light) */

@@ -18,7 +18,7 @@ export function ThinkingBlock({ content, streaming }: ThinkingBlockProps) {
 
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-fg-muted`}
+      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-fg-muted max-[760px]:text-[15px]`}
     >
       <div
         className="inline-flex cursor-pointer items-center gap-1.5 py-0.5 text-xs font-medium text-fg-muted select-none"
@@ -40,7 +40,7 @@ export function ThinkingBlock({ content, streaming }: ThinkingBlockProps) {
         {streaming ? "思考中…" : "已思考"}
       </div>
       <div
-        className={`mt-1.5 max-h-[360px] overflow-y-auto text-[14px] whitespace-pre-wrap text-fg-muted [scrollbar-gutter:stable]${open ? "" : " hidden"}`}
+        className={`mt-1.5 max-h-[360px] overflow-y-auto text-[14px] whitespace-pre-wrap text-fg-muted [scrollbar-gutter:stable] max-[760px]:text-[15px]${open ? "" : " hidden"}`}
       >
         {content}
       </div>

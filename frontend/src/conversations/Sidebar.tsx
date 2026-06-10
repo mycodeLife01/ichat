@@ -48,7 +48,7 @@ function groupByDate(items: ConversationResponse[]): Groups {
 }
 
 const sectionLabel =
-  "px-2.5 pt-3.5 pb-1 text-[11px] font-medium tracking-[0.04em] text-fg-subtle uppercase";
+  "px-2.5 pt-3.5 pb-1 text-[11px] font-medium tracking-[0.04em] text-fg-subtle uppercase max-[760px]:text-[12px]";
 
 export function Sidebar({
   items,
@@ -129,7 +129,7 @@ export function Sidebar({
         key={c.id}
         // leading-[22px] keeps a stable line box (>= the 22px menu button) so
         // revealing the button on hover never shifts the rows below.
-        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-md px-[11px] py-[7.7px] text-[13.5px] leading-[22px] transition-[background,color] duration-100 ${
+        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-md px-[11px] py-[7.7px] text-[13.5px] leading-[22px] transition-[background,color] duration-100 max-[760px]:py-[9px] max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
           active
             ? "active bg-bg-active font-medium text-fg"
             : "text-fg-muted hover:bg-bg-hover hover:text-fg"
@@ -206,7 +206,7 @@ export function Sidebar({
       <aside className={sidebarClasses.join(" ")}>
         <div className="flex h-full w-[var(--sidebar-width)] flex-col px-3 pt-4 pb-3">
           <div className="flex items-center justify-between pt-1 pr-2 pb-4 pl-2">
-            <Wordmark />
+            <Wordmark size={isMobile ? 20 : 18} />
             {!isMobile && (
               <button className={iconBtn} aria-label="收起侧栏" onClick={onToggleCollapsed}>
                 <Icons.PanelLeft size={15} />
@@ -215,7 +215,7 @@ export function Sidebar({
           </div>
 
           <button
-            className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-raised px-2.5 py-2 text-left text-sm font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong hover:bg-bg"
+            className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-raised px-2.5 py-2 text-left text-sm font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong hover:bg-bg max-[760px]:py-2.5 max-[760px]:text-[15px]"
             onClick={() => {
               onNew();
               if (isMobile) onCloseMobile();
@@ -252,17 +252,17 @@ export function Sidebar({
               </>
             )}
             {items.length === 0 && (
-              <div className="px-2.5 py-4 text-[12.5px] leading-[1.6] text-fg-subtle">
+              <div className="px-2.5 py-4 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
                 还没有已保存的对话。开始一次对话后会自动出现在这里。
               </div>
             )}
           </div>
 
           <div className="mt-2 flex items-center gap-2.5 border-t border-border px-2 pt-3 pb-1">
-            <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg">
+            <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg max-[760px]:h-7 max-[760px]:w-7 max-[760px]:text-[13px]">
               {(user?.name || "U").slice(0, 1).toUpperCase()}
             </div>
-            <div className="flex-1 truncate text-[13px] text-fg">
+            <div className="flex-1 truncate text-[13px] text-fg max-[760px]:text-[14px]">
               {user?.email || "you@example.com"}
             </div>
             <button className={iconBtn} aria-label="退出登录" onClick={onLogout}>
