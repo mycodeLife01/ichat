@@ -67,6 +67,35 @@
       background-position: -100% 0;
     }
   }
+
+  --animate-auth-drift-1: auth-drift-1 28s ease-in-out infinite alternate;
+  --animate-auth-drift-2: auth-drift-2 34s ease-in-out infinite alternate;
+  --animate-auth-drift-3: auth-drift-3 38s ease-in-out infinite alternate;
+
+  @keyframes auth-drift-1 {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(60px, 80px) scale(1.12);
+    }
+  }
+  @keyframes auth-drift-2 {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(-90px, -40px) scale(1.15);
+    }
+  }
+  @keyframes auth-drift-3 {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(40px, -50px) scale(1.18);
+    }
+  }
 }
 
 /* Layout variables referenced by arbitrary values (not theme namespaces). */
@@ -200,6 +229,25 @@ textarea:focus-visible,
 .tok-num { color: #d19a66; }
 .tok-com { color: #7f7f7f; font-style: italic; }
 .tok-fn { color: #61afef; }
+
+/* Auth screen background overlays — data-URI noise and the masked grid stay
+   as handwritten CSS (the URI is unreadable inline in JSX). */
+.auth-grain {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNjAnIGhlaWdodD0nMTYwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC45JyBudW1PY3RhdmVzPScyJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJy8+PGZlQ29sb3JNYXRyaXggdmFsdWVzPScwIDAgMCAwIDAgIDAgMCAwIDAgMCAgMCAwIDAgMCAwICAwIDAgMCAwLjA2IDAnLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0nMTAwJScgaGVpZ2h0PScxMDAlJyBmaWx0ZXI9J3VybCglMjNuKScvPjwvc3ZnPg==");
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+.auth-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgb(20 20 19 / 3.5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(20 20 19 / 3.5%) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%);
+}
 
 /* Global scrollbar styling (pseudo-elements stay as handwritten CSS). */
 * {

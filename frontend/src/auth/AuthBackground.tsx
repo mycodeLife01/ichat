@@ -70,13 +70,25 @@ export function AuthBackground() {
     };
   }, []);
 
+  const blob = "absolute rounded-full bg-fg blur-[100px] will-change-transform";
+
   return (
-    <div className="auth-bg" aria-hidden="true">
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       <div className="auth-grid" />
-      <div className="auth-blob auth-blob--1" />
-      <div className="auth-blob auth-blob--2" />
-      <div className="auth-blob auth-blob--3" />
-      <svg className="auth-ribbons" ref={svgRef} preserveAspectRatio="none" />
+      <div
+        className={`${blob} -top-[140px] -left-20 h-[480px] w-[480px] animate-auth-drift-1 opacity-[0.07]`}
+      />
+      <div
+        className={`${blob} -right-[120px] -bottom-[200px] h-[600px] w-[600px] animate-auth-drift-2 opacity-[0.05]`}
+      />
+      <div
+        className={`${blob} top-[40%] right-[18%] h-[280px] w-[280px] animate-auth-drift-3 opacity-[0.04]`}
+      />
+      <svg
+        className="absolute inset-0 h-full w-full fill-none stroke-fg [stroke-linecap:round]"
+        ref={svgRef}
+        preserveAspectRatio="none"
+      />
       <div className="auth-grain" />
     </div>
   );
