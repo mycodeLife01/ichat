@@ -618,20 +618,6 @@ textarea:focus-visible,
   display: none;
 }
 
-/* ============ Streaming caret ============ */
-.caret {
-  display: inline-block;
-  width: 7px;
-  height: 1.05em;
-  background: var(--fg);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink 1s steps(1) infinite;
-}
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
 /* ============ Status row ============ */
 .status-pill {
   display: inline-flex;

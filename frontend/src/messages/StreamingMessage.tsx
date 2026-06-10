@@ -20,7 +20,6 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           <ThinkingBlock content={run.draftReasoning} streaming={thinking} />
         )}
         <Markdown content={run.draftText} />
-        {isStreaming && <span className="caret" />}
         {run.status === "cancelled" && (
           <div className="status-pill stopped">
             <span

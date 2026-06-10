@@ -26,13 +26,6 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".body.md")).toBeTruthy();
   });
 
-  it("shows the blinking caret while streaming", () => {
-    const { container } = render(
-      <StreamingMessage run={run({ draftText: "Hel", status: "streaming" })} />,
-    );
-    expect(container.querySelector(".caret")).toBeTruthy();
-  });
-
   it("renders the reasoning block", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByText("在想")).toBeInTheDocument();
@@ -44,7 +37,6 @@ describe("StreamingMessage", () => {
     );
     expect(container.querySelector(".status-pill.failed")).toBeTruthy();
     expect(screen.getByText("生成失败 · 请稍后重试")).toBeInTheDocument();
-    expect(container.querySelector(".caret")).toBeNull();
   });
 
   it("shows the stopped status-pill (demo copy)", () => {
