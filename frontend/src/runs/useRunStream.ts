@@ -28,13 +28,20 @@ export function useRunStream() {
         for await (const event of runApi.streamEvents(runId, afterSeq, {
           signal: controller.signal,
         })) {
+          // Whether this run is still the one the UI is showing. Navigating to
+          // another conversation clears (or replaces) activeRun, but this stream
+          // keeps yielding in the background until its abort propagates. Run-state
+          // mutations below are gated on this so a late event never lands on the
+          // wrong run — leaking A's text/terminal into conversation B.
+          const isActiveRun = () => stateRef.current.activeRun?.runId === runId;
+
           const raw = event.data.payload.text;
           const text = typeof raw === "string" ? raw : "";
 
           if (event.type === "reasoning_delta") {
-            dispatch({ type: "run/reasoningDelta", seq: event.seq, text });
+            if (isActiveRun()) dispatch({ type: "run/reasoningDelta", seq: event.seq, text });
           } else if (event.type === "text_delta") {
-            dispatch({ type: "run/textDelta", seq: event.seq, text });
+            if (isActiveRun()) dispatch({ type: "run/textDelta", seq: event.seq, text });
           } else if (
             event.type === "run_succeeded" ||
             event.type === "run_failed" ||
@@ -46,9 +53,12 @@ export function useRunStream() {
                 : event.type === "run_failed"
                   ? "failed"
                   : "cancelled";
-            dispatch({ type: "run/terminal", status });
+            if (isActiveRun()) dispatch({ type: "run/terminal", status });
 
             if (status === "succeeded") {
+              // Refetch unconditionally: a run finishing in the background still
+              // activates its draft and updates the sidebar, even if the user has
+              // moved on. Only the view-bound dispatches below are gated.
               const [detail, list] = await Promise.all([
                 conversationApi.detail(conversationId),
                 conversationApi.list(),
@@ -59,13 +69,17 @@ export function useRunStream() {
                 const { messages, ...conversation } = detail;
                 dispatch({ type: "conversations/detailLoaded", conversation, messages });
               }
-              dispatch({ type: "run/cleared" });
+              if (isActiveRun()) dispatch({ type: "run/cleared" });
             }
           }
         }
       } catch (error) {
         if (isAbortError(error)) return;
-        dispatch({ type: "run/terminal", status: "failed" });
+        // Same guard as the in-loop dispatches: a background stream error must
+        // not fail whatever run is active now.
+        if (stateRef.current.activeRun?.runId === runId) {
+          dispatch({ type: "run/terminal", status: "failed" });
+        }
       }
     },
     [dispatch, conversationApi, runApi, streamAbort, stateRef],

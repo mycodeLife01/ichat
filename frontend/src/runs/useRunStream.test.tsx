@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { RunStreamEvent } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import {
   conversationDetailResponse,
@@ -137,6 +138,49 @@ describe("useRunStream", () => {
     // The stop button recovers so the user can retry.
     expect(result.current.activeRun?.cancelRequested).toBe(false);
     expect(result.current.activeRun?.status).toBe("streaming");
+  });
+
+  it("ignores late deltas once the active run has switched to another conversation", async () => {
+    // A controllable stream for run A: first delta lands, then it parks until the
+    // test has navigated to another run, then delivers a stale delta.
+    let releaseStale: () => void = () => {};
+    const staleGate = new Promise<void>((resolve) => {
+      releaseStale = resolve;
+    });
+    async function* leakyStream(): AsyncGenerator<RunStreamEvent> {
+      yield { seq: 1, type: "text_delta", data: { ...textDeltaEvent, seq: 1, payload: { text: "AAA" } } };
+      await staleGate;
+      yield { seq: 2, type: "text_delta", data: { ...textDeltaEvent, seq: 2, payload: { text: "BBB" } } };
+    }
+    const services = createFakeServices({}, {}, { streamEvents: () => leakyStream() });
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    // Run A active and streaming.
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 100, conversationId: 10 });
+    });
+    let started: Promise<void> = Promise.resolve();
+    await act(async () => {
+      started = result.current.start(100, 10, 0);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(result.current.activeRun?.draftText).toBe("AAA");
+
+    // User navigates to conversation B, whose own (restored) run becomes active.
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: 200, conversationId: 20 });
+    });
+
+    // Run A's late delta arrives — it must NOT append onto run B.
+    await act(async () => {
+      releaseStale();
+      await started;
+    });
+
+    expect(result.current.activeRun?.runId).toBe(200);
+    expect(result.current.activeRun?.draftText).toBe("");
   });
 
   it("aborts the previous stream when starting a new one", async () => {
