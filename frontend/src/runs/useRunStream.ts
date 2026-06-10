@@ -70,6 +70,14 @@ export function useRunStream() {
                 dispatch({ type: "conversations/detailLoaded", conversation, messages });
               }
               if (isActiveRun()) dispatch({ type: "run/cleared" });
+
+              // A freshly-activated draft has no title yet (the worker generates
+              // it best-effort after this commit, with no SSE event). Mark it
+              // pending so the sidebar/topbar show a skeleton; an AppShell effect
+              // polls detail until the title lands or the window elapses.
+              if (!detail.title?.trim()) {
+                dispatch({ type: "conversations/titlePending", id: conversationId });
+              }
             }
           }
         }

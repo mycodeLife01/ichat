@@ -15,9 +15,9 @@ import { useRunStream } from "./useRunStream";
 
 function useStreamProbe() {
   const { start, cancel } = useRunStream();
-  const { activeRun, conversationDetail } = useAppState();
+  const { activeRun, conversationDetail, conversationIndex } = useAppState();
   const { dispatch } = useAppActions();
-  return { start, cancel, activeRun, conversationDetail, dispatch };
+  return { start, cancel, activeRun, conversationDetail, conversationIndex, dispatch };
 }
 
 describe("useRunStream", () => {
@@ -76,6 +76,47 @@ describe("useRunStream", () => {
     expect(list).toHaveBeenCalled();
     // detailLoaded skipped: detail not applied to the (different) current view.
     expect(result.current.conversationDetail.messages).toEqual([]);
+  });
+
+  it("marks the conversation title-pending when it succeeds without a title", async () => {
+    const detail = vi.fn(async () => ({ ...conversationResponse, title: null, messages: [] }));
+    const list = vi.fn(async () => [conversationResponse]);
+    const services = createFakeServices(
+      {},
+      { detail, list },
+      { streamEvents: () => fakeStream([{ ...succeededEvent, seq: 1 }]) },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: conversationResponse.id });
+    });
+    await act(async () => {
+      await result.current.start(100, conversationResponse.id, 0);
+    });
+    // Empty server title → skeleton until the worker writes one back.
+    expect(result.current.conversationIndex.pendingTitleIds).toContain(conversationResponse.id);
+  });
+
+  it("does not mark title-pending when the conversation already has a title", async () => {
+    const services = createFakeServices(
+      {},
+      { detail: async () => conversationDetailResponse, list: async () => [conversationResponse] },
+      { streamEvents: () => fakeStream([{ ...succeededEvent, seq: 1 }]) },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: conversationResponse.id });
+    });
+    await act(async () => {
+      await result.current.start(100, conversationResponse.id, 0);
+    });
+    expect(result.current.conversationIndex.pendingTitleIds).not.toContain(
+      conversationResponse.id,
+    );
   });
 
   it("does not refetch detail on failure", async () => {

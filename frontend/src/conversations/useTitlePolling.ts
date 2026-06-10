@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import { useAppActions } from "../app/context";
 
@@ -17,38 +17,49 @@ const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(reso
 export function useTitlePolling() {
   const { dispatch, services, stateRef } = useAppActions();
   const { conversationApi } = services;
+  // Dedup on the actual running loop, not on pendingTitleIds: the kickoff (e.g.
+  // useRunStream) may already have set the id pending, and an effect may call us
+  // again for the same id — only one loop should run.
+  const running = useRef(new Set<number>());
 
   return useCallback(
     async (conversationId: number, options: PollOptions = {}): Promise<void> => {
       const { attempts = 20, delayMs = 750, sleep = realSleep } = options;
 
-      // One poller per conversation: a second kickoff while already pending bails.
-      if (stateRef.current.conversationIndex.pendingTitleIds.includes(conversationId)) return;
+      if (running.current.has(conversationId)) return;
+      running.current.add(conversationId);
       dispatch({ type: "conversations/titlePending", id: conversationId });
 
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        await sleep(delayMs);
-        // Cleared by logout / identity reset — stop silently.
-        if (!stateRef.current.conversationIndex.pendingTitleIds.includes(conversationId)) return;
+      try {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          await sleep(delayMs);
+          // Cleared by logout / identity reset — stop silently.
+          if (!stateRef.current.conversationIndex.pendingTitleIds.includes(conversationId)) {
+            return;
+          }
 
-        let detail;
-        try {
-          detail = await conversationApi.detail(conversationId);
-        } catch {
-          dispatch({ type: "conversations/titleResolved", id: conversationId });
-          return;
+          let detail;
+          try {
+            detail = await conversationApi.detail(conversationId);
+          } catch {
+            dispatch({ type: "conversations/titleResolved", id: conversationId });
+            return;
+          }
+
+          if (detail.title?.trim()) {
+            const list = await conversationApi.list();
+            dispatch({ type: "conversations/listLoaded", items: list });
+            dispatch({ type: "conversations/titleResolved", id: conversationId });
+            return;
+          }
         }
 
-        if (detail.title?.trim()) {
-          const list = await conversationApi.list();
-          dispatch({ type: "conversations/listLoaded", items: list });
-          dispatch({ type: "conversations/titleResolved", id: conversationId });
-          return;
-        }
+        dispatch({ type: "conversations/titleResolved", id: conversationId });
+      } finally {
+        running.current.delete(conversationId);
       }
-
-      dispatch({ type: "conversations/titleResolved", id: conversationId });
     },
     [dispatch, conversationApi, stateRef],
   );
 }
+
