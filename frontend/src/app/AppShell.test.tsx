@@ -477,6 +477,55 @@ describe("AppShell", () => {
     expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();
   });
 
+  it("scrolls the thread to the bottom after sending into an existing conversation", async () => {
+    // Existing conversation (id unchanged on send): the scroll must be forced
+    // by the new user message itself, not by the enter-conversation jump.
+    selectionStore.save(conversationResponse.id);
+    const titled = { ...conversationResponse, title: "对话A" };
+    const oldUser: MessageResponse = {
+      id: 1, conversation_id: titled.id, run_id: 99, role: "user",
+      content: "旧问题", reasoning: null, position: 1, created_at: "t",
+    };
+    const oldAssistant: MessageResponse = {
+      id: 2, conversation_id: titled.id, run_id: 99, role: "assistant",
+      content: "旧答案", reasoning: null, position: 2, created_at: "t",
+    };
+    const newUser: MessageResponse = {
+      id: 3, conversation_id: titled.id, run_id: 100, role: "user",
+      content: "新问题", reasoning: null, position: 3, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: 100, conversation_id: titled.id, user_message_id: 3, status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [titled],
+        detail: async () => ({ ...titled, messages: [oldUser, oldAssistant] }),
+        sendMessage: async () => ({ message: newUser, run }),
+      },
+      { streamEvents: () => fakeStream([]) },
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithApp(<AppShell />, services);
+
+    await screen.findByText("旧答案");
+
+    // jsdom has no layout: give the scroll container a fake height and park the
+    // scrollbar far from the bottom, so only a forced scroll can move it.
+    const region = container.querySelector(".thread-region") as HTMLElement;
+    Object.defineProperty(region, "scrollHeight", { value: 1000, configurable: true });
+    region.scrollTop = 200;
+
+    const textarea = screen.getByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "新问题");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await screen.findByText("新问题");
+    await waitFor(() => expect(region.scrollTop).toBe(1000));
+  });
+
   it("surfaces a toast when sending fails", async () => {
     const services = createFakeServices(
       {},

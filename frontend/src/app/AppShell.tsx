@@ -60,12 +60,22 @@ export function AppShell() {
   const recover = useRunRecovery(start);
   const pollTitle = useTitlePolling();
   const pendingTitleIds = conversationIndex.pendingTitleIds;
-  const threadRef = useStickToBottom<HTMLDivElement>([
-    detail.messages.length,
-    activeRun?.draftText,
-    activeRun?.draftReasoning,
-    activeRun?.status,
-  ]);
+  // The id of the newest user message in the thread; advances on send and on
+  // edit-and-regenerate (the edited message is re-created with a new id).
+  const lastUserMessageId = detail.messages.filter((m) => m.role === "user").at(-1)?.id;
+  const threadRef = useStickToBottom<HTMLDivElement>(
+    [
+      detail.messages.length,
+      activeRun?.draftText,
+      activeRun?.draftReasoning,
+      activeRun?.status,
+    ],
+    // Jump to the bottom unconditionally when entering a conversation or when
+    // the user submits a new message — even if they had scrolled up. Keyed on
+    // the loaded detail's id (not selectedId) so the jump happens in the same
+    // commit the messages render, when scrollHeight is final.
+    `${detail.conversation?.id}:${lastUserMessageId}`,
+  );
 
   const onSend = () => {
     const text = composerValue;
