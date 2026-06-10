@@ -8,6 +8,7 @@ import { useSendMessage } from "../conversations/useSendMessage";
 import { MessageThread } from "../messages/MessageThread";
 import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
+import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
@@ -31,7 +32,7 @@ function useIsMobile() {
 export function AppShell() {
   const { user, logout } = useAuthSession();
   const { ui, activeRun } = useAppState();
-  const { dispatch } = useAppActions();
+  const { dispatch, stateRef } = useAppActions();
   const {
     items,
     selectedId,
@@ -52,6 +53,7 @@ export function AppShell() {
 
   const { start, cancel } = useRunStream();
   const send = useSendMessage(start);
+  const recover = useRunRecovery(start);
   const threadRef = useStickToBottom<HTMLDivElement>([
     detail.messages.length,
     activeRun?.draftText,
@@ -78,7 +80,7 @@ export function AppShell() {
   // the target layout should render immediately.
   const onSelectConversation = (id: number) => {
     setAnimateComposer(false);
-    void selectConversation(id);
+    void selectConversation(id).then(() => recover(id));
   };
   const onNewConversation = () => {
     setAnimateComposer(false);
@@ -97,7 +99,8 @@ export function AppShell() {
           : "idle"
       : "idle";
 
-  // Bootstrap: load list, then restore stored selection (non-streaming).
+  // Bootstrap: load list, restore stored selection, then re-attach to a run the
+  // thread may still be waiting on (refresh recovery).
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -106,6 +109,8 @@ export function AppShell() {
       const storedId = selectionStore.read();
       if (storedId != null) {
         await selectConversation(storedId);
+        if (!active) return;
+        await recover(storedId);
       } else {
         newConversation();
       }
@@ -204,7 +209,14 @@ export function AppShell() {
           body="此对话及其全部消息将永久删除，无法恢复。"
           confirmLabel="删除"
           destructive
-          onConfirm={() => void deleteConversation(confirmTarget)}
+          onConfirm={() =>
+            void deleteConversation(confirmTarget).then(() => {
+              // Deletion may auto-select the next conversation; attach to its
+              // pending run the same way a manual selection would.
+              const nextId = stateRef.current.conversationIndex.selectedId;
+              if (nextId != null) void recover(nextId);
+            })
+          }
           onCancel={() => dispatch({ type: "ui/closeConfirm" })}
         />
       )}

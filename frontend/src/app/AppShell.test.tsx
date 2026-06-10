@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ConversationDetailResponse,
@@ -13,9 +13,11 @@ import {
   conversationDetailResponse,
   conversationResponse,
   reasoningDeltaEvent,
+  runStateResponse,
   succeededEvent,
   textDeltaEvent,
 } from "../test/apiFixtures";
+import { selectionStore } from "../conversations/selectionStore";
 import { createFakeServices, fakeStream, renderWithApp } from "../test/appHarness";
 import { AppShell } from "./AppShell";
 
@@ -34,11 +36,27 @@ describe("AppShell", () => {
   });
 
   it("loads detail when a conversation is selected", async () => {
+    // A thread at rest: the run has a materialized reply, so entry triggers no recovery.
     const services = createFakeServices(
       {},
       {
         list: async () => [conversationResponse],
-        detail: async () => conversationDetailResponse,
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: 502,
+              conversation_id: conversationResponse.id,
+              run_id: 100,
+              role: "assistant" as const,
+              content: "Hi!",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
       },
     );
     const user = userEvent.setup();
@@ -148,5 +166,82 @@ describe("AppShell", () => {
       expect(screen.getByRole("button", { name: "停止生成" })).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: "发送" })).toBeNull();
+  });
+
+  it("restores a stopped run's partial after refresh", async () => {
+    selectionStore.save(conversationResponse.id);
+    const streamEvents = vi.fn(() => fakeStream([]));
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => conversationDetailResponse,
+      },
+      {
+        state: async () => ({
+          ...runStateResponse,
+          status: "cancelled" as const,
+          draft_text: "写到一半",
+          terminal_event: {
+            seq: 9,
+            type: "run_cancelled" as const,
+            payload: {},
+            created_at: "t",
+          },
+        }),
+        streamEvents,
+      },
+    );
+
+    const { container } = renderWithApp(<AppShell />, services);
+
+    expect(await screen.findByText("写到一半")).toBeInTheDocument();
+    expect(screen.getByText("已停止")).toBeInTheDocument();
+    expect(container.querySelector(".status-pill.stopped")).toBeTruthy();
+    expect(streamEvents).not.toHaveBeenCalled();
+  });
+
+  it("resumes an in-progress run after refresh and replaces it with the reply", async () => {
+    selectionStore.save(conversationResponse.id);
+    const assistantMessage: MessageResponse = {
+      id: 502,
+      conversation_id: conversationResponse.id,
+      run_id: 100,
+      role: "assistant",
+      content: "Hello there!",
+      reasoning: null,
+      position: 2,
+      created_at: "t",
+    };
+    const materializedDetail: ConversationDetailResponse = {
+      ...conversationResponse,
+      messages: [...conversationDetailResponse.messages, assistantMessage],
+    };
+    const detail = vi
+      .fn()
+      .mockResolvedValueOnce(conversationDetailResponse)
+      .mockResolvedValue(materializedDetail);
+    const streamEvents = vi.fn(() =>
+      fakeStream([
+        { ...textDeltaEvent, seq: 2, payload: { text: "lo" } },
+        { ...succeededEvent, seq: 3 },
+      ]),
+    );
+    const services = createFakeServices(
+      {},
+      { list: async () => [conversationResponse], detail },
+      {
+        state: async () => ({ ...runStateResponse, draft_text: "Hel", latest_seq: 1 }),
+        streamEvents,
+      },
+    );
+
+    renderWithApp(<AppShell />, services);
+
+    // Resumes from the server-provided cursor, not from the beginning.
+    await waitFor(() => expect(streamEvents).toHaveBeenCalled());
+    expect(streamEvents.mock.calls[0]).toEqual([100, 1, expect.anything()]);
+    // Terminal success swaps in the materialized assistant reply.
+    expect(await screen.findByText("Hello there!")).toBeInTheDocument();
   });
 });
