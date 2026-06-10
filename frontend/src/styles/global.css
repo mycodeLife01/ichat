@@ -2,6 +2,20 @@
 
 /* Design tokens — warm-neutral light theme, ported from chatapp_demo. */
 @theme {
+  /* The app's base font-size is 15px (html), which would shrink every
+     rem-derived utility by 15/16. Pin the scales to the px values the
+     pre-Tailwind stylesheets used. */
+  --spacing: 4px;
+  --text-xs: 12px;
+  --text-xs--line-height: 1.6;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.6;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 1.6;
+  --radius-2xl: 16px;
+  /* Legacy transitions used the CSS default curve, not Tailwind's. */
+  --default-transition-timing-function: ease;
+
   --color-bg: #fbfbfa;
   --color-bg-sunken: #f4f3f0;
   --color-bg-raised: #ffffff;
@@ -122,29 +136,33 @@ body {
   height: 100%;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-  color: inherit;
+/* Form-control font/color inheritance comes from preflight. These extras live
+   in layers so component utilities (text-*, cursor-*, outline-none) can win —
+   unlayered rules would override them. */
+@layer base {
+  button {
+    cursor: pointer;
+  }
 }
 
-button {
-  cursor: pointer;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-[role="button"]:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+@layer components {
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 
 /* Markdown typography — rendered by react-markdown, so per-element utilities
    are not an option; this block stays as handwritten CSS. */
+/* Preflight zeroes p margins; nested paragraphs (blockquote/li) relied on the
+   UA's 1em. :where() keeps specificity at zero so the direct-child rules below
+   still win for top-level blocks. */
+.md :where(p) { margin-block: 1em; }
 .md > * + * { margin-top: 0.85em; }
 .md > * { margin-top: 0; margin-bottom: 0; }
 .md h1, .md h2, .md h3 {

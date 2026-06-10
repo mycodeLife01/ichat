@@ -100,7 +100,7 @@ export function Sidebar({
     const rowActions = (itemStyle?: CSSProperties) => (
       <>
         <button
-          className={sheetItem}
+          className={`${sheetItem} text-fg`}
           style={itemStyle}
           onClick={() => {
             setRenameId(c.id);
@@ -181,7 +181,7 @@ export function Sidebar({
         {/* Desktop: an anchored dropdown. Mobile: a bottom sheet. */}
         {!isRenaming && menuOpen && !isMobile && (
           <div
-            className="history-menu absolute top-[calc(100%-4px)] right-1.5 z-10 min-w-[120px] rounded-lg border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
+            className="history-menu absolute top-[calc(100%-4px)] right-1.5 z-10 min-w-[120px] rounded-[8px] border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
             onClick={(event) => event.stopPropagation()}
           >
             {rowActions({

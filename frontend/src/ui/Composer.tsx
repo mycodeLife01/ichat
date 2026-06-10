@@ -34,7 +34,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
   };
 
   return (
-    <div className="composer-wrap bg-bg px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
+    <div className="composer-wrap border-t border-transparent bg-bg px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
       <div className="composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 rounded-[18px] border border-border-strong bg-bg-raised py-2.5 pr-3.5 pl-[18px]">
         <textarea
           ref={ref}
@@ -75,7 +75,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
             </button>
             {state === "idle" ? (
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-accent-fg transition-[opacity,transform,background] duration-[120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:bg-bg-sunken disabled:text-fg-faint"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-[13px] font-medium text-accent-fg transition-[opacity_120ms,transform_60ms,background_120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:bg-bg-sunken disabled:text-fg-faint"
                 type="button"
                 aria-label="发送"
                 disabled={!value.trim()}
@@ -85,7 +85,7 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
               </button>
             ) : (
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[18px] border border-border-strong bg-bg-raised p-0 text-fg transition-[background] duration-[120ms] hover:bg-bg-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] border border-border-strong bg-bg-raised p-0 text-[13px] font-medium text-fg transition-[opacity_120ms,transform_60ms,background_120ms] hover:bg-bg-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
                 type="button"
                 aria-label={state === "stopping" ? "停止中" : "停止生成"}
                 disabled={state === "stopping"}

@@ -26,8 +26,10 @@ export const titleSkeleton =
   "bg-[linear-gradient(90deg,rgba(20,20,19,0.06)_0%,rgba(20,20,19,0.12)_50%,rgba(20,20,19,0.06)_100%)] " +
   "[background-size:200%_100%]";
 
-// Menu / bottom-sheet row.
+// Menu / bottom-sheet row. Carries no text color — callers append text-fg or
+// text-danger (appending after a baked-in text-fg wouldn't override it; the
+// winner is decided by order in the generated stylesheet, not the className).
 export const sheetItem =
-  "flex w-full items-center gap-3 px-[22px] py-3.5 text-left text-[15px] text-fg " +
+  "flex w-full items-center gap-3 px-[22px] py-3.5 text-left text-[15px] " +
   "hover:bg-bg-hover active:bg-bg-hover disabled:cursor-not-allowed disabled:text-fg-faint " +
   "disabled:hover:bg-transparent";

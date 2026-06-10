@@ -163,9 +163,12 @@ export function Message({
     return (
       <div className={`${msgBase} user items-end`}>
         <div className="w-full max-w-[78%] rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
+          {/* p-[2px] preserves the UA default padding the pre-Tailwind version
+              never reset (preflight zeroes it, shifting text wrapping); inline-block
+              (the default — no `block`) keeps the old baseline gap below the box. */}
           <textarea
             autoFocus
-            className="block min-h-6 w-full resize-none border-none bg-transparent text-[14.5px] leading-[1.55] text-fg outline-none"
+            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[14.5px] leading-[1.55] text-fg outline-none"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
