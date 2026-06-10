@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   Copy,
   LogOut,
@@ -27,6 +28,7 @@ export const Icons = {
   Menu: Menu,
   Chevron: ChevronDown,
   Copy: Copy,
+  Check: Check,
   Refresh: RefreshCw,
   ArrowUp: ArrowUp,
   Mic: Mic,

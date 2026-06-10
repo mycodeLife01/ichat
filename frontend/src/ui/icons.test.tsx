@@ -7,7 +7,7 @@ describe("Icons", () => {
   it("exposes the icons used across the chat shell", () => {
     const names = [
       "More", "Pen", "Pencil", "Trash", "Plus", "PanelLeft", "LogOut",
-      "Menu", "Chevron", "Copy", "Refresh", "ArrowUp", "Mic", "Stop", "Close",
+      "Menu", "Chevron", "Copy", "Check", "Refresh", "ArrowUp", "Mic", "Stop", "Close",
     ] as const;
     for (const name of names) {
       expect(Icons[name]).toBeDefined();

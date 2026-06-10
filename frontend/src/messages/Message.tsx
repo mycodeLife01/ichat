@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { MessageResponse } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
+import { MessageAction } from "./MessageAction";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
   message: MessageResponse;
   // On mobile, actions move behind a "更多" button into a BottomSheet; desktop
-  // keeps the hover/focus action bar.
+  // shows an icon-only action bar with hover-dropdown labels.
   isMobile?: boolean;
-  // null = enabled; a string = disabled with that Chinese reason as the title.
+  // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
   onEditAndRegenerate?: (messageId: number, content: string) => void;
   onRegenerate?: (messageId: number) => void;
@@ -31,8 +32,17 @@ export function Message({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disabled = mutateDisabledReason !== null;
   const isUser = message.role === "user";
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
 
   const startEditing = () => {
     setDraft(message.content);
@@ -42,19 +52,25 @@ export function Message({
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
 
-  // Shared action buttons: a copy (always enabled) and the role's mutate action
-  // (disabled with a reason while a run is active). Rendered both in the desktop
-  // hover bar and the mobile sheet, with size/onClick tuned per surface.
-  const actions = (size: number, afterAction?: () => void) => (
+  // Copy shows a transient check (已复制) before reverting to the copy icon.
+  const handleCopy = () => {
+    copy(message.content);
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+  };
+
+  // Mobile sheet keeps readable text rows (icon + label).
+  const sheetActions = (afterAction: () => void) => (
     <>
       <button
         className="msg-action"
         onClick={() => {
           copy(message.content);
-          afterAction?.();
+          afterAction();
         }}
       >
-        <Icons.Copy size={size} />
+        <Icons.Copy size={15} />
         复制
       </button>
       <button
@@ -63,13 +79,39 @@ export function Message({
         title={mutateDisabledReason ?? undefined}
         onClick={() => {
           mutate();
-          afterAction?.();
+          afterAction();
         }}
       >
-        <MutateIcon size={size} />
+        <MutateIcon size={15} />
         {mutateLabel}
       </button>
     </>
+  );
+
+  // Desktop bar: icon-only actions with a hover-dropdown label. The assistant
+  // bar is always visible (resident); the user bar reveals on message hover.
+  // Copy cross-fades to a check (已复制); both icons stay mounted so the swap
+  // doesn't remount a node under the cursor (which would re-open the dropdown).
+  const desktopBar = (
+    <div className={`msg-actions${isUser ? "" : " resident"}`}>
+      <MessageAction
+        label={copied ? "已复制" : "复制"}
+        icon={
+          <span className="copy-swap" data-copied={copied}>
+            <Icons.Copy size={15} />
+            <Icons.Check size={15} />
+          </span>
+        }
+        onClick={handleCopy}
+      />
+      <MessageAction
+        label={mutateLabel}
+        icon={<MutateIcon size={15} />}
+        onClick={mutate}
+        disabled={disabled}
+        disabledReason={mutateDisabledReason}
+      />
+    </div>
   );
 
   const actionBar = isMobile ? (
@@ -78,11 +120,11 @@ export function Message({
         <Icons.More size={14} />
       </button>
       <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)}>
-        {actions(15, () => setSheetOpen(false))}
+        {sheetActions(() => setSheetOpen(false))}
       </BottomSheet>
     </div>
   ) : (
-    <div className="msg-actions">{actions(12)}</div>
+    desktopBar
   );
 
   if (isUser && editing) {

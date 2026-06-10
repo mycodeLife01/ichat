@@ -128,21 +128,47 @@ describe("Message", () => {
     expect(onRegenerate).toHaveBeenCalledWith(assistantMessage.id);
   });
 
-  it("disables mutate buttons with a reason while a run is active", () => {
+  it("disables the mutate button and shows the reason on hover", async () => {
     const reason = "请先停止当前生成";
+    const user = userEvent.setup();
     const { rerender } = render(
       <Message message={userMessage} mutateDisabledReason={reason} />,
     );
-    const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
+    const editBtn = screen.getByRole("button", { name: "编辑并重发" });
     expect(editBtn).toBeDisabled();
-    expect(editBtn).toHaveAttribute("title", reason);
+    await user.hover(editBtn);
+    expect(screen.getByText(reason)).toBeInTheDocument();
     // Copy stays enabled.
     expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
 
     rerender(<Message message={assistantMessage} mutateDisabledReason={reason} />);
-    const regenBtn = screen.getByRole("button", { name: /重新生成/ });
-    expect(regenBtn).toBeDisabled();
-    expect(regenBtn).toHaveAttribute("title", reason);
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+  });
+
+  it("desktop: hides labels until hover, then shows a dropdown", async () => {
+    const user = userEvent.setup();
+    render(<Message message={assistantMessage} mutateDisabledReason={null} />);
+    // Icon-only by default: the label is the accessible name, not visible text.
+    expect(screen.queryByText("重新生成")).toBeNull();
+    await user.hover(screen.getByRole("button", { name: "重新生成" }));
+    expect(screen.getByText("重新生成")).toBeInTheDocument();
+  });
+
+  it("desktop: swaps the copy icon to a check after copying", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    render(<Message message={assistantMessage} />);
+
+    await user.click(screen.getByRole("button", { name: "复制" }));
+    expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
+  });
+
+  it("desktop: assistant bar is resident (always visible), user bar is not", () => {
+    const { container, rerender } = render(<Message message={assistantMessage} />);
+    expect(container.querySelector(".msg-actions")).toHaveClass("resident");
+    rerender(<Message message={userMessage} />);
+    expect(container.querySelector(".msg-actions")).not.toHaveClass("resident");
   });
 
   it("desktop: does not render a more button", () => {

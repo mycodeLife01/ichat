@@ -415,9 +415,7 @@ describe("AppShell", () => {
     // The just-sent user message is in the thread; its edit button is disabled.
     const sentMsg = (await screen.findByText("你好")).closest(".msg") as HTMLElement;
     await waitFor(() => {
-      const editBtn = within(sentMsg).getByRole("button", { name: /编辑并重发/ });
-      expect(editBtn).toBeDisabled();
-      expect(editBtn).toHaveAttribute("title", "请先停止当前生成");
+      expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeDisabled();
     });
   });
 
