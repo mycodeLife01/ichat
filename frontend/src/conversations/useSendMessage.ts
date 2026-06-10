@@ -33,9 +33,10 @@ export function useSendMessage(
         dispatch({ type: "run/started", runId: run.id, conversationId: targetId });
         void start(run.id, targetId, 0);
       } catch (error) {
-        // Send failed before streaming started. Keep input so the user can retry;
-        // a user-facing Toast lands in a later step.
+        // Send failed before streaming started. Keep input so the user can retry,
+        // and surface a Chinese toast.
         console.error("send message failed", error);
+        dispatch({ type: "ui/showToast", message: "发送失败，请重试" });
       }
     },
     [conversationIndex.selectedId, dispatch, conversationApi, start],

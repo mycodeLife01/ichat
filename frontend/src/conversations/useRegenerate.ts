@@ -30,9 +30,10 @@ export function useRegenerate(start: StartStream) {
         dispatch({ type: "run/started", runId: started.id, conversationId });
         void start(started.id, conversationId, 0);
       } catch (error) {
-        // Keep the current view usable (e.g. a 409 active-run race). User-facing
-        // Chinese feedback lands with Toast in step 11.
+        // Keep the current view usable (e.g. a 409 active-run race) and surface a
+        // Chinese toast.
         console.error("regenerate failed", error);
+        dispatch({ type: "ui/showToast", message: "操作失败，请重试" });
       }
     },
     [dispatch, conversationApi, start],

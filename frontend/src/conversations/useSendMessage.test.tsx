@@ -20,9 +20,9 @@ type Start = (runId: number, conversationId: number, afterSeq: number) => void;
 
 function useSendProbe(start: Start) {
   const send = useSendMessage(start);
-  const { conversationIndex, conversationDetail, activeRun } = useAppState();
+  const { conversationIndex, conversationDetail, activeRun, ui } = useAppState();
   const { dispatch } = useAppActions();
-  return { send, conversationIndex, conversationDetail, activeRun, dispatch };
+  return { send, conversationIndex, conversationDetail, activeRun, ui, dispatch };
 }
 
 describe("useSendMessage", () => {
@@ -102,5 +102,21 @@ describe("useSendMessage", () => {
     expect(sendMessage).toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
     expect(result.current.activeRun).toBeNull();
+  });
+
+  it("shows a toast when sendMessage rejects", async () => {
+    const start = vi.fn();
+    const create = vi.fn(async () => draft);
+    const sendMessage = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const services = createFakeServices({}, { create, sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      await result.current.send("会失败");
+    });
+
+    expect(result.current.ui.toast?.message).toBe("发送失败，请重试");
   });
 });

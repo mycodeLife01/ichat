@@ -103,8 +103,9 @@ export function useRunStream() {
         await runApi.cancel(runId);
       } catch {
         // The server never got the cancel: revert the optimistic "停止中" so the
-        // user can press stop again. (Chinese error feedback lands with Toast.)
+        // user can press stop again, and surface a Chinese toast.
         dispatch({ type: "run/cancelFailed" });
+        dispatch({ type: "ui/showToast", message: "停止失败，请重试" });
       }
     },
     [dispatch, runApi],

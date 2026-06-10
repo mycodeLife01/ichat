@@ -15,9 +15,9 @@ import { useRunStream } from "./useRunStream";
 
 function useStreamProbe() {
   const { start, cancel } = useRunStream();
-  const { activeRun, conversationDetail, conversationIndex } = useAppState();
+  const { activeRun, conversationDetail, conversationIndex, ui } = useAppState();
   const { dispatch } = useAppActions();
-  return { start, cancel, activeRun, conversationDetail, conversationIndex, dispatch };
+  return { start, cancel, activeRun, conversationDetail, conversationIndex, ui, dispatch };
 }
 
 describe("useRunStream", () => {
@@ -179,6 +179,7 @@ describe("useRunStream", () => {
     // The stop button recovers so the user can retry.
     expect(result.current.activeRun?.cancelRequested).toBe(false);
     expect(result.current.activeRun?.status).toBe("streaming");
+    expect(result.current.ui.toast?.message).toBe("停止失败，请重试");
   });
 
   it("ignores late deltas once the active run has switched to another conversation", async () => {

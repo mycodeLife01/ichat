@@ -14,9 +14,9 @@ type Start = (runId: number, conversationId: number, afterSeq: number) => void;
 
 function useRegenProbe(start: Start) {
   const { editAndRegenerate, regenerate } = useRegenerate(start);
-  const { activeRun, conversationDetail } = useAppState();
+  const { activeRun, conversationDetail, ui } = useAppState();
   const { dispatch } = useAppActions();
-  return { editAndRegenerate, regenerate, activeRun, conversationDetail, dispatch };
+  return { editAndRegenerate, regenerate, activeRun, conversationDetail, ui, dispatch };
 }
 
 async function selectConversation(
@@ -112,5 +112,23 @@ describe("useRegenerate", () => {
     expect(regenerate).toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
     expect(result.current.activeRun).toBeNull();
+  });
+
+  it("shows a toast when the API rejects", async () => {
+    const start = vi.fn();
+    const regenerate = vi.fn(async () => {
+      throw new Error("409 active run");
+    });
+    const services = createFakeServices({}, { regenerate });
+    const { result } = renderHook(() => useRegenProbe(start), {
+      wrapper: makeWrapper(services),
+    });
+    await selectConversation(result);
+
+    await act(async () => {
+      await result.current.regenerate(2);
+    });
+
+    expect(result.current.ui.toast?.message).toBe("操作失败，请重试");
   });
 });
