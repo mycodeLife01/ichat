@@ -50,3 +50,27 @@ def test_reasoning_delta_is_a_frozen_value() -> None:
     assert a.text == "step 1"
     with pytest.raises(AttributeError):
         a.text = "mutated"  # frozen dataclass
+
+
+def test_default_count_tokens_is_conservative_estimate() -> None:
+    from app.providers import Provider
+
+    class MinimalProvider(Provider):
+        @property
+        def name(self) -> str:
+            return "minimal"
+
+        def stream(self, *, model, messages):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        async def summarize(self, *, model, messages, max_output_tokens):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+    provider = MinimalProvider()
+    # 10 English chars at 0.5 tokens/char
+    assert provider.count_tokens("a" * 10) == 5
+    # 10 CJK chars at 1.0 token/char
+    assert provider.count_tokens("\u4e2d" * 10) == 10
+    # Mixed, rounded up
+    assert provider.count_tokens("abc\u4e2d") == 3  # ceil(3*0.5 + 1*1.0)
+    assert provider.count_tokens("") == 0

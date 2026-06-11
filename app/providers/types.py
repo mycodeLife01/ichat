@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -43,6 +44,15 @@ class Provider(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
+
+    def count_tokens(self, text: str) -> int:
+        """Estimate the token count of ``text`` for context budgeting.
+
+        Deliberately conservative (over-estimates) so trimming errs on the
+        safe side; providers should override with model-specific rules.
+        """
+        cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+        return math.ceil(cjk * 1.0 + (len(text) - cjk) * 0.5)
 
     @abstractmethod
     def stream(

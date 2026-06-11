@@ -1,3 +1,4 @@
+import math
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -27,6 +28,12 @@ class DeepSeekProvider(Provider):
     @property
     def name(self) -> str:
         return "deepseek"
+
+    def count_tokens(self, text: str) -> int:
+        # Official DeepSeek guidance: ~0.3 tokens per English character,
+        # ~0.6 tokens per Chinese character.
+        cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+        return math.ceil(cjk * 0.6 + (len(text) - cjk) * 0.3)
 
     async def stream(
         self,

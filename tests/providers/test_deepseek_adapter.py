@@ -331,3 +331,14 @@ async def test_stream_yields_reasoning_delta_then_text_delta() -> None:
     assert chunks[0] == ReasoningDelta(text="think")
     assert chunks[1] == TextDelta(text="answer")
     assert isinstance(chunks[2], Finish)
+
+
+def test_deepseek_count_tokens_uses_official_ratios() -> None:
+    provider = DeepSeekProvider(settings=make_settings())
+    # 10 English chars at 0.3 tokens/char
+    assert provider.count_tokens("a" * 10) == 3
+    # 10 Chinese chars at 0.6 tokens/char
+    assert provider.count_tokens("中" * 10) == 6
+    # Mixed, rounded up: ceil(4*0.3 + 2*0.6) = ceil(2.4) = 3
+    assert provider.count_tokens("abcd中文") == 3
+    assert provider.count_tokens("") == 0

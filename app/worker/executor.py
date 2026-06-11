@@ -54,12 +54,16 @@ async def execute_run(
         if run is None:
             run_logger.warning("Run vanished before execution")
             return
+        provider_name = run.provider_name
+        provider_model = run.provider_model
+        provider = resolve_provider(provider_name, settings=settings)
         try:
             messages = await build_context(
                 session,
                 run_id=run_id,
                 system_prompt=settings.default_system_prompt,
-                budget_chars=_context_budget_chars(),
+                budget_tokens=settings.context_budget_tokens,
+                count_tokens=provider.count_tokens,
             )
         except Exception as exc:
             run_logger.exception("Context build failed")
@@ -71,11 +75,7 @@ async def execute_run(
                 message=str(exc),
             )
             return
-        provider_name = run.provider_name
-        provider_model = run.provider_model
         await session.commit()
-
-    provider = resolve_provider(provider_name, settings=settings)
 
     cancel_event = asyncio.Event()
     heartbeat_task = asyncio.create_task(
@@ -471,7 +471,3 @@ async def _run_provider_stream(
         code="no_finish",
         message="Provider stream ended without finish chunk",
     )
-
-
-def _context_budget_chars() -> int:
-    return 16_000

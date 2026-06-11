@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     deepseek_thinking_enabled: bool
     deepseek_reasoning_effort: str = "high"
     default_system_prompt: str
+    context_budget_tokens: int = 64_000
     run_lease_seconds: int
     worker_poll_interval_seconds: float
     worker_heartbeat_interval_seconds: float

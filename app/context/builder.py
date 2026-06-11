@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,13 +7,17 @@ from app.models.conversation import Message
 from app.models.run import Run
 from app.providers import ProviderMessage, ProviderRole
 
+# Flat per-message token overhead for role markers and chat-template framing.
+_PER_MESSAGE_OVERHEAD_TOKENS = 4
+
 
 async def build_context(
     session: AsyncSession,
     *,
     run_id: int,
     system_prompt: str,
-    budget_chars: int,
+    budget_tokens: int,
+    count_tokens: Callable[[str], int],
 ) -> list[ProviderMessage]:
     run = await session.get(Run, run_id)
     if run is None:
@@ -37,7 +43,10 @@ async def build_context(
         ProviderMessage(role=_normalize_role(row.role), content=row.content)
         for row in history_rows
     ]
-    trimmed = _trim_to_budget(history, budget_chars=budget_chars)
+    history_budget = budget_tokens - _message_tokens(system_prompt, count_tokens)
+    trimmed = _trim_to_budget(
+        history, budget_tokens=history_budget, count_tokens=count_tokens
+    )
     return [ProviderMessage(role="system", content=system_prompt), *trimmed]
 
 
@@ -49,13 +58,19 @@ def _normalize_role(role: str) -> ProviderRole:
     raise ValueError(f"Unsupported message role: {role}")
 
 
+def _message_tokens(content: str, count_tokens: Callable[[str], int]) -> int:
+    return count_tokens(content) + _PER_MESSAGE_OVERHEAD_TOKENS
+
+
 def _trim_to_budget(
     messages: list[ProviderMessage],
     *,
-    budget_chars: int,
+    budget_tokens: int,
+    count_tokens: Callable[[str], int],
 ) -> list[ProviderMessage]:
-    total = sum(len(m.content) for m in messages)
-    while messages and total > budget_chars and len(messages) > 1:
-        dropped = messages.pop(0)
-        total -= len(dropped.content)
+    costs = [_message_tokens(m.content, count_tokens) for m in messages]
+    total = sum(costs)
+    while messages and total > budget_tokens and len(messages) > 1:
+        messages.pop(0)
+        total -= costs.pop(0)
     return messages

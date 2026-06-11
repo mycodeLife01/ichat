@@ -147,7 +147,8 @@ async def test_build_context_includes_system_prompt_and_history_up_to_target(
             session,
             run_id=run.id,
             system_prompt="Be brief.",
-            budget_chars=10_000,
+            budget_tokens=10_000,
+            count_tokens=len,
         )
 
     assert [m.role for m in messages] == ["system", "user", "assistant", "user"]
@@ -194,7 +195,8 @@ async def test_build_context_skips_archived_messages(
             session,
             run_id=run.id,
             system_prompt="Be brief.",
-            budget_chars=10_000,
+            budget_tokens=10_000,
+            count_tokens=len,
         )
 
     assert [m.content for m in messages] == ["Be brief.", "kept user"]
@@ -241,7 +243,8 @@ async def test_build_context_truncates_oldest_history_when_over_budget(
             session,
             run_id=run.id,
             system_prompt="sys",
-            budget_chars=100,
+            budget_tokens=100,
+            count_tokens=len,
         )
 
     assert messages[0] == ProviderMessage(role="system", content="sys")
@@ -258,5 +261,6 @@ async def test_build_context_raises_when_run_missing(
                 session,
                 run_id=999_999_999,
                 system_prompt="sys",
-                budget_chars=1000,
+                budget_tokens=1000,
+                count_tokens=len,
             )
