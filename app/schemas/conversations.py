@@ -27,7 +27,20 @@ class ConversationRenameRequest(BaseModel):
         return value
 
 
-class MessageCreateRequest(BaseModel):
+ReasoningEffort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
+class RunOptionsRequest(BaseModel):
+    """Per-request overrides for provider thinking behavior.
+
+    A ``None`` field means "use the server default from env config".
+    """
+
+    thinking_enabled: bool | None = None
+    reasoning_effort: ReasoningEffort | None = None
+
+
+class MessageCreateRequest(RunOptionsRequest):
     content: str = Field(min_length=1, max_length=20000)
 
     @field_validator("content")

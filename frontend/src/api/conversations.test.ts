@@ -91,4 +91,37 @@ describe("conversationApi", () => {
       { method: "POST" },
     );
   });
+
+  it("merges thinking options into request bodies when provided", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValue(sendMessageResponse);
+    const api = createConversationApi(client);
+    const options = { thinking_enabled: true, reasoning_effort: "max" } as const;
+
+    await api.sendMessage(10, "Hello", options);
+    await api.editAndRegenerate(10, 501, "Edited", options);
+    await api.regenerate(10, 502, { thinking_enabled: false });
+
+    expect(client.request).toHaveBeenNthCalledWith(
+      1,
+      "/conversations/10/messages",
+      {
+        method: "POST",
+        body: { content: "Hello", thinking_enabled: true, reasoning_effort: "max" },
+      },
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      2,
+      "/conversations/10/messages/501/edit-and-regenerate",
+      {
+        method: "POST",
+        body: { content: "Edited", thinking_enabled: true, reasoning_effort: "max" },
+      },
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      3,
+      "/conversations/10/messages/502/regenerate",
+      { method: "POST", body: { thinking_enabled: false } },
+    );
+  });
 });

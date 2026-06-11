@@ -12,6 +12,7 @@ from app.providers.types import (
     ProviderChunk,
     ProviderError,
     ProviderMessage,
+    ThinkingOptions,
 )
 
 
@@ -40,17 +41,23 @@ class DeepSeekProvider(Provider):
         *,
         model: str,
         messages: list[ProviderMessage],
+        thinking: ThinkingOptions | None = None,
     ) -> AsyncIterator[ProviderChunk]:
+        # Fall back to env defaults when the run carries no per-request options
+        # (legacy rows created before runs.provider_options existed).
+        if thinking is None:
+            thinking = ThinkingOptions(
+                enabled=self._settings.deepseek_thinking_enabled,
+                reasoning_effort=self._settings.deepseek_reasoning_effort,
+            )
         payload: dict[str, Any] = {
             "model": model,
             "stream": True,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "thinking": {
-                "type": "enabled" if self._settings.deepseek_thinking_enabled else "disabled"
-            },
+            "thinking": {"type": "enabled" if thinking.enabled else "disabled"},
         }
-        if self._settings.deepseek_thinking_enabled:
-            payload["reasoning_effort"] = self._settings.deepseek_reasoning_effort
+        if thinking.enabled:
+            payload["reasoning_effort"] = thinking.reasoning_effort
         headers = {
             "Authorization": f"Bearer {self._settings.deepseek_api_key}",
             "Accept": "text/event-stream",

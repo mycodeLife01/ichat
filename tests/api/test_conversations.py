@@ -173,7 +173,10 @@ async def test_rename_draft_does_not_make_it_visible(client: AsyncClient) -> Non
     assert detail_response.json()["data"]["activated_at"] is None
 
 
-async def test_send_message_creates_user_message_and_queued_run(client: AsyncClient) -> None:
+async def test_send_message_creates_user_message_and_queued_run(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     alice = await register_user(
         client,
         username="alice-message-api",
@@ -207,6 +210,65 @@ async def test_send_message_creates_user_message_and_queued_run(client: AsyncCli
     assert second_message_response.status_code == status.HTTP_409_CONFLICT
     assert second_message_response.json() == {"detail": "Active run already exists"}
     assert detail_response.json()["data"]["messages"][0]["content"] == "Hello"
+
+    async with session_factory() as session:
+        run = await session.get(Run, data["run"]["id"])
+        assert run is not None
+        # No per-request override → env defaults resolved at creation time
+        # (conftest sets DEEPSEEK_THINKING_ENABLED=false, effort default high).
+        assert run.provider_options == {
+            "thinking_enabled": False,
+            "reasoning_effort": "high",
+        }
+
+
+async def test_send_message_with_thinking_override_persists_provider_options(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-thinking-api",
+        email=f"alice-thinking@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+
+    message_response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "Hello", "thinking_enabled": True, "reasoning_effort": "max"},
+        headers=headers,
+    )
+
+    assert message_response.status_code == status.HTTP_201_CREATED
+    run_id = message_response.json()["data"]["run"]["id"]
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.provider_options == {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+        }
+
+
+async def test_send_message_rejects_invalid_reasoning_effort(client: AsyncClient) -> None:
+    alice = await register_user(
+        client,
+        username="alice-bad-effort",
+        email=f"alice-bad-effort@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "Hello", "thinking_enabled": True, "reasoning_effort": "turbo"},
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 async def test_conversation_routes_require_authentication(client: AsyncClient) -> None:
@@ -370,6 +432,37 @@ async def test_regenerate_endpoint_reuses_user_message_for_assistant_target(
         archived_assistant = await session.get(Message, seeded["assistant_message_id"])
         assert anchor is not None and anchor.archived_at is None
         assert archived_assistant is not None and archived_assistant.archived_at is not None
+
+
+async def test_regenerate_endpoint_accepts_thinking_options_body(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-regen-thinking",
+        email=f"alice-regen-thinking@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-regen-thinking@{TEST_EMAIL_DOMAIN}"
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{seeded['assistant_message_id']}/regenerate",
+        json={"thinking_enabled": True, "reasoning_effort": "high"},
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    run_id = response.json()["data"]["run"]["id"]
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.provider_options == {
+            "thinking_enabled": True,
+            "reasoning_effort": "high",
+        }
 
 
 async def test_edit_and_regenerate_rejects_cross_user(

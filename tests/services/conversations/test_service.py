@@ -234,6 +234,33 @@ async def test_submit_user_message_creates_message_and_queued_run(
     assert stored_run.status == "queued"
 
 
+async def test_submit_user_message_persists_provider_options_on_run(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = await create_conversation(session, user=user, title="Project chat")
+
+        result = await submit_user_message(
+            session,
+            user=user,
+            conversation_id=conversation.id,
+            content="Hello",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+            provider_options={"thinking_enabled": True, "reasoning_effort": "max"},
+        )
+        await session.commit()
+
+        stored_run = await session.get(Run, result.run.id)
+
+    assert stored_run is not None
+    assert stored_run.provider_options == {
+        "thinking_enabled": True,
+        "reasoning_effort": "max",
+    }
+
+
 async def test_submit_user_message_uses_next_visible_position_after_terminal_run(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

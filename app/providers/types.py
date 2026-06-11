@@ -14,6 +14,12 @@ class ProviderMessage:
 
 
 @dataclass(frozen=True)
+class ThinkingOptions:
+    enabled: bool
+    reasoning_effort: str
+
+
+@dataclass(frozen=True)
 class TextDelta:
     text: str
 
@@ -60,6 +66,7 @@ class Provider(ABC):
         *,
         model: str,
         messages: list[ProviderMessage],
+        thinking: ThinkingOptions | None = None,
     ) -> AsyncIterator[ProviderChunk]: ...
 
     @abstractmethod

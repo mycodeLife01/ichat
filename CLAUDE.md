@@ -152,6 +152,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-19-concurrency-and-listen-notify.md` — delta batching, single-worker concurrency, claim/SSE LISTEN/NOTIFY, multi-worker compose, DB pool tuning
 - `2026-05-19-regenerate.md` — regenerate assistant message by editting user message or from the current response
 - `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
+- `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
 
 ### `docs/handover/frontend/`
 

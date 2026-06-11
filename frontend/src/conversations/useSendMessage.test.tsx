@@ -41,7 +41,7 @@ describe("useSendMessage", () => {
     });
 
     expect(create).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(77, "你好");
+    expect(sendMessage).toHaveBeenCalledWith(77, "你好", { thinking_enabled: false });
     expect(result.current.conversationIndex.selectedId).toBe(77);
     expect(result.current.conversationIndex.draftId).toBe(77);
     expect(selectionStore.read()).toBe(77);
@@ -66,7 +66,7 @@ describe("useSendMessage", () => {
     });
 
     expect(create).not.toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(55, "世界");
+    expect(sendMessage).toHaveBeenCalledWith(55, "世界", { thinking_enabled: false });
     expect(result.current.conversationDetail.messages.at(-1)).toEqual(
       sendMessageResponse.message,
     );

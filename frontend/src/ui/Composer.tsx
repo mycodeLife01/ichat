@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import type { ThinkingLevel } from "../runs/thinkingLevel";
 import { Icons } from "./icons";
 
 type ComposerState = "idle" | "streaming" | "stopping";
@@ -10,16 +11,34 @@ type ComposerProps = {
   onSend: () => void;
   onStop: () => void;
   state: ComposerState;
+  thinkingLevel: ThinkingLevel;
+  onThinkingLevelChange: (level: ThinkingLevel) => void;
 };
 
 const MAX_HEIGHT = 240;
+
+const THINKING_LEVEL_OPTIONS: { value: ThinkingLevel; label: string }[] = [
+  { value: "fast", label: "Fast" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max" },
+];
 
 const composerTool =
   "inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-fg-muted " +
   "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
 
-export function Composer({ value, onChange, onSend, onStop, state }: ComposerProps) {
+export function Composer({
+  value,
+  onChange,
+  onSend,
+  onStop,
+  state,
+  thinkingLevel,
+  onThinkingLevelChange,
+}: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [levelMenuOpen, setLevelMenuOpen] = useState(false);
+  const levelMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -28,10 +47,31 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
 
+  useEffect(() => {
+    if (!levelMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!levelMenuRef.current?.contains(event.target as Node)) {
+        setLevelMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLevelMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [levelMenuOpen]);
+
   const send = () => {
     if (!value.trim() || state !== "idle") return;
     onSend();
   };
+
+  const thinkingLabel =
+    THINKING_LEVEL_OPTIONS.find((option) => option.value === thinkingLevel)?.label ?? "Fast";
 
   return (
     <div className="composer-wrap border-t border-transparent bg-bg px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
@@ -62,14 +102,44 @@ export function Composer({ value, onChange, onSend, onStop, state }: ComposerPro
             </button>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              className="inline-flex h-8 items-center gap-1 rounded-full bg-transparent px-2.5 text-[13px] font-medium text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
-              type="button"
-              aria-label="模型模式"
-            >
-              <span>Fast</span>
-              <Icons.Chevron size={14} />
-            </button>
+            <div className="relative" ref={levelMenuRef}>
+              <button
+                className="inline-flex h-8 items-center gap-1 rounded-full bg-transparent px-2.5 text-[13px] font-medium text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
+                type="button"
+                aria-label="智能水平"
+                aria-haspopup="menu"
+                aria-expanded={levelMenuOpen}
+                onClick={() => setLevelMenuOpen((open) => !open)}
+              >
+                <span>{thinkingLabel}</span>
+                <Icons.Chevron size={14} />
+              </button>
+              {levelMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="智能水平"
+                  className="absolute right-0 bottom-[calc(100%+6px)] z-10 min-w-[148px] rounded-[10px] border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
+                >
+                  <div className="px-2.5 pt-1.5 pb-1 text-[12px] text-fg-faint">智能水平</div>
+                  {THINKING_LEVEL_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      role="menuitemradio"
+                      aria-checked={option.value === thinkingLevel}
+                      className="flex w-full items-center justify-between gap-2 rounded-md bg-transparent px-2.5 py-[7px] text-left text-[13px] text-fg transition-[background] duration-[120ms] hover:bg-bg-hover"
+                      type="button"
+                      onClick={() => {
+                        onThinkingLevelChange(option.value);
+                        setLevelMenuOpen(false);
+                      }}
+                    >
+                      <span>{option.label}</span>
+                      {option.value === thinkingLevel && <Icons.Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className={composerTool} type="button" aria-label="语音输入">
               <Icons.Mic size={16} />
             </button>

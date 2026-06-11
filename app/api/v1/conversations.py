@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from app.schemas.conversations import (
     ConversationRenameRequest,
     ConversationResponse,
     MessageCreateRequest,
+    RunOptionsRequest,
     SendMessageResponse,
 )
 from app.schemas.responses import SuccessResponse
@@ -29,6 +30,28 @@ from app.services.conversations.service import (
 )
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
+
+
+def resolve_provider_options(
+    settings: Settings,
+    request: RunOptionsRequest | None,
+) -> dict[str, Any]:
+    """Resolve per-request thinking overrides against env defaults.
+
+    The result is persisted on the run so the worker replays the exact
+    options the request was accepted with.
+    """
+    thinking_enabled = settings.deepseek_thinking_enabled
+    reasoning_effort = settings.deepseek_reasoning_effort
+    if request is not None:
+        if request.thinking_enabled is not None:
+            thinking_enabled = request.thinking_enabled
+        if request.reasoning_effort is not None:
+            reasoning_effort = request.reasoning_effort
+    return {
+        "thinking_enabled": thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+    }
 
 
 @router.post(
@@ -138,6 +161,7 @@ async def send_message_route(
         content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
+        provider_options=resolve_provider_options(settings, request),
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -165,6 +189,7 @@ async def edit_and_regenerate_route(
         new_content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
+        provider_options=resolve_provider_options(settings, request),
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -182,6 +207,7 @@ async def regenerate_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
     result = await regenerate_from_message(
         session,
@@ -190,6 +216,7 @@ async def regenerate_route(
         message_id=message_id,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
+        provider_options=resolve_provider_options(settings, request),
     )
     await session.commit()
     return SuccessResponse(data=result)

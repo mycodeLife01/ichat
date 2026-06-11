@@ -10,6 +10,7 @@ from app.providers import (
     ProviderMessage,
     ReasoningDelta,
     TextDelta,
+    ThinkingOptions,
 )
 
 
@@ -38,6 +39,7 @@ class FakeProvider(Provider):
         self._script = list(script)
         self._name = name
         self._summarize_result = summarize_result
+        self.last_thinking: ThinkingOptions | None = None
 
     @property
     def name(self) -> str:
@@ -48,7 +50,9 @@ class FakeProvider(Provider):
         *,
         model: str,
         messages: list[ProviderMessage],
+        thinking: ThinkingOptions | None = None,
     ) -> AsyncIterator[ProviderChunk]:
+        self.last_thinking = thinking
         for item in self._script:
             if isinstance(item, RaiseError):
                 raise ProviderError(code=item.code, message=item.message)

@@ -8,6 +8,7 @@ from app.providers.types import (
     ProviderRole,
     ReasoningDelta,
     TextDelta,
+    ThinkingOptions,
 )
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "ProviderRole",
     "ReasoningDelta",
     "TextDelta",
+    "ThinkingOptions",
     "UnknownProviderError",
     "resolve_provider",
 ]

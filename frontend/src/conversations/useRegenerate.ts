@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import { useAppActions } from "../app/context";
+import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
 
 type StartStream = (
   runId: number,
@@ -45,7 +46,13 @@ export function useRegenerate(start: StartStream) {
       const trimmed = content.trim();
       if (conversationId == null || trimmed === "") return;
       await run(
-        () => conversationApi.editAndRegenerate(conversationId, messageId, trimmed),
+        () =>
+          conversationApi.editAndRegenerate(
+            conversationId,
+            messageId,
+            trimmed,
+            toRunOptions(thinkingLevelStore.read()),
+          ),
         conversationId,
       );
     },
@@ -56,7 +63,15 @@ export function useRegenerate(start: StartStream) {
     async (messageId: number): Promise<void> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       if (conversationId == null) return;
-      await run(() => conversationApi.regenerate(conversationId, messageId), conversationId);
+      await run(
+        () =>
+          conversationApi.regenerate(
+            conversationId,
+            messageId,
+            toRunOptions(thinkingLevelStore.read()),
+          ),
+        conversationId,
+      );
     },
     [run, conversationApi, stateRef],
   );

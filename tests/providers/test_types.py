@@ -60,7 +60,7 @@ def test_default_count_tokens_is_conservative_estimate() -> None:
         def name(self) -> str:
             return "minimal"
 
-        def stream(self, *, model, messages):  # type: ignore[no-untyped-def]
+        def stream(self, *, model, messages, thinking=None):  # type: ignore[no-untyped-def]
             raise NotImplementedError
 
         async def summarize(self, *, model, messages, max_output_tokens):  # type: ignore[no-untyped-def]

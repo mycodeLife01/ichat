@@ -12,6 +12,7 @@ import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
+import { thinkingLevelStore, type ThinkingLevel } from "../runs/thinkingLevel";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -49,6 +50,16 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  // Thinking level drives the per-request thinking options sent with every
+  // send/edit/regenerate call (read from the store at call time); persisted so
+  // the choice survives reloads.
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(() =>
+    thinkingLevelStore.read(),
+  );
+  const onThinkingLevelChange = (level: ThinkingLevel) => {
+    thinkingLevelStore.save(level);
+    setThinkingLevel(level);
+  };
   // Gates the center → bottom composer transition. Only true while a brand-new
   // conversation sends its first message; navigating to an existing conversation
   // leaves it false so the final layout renders without animating.
@@ -264,6 +275,8 @@ export function AppShell() {
             onSend={onSend}
             onStop={onStop}
             state={composerState}
+            thinkingLevel={thinkingLevel}
+            onThinkingLevelChange={onThinkingLevelChange}
           />
         </div>
         <div

@@ -1,4 +1,5 @@
 import { getDefaultApiClient, type ApiClient } from "./client";
+import type { RunOptionsRequest } from "../runs/thinkingLevel";
 import type {
   CommandStatusResponse,
   ConversationDetailResponse,
@@ -36,29 +37,37 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         { method: "DELETE" },
       );
     },
-    sendMessage(conversationId: number, content: string): Promise<SendMessageResponse> {
+    sendMessage(
+      conversationId: number,
+      content: string,
+      options?: RunOptionsRequest,
+    ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages`,
-        { method: "POST", body: { content } },
+        { method: "POST", body: { content, ...options } },
       );
     },
     editAndRegenerate(
       conversationId: number,
       messageId: number,
       content: string,
+      options?: RunOptionsRequest,
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages/${messageId}/edit-and-regenerate`,
-        { method: "POST", body: { content } },
+        { method: "POST", body: { content, ...options } },
       );
     },
     regenerate(
       conversationId: number,
       messageId: number,
+      options?: RunOptionsRequest,
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages/${messageId}/regenerate`,
-        { method: "POST" },
+        options === undefined
+          ? { method: "POST" }
+          : { method: "POST", body: options },
       );
     },
   };

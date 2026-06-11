@@ -54,6 +54,10 @@ class Run(Base):
     provider_name: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_model: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Per-run provider options resolved at run creation (request value or env
+    # default), e.g. {"thinking_enabled": bool, "reasoning_effort": str}.
+    # NULL for legacy rows — consumers fall back to settings.
+    provider_options: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

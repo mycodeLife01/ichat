@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import Settings, get_settings
 from app.models.run import Run
-from app.providers import Finish, Provider, ProviderChunk, ProviderMessage, TextDelta
+from app.providers import (
+    Finish,
+    Provider,
+    ProviderChunk,
+    ProviderMessage,
+    TextDelta,
+    ThinkingOptions,
+)
 from app.worker.main import run_worker_loop
 from tests.worker.test_main import clean_test_data, make_queued_run
 
@@ -66,7 +73,11 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.5)
@@ -142,7 +153,11 @@ async def test_worker_loop_respects_max_inflight_cap(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.3)

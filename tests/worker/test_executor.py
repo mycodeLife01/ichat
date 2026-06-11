@@ -20,6 +20,7 @@ from app.providers import (
     ProviderMessage,
     ReasoningDelta,
     TextDelta,
+    ThinkingOptions,
 )
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
@@ -225,7 +226,11 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -347,7 +352,11 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             call_count["n"] += 1
             raise ProviderError(code="dead", message=f"attempt {call_count['n']}")
@@ -518,7 +527,11 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="partial")
             await asyncio.Event().wait()
@@ -608,7 +621,11 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="partial")
             await release_error.wait()
@@ -763,3 +780,61 @@ async def test_execute_run_materializes_reasoning_on_success(
         assert messages[1].role == "assistant"
         assert messages[1].content == "Hello"
         assert messages[1].reasoning == "Because reasons"
+
+
+async def test_execute_run_passes_run_provider_options_to_provider(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        run = await session.get(Run, run_id)
+        assert run is not None
+        run.provider_options = {"thinking_enabled": True, "reasoning_effort": "max"}
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    fake = FakeProvider(script=[TextDelta(text="hi"), Finish(finish_reason="stop")])
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    assert fake.last_thinking == ThinkingOptions(enabled=True, reasoning_effort="max")
+
+
+async def test_execute_run_falls_back_to_settings_when_provider_options_null(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    fake = FakeProvider(script=[TextDelta(text="hi"), Finish(finish_reason="stop")])
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    assert fake.last_thinking == ThinkingOptions(
+        enabled=settings.deepseek_thinking_enabled,
+        reasoning_effort=settings.deepseek_reasoning_effort,
+    )

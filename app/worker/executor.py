@@ -17,6 +17,7 @@ from app.providers import (
     ProviderMessage,
     ReasoningDelta,
     TextDelta,
+    ThinkingOptions,
 )
 from app.services.conversations import materialize_assistant_message
 from app.services.runs.lifecycle import (
@@ -39,6 +40,18 @@ class ProviderResolver(Protocol):
     def __call__(self, name: str, *, settings: Settings) -> Provider: ...
 
 
+def _thinking_options_from_run(run: Run, settings: Settings) -> ThinkingOptions:
+    """Rebuild per-run thinking options; fall back to env defaults for legacy
+    rows where runs.provider_options is NULL."""
+    options = run.provider_options or {}
+    return ThinkingOptions(
+        enabled=bool(options.get("thinking_enabled", settings.deepseek_thinking_enabled)),
+        reasoning_effort=str(
+            options.get("reasoning_effort", settings.deepseek_reasoning_effort)
+        ),
+    )
+
+
 async def execute_run(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -56,6 +69,7 @@ async def execute_run(
             return
         provider_name = run.provider_name
         provider_model = run.provider_model
+        thinking = _thinking_options_from_run(run, settings)
         provider = resolve_provider(provider_name, settings=settings)
         try:
             messages = await build_context(
@@ -97,6 +111,7 @@ async def execute_run(
                 provider=provider,
                 provider_model=provider_model,
                 messages=messages,
+                thinking=thinking,
                 cancel_event=cancel_event,
                 batch_window_seconds=settings.worker_delta_batch_window_ms / 1000.0,
                 batch_max_chars=settings.worker_delta_batch_max_chars,
@@ -209,6 +224,7 @@ async def _run_provider_stream_until_done_or_cancelled(
     provider: Provider,
     provider_model: str,
     messages: list[ProviderMessage],
+    thinking: ThinkingOptions,
     cancel_event: asyncio.Event,
     batch_window_seconds: float,
     batch_max_chars: int,
@@ -222,6 +238,7 @@ async def _run_provider_stream_until_done_or_cancelled(
             provider=provider,
             provider_model=provider_model,
             messages=messages,
+            thinking=thinking,
             cancel_event=cancel_event,
             batch_window_seconds=batch_window_seconds,
             batch_max_chars=batch_max_chars,
@@ -263,6 +280,7 @@ async def _run_provider_stream(
     provider: Provider,
     provider_model: str,
     messages: list[ProviderMessage],
+    thinking: ThinkingOptions,
     cancel_event: asyncio.Event,
     batch_window_seconds: float,
     batch_max_chars: int,
@@ -316,7 +334,7 @@ async def _run_provider_stream(
     async def _producer() -> None:
         try:
             async for produced in provider.stream(
-                model=provider_model, messages=messages
+                model=provider_model, messages=messages, thinking=thinking
             ):
                 await queue.put(produced)
         except ProviderError as exc:

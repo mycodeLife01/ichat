@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from fastapi import status
 from sqlalchemy import func, select, text, update
@@ -140,6 +141,7 @@ async def submit_user_message(
     content: str,
     provider_name: str,
     provider_model: str,
+    provider_options: dict[str, Any] | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -164,6 +166,7 @@ async def submit_user_message(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        provider_options=provider_options,
     )
     session.add(run)
     await session.flush()
@@ -194,6 +197,7 @@ async def edit_user_message_and_regenerate(
     new_content: str,
     provider_name: str,
     provider_model: str,
+    provider_options: dict[str, Any] | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -231,6 +235,7 @@ async def edit_user_message_and_regenerate(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        provider_options=provider_options,
     )
     session.add(run)
     await session.flush()
@@ -258,6 +263,7 @@ async def regenerate_from_message(
     message_id: int,
     provider_name: str,
     provider_model: str,
+    provider_options: dict[str, Any] | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -299,6 +305,7 @@ async def regenerate_from_message(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        provider_options=provider_options,
     )
     session.add(run)
     await session.flush()

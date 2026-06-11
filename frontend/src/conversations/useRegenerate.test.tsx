@@ -43,7 +43,9 @@ describe("useRegenerate", () => {
       await result.current.editAndRegenerate(501, "改写");
     });
 
-    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 501, "改写");
+    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 501, "改写", {
+      thinking_enabled: false,
+    });
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);
     expect(result.current.conversationDetail.messages).toEqual(
       conversationDetailResponse.messages,
@@ -66,7 +68,9 @@ describe("useRegenerate", () => {
       await result.current.regenerate(2);
     });
 
-    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2);
+    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2, {
+      thinking_enabled: false,
+    });
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);
     expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, conversationResponse.id, 0);
   });

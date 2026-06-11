@@ -14,6 +14,7 @@ from app.providers import (
     ProviderMessage,
     ReasoningDelta,
     TextDelta,
+    ThinkingOptions,
 )
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import execute_run
@@ -176,7 +177,11 @@ async def test_provider_error_flushes_pending_before_failing(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             call_count["n"] += 1
             from app.providers import ProviderError
@@ -260,7 +265,11 @@ async def test_reasoning_only_then_error_does_not_retry(
             return "fake"
 
         async def stream(
-            self, *, model: str, messages: list[ProviderMessage]
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             from app.providers import ProviderError
 

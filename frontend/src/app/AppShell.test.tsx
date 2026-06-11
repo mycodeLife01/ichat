@@ -343,7 +343,9 @@ describe("AppShell", () => {
     await user.type(editor, "新问题");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 1, "新问题");
+    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 1, "新问题", {
+      thinking_enabled: false,
+    });
     // Old answer truncated away; the regenerated answer streams in and replaces.
     expect(await screen.findByText("新答案")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("旧答案")).toBeNull());
@@ -383,7 +385,9 @@ describe("AppShell", () => {
     expect(await screen.findByText("第一版答案")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
 
-    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2);
+    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2, {
+      thinking_enabled: false,
+    });
     expect(await screen.findByText("第二版答案")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("第一版答案")).toBeNull());
   });
