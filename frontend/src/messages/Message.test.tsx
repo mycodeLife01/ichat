@@ -255,4 +255,43 @@ describe("Message", () => {
     expect(editBtn).toHaveAttribute("title", reason);
     expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
   });
+
+  it("does not show an expand toggle for short user messages", () => {
+    render(<Message message={userMessage} />);
+    expect(screen.queryByRole("button", { name: /展开/ })).toBeNull();
+  });
+
+  it("collapses a tall user message and toggles 展开/收起", async () => {
+    // jsdom has no layout: fake a content scrollHeight above the collapse cap.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 1000;
+      },
+    });
+
+    try {
+      const user = userEvent.setup();
+      render(<Message message={userMessage} />);
+
+      const expand = screen.getByRole("button", { name: /展开/ });
+      expect(expand).toHaveAttribute("aria-expanded", "false");
+      // Collapsed content is height-clipped.
+      const content = screen.getByText("你好");
+      expect(content.style.maxHeight).not.toBe("");
+      expect(content.style.overflow).toBe("hidden");
+
+      await user.click(expand);
+      const collapse = screen.getByRole("button", { name: /收起/ });
+      expect(collapse).toHaveAttribute("aria-expanded", "true");
+      expect(content.style.maxHeight).toBe("");
+
+      await user.click(collapse);
+      expect(screen.getByRole("button", { name: /展开/ })).toBeInTheDocument();
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, "scrollHeight", original);
+      else delete (HTMLElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+    }
+  });
 });

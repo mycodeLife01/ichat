@@ -28,6 +28,12 @@ function copy(text: string) {
 // preserves the .msg scroll-margin used by intent-based thread scrolling.
 const msgBase = "msg group flex scroll-mt-[60px] flex-col gap-1.5";
 
+// Edit textarea grows with content up to this cap, then scrolls.
+const EDIT_MAX_HEIGHT = 480;
+
+// Long user messages are clipped to this height with an expand toggle.
+const COLLAPSE_MAX_HEIGHT = 320;
+
 export function Message({
   message,
   isMobile = false,
@@ -39,10 +45,16 @@ export function Message({
   const [draft, setDraft] = useState(message.content);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Long user messages collapse to COLLAPSE_MAX_HEIGHT with an expand toggle;
+  // `overflowing` is measured from the rendered content.
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile user messages have no visible action button (no hover on touch);
   // a long-press on the bubble opens the action sheet instead.
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const disabled = mutateDisabledReason !== null;
   const isUser = message.role === "user";
 
@@ -53,6 +65,28 @@ export function Message({
     },
     [],
   );
+
+  // Auto-grow the edit textarea to fit its content (same pattern as the
+  // Composer); beyond EDIT_MAX_HEIGHT it scrolls.
+  useEffect(() => {
+    if (!editing) return;
+    const el = editRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, EDIT_MAX_HEIGHT)}px`;
+  }, [editing, draft]);
+
+  // Detect whether the bubble content exceeds the collapse cap. Re-measure on
+  // resize since reflow changes the wrapped height.
+  useEffect(() => {
+    if (editing) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const measure = () => setOverflowing(el.scrollHeight > COLLAPSE_MAX_HEIGHT);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [editing, message.content]);
 
   const startLongPress = () => {
     longPressTimer.current = setTimeout(() => setSheetOpen(true), 450);
@@ -171,13 +205,18 @@ export function Message({
     };
     return (
       <div className={`${msgBase} user items-end`}>
-        <div className="w-full max-w-[78%] animate-edit-in rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
+        {/* Full thread width (matches the reading column) so long content has
+            room; the textarea auto-grows, so short content still gets a
+            comfortable editing area via min-h. */}
+        <div className="w-full animate-edit-in rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
           {/* p-[2px] preserves the UA default padding the pre-Tailwind version
               never reset (preflight zeroes it, shifting text wrapping); inline-block
               (the default — no `block`) keeps the old baseline gap below the box. */}
           <textarea
             autoFocus
-            className="min-h-6 w-full resize-none border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none max-[760px]:text-[17px]"
+            ref={editRef}
+            className="min-h-[88px] w-full resize-none overflow-y-auto border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none max-[760px]:text-[17px]"
+            style={{ maxHeight: `${EDIT_MAX_HEIGHT}px` }}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -202,10 +241,11 @@ export function Message({
   }
 
   if (isUser) {
+    const collapsed = overflowing && !expanded;
     return (
       <div className={`${msgBase} user items-end`}>
         <div
-          className={`max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] whitespace-pre-wrap text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
+          className={`max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
             isMobile ? " select-none [-webkit-touch-callout:none]" : ""
           }`}
           onTouchStart={isMobile ? startLongPress : undefined}
@@ -216,7 +256,33 @@ export function Message({
           // system menu. (select-none/touch-callout cover iOS selection.)
           onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
         >
-          {message.content}
+          <div className="relative">
+            <div
+              ref={contentRef}
+              className="whitespace-pre-wrap wrap-anywhere"
+              style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
+            >
+              {message.content}
+            </div>
+            {/* Fade the clipped last line into the bubble background. */}
+            {collapsed && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-bg-sunken to-transparent" />
+            )}
+          </div>
+          {overflowing && (
+            <button
+              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-fg-muted transition-colors duration-[120ms] hover:text-fg"
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "收起" : "展开"}
+              <Icons.Chevron
+                size={13}
+                className={`transition-transform duration-[160ms]${expanded ? " rotate-180" : ""}`}
+              />
+            </button>
+          )}
         </div>
         {actionBar}
       </div>
