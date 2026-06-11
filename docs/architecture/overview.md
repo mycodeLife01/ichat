@@ -1,10 +1,12 @@
 # 架构总览
 
-> 本文是 iChat 后端**运行时**架构的总结。模块/目录职责见 [`module-boundaries.md`](module-boundaries.md)；本文聚焦各服务如何协同、数据如何流动、并发与失败如何处理。状态截至 2026-05-19。
+> 本文是 iChat 后端**运行时**架构的总结。模块/目录职责见 [`module-boundaries.md`](module-boundaries.md)；本文聚焦各服务如何协同、数据如何流动、并发与失败如何处理。状态截至 2026-06-11。
 
 ## 服务拓扑
 
-三个进程组成一个最小可用栈，共享一个 Postgres：
+前端是独立 React SPA（`frontend/`，Vite + TypeScript + Tailwind v4），部署于 Cloudflare Pages（`chat.feslia.com`），经 CORS 跨域调用后端 API（`https://feslia.com/api/v1`）——后端不托管任何静态文件。前端实现细节见 `docs/handover/frontend/` 系列交接文档。
+
+后端三个进程组成一个最小可用栈，共享一个 Postgres：
 
 ```
                                     HTTPS:8443 (Cloudflare Origin Cert)

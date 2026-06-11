@@ -8,3 +8,5 @@ __pycache__
 .env
 .env.*
 !.env.example
+# Frontend is deployed separately on Cloudflare Pages; keep it out of the backend image
+frontend

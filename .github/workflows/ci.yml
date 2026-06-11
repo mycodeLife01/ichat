@@ -75,3 +75,38 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t ichat-api:ci .
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint)
+        run: pnpm run lint
+
+      - name: Type check (tsc)
+        run: pnpm run typecheck
+
+      - name: Test (vitest)
+        run: pnpm exec vitest run
+
+      - name: Build (vite)
+        run: pnpm run build
