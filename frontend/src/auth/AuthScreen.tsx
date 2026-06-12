@@ -17,18 +17,18 @@ const authTabActive =
 const authCollapse =
   "grid [transition:grid-template-rows_320ms_cubic-bezier(0.4,0,0.2,1),opacity_220ms_ease]";
 
-const field = "auth-field mb-3.5 flex flex-col gap-1.5";
-const fieldLabel = "auth-label text-[12.5px] font-medium text-fg-muted";
+const field = "mb-3.5 flex flex-col gap-1.5";
+const fieldLabel = "text-[12.5px] font-medium text-fg-muted";
 // Clean focus: a single thin gray border, no ring/outline/background change
 // (overrides the global :focus-visible accent outline).
 const fieldInput =
-  "auth-input rounded-[10px] border border-border-strong bg-bg px-3.5 py-[11px] text-[14.5px] text-fg " +
+  "rounded-[10px] border border-border-strong bg-bg px-3.5 py-[11px] text-[14.5px] text-fg " +
   "outline-none transition-[border-color] duration-[140ms] placeholder:text-fg-faint " +
   "focus:border-fg-subtle focus-visible:outline-none";
 const fieldErr = "mt-0.5 text-xs text-danger";
 
 const authFootBtn =
-  "auth-link ml-1 cursor-pointer border-none bg-transparent p-0 font-[inherit] text-fg underline " +
+  "ml-1 cursor-pointer border-none bg-transparent p-0 font-[inherit] text-fg underline " +
   "decoration-border-strong underline-offset-2 hover:decoration-fg";
 
 export function AuthScreen() {
@@ -103,20 +103,20 @@ export function AuthScreen() {
       : "登录";
 
   return (
-    <main className="auth-screen relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-sans text-fg">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-sans text-fg">
       <AuthBackground />
 
-      <section className="auth-card relative z-[1] w-full max-w-[420px] rounded-[18px] border border-border bg-bg-raised px-9 pt-9 pb-7 shadow-[0_1px_0_rgb(255_255_255/90%)_inset,0_2px_6px_rgb(20_20_19/4%),0_24px_64px_rgb(20_20_19/8%)] max-[480px]:rounded-2xl max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]">
+      <section className="relative z-[1] w-full max-w-[420px] rounded-[18px] border border-border bg-bg-raised px-9 pt-9 pb-7 shadow-[0_1px_0_rgb(255_255_255/90%)_inset,0_2px_6px_rgb(20_20_19/4%),0_24px_64px_rgb(20_20_19/8%)] max-[480px]:rounded-2xl max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]">
         <div className="mb-[26px] flex flex-col items-start">
-          <span className="auth-brand font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
+          <span className="font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
             iChat
           </span>
-          <p className="auth-subtitle mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
+          <p className="mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
             {mode === "login" ? "欢迎回来。" : "创建你的账号，开始安静地思考。"}
           </p>
         </div>
 
-        <div className="auth-tabs mb-[22px] flex gap-0.5 border-b border-border" role="tablist">
+        <div className="mb-[22px] flex gap-0.5 border-b border-border" role="tablist">
           <button
             type="button"
             role="tab"
@@ -137,7 +137,7 @@ export function AuthScreen() {
           </button>
         </div>
 
-        <form className="auth-form flex flex-col" onSubmit={handleSubmit} noValidate>
+        <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
           {/* Register-only fields. Kept mounted and collapsed (not unmounted) so
               the card height animates when switching tabs. */}
           <div
@@ -245,18 +245,18 @@ export function AuthScreen() {
 
           <button
             type="submit"
-            className="auth-submit mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
           >
             {submitLabel}
           </button>
         </form>
 
-        <div className="auth-divider mt-[18px] mb-4 flex items-center gap-2.5 font-mono text-[11px] tracking-[0.12em] text-fg-subtle uppercase before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">
+        <div className="mt-[18px] mb-4 flex items-center gap-2.5 font-mono text-[11px] tracking-[0.12em] text-fg-subtle uppercase before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">
           或
         </div>
 
-        <div className="auth-footer mt-4 text-center text-[12.5px] text-fg-subtle">
+        <div className="mt-4 text-center text-[12.5px] text-fg-subtle">
           {mode === "login" ? (
             <>
               还没有账号？
@@ -275,7 +275,7 @@ export function AuthScreen() {
         </div>
       </section>
 
-      <p className="auth-legal absolute right-0 bottom-6 left-0 z-[1] m-0 text-center font-mono text-[11px] tracking-[0.04em] text-fg-subtle">
+      <p className="absolute right-0 bottom-6 left-0 z-[1] m-0 text-center font-mono text-[11px] tracking-[0.04em] text-fg-subtle">
         登录即代表你同意服务条款与隐私政策
       </p>
     </main>

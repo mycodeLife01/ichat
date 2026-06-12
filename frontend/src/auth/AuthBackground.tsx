@@ -18,9 +18,6 @@ export function AuthBackground() {
     const SVG_NS = "http://www.w3.org/2000/svg";
     const paths = RIBBONS.map((r) => {
       const p = document.createElementNS(SVG_NS, "path");
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "currentColor");
-      p.setAttribute("stroke-linecap", "round");
       p.setAttribute("stroke-opacity", String(r.op));
       p.setAttribute("stroke-width", String(r.w));
       svg.appendChild(p);
@@ -76,10 +73,7 @@ export function AuthBackground() {
   const blob = "absolute rounded-full bg-fg blur-[100px] will-change-transform";
 
   return (
-    <div
-      className="auth-bg-fallback pointer-events-none absolute inset-0 overflow-hidden"
-      aria-hidden="true"
-    >
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       <div className="auth-grid" />
       <div
         className={`${blob} -top-[140px] -left-20 h-[480px] w-[480px] animate-auth-drift-1 opacity-[0.07]`}
@@ -92,10 +86,7 @@ export function AuthBackground() {
       />
       <svg
         className="absolute inset-0 h-full w-full fill-none stroke-fg [stroke-linecap:round]"
-        fill="none"
         ref={svgRef}
-        stroke="currentColor"
-        strokeLinecap="round"
         preserveAspectRatio="none"
       />
       <div className="auth-grain" />

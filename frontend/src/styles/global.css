@@ -1,6 +1,4 @@
 @import "tailwindcss";
-/* Keep Tailwind's dev scanner tied to the React source tree. */
-@source "../";
 
 /* Design tokens — warm-neutral light theme, ported from chatapp_demo. */
 @theme {
