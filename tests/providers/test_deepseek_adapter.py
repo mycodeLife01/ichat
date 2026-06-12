@@ -409,7 +409,9 @@ def test_deepseek_count_tokens_uses_official_ratios() -> None:
     assert provider.count_tokens("") == 0
 
 
-async def test_stream_with_tools_buffers_and_yields_complete_tool_call_turn() -> None:
+async def test_stream_with_tools_forwards_deltas_live_and_yields_complete_tool_call_turn() -> (
+    None
+):
     body = sse_body(
         [
             {
@@ -482,10 +484,73 @@ async def test_stream_with_tools_buffers_and_yields_complete_tool_call_turn() ->
         )
     ]
 
-    assert len(chunks) == 1
-    turn = chunks[0]
+    # Reasoning streams live (the worker persists it as it arrives); the turn's
+    # tool calls are still delivered as one complete ToolCallTurn at finish.
+    assert len(chunks) == 2
+    assert isinstance(chunks[0], ReasoningDelta)
+    assert chunks[0].text == "need search"
+    turn = chunks[1]
     assert isinstance(turn, ToolCallTurn)
     assert turn.reasoning_content == "need search"
     assert turn.tool_calls[0].id == "call_1"
     assert turn.tool_calls[0].name == "web_search"
     assert turn.tool_calls[0].arguments == '{"query":"latest news"}'
+
+
+async def test_stream_with_tools_streams_final_answer_deltas_live() -> None:
+    body = sse_body(
+        [
+            {
+                "id": "1",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "thinking"},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "1",
+                "choices": [
+                    {"index": 0, "delta": {"content": "Hel"}, "finish_reason": None}
+                ],
+            },
+            {
+                "id": "1",
+                "choices": [
+                    {"index": 0, "delta": {"content": "lo"}, "finish_reason": None}
+                ],
+            },
+            {
+                "id": "1",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            },
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = DeepSeekProvider(settings=make_settings(), transport=httpx.MockTransport(handler))
+    tools = [ToolSpec(name="web_search", description="search", parameters={"type": "object"})]
+
+    chunks = [
+        chunk
+        async for chunk in provider.stream(
+            model="deepseek-test",
+            messages=[ProviderMessage(role="user", content="hi")],
+            tools=tools,
+        )
+    ]
+
+    # A final-answer turn must stream per-chunk deltas (not one aggregate at
+    # finish), otherwise the frontend gets the whole reply in a single burst.
+    assert len(chunks) == 4
+    assert isinstance(chunks[0], ReasoningDelta)
+    assert chunks[0].text == "thinking"
+    assert isinstance(chunks[1], TextDelta)
+    assert chunks[1].text == "Hel"
+    assert isinstance(chunks[2], TextDelta)
+    assert chunks[2].text == "lo"
+    assert isinstance(chunks[3], Finish)

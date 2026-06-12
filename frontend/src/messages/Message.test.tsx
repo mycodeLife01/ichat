@@ -51,29 +51,28 @@ describe("Message", () => {
     expect(screen.getByText("已思考")).toBeInTheDocument();
   });
 
-  it("renders assistant source chips from metadata", () => {
+  it("shows a sources trigger that opens the sources panel", async () => {
+    const user = userEvent.setup();
+    const onShowSources = vi.fn();
+    const sources = [
+      {
+        id: 1,
+        title: "Release notes",
+        url: "https://www.example.com/releases",
+        snippet: "Version 1.2 shipped.",
+        published_at: "2026-06-11",
+        provider: "tavily",
+      },
+    ];
     render(
       <Message
-        message={{
-          ...assistantMessage,
-          metadata: {
-            sources: [
-              {
-                id: 1,
-                title: "Release notes",
-                url: "https://www.example.com/releases",
-                snippet: "Version 1.2 shipped.",
-                published_at: "2026-06-11",
-                provider: "tavily",
-              },
-            ],
-          },
-        }}
+        message={{ ...assistantMessage, metadata: { sources } }}
+        onShowSources={onShowSources}
       />,
     );
 
-    const link = screen.getByRole("link", { name: /\[1\] Release notes example\.com/ });
-    expect(link).toHaveAttribute("href", "https://www.example.com/releases");
+    await user.click(screen.getByRole("button", { name: "查看 1 个来源" }));
+    expect(onShowSources).toHaveBeenCalledWith(sources);
   });
 
   it("copies content", async () => {

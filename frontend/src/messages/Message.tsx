@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { MessageResponse } from "../api/types";
+import type { MessageResponse, MessageSource } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import { ghostBtn, primaryBtn, sheetItem } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
+import { SourceFavicon } from "./SourcesPanel";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
@@ -18,6 +19,8 @@ type MessageProps = {
   mutateDisabledReason?: string | null;
   onEditAndRegenerate?: (messageId: number, content: string) => void;
   onRegenerate?: (messageId: number) => void;
+  // Opens the sources side panel (AppShell owns the panel state).
+  onShowSources?: (sources: MessageSource[]) => void;
 };
 
 function copy(text: string) {
@@ -40,6 +43,7 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -289,13 +293,14 @@ export function Message({
     );
   }
 
+  const sources = message.metadata?.sources ?? [];
   return (
     <div className={`${msgBase} assistant items-stretch`}>
       <div className="min-w-0 flex-1">
         {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
         <Markdown content={message.content} />
-        {message.metadata?.sources && message.metadata.sources.length > 0 && (
-          <SourceChips sources={message.metadata.sources} />
+        {sources.length > 0 && (
+          <SourcesTrigger sources={sources} onClick={() => onShowSources?.(sources)} />
         )}
         {actionBar}
       </div>
@@ -303,37 +308,33 @@ export function Message({
   );
 }
 
-function SourceChips({
+// ChatGPT-style trigger pill: stacked favicons of the first sources plus a
+// 「来源」 label; clicking opens the sources side panel.
+function SourcesTrigger({
   sources,
+  onClick,
 }: {
-  sources: NonNullable<MessageResponse["metadata"]>["sources"];
+  sources: MessageSource[];
+  onClick: () => void;
 }) {
-  if (!sources?.length) return null;
   return (
-    <div className="source-chips mt-3 flex flex-wrap gap-1.5">
-      {sources.map((source) => (
-        <a
-          key={`${source.id}:${source.url}`}
-          className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-bg-sunken px-2.5 py-1 text-[12px] text-fg-muted no-underline transition-colors duration-[120ms] hover:text-fg"
-          href={source.url}
-          target="_blank"
-          rel="noreferrer"
-          title={source.title}
-        >
-          <span className="truncate">
-            [{source.id}] {source.title}
+    <button
+      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover hover:text-fg"
+      type="button"
+      aria-label={`查看 ${sources.length} 个来源`}
+      onClick={onClick}
+    >
+      <span className="flex items-center -space-x-1.5">
+        {sources.slice(0, 3).map((source) => (
+          <span
+            key={`${source.id}:${source.url}`}
+            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-full border border-border bg-bg-raised"
+          >
+            <SourceFavicon url={source.url} size={12} />
           </span>
-          <span className="text-fg-faint">{domainOf(source.url)}</span>
-        </a>
-      ))}
-    </div>
+        ))}
+      </span>
+      来源
+    </button>
   );
-}
-
-function domainOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }

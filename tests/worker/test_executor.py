@@ -961,12 +961,15 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         assert events[2].payload["sources"] == [
             {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
         ]
-        assert "Sources:" in events[3].payload["text"]
+        # Sources surface only via message metadata (rendered as chips by the
+        # frontend); the answer text is never amended with a sources block.
+        assert events[3].payload["text"] == "Here is the latest summary."
 
         assistant = await session.scalar(
             select(Message).where(Message.run_id == run_id, Message.role == "assistant")
         )
         assert assistant is not None
+        assert assistant.content == events[3].payload["text"]
         assert assistant.metadata_ == {
             "sources": [
                 {
@@ -1085,3 +1088,75 @@ async def test_presearch_assistant_turn_includes_reasoning_content_for_thinking_
         assert [row.role for row in transcript] == ["assistant", "tool", "assistant"]
         assert transcript[0].reasoning_content
         assert transcript[0].payload == {"kind": "presearch"}
+
+
+async def test_web_search_final_answer_streams_incremental_deltas(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    """Regression: with web search enabled the final answer must stream as
+    multiple incremental deltas, not one burst written at success time."""
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        run = await session.get(Run, run_id)
+        assert run is not None
+        run.provider_options = {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+            "web_search_enabled": True,
+            "web_search_suppressed_by_user": False,
+        }
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    fake = FakeProvider(
+        script=[
+            ReasoningDelta(text="think"),
+            TextDelta(text="first"),
+            Sleep(seconds=0.2),  # > batch window forces a flush of "first"
+            TextDelta(text="second"),
+            Finish(finish_reason="stop"),
+        ]
+    )
+    search_settings = settings.model_copy(
+        update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=search_settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "reasoning_delta",
+            "text_delta",
+            "text_delta",
+            "run_succeeded",
+        ]
+        assert events[1].payload["text"] == "think"
+        assert [events[2].payload["text"], events[3].payload["text"]] == ["first", "second"]
+
+        assistant = await session.scalar(
+            select(Message).where(Message.run_id == run_id, Message.role == "assistant")
+        )
+        assert assistant is not None
+        assert assistant.content == "firstsecond"
+        assert assistant.reasoning == "think"

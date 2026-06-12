@@ -102,11 +102,18 @@ class DeepSeekProvider(Provider):
                         chunk = parse_sse_line(line)
                         if chunk is None:
                             continue
+                        # Forward deltas live so the caller can stream them; keep the
+                        # aggregate too because a turn that ends in tool_calls must hand
+                        # the full turn content/reasoning to the transcript via
+                        # ToolCallTurn (whether a turn is a tool turn is only known at
+                        # the finish chunk).
                         if tools and isinstance(chunk, TextDelta):
                             content_parts.append(chunk.text)
+                            yield chunk
                             continue
                         if tools and isinstance(chunk, ReasoningDelta):
                             reasoning_parts.append(chunk.text)
+                            yield chunk
                             continue
                         if isinstance(chunk, ToolCallDelta):
                             for delta in chunk.calls:
@@ -145,11 +152,6 @@ class DeepSeekProvider(Provider):
                                 ],
                             )
                             continue
-                        if tools and isinstance(chunk, Finish):
-                            if reasoning_parts:
-                                yield ReasoningDelta(text="".join(reasoning_parts))
-                            if content_parts:
-                                yield TextDelta(text="".join(content_parts))
                         yield chunk
             except httpx.HTTPError as exc:
                 raise ProviderError(

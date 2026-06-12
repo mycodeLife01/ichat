@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
 import json
-import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import uuid4
@@ -371,6 +371,28 @@ async def _run_agent_loop(
             await session.commit()
         return True
 
+    async def persist_delta(channel: str, text: str) -> bool:
+        nonlocal streaming_started
+        async with session_factory() as session:
+            if not streaming_started:
+                changed = await mark_run_streaming(session, run_id=run_id)
+                if not changed:
+                    await session.commit()
+                    return False
+                streaming_started = True
+            # Pass the event type as a literal (not a variable) so it satisfies the
+            # RunEventType Literal accepted by append_run_event under mypy.
+            if channel == "reasoning":
+                await append_run_event(
+                    session, run_id=run_id, event_type="reasoning_delta", payload={"text": text}
+                )
+            else:
+                await append_run_event(
+                    session, run_id=run_id, event_type="text_delta", payload={"text": text}
+                )
+            await session.commit()
+        return True
+
     async def execute_args(args: WebSearchArgs) -> ToolResult:
         nonlocal tool_calls_used
         if tool_calls_used >= settings.web_search_max_tool_calls:
@@ -532,13 +554,23 @@ async def _run_agent_loop(
 
     while True:
         if cancel_event.is_set():
-            return _StreamOutcome("cancelled", True, False)
-        turn = await _collect_provider_turn(
+            return _StreamOutcome("cancelled", not streaming_started, streaming_started)
+        turn = await _stream_provider_turn(
             provider=provider,
             provider_model=provider_model,
             messages=provider_messages,
             thinking=thinking,
+            cancel_event=cancel_event,
+            batch_window_seconds=settings.worker_delta_batch_window_ms / 1000.0,
+            batch_max_chars=settings.worker_delta_batch_max_chars,
+            persist_delta=persist_delta,
         )
+        if turn is None:
+            return _StreamOutcome(
+                status="cancelled",
+                before_first_delta=not streaming_started,
+                delta_persisted=streaming_started,
+            )
         if isinstance(turn, _ProviderTurnError):
             return _StreamOutcome(
                 status="failed",
@@ -589,16 +621,14 @@ async def _run_agent_loop(
                 message="Provider stream ended without finish chunk",
             )
         sources = registry.all_metadata()
-        final_text = _append_sources_if_missing(turn.content, sources, user_content)
         changed = await _persist_agent_success(
             session_factory=session_factory,
             run_id=run_id,
             provider=provider,
             finish=turn.finish,
-            content=final_text,
+            content=turn.content,
             reasoning=turn.reasoning_content,
             sources=sources,
-            streaming_started=streaming_started,
         )
         if not changed:
             return _StreamOutcome(
@@ -615,7 +645,7 @@ async def _run_agent_loop(
         return _StreamOutcome(
             status="succeeded",
             before_first_delta=not streaming_started,
-            delta_persisted=bool(final_text),
+            delta_persisted=bool(turn.content),
         )
 
 
@@ -633,27 +663,114 @@ class _ProviderTurnError:
     message: str
 
 
-async def _collect_provider_turn(
+async def _stream_provider_turn(
     *,
     provider: Provider,
     provider_model: str,
     messages: list[ProviderMessage],
     thinking: ThinkingOptions,
-) -> _ProviderTurn | _ProviderTurnError:
+    cancel_event: asyncio.Event,
+    batch_window_seconds: float,
+    batch_max_chars: int,
+    persist_delta: Callable[[str, str], Awaitable[bool]],
+) -> _ProviderTurn | _ProviderTurnError | None:
+    """Stream one provider turn, persisting text/reasoning deltas live (batched
+    like the non-tool path) so the final answer streams to the frontend.
+
+    Returns None when the run is no longer active (cancelled while persisting).
+    """
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
+    pending: list[str] = []
+    pending_chars = 0
+    pending_channel: str | None = None  # "text" | "reasoning"
+    window_started_at = 0.0
+
+    async def flush_pending() -> bool:
+        nonlocal pending_chars, pending_channel
+        if not pending:
+            return True
+        ok = await persist_delta(pending_channel or "text", "".join(pending))
+        pending.clear()
+        pending_chars = 0
+        pending_channel = None
+        return ok
+
+    # Same producer/queue pattern as _run_provider_stream: drive the provider
+    # stream from a background task so the batch window can elapse without
+    # cancelling the stream's coroutine.
+    queue: asyncio.Queue[object] = asyncio.Queue()
+
+    async def _producer() -> None:
+        try:
+            async for produced in provider.stream(
+                model=provider_model,
+                messages=messages,
+                thinking=thinking,
+                tools=[WEB_SEARCH_TOOL_SPEC],
+            ):
+                await queue.put(produced)
+        except ProviderError as exc:
+            await queue.put(exc)
+        finally:
+            await queue.put(_STREAM_DONE)
+
+    producer_task = asyncio.create_task(_producer())
+
     try:
-        async for chunk in provider.stream(
-            model=provider_model,
-            messages=messages,
-            thinking=thinking,
-            tools=[WEB_SEARCH_TOOL_SPEC],
-        ):
-            if isinstance(chunk, TextDelta):
-                content_parts.append(chunk.text)
-            elif isinstance(chunk, ReasoningDelta):
-                reasoning_parts.append(chunk.text)
+        while True:
+            if pending:
+                elapsed = time.monotonic() - window_started_at
+                timeout: float | None = max(batch_window_seconds - elapsed, 0.0)
+            else:
+                timeout = None
+
+            try:
+                if timeout is None:
+                    item = await queue.get()
+                else:
+                    item = await asyncio.wait_for(queue.get(), timeout=timeout)
+            except TimeoutError:
+                if not await flush_pending():
+                    return None
+                continue
+
+            if item is _STREAM_DONE:
+                break
+
+            if isinstance(item, ProviderError):
+                if pending:
+                    with contextlib.suppress(Exception):
+                        await flush_pending()
+                return _ProviderTurnError(code=item.code, message=item.message)
+
+            chunk = item
+
+            if cancel_event.is_set():
+                await flush_pending()
+                return None
+
+            if isinstance(chunk, (TextDelta, ReasoningDelta)):
+                channel = "reasoning" if isinstance(chunk, ReasoningDelta) else "text"
+                # Channel switch: flush the previous channel before buffering the new one,
+                # so reasoning_delta events strictly precede text_delta events in seq order.
+                if pending and pending_channel != channel:
+                    if not await flush_pending():
+                        return None
+                if not pending:
+                    window_started_at = time.monotonic()
+                    pending_channel = channel
+                if channel == "reasoning":
+                    reasoning_parts.append(chunk.text)
+                else:
+                    content_parts.append(chunk.text)
+                pending.append(chunk.text)
+                pending_chars += len(chunk.text)
+                if pending_chars >= batch_max_chars and not await flush_pending():
+                    return None
             elif isinstance(chunk, ToolCallTurn):
+                if not await flush_pending():
+                    return None
                 return _ProviderTurn(
                     content=chunk.content or "",
                     reasoning_content=chunk.reasoning_content,
@@ -661,13 +778,22 @@ async def _collect_provider_turn(
                     tool_turn=chunk,
                 )
             elif isinstance(chunk, Finish):
+                if not await flush_pending():
+                    return None
                 return _ProviderTurn(
                     content="".join(content_parts),
                     reasoning_content="".join(reasoning_parts) or None,
                     finish=chunk,
                 )
-    except ProviderError as exc:
-        return _ProviderTurnError(code=exc.code, message=exc.message)
+    finally:
+        if not producer_task.done():
+            producer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await producer_task
+
+    # Stream ended without Finish or ToolCallTurn
+    with contextlib.suppress(Exception):
+        await flush_pending()
     return _ProviderTurn(content="".join(content_parts), reasoning_content=None, finish=None)
 
 
@@ -711,35 +837,8 @@ async def _persist_agent_success(
     content: str,
     reasoning: str | None,
     sources: list[dict[str, object]],
-    streaming_started: bool,
 ) -> bool:
     async with session_factory() as session:
-        if reasoning:
-            if not streaming_started:
-                changed = await mark_run_streaming(session, run_id=run_id)
-                if not changed:
-                    await session.commit()
-                    return False
-                streaming_started = True
-            await append_run_event(
-                session,
-                run_id=run_id,
-                event_type="reasoning_delta",
-                payload={"text": reasoning},
-            )
-        if content:
-            if not streaming_started:
-                changed = await mark_run_streaming(session, run_id=run_id)
-                if not changed:
-                    await session.commit()
-                    return False
-                streaming_started = True
-            await append_run_event(
-                session,
-                run_id=run_id,
-                event_type="text_delta",
-                payload={"text": content},
-            )
         changed = await mark_run_succeeded(
             session,
             run_id=run_id,
@@ -789,27 +888,6 @@ def _tool_failed_payload(result: ToolResult) -> dict[str, object]:
         "error_code": result.error_code or result.payload.get("error_code", "search_error"),
         "message": result.message or result.payload.get("message", "Web search failed."),
     }
-
-
-def _append_sources_if_missing(
-    content: str,
-    sources: list[dict[str, object]],
-    user_content: str,
-) -> str:
-    if not sources:
-        return content
-    source_ids = [str(source.get("id")) for source in sources if source.get("id") is not None]
-    if any(re.search(rf"\[{re.escape(source_id)}\]", content) for source_id in source_ids):
-        return content
-    chinese = any("\u4e00" <= char <= "\u9fff" for char in user_content)
-    heading = "来源：" if chinese else "Sources:"
-    lines = []
-    for source in sources:
-        title = str(source.get("title", "Source")).strip() or "Source"
-        url = str(source.get("url", "")).strip()
-        source_id = source.get("id")
-        lines.append(f"[{source_id}] {title} - {url}")
-    return f"{content.rstrip()}\n\n{heading}\n" + "\n".join(lines)
 
 
 async def _run_provider_stream_until_done_or_cancelled(

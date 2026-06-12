@@ -8,6 +8,7 @@ import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
 import { MessageThread } from "../messages/MessageThread";
+import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
@@ -20,6 +21,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
+import type { MessageSource } from "../api/types";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -73,6 +75,16 @@ export function AppShell() {
   // conversation sends its first message; navigating to an existing conversation
   // leaves it false so the final layout renders without animating.
   const [animateComposer, setAnimateComposer] = useState(false);
+  // Sources panel (ChatGPT-style right sidebar). Always mounted so open and
+  // close both transition; `sources` is kept through the close animation.
+  const [sourcesPanel, setSourcesPanel] = useState<{
+    sources: MessageSource[];
+    open: boolean;
+  }>({ sources: [], open: false });
+  const showSources = (sources: MessageSource[]) =>
+    setSourcesPanel({ sources, open: true });
+  const closeSources = () =>
+    setSourcesPanel((prev) => (prev.open ? { ...prev, open: false } : prev));
 
   const { start, cancel } = useRunStream();
   const send = useSendMessage(start);
@@ -120,13 +132,16 @@ export function AppShell() {
   );
 
   // Switching to / creating a conversation must not inherit a pending animation:
-  // the target layout should render immediately.
+  // the target layout should render immediately. The sources panel belongs to a
+  // message in the previous thread, so it closes too.
   const onSelectConversation = (id: number) => {
     setAnimateComposer(false);
+    closeSources();
     void selectConversation(id).then(() => recover(id));
   };
   const onNewConversation = () => {
     setAnimateComposer(false);
+    closeSources();
     newConversation();
   };
 
@@ -266,6 +281,7 @@ export function AppShell() {
               mutateDisabledReason={mutateDisabledReason}
               onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
               onRegenerate={(id) => void regenerate(id)}
+              onShowSources={showSources}
             >
               {activeRun && activeRun.conversationId === selectedId && (
                 <StreamingMessage run={activeRun} />
@@ -304,6 +320,13 @@ export function AppShell() {
           className={`min-h-0 shrink basis-0 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)] ${showWelcome ? "grow" : "grow-0"}`}
         />
       </main>
+
+      <SourcesPanel
+        sources={sourcesPanel.sources}
+        open={sourcesPanel.open}
+        isMobile={isMobile}
+        onClose={closeSources}
+      />
 
       {confirmTarget != null && (
         <ConfirmDialog

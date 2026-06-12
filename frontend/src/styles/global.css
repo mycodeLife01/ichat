@@ -171,6 +171,9 @@ body {
 
 /* Markdown typography — rendered by react-markdown, so per-element utilities
    are not an option; this block stays as handwritten CSS. */
+/* Long unbroken tokens (URLs cited by the model) must wrap instead of
+   overflowing the reading column. */
+.md { overflow-wrap: anywhere; }
 /* Preflight zeroes p margins; nested paragraphs (blockquote/li) relied on the
    UA's 1em. :where() keeps specificity at zero so the direct-child rules below
    still win for top-level blocks. */

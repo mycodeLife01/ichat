@@ -26,9 +26,13 @@ const THINKING_LEVEL_OPTIONS: { value: ThinkingLevel; label: string }[] = [
   { value: "max", label: "Max" },
 ];
 
-const composerTool =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-fg-muted " +
+// Background/text colors live outside the base string: Tailwind resolves
+// conflicting utilities by stylesheet order, not className order, so a toggled
+// state must swap classes instead of appending overrides.
+const composerToolBase =
+  "inline-flex h-8 w-8 items-center justify-center rounded-full p-0 " +
   "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
+const composerTool = `${composerToolBase} bg-transparent text-fg-muted`;
 
 export function Composer({
   value,
@@ -107,7 +111,7 @@ export function Composer({
               <Icons.Plus size={16} />
             </button>
             <button
-              className={`${composerTool}${webSearchEnabled ? " bg-bg-hover text-fg" : ""}`}
+              className={`${composerToolBase} ${webSearchEnabled ? "bg-bg-hover text-fg" : "bg-transparent text-fg-muted"}`}
               type="button"
               aria-label="联网搜索"
               aria-pressed={webSearchEnabled}
