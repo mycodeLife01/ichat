@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from fastapi import status
 from sqlalchemy import func, select, text, update
@@ -31,7 +31,17 @@ def conversation_response(conversation: Conversation) -> ConversationResponse:
 
 
 def message_response(message: Message) -> MessageResponse:
-    return MessageResponse.model_validate(message)
+    return MessageResponse(
+        id=message.id,
+        conversation_id=message.conversation_id,
+        run_id=message.run_id,
+        role=cast(Literal["user", "assistant"], message.role),
+        content=message.content,
+        reasoning=message.reasoning,
+        metadata=message.metadata_,
+        position=message.position,
+        created_at=message.created_at,
+    )
 
 
 def run_response(run: Run) -> RunResponse:
@@ -142,6 +152,7 @@ async def submit_user_message(
     provider_name: str,
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
+    system_prompt_snapshot: str | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -167,6 +178,7 @@ async def submit_user_message(
         provider_name=provider_name,
         provider_model=provider_model,
         provider_options=provider_options,
+        system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
     await session.flush()
@@ -198,6 +210,7 @@ async def edit_user_message_and_regenerate(
     provider_name: str,
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
+    system_prompt_snapshot: str | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -236,6 +249,7 @@ async def edit_user_message_and_regenerate(
         provider_name=provider_name,
         provider_model=provider_model,
         provider_options=provider_options,
+        system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
     await session.flush()
@@ -264,6 +278,7 @@ async def regenerate_from_message(
     provider_name: str,
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
+    system_prompt_snapshot: str | None = None,
 ) -> SendMessageResponse:
     conversation = await get_owned_visible_conversation_for_update(
         session,
@@ -306,6 +321,7 @@ async def regenerate_from_message(
         provider_name=provider_name,
         provider_model=provider_model,
         provider_options=provider_options,
+        system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
     await session.flush()
@@ -413,6 +429,7 @@ async def materialize_assistant_message(
     run_id: int,
     content: str,
     reasoning: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Message:
     run = await session.get(Run, run_id)
     if run is None:
@@ -428,6 +445,7 @@ async def materialize_assistant_message(
         role="assistant",
         content=content,
         reasoning=reasoning,
+        metadata_=metadata,
         position=next_position,
     )
     session.add(message)

@@ -4,8 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Message
-from app.models.run import Run
+from app.models.run import Run, RunProviderMessage
 from app.providers import ProviderMessage, ProviderRole
+from app.services.runs.transcript import provider_message_from_row
 
 # Flat per-message token overhead for role markers and chat-template framing.
 _PER_MESSAGE_OVERHEAD_TOKENS = 4
@@ -39,15 +40,69 @@ async def build_context(
         )
     ).all()
 
-    history: list[ProviderMessage] = [
-        ProviderMessage(role=_normalize_role(row.role), content=row.content)
-        for row in history_rows
-    ]
+    blocks = await _build_history_blocks(
+        session,
+        history_rows=list(history_rows),
+        target_user_message_id=target.id,
+    )
     history_budget = budget_tokens - _message_tokens(system_prompt, count_tokens)
     trimmed = _trim_to_budget(
-        history, budget_tokens=history_budget, count_tokens=count_tokens
+        blocks, budget_tokens=history_budget, count_tokens=count_tokens
     )
-    return [ProviderMessage(role="system", content=system_prompt), *trimmed]
+    return [ProviderMessage(role="system", content=system_prompt), *_flatten(trimmed)]
+
+
+async def _build_history_blocks(
+    session: AsyncSession,
+    *,
+    history_rows: list[Message],
+    target_user_message_id: int,
+) -> list[list[ProviderMessage]]:
+    blocks: list[list[ProviderMessage]] = []
+    skipped_message_ids: set[int] = set()
+    messages_by_run: dict[int, list[Message]] = {}
+    for row in history_rows:
+        if row.run_id is not None:
+            messages_by_run.setdefault(row.run_id, []).append(row)
+
+    for row in history_rows:
+        if row.id in skipped_message_ids:
+            continue
+        if row.role != "user":
+            blocks.append([ProviderMessage(role=_normalize_role(row.role), content=row.content)])
+            continue
+
+        block = [ProviderMessage(role="user", content=row.content)]
+        if row.id != target_user_message_id and row.run_id is not None:
+            transcript = await _load_succeeded_run_transcript(session, run_id=row.run_id)
+            if transcript:
+                block.extend(transcript)
+            else:
+                for message in messages_by_run.get(row.run_id, []):
+                    if message.id == row.id or message.role != "assistant":
+                        continue
+                    block.append(ProviderMessage(role="assistant", content=message.content))
+                    skipped_message_ids.add(message.id)
+        blocks.append(block)
+    return blocks
+
+
+async def _load_succeeded_run_transcript(
+    session: AsyncSession,
+    *,
+    run_id: int,
+) -> list[ProviderMessage]:
+    run = await session.get(Run, run_id)
+    if run is None or run.status != "succeeded":
+        return []
+    rows = (
+        await session.scalars(
+            select(RunProviderMessage)
+            .where(RunProviderMessage.run_id == run_id)
+            .order_by(RunProviderMessage.seq.asc())
+        )
+    ).all()
+    return [provider_message_from_row(row) for row in rows]
 
 
 def _normalize_role(role: str) -> ProviderRole:
@@ -62,15 +117,32 @@ def _message_tokens(content: str, count_tokens: Callable[[str], int]) -> int:
     return count_tokens(content) + _PER_MESSAGE_OVERHEAD_TOKENS
 
 
+def _provider_message_tokens(
+    message: ProviderMessage,
+    count_tokens: Callable[[str], int],
+) -> int:
+    parts = [message.content or "", message.reasoning_content or ""]
+    if message.tool_calls:
+        parts.extend(call.arguments for call in message.tool_calls)
+    return _message_tokens("\n".join(part for part in parts if part), count_tokens)
+
+
 def _trim_to_budget(
-    messages: list[ProviderMessage],
+    blocks: list[list[ProviderMessage]],
     *,
     budget_tokens: int,
     count_tokens: Callable[[str], int],
-) -> list[ProviderMessage]:
-    costs = [_message_tokens(m.content, count_tokens) for m in messages]
+) -> list[list[ProviderMessage]]:
+    costs = [
+        sum(_provider_message_tokens(message, count_tokens) for message in block)
+        for block in blocks
+    ]
     total = sum(costs)
-    while messages and total > budget_tokens and len(messages) > 1:
-        messages.pop(0)
+    while blocks and total > budget_tokens and len(blocks) > 1:
+        blocks.pop(0)
         total -= costs.pop(0)
-    return messages
+    return blocks
+
+
+def _flatten(blocks: list[list[ProviderMessage]]) -> list[ProviderMessage]:
+    return [message for block in blocks for message in block]

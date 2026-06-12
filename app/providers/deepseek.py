@@ -12,7 +12,13 @@ from app.providers.types import (
     ProviderChunk,
     ProviderError,
     ProviderMessage,
+    ProviderToolCall,
+    ReasoningDelta,
+    TextDelta,
     ThinkingOptions,
+    ToolCallDelta,
+    ToolCallTurn,
+    ToolSpec,
 )
 
 
@@ -42,6 +48,7 @@ class DeepSeekProvider(Provider):
         model: str,
         messages: list[ProviderMessage],
         thinking: ThinkingOptions | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
         # Fall back to env defaults when the run carries no per-request options
         # (legacy rows created before runs.provider_options existed).
@@ -53,9 +60,11 @@ class DeepSeekProvider(Provider):
         payload: dict[str, Any] = {
             "model": model,
             "stream": True,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [_provider_message_to_payload(m) for m in messages],
             "thinking": {"type": "enabled" if thinking.enabled else "disabled"},
         }
+        if tools:
+            payload["tools"] = [_tool_spec_to_payload(tool) for tool in tools]
         if thinking.enabled:
             payload["reasoning_effort"] = thinking.reasoning_effort
         headers = {
@@ -86,9 +95,31 @@ class DeepSeekProvider(Provider):
                             message=f"DeepSeek returned {response.status_code}: {body[:500]}",
                         )
                     provider_request_id = response.headers.get("x-request-id")
+                    content_parts: list[str] = []
+                    reasoning_parts: list[str] = []
+                    tool_builders: dict[int, dict[str, str]] = {}
                     async for line in response.aiter_lines():
                         chunk = parse_sse_line(line)
                         if chunk is None:
+                            continue
+                        if tools and isinstance(chunk, TextDelta):
+                            content_parts.append(chunk.text)
+                            continue
+                        if tools and isinstance(chunk, ReasoningDelta):
+                            reasoning_parts.append(chunk.text)
+                            continue
+                        if isinstance(chunk, ToolCallDelta):
+                            for delta in chunk.calls:
+                                builder = tool_builders.setdefault(
+                                    delta.index,
+                                    {"id": "", "name": "", "arguments": ""},
+                                )
+                                if delta.id is not None:
+                                    builder["id"] += delta.id
+                                if delta.name is not None:
+                                    builder["name"] += delta.name
+                                if delta.arguments is not None:
+                                    builder["arguments"] += delta.arguments
                             continue
                         if isinstance(chunk, Finish) and provider_request_id is not None:
                             chunk = Finish(
@@ -96,6 +127,29 @@ class DeepSeekProvider(Provider):
                                 usage=chunk.usage,
                                 provider_request_id=provider_request_id,
                             )
+                        if (
+                            tools
+                            and isinstance(chunk, Finish)
+                            and (chunk.finish_reason == "tool_calls" or tool_builders)
+                        ):
+                            yield ToolCallTurn(
+                                content="".join(content_parts) or None,
+                                reasoning_content="".join(reasoning_parts) or None,
+                                tool_calls=[
+                                    ProviderToolCall(
+                                        id=builder["id"],
+                                        name=builder["name"],
+                                        arguments=builder["arguments"],
+                                    )
+                                    for _, builder in sorted(tool_builders.items())
+                                ],
+                            )
+                            continue
+                        if tools and isinstance(chunk, Finish):
+                            if reasoning_parts:
+                                yield ReasoningDelta(text="".join(reasoning_parts))
+                            if content_parts:
+                                yield TextDelta(text="".join(content_parts))
                         yield chunk
             except httpx.HTTPError as exc:
                 raise ProviderError(
@@ -113,7 +167,7 @@ class DeepSeekProvider(Provider):
         payload = {
             "model": model,
             "stream": False,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [_provider_message_to_payload(m) for m in messages],
             "thinking": {"type": "disabled"},
             "max_tokens": max_output_tokens,
             "temperature": 0.3,
@@ -165,3 +219,37 @@ class DeepSeekProvider(Provider):
                     code="deepseek_summarize_transport_error",
                     message=str(exc),
                 ) from exc
+
+
+def _tool_spec_to_payload(tool: ToolSpec) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+        },
+    }
+
+
+def _provider_message_to_payload(message: ProviderMessage) -> dict[str, Any]:
+    payload: dict[str, Any] = {"role": message.role}
+    if message.content is not None:
+        payload["content"] = message.content
+    if message.reasoning_content is not None:
+        payload["reasoning_content"] = message.reasoning_content
+    if message.role == "assistant" and message.tool_calls:
+        payload["tool_calls"] = [
+            {
+                "id": call.id,
+                "type": "function",
+                "function": {
+                    "name": call.name,
+                    "arguments": call.arguments,
+                },
+            }
+            for call in message.tool_calls
+        ]
+    if message.role == "tool" and message.tool_call_id is not None:
+        payload["tool_call_id"] = message.tool_call_id
+    return payload

@@ -1,4 +1,4 @@
-import type { RunStatus } from "../api/types";
+import type { RunStatus, RunToolState } from "../api/types";
 import type { AppAction } from "../app/store";
 
 // AbortController is intentionally NOT stored in the reducer (not serializable).
@@ -9,6 +9,7 @@ export type ActiveRunState = {
   latestSeq: number;
   draftText: string;
   draftReasoning: string;
+  toolState: RunToolState | null;
   status: RunStatus;
   cancelRequested: boolean;
 } | null;
@@ -24,10 +25,12 @@ export type ActiveRunAction =
       latestSeq: number;
       draftText: string;
       draftReasoning: string;
+      toolState?: RunToolState | null;
       status: RunStatus;
     }
   | { type: "run/reasoningDelta"; seq: number; text: string }
   | { type: "run/textDelta"; seq: number; text: string }
+  | { type: "run/toolState"; seq: number; toolState: RunToolState }
   | { type: "run/terminal"; status: "succeeded" | "failed" | "cancelled" }
   | { type: "run/cancelRequested" }
   | { type: "run/cancelFailed" }
@@ -45,6 +48,7 @@ export function activeRunReducer(
         latestSeq: 0,
         draftText: "",
         draftReasoning: "",
+        toolState: null,
         status: "started",
         cancelRequested: false,
       };
@@ -66,6 +70,14 @@ export function activeRunReducer(
         latestSeq: action.seq,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
+    case "run/toolState":
+      if (state === null) return state;
+      return {
+        ...state,
+        latestSeq: action.seq,
+        toolState: action.toolState ?? null,
+        status: state.status === "cancelling" ? state.status : "streaming",
+      };
     case "run/terminal":
       if (state === null) return state;
       return { ...state, status: action.status };
@@ -76,6 +88,7 @@ export function activeRunReducer(
         latestSeq: action.latestSeq,
         draftText: action.draftText,
         draftReasoning: action.draftReasoning,
+        toolState: action.toolState ?? null,
         status: action.status,
         cancelRequested: action.status === "cancelling",
       };

@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.context import build_context
 from app.models.conversation import Conversation, Message
-from app.models.run import Run
+from app.models.run import Run, RunProviderMessage
 from app.models.user import User
-from app.providers import ProviderMessage
+from app.providers import ProviderMessage, ProviderToolCall
+from app.services.runs.transcript import serialize_tool_calls
 
 TEST_DATABASE_URL = os.environ.get(
     "CONTEXT_TEST_DATABASE_URL",
@@ -264,3 +265,94 @@ async def test_build_context_raises_when_run_missing(
                 budget_tokens=1000,
                 count_tokens=len,
             )
+
+
+async def test_build_context_replays_succeeded_provider_transcript_as_block(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "ctx-transcript")
+        conversation = Conversation(user_id=user.id, title="Chat")
+        session.add(conversation)
+        await session.flush()
+
+        first_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="latest docs?",
+            position=1,
+        )
+        first_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=first_user.id,
+        )
+        first_run.status = "succeeded"
+        first_user.run_id = first_run.id
+        await session.flush()
+        call = ProviderToolCall(
+            id="call_1",
+            name="web_search",
+            arguments='{"query":"latest docs"}',
+        )
+        session.add_all(
+            [
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=1,
+                    role="assistant",
+                    reasoning_content="Need current docs",
+                    tool_calls=serialize_tool_calls([call]),
+                ),
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=2,
+                    role="tool",
+                    content="Evidence [1]",
+                    tool_call_id="call_1",
+                    tool_name="web_search",
+                ),
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=3,
+                    role="assistant",
+                    content="Final answer [1]",
+                    reasoning_content="Use evidence",
+                ),
+            ]
+        )
+        target_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="follow up",
+            position=2,
+        )
+        target_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=target_user.id,
+        )
+        await session.commit()
+
+        messages = await build_context(
+            session,
+            run_id=target_run.id,
+            system_prompt="sys",
+            budget_tokens=10_000,
+            count_tokens=len,
+        )
+
+    assert [message.role for message in messages] == [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "user",
+    ]
+    assert messages[2].reasoning_content == "Need current docs"
+    assert messages[2].tool_calls is not None
+    assert messages[3].tool_call_id == "call_1"
+    assert messages[4].reasoning_content == "Use evidence"

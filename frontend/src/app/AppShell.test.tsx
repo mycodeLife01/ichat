@@ -345,6 +345,7 @@ describe("AppShell", () => {
 
     expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 1, "新问题", {
       thinking_enabled: false,
+      web_search_enabled: false,
     });
     // Old answer truncated away; the regenerated answer streams in and replaces.
     expect(await screen.findByText("新答案")).toBeInTheDocument();
@@ -387,6 +388,7 @@ describe("AppShell", () => {
 
     expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2, {
       thinking_enabled: false,
+      web_search_enabled: false,
     });
     expect(await screen.findByText("第二版答案")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("第一版答案")).toBeNull());

@@ -92,6 +92,7 @@ describe("useRunRecovery", () => {
       latestSeq: runStateResponse.latest_seq,
       draftText: runStateResponse.draft_text,
       draftReasoning: "想",
+      toolState: null,
       status: "streaming",
       cancelRequested: false,
     });

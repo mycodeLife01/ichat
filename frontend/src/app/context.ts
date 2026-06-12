@@ -1,6 +1,7 @@
 import { createContext, useContext, type Dispatch, type MutableRefObject } from "react";
 
 import type { LoginRequest, RegisterRequest } from "../api/auth";
+import type { CapabilitiesApi } from "../api/capabilities";
 import type { ConversationApi } from "../api/conversations";
 import type { RunApi } from "../api/runs";
 import type { AuthTokenResponse, CommandStatusResponse } from "../api/types";
@@ -15,6 +16,7 @@ export type AuthApi = {
 
 export type Services = {
   authApi: AuthApi;
+  capabilitiesApi: CapabilitiesApi;
   conversationApi: ConversationApi;
   runApi: RunApi;
 };

@@ -13,6 +13,7 @@ import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
 import { thinkingLevelStore, type ThinkingLevel } from "../runs/thinkingLevel";
+import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -36,7 +37,7 @@ function useIsMobile() {
 export function AppShell() {
   const { user, logout } = useAuthSession();
   const { ui, activeRun, conversationIndex } = useAppState();
-  const { dispatch, stateRef } = useAppActions();
+  const { dispatch, services, stateRef } = useAppActions();
   const {
     items,
     selectedId,
@@ -56,9 +57,17 @@ export function AppShell() {
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(() =>
     thinkingLevelStore.read(),
   );
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() =>
+    webSearchPreferenceStore.read(),
+  );
+  const [webSearchAvailable, setWebSearchAvailable] = useState(false);
   const onThinkingLevelChange = (level: ThinkingLevel) => {
     thinkingLevelStore.save(level);
     setThinkingLevel(level);
+  };
+  const onWebSearchEnabledChange = (enabled: boolean) => {
+    webSearchPreferenceStore.save(enabled);
+    setWebSearchEnabled(enabled);
   };
   // Gates the center → bottom composer transition. Only true while a brand-new
   // conversation sends its first message; navigating to an existing conversation
@@ -79,6 +88,7 @@ export function AppShell() {
       detail.messages.length,
       activeRun?.draftText,
       activeRun?.draftReasoning,
+      activeRun?.toolState,
       activeRun?.status,
     ],
     // Jump to the bottom unconditionally when entering a conversation or when
@@ -140,6 +150,14 @@ export function AppShell() {
     let active = true;
     void (async () => {
       await loadList();
+      try {
+        const capabilities = await services.capabilitiesApi.get();
+        webSearchPreferenceStore.setCapability(capabilities.web_search.enabled);
+        setWebSearchAvailable(capabilities.web_search.enabled);
+      } catch {
+        webSearchPreferenceStore.setCapability(false);
+        setWebSearchAvailable(false);
+      }
       if (!active) return;
       const storedId = selectionStore.read();
       if (storedId != null) {
@@ -277,6 +295,9 @@ export function AppShell() {
             state={composerState}
             thinkingLevel={thinkingLevel}
             onThinkingLevelChange={onThinkingLevelChange}
+            webSearchEnabled={webSearchEnabled}
+            webSearchAvailable={webSearchAvailable}
+            onWebSearchEnabledChange={onWebSearchEnabledChange}
           />
         </div>
         <div

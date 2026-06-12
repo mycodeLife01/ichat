@@ -294,8 +294,46 @@ export function Message({
       <div className="min-w-0 flex-1">
         {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
         <Markdown content={message.content} />
+        {message.metadata?.sources && message.metadata.sources.length > 0 && (
+          <SourceChips sources={message.metadata.sources} />
+        )}
         {actionBar}
       </div>
     </div>
   );
+}
+
+function SourceChips({
+  sources,
+}: {
+  sources: NonNullable<MessageResponse["metadata"]>["sources"];
+}) {
+  if (!sources?.length) return null;
+  return (
+    <div className="source-chips mt-3 flex flex-wrap gap-1.5">
+      {sources.map((source) => (
+        <a
+          key={`${source.id}:${source.url}`}
+          className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-bg-sunken px-2.5 py-1 text-[12px] text-fg-muted no-underline transition-colors duration-[120ms] hover:text-fg"
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          title={source.title}
+        >
+          <span className="truncate">
+            [{source.id}] {source.title}
+          </span>
+          <span className="text-fg-faint">{domainOf(source.url)}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }

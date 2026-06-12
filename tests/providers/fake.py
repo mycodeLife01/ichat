@@ -11,6 +11,8 @@ from app.providers import (
     ReasoningDelta,
     TextDelta,
     ThinkingOptions,
+    ToolCallTurn,
+    ToolSpec,
 )
 
 
@@ -25,7 +27,7 @@ class Sleep:
     seconds: float
 
 
-ScriptItem = TextDelta | ReasoningDelta | Finish | RaiseError | Sleep
+ScriptItem = TextDelta | ReasoningDelta | ToolCallTurn | Finish | RaiseError | Sleep
 
 
 class FakeProvider(Provider):
@@ -51,6 +53,7 @@ class FakeProvider(Provider):
         model: str,
         messages: list[ProviderMessage],
         thinking: ThinkingOptions | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
         self.last_thinking = thinking
         for item in self._script:

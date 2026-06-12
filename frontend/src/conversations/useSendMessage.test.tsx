@@ -5,6 +5,7 @@ import { useAppActions, useAppState } from "../app/context";
 import type { ConversationResponse } from "../api/types";
 import { sendMessageResponse } from "../test/apiFixtures";
 import { createFakeServices, makeWrapper } from "../test/appHarness";
+import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { selectionStore } from "./selectionStore";
 import { useSendMessage } from "./useSendMessage";
 
@@ -26,8 +27,14 @@ function useSendProbe(start: Start) {
 }
 
 describe("useSendMessage", () => {
-  beforeEach(() => localStorage.clear());
-  afterEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    webSearchPreferenceStore.setCapability(false);
+  });
+  afterEach(() => {
+    localStorage.clear();
+    webSearchPreferenceStore.setCapability(false);
+  });
 
   it("creates a draft conversation when none is selected", async () => {
     const start = vi.fn();
@@ -41,7 +48,10 @@ describe("useSendMessage", () => {
     });
 
     expect(create).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(77, "你好", { thinking_enabled: false });
+    expect(sendMessage).toHaveBeenCalledWith(77, "你好", {
+      thinking_enabled: false,
+      web_search_enabled: false,
+    });
     expect(result.current.conversationIndex.selectedId).toBe(77);
     expect(result.current.conversationIndex.draftId).toBe(77);
     expect(selectionStore.read()).toBe(77);
@@ -66,10 +76,44 @@ describe("useSendMessage", () => {
     });
 
     expect(create).not.toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(55, "世界", { thinking_enabled: false });
+    expect(sendMessage).toHaveBeenCalledWith(55, "世界", {
+      thinking_enabled: false,
+      web_search_enabled: false,
+    });
     expect(result.current.conversationDetail.messages.at(-1)).toEqual(
       sendMessageResponse.message,
     );
+  });
+
+  it("sends web_search_enabled true only when preference and capability are enabled", async () => {
+    webSearchPreferenceStore.save(true);
+    webSearchPreferenceStore.setCapability(true);
+    const start = vi.fn();
+    const sendMessage = vi.fn(async () => sendMessageResponse);
+    const services = createFakeServices({}, { sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: 55 });
+    });
+    await act(async () => {
+      await result.current.send("查一下最新版本");
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith(55, "查一下最新版本", {
+      thinking_enabled: false,
+      web_search_enabled: true,
+    });
+
+    webSearchPreferenceStore.setCapability(false);
+    await act(async () => {
+      await result.current.send("再查一下");
+    });
+
+    expect(sendMessage).toHaveBeenLastCalledWith(55, "再查一下", {
+      thinking_enabled: false,
+      web_search_enabled: false,
+    });
   });
 
   it("ignores empty content", async () => {

@@ -1,5 +1,5 @@
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunEvent
+from app.models.run import Run, RunEvent, RunProviderMessage
 from app.models.user import EmailVerificationToken, RefreshToken, User
 
 __all__ = [
@@ -9,5 +9,6 @@ __all__ = [
     "RefreshToken",
     "Run",
     "RunEvent",
+    "RunProviderMessage",
     "User",
 ]

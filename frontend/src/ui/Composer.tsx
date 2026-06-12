@@ -13,6 +13,9 @@ type ComposerProps = {
   state: ComposerState;
   thinkingLevel: ThinkingLevel;
   onThinkingLevelChange: (level: ThinkingLevel) => void;
+  webSearchEnabled?: boolean;
+  webSearchAvailable?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void;
 };
 
 const MAX_HEIGHT = 240;
@@ -35,6 +38,9 @@ export function Composer({
   state,
   thinkingLevel,
   onThinkingLevelChange,
+  webSearchEnabled = false,
+  webSearchAvailable = true,
+  onWebSearchEnabledChange = () => {},
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [levelMenuOpen, setLevelMenuOpen] = useState(false);
@@ -99,6 +105,17 @@ export function Composer({
           <div className="flex items-center gap-1">
             <button className={composerTool} type="button" aria-label="添加附件">
               <Icons.Plus size={16} />
+            </button>
+            <button
+              className={`${composerTool}${webSearchEnabled ? " bg-bg-hover text-fg" : ""}`}
+              type="button"
+              aria-label="联网搜索"
+              aria-pressed={webSearchEnabled}
+              disabled={!webSearchAvailable}
+              title={!webSearchAvailable ? "联网搜索不可用" : "联网搜索"}
+              onClick={() => onWebSearchEnabledChange(!webSearchEnabled)}
+            >
+              <Icons.Globe size={16} />
             </button>
           </div>
           <div className="flex items-center gap-1">

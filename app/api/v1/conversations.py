@@ -32,9 +32,37 @@ from app.services.conversations.service import (
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
 
+_WEB_SEARCH_NEGATION_MARKERS = (
+    "不要联网",
+    "别联网",
+    "不用联网",
+    "不要搜索",
+    "别搜索",
+    "不用搜索",
+    "不要查网页",
+    "别查网页",
+    "无需联网",
+    "无需搜索",
+    "no web search",
+    "without web search",
+    "don't search",
+    "dont search",
+    "do not search",
+    "no internet",
+    "without internet",
+)
+
+
+def user_suppresses_web_search(content: str) -> bool:
+    normalized = content.lower()
+    return any(marker in normalized for marker in _WEB_SEARCH_NEGATION_MARKERS)
+
+
 def resolve_provider_options(
     settings: Settings,
     request: RunOptionsRequest | None,
+    *,
+    content: str | None = None,
 ) -> dict[str, Any]:
     """Resolve per-request thinking overrides against env defaults.
 
@@ -48,9 +76,18 @@ def resolve_provider_options(
             thinking_enabled = request.thinking_enabled
         if request.reasoning_effort is not None:
             reasoning_effort = request.reasoning_effort
+    web_search_requested = bool(request.web_search_enabled) if request is not None else False
+    web_search_suppressed = bool(
+        content and web_search_requested and user_suppresses_web_search(content)
+    )
+    web_search_enabled = (
+        web_search_requested and settings.web_search_available and not web_search_suppressed
+    )
     return {
         "thinking_enabled": thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        "web_search_enabled": web_search_enabled,
+        "web_search_suppressed_by_user": web_search_suppressed,
     }
 
 
@@ -161,7 +198,8 @@ async def send_message_route(
         content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
-        provider_options=resolve_provider_options(settings, request),
+        provider_options=resolve_provider_options(settings, request, content=request.content),
+        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -189,7 +227,8 @@ async def edit_and_regenerate_route(
         new_content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
-        provider_options=resolve_provider_options(settings, request),
+        provider_options=resolve_provider_options(settings, request, content=request.content),
+        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -217,6 +256,7 @@ async def regenerate_route(
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request),
+        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)

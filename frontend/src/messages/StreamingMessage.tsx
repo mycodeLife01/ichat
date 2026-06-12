@@ -22,6 +22,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
         {run.draftReasoning && (
           <ThinkingBlock content={run.draftReasoning} streaming={thinking} />
         )}
+        {run.toolState && <ToolStatePill toolState={run.toolState} />}
         <Markdown content={run.draftText} />
         {run.status === "cancelled" && (
           <div className={`status-pill stopped ${statusPill} border-border bg-bg-sunken text-fg-muted`}>
@@ -38,6 +39,37 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ToolStatePill({
+  toolState,
+}: {
+  toolState: NonNullable<NonNullable<ActiveRunState>["toolState"]>;
+}) {
+  const title =
+    toolState.status === "running"
+      ? "正在搜索网页..."
+      : toolState.status === "succeeded"
+        ? `已找到 ${toolState.result_count ?? toolState.sources.length} 个来源`
+        : toolState.message ?? "搜索失败，继续生成";
+  return (
+    <div className="tool-state mb-2 rounded-lg border border-border bg-bg-sunken px-3 py-2 text-[13px] text-fg-muted">
+      <div className="font-medium text-fg">{title}</div>
+      {toolState.query && <div className="mt-0.5 wrap-anywhere">{toolState.query}</div>}
+      {toolState.status === "succeeded" && toolState.sources.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {toolState.sources.slice(0, 3).map((source) => (
+            <span
+              key={`${source.id}:${source.url}`}
+              className="max-w-full truncate rounded-full border border-border bg-bg px-2 py-[2px] text-[12px]"
+            >
+              [{source.id}] {source.title}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

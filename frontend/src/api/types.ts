@@ -32,6 +32,19 @@ export type ConversationResponse = {
 
 export type MessageRole = "user" | "assistant";
 
+export type MessageSource = {
+  id: number;
+  title: string;
+  url: string;
+  snippet?: string | null;
+  published_at?: string | null;
+  provider?: string | null;
+};
+
+export type MessageMetadata = {
+  sources?: MessageSource[];
+};
+
 export type MessageResponse = {
   id: number;
   conversation_id: number;
@@ -39,6 +52,7 @@ export type MessageResponse = {
   role: MessageRole;
   content: string;
   reasoning: string | null;
+  metadata?: MessageMetadata | null;
   position: number;
   created_at: string;
 };
@@ -75,6 +89,9 @@ export type RunEventType =
   | "run_started"
   | "text_delta"
   | "reasoning_delta"
+  | "tool_call_started"
+  | "tool_call_succeeded"
+  | "tool_call_failed"
   | "run_succeeded"
   | "run_failed"
   | "run_cancelled";
@@ -92,6 +109,7 @@ export type RunStateResponse = {
   latest_seq: number;
   draft_text: string;
   draft_reasoning: string;
+  tool_state?: RunToolState | null;
   terminal_event: RunEventResponse | null;
 };
 
@@ -99,4 +117,25 @@ export type RunStreamEvent = {
   seq: number;
   type: RunEventType;
   data: RunEventResponse;
+};
+
+export type RunToolSource = {
+  id: number;
+  title: string;
+  url: string;
+};
+
+export type RunToolState = {
+  status: "running" | "succeeded" | "failed";
+  tool_name: string;
+  query: string | null;
+  message: string | null;
+  result_count: number | null;
+  sources: RunToolSource[];
+};
+
+export type CapabilitiesResponse = {
+  web_search: {
+    enabled: boolean;
+  };
 };

@@ -51,6 +51,31 @@ describe("Message", () => {
     expect(screen.getByText("已思考")).toBeInTheDocument();
   });
 
+  it("renders assistant source chips from metadata", () => {
+    render(
+      <Message
+        message={{
+          ...assistantMessage,
+          metadata: {
+            sources: [
+              {
+                id: 1,
+                title: "Release notes",
+                url: "https://www.example.com/releases",
+                snippet: "Version 1.2 shipped.",
+                published_at: "2026-06-11",
+                provider: "tavily",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: /\[1\] Release notes example\.com/ });
+    expect(link).toHaveAttribute("href", "https://www.example.com/releases");
+  });
+
   it("copies content", async () => {
     const user = userEvent.setup();
     // userEvent.setup() installs a (non-writable) clipboard stub; spy on its
