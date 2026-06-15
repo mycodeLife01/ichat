@@ -62,3 +62,53 @@ describe("Markdown", () => {
     expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
   });
 });
+
+describe("Markdown math", () => {
+  const sources = [
+    {
+      id: 1,
+      title: "Doc",
+      url: "https://www.example.com/a",
+      snippet: "s",
+      published_at: null,
+      provider: "tavily",
+    },
+  ];
+
+  it("renders inline \\(…\\) math with KaTeX", () => {
+    const { container } = render(<Markdown content={"行内 \\(E=mc^2\\) 公式"} />);
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("renders display \\[…\\] math with KaTeX", () => {
+    const { container } = render(<Markdown content={"块级 \\[\\int_0^1 x\\,dx\\] 结束"} />);
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("renders $$…$$ math with KaTeX", () => {
+    const { container } = render(<Markdown content={"美元 $$a^2+b^2=c^2$$ 在此"} />);
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("does not treat single-$ currency text as math", () => {
+    // singleDollarTextMath is disabled, so "$5 ... $10" stays plain text.
+    const { container } = render(<Markdown content={"花费 $5 到 $10 之间"} />);
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(screen.getByText(/花费 \$5 到 \$10 之间/)).toBeInTheDocument();
+  });
+
+  it("leaves backslash math inside code spans untouched", () => {
+    const { container } = render(<Markdown content={"行内代码 `\\(x\\)` 原样"} />);
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(screen.getByText("\\(x\\)")).toBeInTheDocument();
+  });
+
+  it("renders math and a citation chip together", () => {
+    const { container } = render(
+      <Markdown content={"由 \\(x=1\\) 得证[1]。"} sources={sources} />,
+    );
+    // Formula renders, and the citation marker still becomes a chip.
+    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
+  });
+});

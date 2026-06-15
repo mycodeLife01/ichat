@@ -67,6 +67,17 @@ function splitText(value: string, validIds: Set<number>): HastNode[] {
   return out;
 }
 
+// True when a hast element is (or wraps) rendered KaTeX / unrendered math, so
+// its subtree must be left untouched — KaTeX's MathML annotation embeds the raw
+// LaTeX, which can contain `[n]`-like brackets (matrices, intervals).
+function isMathElement(node: HastElement): boolean {
+  const cn = node.properties?.className;
+  const classes = Array.isArray(cn) ? cn : typeof cn === "string" ? cn.split(/\s+/) : [];
+  return classes.some(
+    (c) => typeof c === "string" && (c.startsWith("katex") || c.startsWith("math-")),
+  );
+}
+
 function transform(parent: HastParent, inCode: boolean, validIds: Set<number>): void {
   const next: HastNode[] = [];
   for (const child of parent.children) {
@@ -75,8 +86,9 @@ function transform(parent: HastParent, inCode: boolean, validIds: Set<number>): 
       continue;
     }
     if (hasChildren(child)) {
-      const tag = (child as HastElement).tagName;
-      transform(child, inCode || tag === "code" || tag === "pre", validIds);
+      const el = child as HastElement;
+      const skip = inCode || el.tagName === "code" || el.tagName === "pre" || isMathElement(el);
+      transform(child, skip, validIds);
     }
     next.push(child);
   }
