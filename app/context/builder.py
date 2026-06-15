@@ -19,6 +19,7 @@ async def build_context(
     system_prompt: str,
     budget_tokens: int,
     count_tokens: Callable[[str], int],
+    include_tool_messages: bool = True,
 ) -> list[ProviderMessage]:
     run = await session.get(Run, run_id)
     if run is None:
@@ -44,6 +45,7 @@ async def build_context(
         session,
         history_rows=list(history_rows),
         target_user_message_id=target.id,
+        include_tool_messages=include_tool_messages,
     )
     history_budget = budget_tokens - _message_tokens(system_prompt, count_tokens)
     trimmed = _trim_to_budget(
@@ -57,6 +59,7 @@ async def _build_history_blocks(
     *,
     history_rows: list[Message],
     target_user_message_id: int,
+    include_tool_messages: bool,
 ) -> list[list[ProviderMessage]]:
     blocks: list[list[ProviderMessage]] = []
     skipped_message_ids: set[int] = set()
@@ -75,6 +78,8 @@ async def _build_history_blocks(
         block = [ProviderMessage(role="user", content=row.content)]
         if row.id != target_user_message_id and row.run_id is not None:
             transcript = await _load_succeeded_run_transcript(session, run_id=row.run_id)
+            if not include_tool_messages:
+                transcript = _strip_tool_messages(transcript)
             if transcript:
                 block.extend(transcript)
             else:
@@ -103,6 +108,35 @@ async def _load_succeeded_run_transcript(
         )
     ).all()
     return [provider_message_from_row(row) for row in rows]
+
+
+def _strip_tool_messages(transcript: list[ProviderMessage]) -> list[ProviderMessage]:
+    """Drop tool-call turns and tool results from a replayed transcript.
+
+    When the current run does not register tools (web search off), DeepSeek's
+    chat template cannot represent assistant `tool_calls` / `tool` messages in
+    history; left in, the model echoes the raw tool-call markup as visible text.
+    We keep only assistant turns that carry user-facing content (the final
+    answer), stripping their tool_calls, and drop tool-role messages entirely.
+    """
+    cleaned: list[ProviderMessage] = []
+    for message in transcript:
+        if message.role == "tool":
+            continue
+        if message.role == "assistant":
+            if not message.content:
+                # Pure tool-call turn (no answer text) — nothing to replay.
+                continue
+            cleaned.append(
+                ProviderMessage(
+                    role="assistant",
+                    content=message.content,
+                    reasoning_content=message.reasoning_content,
+                )
+            )
+            continue
+        cleaned.append(message)
+    return cleaned
 
 
 def _normalize_role(role: str) -> ProviderRole:

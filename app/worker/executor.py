@@ -106,6 +106,10 @@ async def execute_run(
                 system_prompt=settings.default_system_prompt,
                 budget_tokens=settings.context_budget_tokens,
                 count_tokens=provider.count_tokens,
+                # When tools aren't registered for this run, replayed tool-call
+                # turns from prior web-search runs would make DeepSeek echo raw
+                # tool-call markup as text; strip them from history.
+                include_tool_messages=web_search_enabled,
             )
         except Exception as exc:
             run_logger.exception("Context build failed")
