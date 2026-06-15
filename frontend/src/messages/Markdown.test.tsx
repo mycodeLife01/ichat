@@ -40,4 +40,25 @@ describe("Markdown", () => {
     render(<Markdown content={"普通段落,`行内代码`不算"} />);
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  it("renders citation chips only when sources are provided", () => {
+    const sources = [
+      {
+        id: 1,
+        title: "Doc",
+        url: "https://www.example.com/a",
+        snippet: "s",
+        published_at: null,
+        provider: "tavily",
+      },
+    ];
+    // Without sources: marker stays plain text.
+    const { rerender } = render(<Markdown content={"看[1]"} />);
+    expect(screen.queryByRole("button", { name: /引用来源/ })).toBeNull();
+    expect(screen.getByText(/看\[1\]/)).toBeInTheDocument();
+
+    // With sources: marker becomes a chip.
+    rerender(<Markdown content={"看[1]"} sources={sources} />);
+    expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
+  });
 });

@@ -162,13 +162,13 @@ export function Message({
       <MessageAction
         label={copied ? "已复制" : "复制"}
         icon={
-          <span className="copy-swap relative inline-flex h-[15px] w-[15px]" data-copied={copied}>
+          <span className="copy-swap relative inline-flex h-[18px] w-[18px]" data-copied={copied}>
             <Icons.Copy
-              size={15}
+              size={18}
               className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? " opacity-0" : ""}`}
             />
             <Icons.Check
-              size={15}
+              size={18}
               className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? "" : " opacity-0"}`}
             />
           </span>
@@ -177,7 +177,7 @@ export function Message({
       />
       <MessageAction
         label={mutateLabel}
-        icon={<MutateIcon size={15} />}
+        icon={<MutateIcon size={18} />}
         onClick={mutate}
         disabled={disabled}
         disabledReason={mutateDisabledReason}
@@ -298,7 +298,10 @@ export function Message({
     <div className={`${msgBase} assistant items-stretch`}>
       <div className="min-w-0 flex-1">
         {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
-        <Markdown content={message.content} />
+        {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
+            fallback, so Markdown's memo stays stable across unrelated re-renders
+            (a fresh [] each render would bust it). */}
+        <Markdown content={message.content} sources={message.metadata?.sources} isMobile={isMobile} />
         {sources.length > 0 && (
           <SourcesTrigger sources={sources} onClick={() => onShowSources?.(sources)} />
         )}

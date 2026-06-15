@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import type { MessageSource } from "../api/types";
 import { Icons } from "../ui/icons";
+import { domainOf } from "./sourceUtils";
 
 type SourcesPanelProps = {
   sources: MessageSource[];
@@ -10,16 +11,11 @@ type SourcesPanelProps = {
   onClose: () => void;
 };
 
-function domainOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-// Site favicon fetched straight from the source domain; falls back to a globe
-// glyph when the icon is missing or blocked.
+// Site favicon via Google's favicon service (far more reliable than hitting
+// each site's /favicon.ico, which 404s or sits at a non-root path for many
+// sites); falls back to a globe glyph when the icon is missing or blocked.
+// `key`ed on the domain so switching sources swaps the <img> cleanly while a
+// stable domain keeps the same node (no reload / flash on parent re-renders).
 export function SourceFavicon({ url, size = 16 }: { url: string; size?: number }) {
   const [failed, setFailed] = useState(false);
   const domain = domainOf(url);
@@ -28,12 +24,12 @@ export function SourceFavicon({ url, size = 16 }: { url: string; size?: number }
   }
   return (
     <img
-      src={`https://${domain}/favicon.ico`}
+      key={domain}
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
       alt=""
       width={size}
       height={size}
       className="shrink-0 rounded-[4px]"
-      loading="lazy"
       onError={() => setFailed(true)}
     />
   );
