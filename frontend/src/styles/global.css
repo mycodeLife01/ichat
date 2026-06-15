@@ -274,6 +274,51 @@ body {
   .md table { font-size: 15.5px; }
 }
 
+/* Thinking / tool-status label (思考中 / 已思考 / 正在搜索…). Body-sized text
+   that, while streaming, runs a glow sweeping first→last character (gradient
+   clipped to the glyphs, animated by background-position — same direction as
+   the title skeleton). Hovering forces solid black in any state. */
+.thinking-label {
+  color: var(--color-fg-muted);
+  transition: color 120ms ease;
+}
+.thinking-label:hover {
+  color: var(--color-fg);
+}
+.thinking-label.is-streaming {
+  /* A lighter glint sweeps over the gray base text (DeepSeek-style): the bright
+     band sits mid-gradient and is brighter — not darker — than the base, so it
+     reads as a glow passing first→last char rather than a dark smudge. */
+  background: linear-gradient(
+    90deg,
+    var(--color-fg-muted) 0%,
+    var(--color-fg-muted) 40%,
+    var(--color-fg-faint) 50%,
+    var(--color-fg-muted) 60%,
+    var(--color-fg-muted) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* 2s with a hold at the end (90%→100%) so each sweep has a beat between it. */
+  animation: thinking-shimmer 2s linear infinite;
+}
+.thinking-label.is-streaming:hover {
+  background: none;
+  -webkit-text-fill-color: var(--color-fg);
+  color: var(--color-fg);
+  animation: none;
+}
+@keyframes thinking-shimmer {
+  0% { background-position: 100% 0; }
+  90%, 100% { background-position: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-label.is-streaming { animation: none; }
+}
+
 /* Syntax highlighting (very light) */
 .tok-kw { color: #c678dd; }
 .tok-str { color: #98c379; }

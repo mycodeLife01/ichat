@@ -32,14 +32,14 @@ describe("StreamingMessage", () => {
     expect(screen.getByText("在想")).toBeInTheDocument();
   });
 
-  it("renders running and succeeded web search tool states", () => {
-    const { rerender } = render(
+  it("surfaces web search phases in the collapsible header and shows no preview box", () => {
+    const { container, rerender } = render(
       <StreamingMessage
         run={run({
           toolState: {
             status: "running",
             tool_name: "web_search",
-            query: "latest iChat release",
+            query: "ja.wikipedia.org",
             message: null,
             result_count: null,
             sources: [],
@@ -47,8 +47,9 @@ describe("StreamingMessage", () => {
         })}
       />,
     );
-    expect(screen.getByText("正在搜索网页...")).toBeInTheDocument();
-    expect(screen.getByText("latest iChat release")).toBeInTheDocument();
+    expect(screen.getByText("正在搜索 ja.wikipedia.org")).toBeInTheDocument();
+    // The old preview box is gone.
+    expect(container.querySelector(".tool-state")).toBeNull();
 
     rerender(
       <StreamingMessage
@@ -56,7 +57,7 @@ describe("StreamingMessage", () => {
           toolState: {
             status: "succeeded",
             tool_name: "web_search",
-            query: "latest iChat release",
+            query: "ja.wikipedia.org",
             message: null,
             result_count: 2,
             sources: [
@@ -68,8 +69,7 @@ describe("StreamingMessage", () => {
       />,
     );
     expect(screen.getByText("已找到 2 个来源")).toBeInTheDocument();
-    expect(screen.getByText("[1] Release notes")).toBeInTheDocument();
-    expect(screen.getByText("[2] Changelog")).toBeInTheDocument();
+    expect(screen.queryByText("[1] Release notes")).toBeNull();
   });
 
   it("shows the failed status-pill (demo copy)", () => {

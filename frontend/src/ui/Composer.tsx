@@ -107,19 +107,24 @@ export function Composer({
         />
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-1">
-            <button className={composerTool} type="button" aria-label="添加附件">
-              <Icons.Plus size={16} />
-            </button>
+            {/* Web search toggle as a labeled pill (replaces the old icon-only
+                globe + the "+" attachment button). Enabled state turns blue;
+                the theme has no blue token, so these are intentional one-off
+                arbitrary values. The globe inherits the button's text color. */}
             <button
-              className={`${composerToolBase} ${webSearchEnabled ? "bg-bg-hover text-fg" : "bg-transparent text-fg-muted"}`}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition-[background,color,border-color] duration-[120ms] disabled:cursor-not-allowed disabled:opacity-50 ${
+                webSearchEnabled
+                  ? "border-[#bcd9f4] bg-[#e9f2fb] text-[#1a73c7] hover:bg-[#e0ecfa]"
+                  : "border-border-strong bg-transparent text-fg-muted hover:bg-bg-hover hover:text-fg"
+              }`}
               type="button"
-              aria-label="联网搜索"
               aria-pressed={webSearchEnabled}
               disabled={!webSearchAvailable}
               title={!webSearchAvailable ? "联网搜索不可用" : "联网搜索"}
               onClick={() => onWebSearchEnabledChange(!webSearchEnabled)}
             >
-              <Icons.Globe size={16} />
+              <Icons.Globe size={15} />
+              <span>智能搜索</span>
             </button>
           </div>
           <div className="flex items-center gap-1">
