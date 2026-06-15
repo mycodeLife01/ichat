@@ -110,6 +110,33 @@ describe("Composer", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("toggles the web search tool and disables it when unavailable", async () => {
+    const onWebSearchEnabledChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = renderComposer({ onWebSearchEnabledChange });
+
+    const searchButton = screen.getByRole("button", { name: "智能搜索" });
+    expect(searchButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(searchButton);
+    expect(onWebSearchEnabledChange).toHaveBeenCalledWith(true);
+
+    rerender(
+      <Composer
+        value=""
+        onChange={noop}
+        onSend={noop}
+        onStop={noop}
+        state="idle"
+        thinkingLevel="fast"
+        onThinkingLevelChange={noop}
+        webSearchEnabled
+        webSearchAvailable={false}
+        onWebSearchEnabledChange={onWebSearchEnabledChange}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "智能搜索" })).toBeDisabled();
+  });
+
   it("closes the level menu when clicking outside", async () => {
     const user = userEvent.setup();
     renderComposer();

@@ -64,6 +64,7 @@ export function useRunRecovery(start: StartStream) {
         latestSeq: runState.latest_seq,
         draftText: runState.draft_text,
         draftReasoning: runState.draft_reasoning,
+        toolState: runState.tool_state,
         status: runState.status,
       });
 

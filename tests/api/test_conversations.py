@@ -219,7 +219,10 @@ async def test_send_message_creates_user_message_and_queued_run(
         assert run.provider_options == {
             "thinking_enabled": False,
             "reasoning_effort": "high",
+            "web_search_enabled": False,
+            "web_search_suppressed_by_user": False,
         }
+        assert run.system_prompt_snapshot == "Be helpful."
 
 
 async def test_send_message_with_thinking_override_persists_provider_options(
@@ -249,6 +252,8 @@ async def test_send_message_with_thinking_override_persists_provider_options(
         assert run.provider_options == {
             "thinking_enabled": True,
             "reasoning_effort": "max",
+            "web_search_enabled": False,
+            "web_search_suppressed_by_user": False,
         }
 
 
@@ -462,7 +467,56 @@ async def test_regenerate_endpoint_accepts_thinking_options_body(
         assert run.provider_options == {
             "thinking_enabled": True,
             "reasoning_effort": "high",
+            "web_search_enabled": False,
+            "web_search_suppressed_by_user": False,
         }
+
+
+async def test_send_message_suppresses_web_search_when_user_says_not_to_search(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WEB_SEARCH_ENABLED", "true")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
+    get_settings.cache_clear()
+    alice = await register_user(
+        client,
+        username="alice-no-search-api",
+        email=f"alice-no-search@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "不要联网，解释一下递归", "web_search_enabled": True},
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    run_id = response.json()["data"]["run"]["id"]
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.provider_options is not None
+        assert run.provider_options["web_search_enabled"] is False
+        assert run.provider_options["web_search_suppressed_by_user"] is True
+
+
+async def test_capabilities_endpoint_is_public_and_hides_provider_name(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WEB_SEARCH_ENABLED", "true")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
+    get_settings.cache_clear()
+
+    response = await client.get("/api/v1/capabilities")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {"web_search": {"enabled": True}}
 
 
 async def test_edit_and_regenerate_rejects_cross_user(

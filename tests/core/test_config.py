@@ -146,6 +146,7 @@ def test_settings_can_be_constructed_directly() -> None:
         summary_provider_name="deepseek",
         summary_model="deepseek-summary",
         log_level="info",
+        cors_allowed_origins="",
     )
 
     assert settings.log_level == "INFO"
@@ -169,6 +170,7 @@ def test_reasoning_effort_defaults_to_high_and_normalizes_case(monkeypatch: Monk
         summary_provider_name="deepseek",
         summary_model="deepseek-summary",
         log_level="info",
+        cors_allowed_origins="",
     )
     assert settings.deepseek_reasoning_effort == "high"
 
@@ -259,6 +261,7 @@ def test_cors_allowed_origins_defaults_to_empty_list() -> None:
         summary_provider_name="deepseek",
         summary_model="deepseek-summary",
         log_level="info",
+        cors_allowed_origins="",
     )
 
     assert settings.cors_allowed_origins_list == []

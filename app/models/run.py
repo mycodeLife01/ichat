@@ -54,6 +54,7 @@ class Run(Base):
     provider_name: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_model: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    system_prompt_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Per-run provider options resolved at run creation (request value or env
     # default), e.g. {"thinking_enabled": bool, "reasoning_effort": str}.
     # NULL for legacy rows — consumers fall back to settings.
@@ -94,6 +95,7 @@ class RunEvent(Base):
         CheckConstraint("seq > 0", name="seq_positive"),
         CheckConstraint(
             "type IN ('run_started', 'text_delta', 'reasoning_delta', "
+            "'tool_call_started', 'tool_call_succeeded', 'tool_call_failed', "
             "'run_succeeded', 'run_failed', 'run_cancelled')",
             name="type_valid",
         ),
@@ -110,6 +112,46 @@ class RunEvent(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class RunProviderMessage(Base):
+    __tablename__ = "run_provider_messages"
+    __table_args__ = (
+        CheckConstraint("seq > 0", name="seq_positive"),
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'tool')",
+            name="role_valid",
+        ),
+        UniqueConstraint("run_id", "seq", name="uq_run_provider_messages_run_seq"),
+        Index("ix_run_provider_messages_run_seq", "run_id", "seq"),
+        Index("ix_run_provider_messages_message_id", "message_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    message_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reasoning_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_call_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    estimated_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

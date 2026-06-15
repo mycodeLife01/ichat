@@ -41,6 +41,7 @@ describe("useAppActions", () => {
       dispatch: vi.fn(),
       services: {
         authApi: {} as AppActions["services"]["authApi"],
+        capabilitiesApi: {} as AppActions["services"]["capabilitiesApi"],
         conversationApi: {} as AppActions["services"]["conversationApi"],
         runApi: {} as AppActions["services"]["runApi"],
       },

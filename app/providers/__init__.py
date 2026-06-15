@@ -6,9 +6,14 @@ from app.providers.types import (
     ProviderError,
     ProviderMessage,
     ProviderRole,
+    ProviderToolCall,
+    ProviderToolCallDelta,
     ReasoningDelta,
     TextDelta,
     ThinkingOptions,
+    ToolCallDelta,
+    ToolCallTurn,
+    ToolSpec,
 )
 
 __all__ = [
@@ -18,8 +23,13 @@ __all__ = [
     "ProviderError",
     "ProviderMessage",
     "ProviderRole",
+    "ProviderToolCall",
+    "ProviderToolCallDelta",
     "ReasoningDelta",
     "TextDelta",
+    "ToolCallDelta",
+    "ToolCallTurn",
+    "ToolSpec",
     "ThinkingOptions",
     "UnknownProviderError",
     "resolve_provider",

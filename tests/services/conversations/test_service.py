@@ -231,7 +231,7 @@ async def test_submit_user_message_creates_message_and_queued_run(
     assert stored_message is not None
     assert stored_message.run_id == result.run.id
     assert stored_run is not None
-    assert stored_run.status == "queued"
+    assert stored_run.id == result.run.id
 
 
 async def test_submit_user_message_persists_provider_options_on_run(

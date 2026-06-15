@@ -80,6 +80,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_THINKING_ENABLED=false
 
+# Web Search（可选，默认关闭）
+WEB_SEARCH_ENABLED=false
+WEB_SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=<启用时填写 Tavily API Key>
+TAVILY_BASE_URL=https://api.tavily.com
+
 # 自动标题
 SUMMARY_PROVIDER_NAME=deepseek
 SUMMARY_MODEL=deepseek-chat
@@ -95,9 +101,11 @@ WORKER_HEARTBEAT_INTERVAL_SECONDS=10
 LOG_LEVEL=INFO
 ```
 
-完整变量列表（含 Worker 并发、DB 连接池、SSE 等调优项）见 `.env.example`。
+完整变量列表（含 Worker 并发、DB 连接池、SSE、Web Search 超时和证据压缩等调优项）见 `.env.example`。
 
 > **注意**：修改 `.env` 中的 `CORS_ALLOWED_ORIGINS` 后，必须 `docker compose -f compose.prod.yml up -d --force-recreate api` 才会生效——`restart` 不会重新加载 env。
+
+> **Web Search**：后端通过 `GET /api/v1/capabilities` 对前端公开联网搜索是否可用；只有 `WEB_SEARCH_ENABLED=true` 且 `TAVILY_API_KEY` 非空时返回 enabled。修改 `WEB_SEARCH_ENABLED`、`TAVILY_API_KEY` 或相关超时/额度配置后，需至少 force-recreate `api` 和 `worker` 容器，让 capabilities 与 worker runtime 同步加载新 env。
 
 ### 5. 创建证书目录（可选，HTTPS 用）
 

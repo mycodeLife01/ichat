@@ -48,6 +48,7 @@ export const sendMessageResponse: SendMessageResponse = {
     role: "user",
     content: "Hello",
     reasoning: null,
+    metadata: null,
     position: 1,
     created_at: "2026-05-24T10:02:00Z",
   },
@@ -93,6 +94,7 @@ export const runStateResponse: RunStateResponse = {
   latest_seq: 1,
   draft_text: "Hello",
   draft_reasoning: "",
+  tool_state: null,
   terminal_event: null,
 };
 

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { MessageResponse } from "../api/types";
+import type { MessageResponse, MessageSource } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import { ghostBtn, primaryBtn, sheetItem } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
+import { SourceFavicon } from "./SourcesPanel";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
@@ -18,6 +19,8 @@ type MessageProps = {
   mutateDisabledReason?: string | null;
   onEditAndRegenerate?: (messageId: number, content: string) => void;
   onRegenerate?: (messageId: number) => void;
+  // Opens the sources side panel (AppShell owns the panel state).
+  onShowSources?: (sources: MessageSource[]) => void;
 };
 
 function copy(text: string) {
@@ -40,6 +43,7 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -158,13 +162,13 @@ export function Message({
       <MessageAction
         label={copied ? "已复制" : "复制"}
         icon={
-          <span className="copy-swap relative inline-flex h-[15px] w-[15px]" data-copied={copied}>
+          <span className="copy-swap relative inline-flex h-[18px] w-[18px]" data-copied={copied}>
             <Icons.Copy
-              size={15}
+              size={18}
               className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? " opacity-0" : ""}`}
             />
             <Icons.Check
-              size={15}
+              size={18}
               className={`absolute inset-0 transition-opacity duration-[120ms]${copied ? "" : " opacity-0"}`}
             />
           </span>
@@ -173,7 +177,7 @@ export function Message({
       />
       <MessageAction
         label={mutateLabel}
-        icon={<MutateIcon size={15} />}
+        icon={<MutateIcon size={18} />}
         onClick={mutate}
         disabled={disabled}
         disabledReason={mutateDisabledReason}
@@ -289,13 +293,51 @@ export function Message({
     );
   }
 
+  const sources = message.metadata?.sources ?? [];
   return (
     <div className={`${msgBase} assistant items-stretch`}>
       <div className="min-w-0 flex-1">
         {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
-        <Markdown content={message.content} />
+        {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
+            fallback, so Markdown's memo stays stable across unrelated re-renders
+            (a fresh [] each render would bust it). */}
+        <Markdown content={message.content} sources={message.metadata?.sources} isMobile={isMobile} />
+        {sources.length > 0 && (
+          <SourcesTrigger sources={sources} onClick={() => onShowSources?.(sources)} />
+        )}
         {actionBar}
       </div>
     </div>
+  );
+}
+
+// ChatGPT-style trigger pill: stacked favicons of the first sources plus a
+// 「来源」 label; clicking opens the sources side panel.
+function SourcesTrigger({
+  sources,
+  onClick,
+}: {
+  sources: MessageSource[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover hover:text-fg"
+      type="button"
+      aria-label={`查看 ${sources.length} 个来源`}
+      onClick={onClick}
+    >
+      <span className="flex items-center -space-x-1.5">
+        {sources.slice(0, 3).map((source) => (
+          <span
+            key={`${source.id}:${source.url}`}
+            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-full border border-border bg-bg-raised"
+          >
+            <SourceFavicon url={source.url} size={12} />
+          </span>
+        ))}
+      </span>
+      来源
+    </button>
   );
 }

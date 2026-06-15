@@ -51,6 +51,30 @@ describe("Message", () => {
     expect(screen.getByText("已思考")).toBeInTheDocument();
   });
 
+  it("shows a sources trigger that opens the sources panel", async () => {
+    const user = userEvent.setup();
+    const onShowSources = vi.fn();
+    const sources = [
+      {
+        id: 1,
+        title: "Release notes",
+        url: "https://www.example.com/releases",
+        snippet: "Version 1.2 shipped.",
+        published_at: "2026-06-11",
+        provider: "tavily",
+      },
+    ];
+    render(
+      <Message
+        message={{ ...assistantMessage, metadata: { sources } }}
+        onShowSources={onShowSources}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看 1 个来源" }));
+    expect(onShowSources).toHaveBeenCalledWith(sources);
+  });
+
   it("copies content", async () => {
     const user = userEvent.setup();
     // userEvent.setup() installs a (non-writable) clipboard stub; spy on its

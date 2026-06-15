@@ -38,6 +38,7 @@ class RunOptionsRequest(BaseModel):
 
     thinking_enabled: bool | None = None
     reasoning_effort: ReasoningEffort | None = None
+    web_search_enabled: bool | None = None
 
 
 class MessageCreateRequest(RunOptionsRequest):
@@ -68,6 +69,7 @@ class MessageResponse(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     reasoning: str | None = None
+    metadata: dict[str, Any] | None = None
     position: int
     created_at: datetime
 

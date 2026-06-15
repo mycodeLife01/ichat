@@ -2,6 +2,7 @@ import { useCallback } from "react";
 
 import { useAppActions } from "../app/context";
 import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
+import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 
 type StartStream = (
   runId: number,
@@ -51,7 +52,7 @@ export function useRegenerate(start: StartStream) {
             conversationId,
             messageId,
             trimmed,
-            toRunOptions(thinkingLevelStore.read()),
+            toRunOptions(thinkingLevelStore.read(), webSearchPreferenceStore.requestEnabled()),
           ),
         conversationId,
       );
@@ -68,7 +69,7 @@ export function useRegenerate(start: StartStream) {
           conversationApi.regenerate(
             conversationId,
             messageId,
-            toRunOptions(thinkingLevelStore.read()),
+            toRunOptions(thinkingLevelStore.read(), webSearchPreferenceStore.requestEnabled()),
           ),
         conversationId,
       );

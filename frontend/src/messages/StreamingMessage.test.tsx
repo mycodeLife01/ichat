@@ -11,6 +11,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
     latestSeq: 1,
     draftText: "",
     draftReasoning: "",
+    toolState: null,
     status: "streaming",
     cancelRequested: false,
     ...overrides,
@@ -29,6 +30,46 @@ describe("StreamingMessage", () => {
   it("renders the reasoning block", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByText("在想")).toBeInTheDocument();
+  });
+
+  it("surfaces web search phases in the collapsible header and shows no preview box", () => {
+    const { container, rerender } = render(
+      <StreamingMessage
+        run={run({
+          toolState: {
+            status: "running",
+            tool_name: "web_search",
+            query: "ja.wikipedia.org",
+            message: null,
+            result_count: null,
+            sources: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("正在搜索 ja.wikipedia.org")).toBeInTheDocument();
+    // The old preview box is gone.
+    expect(container.querySelector(".tool-state")).toBeNull();
+
+    rerender(
+      <StreamingMessage
+        run={run({
+          toolState: {
+            status: "succeeded",
+            tool_name: "web_search",
+            query: "ja.wikipedia.org",
+            message: null,
+            result_count: 2,
+            sources: [
+              { id: 1, title: "Release notes", url: "https://example.com/releases" },
+              { id: 2, title: "Changelog", url: "https://example.com/changelog" },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("已找到 2 个来源")).toBeInTheDocument();
+    expect(screen.queryByText("[1] Release notes")).toBeNull();
   });
 
   it("shows the failed status-pill (demo copy)", () => {

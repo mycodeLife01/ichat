@@ -13,6 +13,9 @@ type ComposerProps = {
   state: ComposerState;
   thinkingLevel: ThinkingLevel;
   onThinkingLevelChange: (level: ThinkingLevel) => void;
+  webSearchEnabled?: boolean;
+  webSearchAvailable?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void;
 };
 
 const MAX_HEIGHT = 240;
@@ -23,9 +26,13 @@ const THINKING_LEVEL_OPTIONS: { value: ThinkingLevel; label: string }[] = [
   { value: "max", label: "Max" },
 ];
 
-const composerTool =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-fg-muted " +
+// Background/text colors live outside the base string: Tailwind resolves
+// conflicting utilities by stylesheet order, not className order, so a toggled
+// state must swap classes instead of appending overrides.
+const composerToolBase =
+  "inline-flex h-8 w-8 items-center justify-center rounded-full p-0 " +
   "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
+const composerTool = `${composerToolBase} bg-transparent text-fg-muted`;
 
 export function Composer({
   value,
@@ -35,6 +42,9 @@ export function Composer({
   state,
   thinkingLevel,
   onThinkingLevelChange,
+  webSearchEnabled = false,
+  webSearchAvailable = true,
+  onWebSearchEnabledChange = () => {},
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [levelMenuOpen, setLevelMenuOpen] = useState(false);
@@ -97,8 +107,24 @@ export function Composer({
         />
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-1">
-            <button className={composerTool} type="button" aria-label="添加附件">
-              <Icons.Plus size={16} />
+            {/* Web search toggle as a labeled pill (replaces the old icon-only
+                globe + the "+" attachment button). Enabled state turns blue;
+                the theme has no blue token, so these are intentional one-off
+                arbitrary values. The globe inherits the button's text color. */}
+            <button
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition-[background,color,border-color] duration-[120ms] disabled:cursor-not-allowed disabled:opacity-50 ${
+                webSearchEnabled
+                  ? "border-[#bcd9f4] bg-[#e9f2fb] text-[#1a73c7] hover:bg-[#e0ecfa]"
+                  : "border-border-strong bg-transparent text-fg-muted hover:bg-bg-hover hover:text-fg"
+              }`}
+              type="button"
+              aria-pressed={webSearchEnabled}
+              disabled={!webSearchAvailable}
+              title={!webSearchAvailable ? "联网搜索不可用" : "联网搜索"}
+              onClick={() => onWebSearchEnabledChange(!webSearchEnabled)}
+            >
+              <Icons.Globe size={15} />
+              <span>智能搜索</span>
             </button>
           </div>
           <div className="flex items-center gap-1">

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { MessageResponse } from "../api/types";
+import type { MessageResponse, MessageSource } from "../api/types";
 import { Message } from "./Message";
 
 type MessageThreadProps = {
@@ -9,6 +9,7 @@ type MessageThreadProps = {
   mutateDisabledReason?: string | null;
   onEditAndRegenerate?: (messageId: number, content: string) => void;
   onRegenerate?: (messageId: number) => void;
+  onShowSources?: (sources: MessageSource[]) => void;
   children?: ReactNode;
 };
 
@@ -18,6 +19,7 @@ export function MessageThread({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  onShowSources,
   children,
 }: MessageThreadProps) {
   return (
@@ -30,6 +32,7 @@ export function MessageThread({
           mutateDisabledReason={mutateDisabledReason}
           onEditAndRegenerate={onEditAndRegenerate}
           onRegenerate={onRegenerate}
+          onShowSources={onShowSources}
         />
       ))}
       {children}

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunEvent
+from app.models.run import Run, RunEvent, RunProviderMessage
 from app.models.user import User
 from app.providers import (
     Finish,
@@ -18,10 +18,14 @@ from app.providers import (
     ProviderChunk,
     ProviderError,
     ProviderMessage,
+    ProviderToolCall,
     ReasoningDelta,
     TextDelta,
     ThinkingOptions,
+    ToolCallTurn,
+    ToolSpec,
 )
+from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
 from tests.providers.fake import FakeProvider, RaiseError, Sleep
@@ -80,6 +84,7 @@ async def queue_run(
     session: AsyncSession,
     provider_name: str = "fake",
     conversation_title: str | None = "Chat",
+    content: str = "Hello",
 ) -> int:
     suffix = uuid4().hex
     user = User(
@@ -99,7 +104,7 @@ async def queue_run(
     message = Message(
         conversation_id=conversation.id,
         role="user",
-        content="Hello",
+        content=content,
         position=1,
     )
     session.add(message)
@@ -231,6 +236,7 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -357,6 +363,7 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             call_count["n"] += 1
             raise ProviderError(code="dead", message=f"attempt {call_count['n']}")
@@ -532,6 +539,7 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="partial")
             await asyncio.Event().wait()
@@ -626,6 +634,7 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="partial")
             await release_error.wait()
@@ -838,3 +847,316 @@ async def test_execute_run_falls_back_to_settings_when_provider_options_null(
         enabled=settings.deepseek_thinking_enabled,
         reasoning_effort=settings.deepseek_reasoning_effort,
     )
+
+
+async def test_execute_run_with_web_search_persists_tool_events_sources_and_transcript(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        run = await session.get(Run, run_id)
+        assert run is not None
+        run.provider_options = {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+            "web_search_enabled": True,
+            "web_search_suppressed_by_user": False,
+        }
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    class FakeSearchClient:
+        @property
+        def name(self) -> str:
+            return "tavily"
+
+        async def search(self, request: SearchRequest) -> list[SearchResult]:
+            assert request.query == "latest iChat release"
+            return [
+                SearchResult(
+                    title="iChat release notes",
+                    url="https://example.com/releases",
+                    snippet="Version 1.2 shipped today.",
+                    provider="tavily",
+                )
+            ]
+
+        async def extract(self, request: ExtractRequest) -> list[ExtractResult]:
+            return []
+
+    monkeypatch.setattr(
+        "app.worker.executor.resolve_search_client",
+        lambda name, *, settings: FakeSearchClient(),
+    )
+
+    class ToolThenAnswerProvider(SummarizeMixin, Provider):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
+        ) -> AsyncIterator[ProviderChunk]:
+            self.calls += 1
+            if self.calls == 1:
+                yield ToolCallTurn(
+                    reasoning_content="Need live info",
+                    tool_calls=[
+                        ProviderToolCall(
+                            id="call_1",
+                            name="web_search",
+                            arguments='{"query":"latest iChat release","max_results":3}',
+                        )
+                    ],
+                )
+                return
+            assert any(message.role == "tool" for message in messages)
+            yield TextDelta(text="Here is the latest summary.")
+            yield Finish(finish_reason="stop")
+
+    provider = ToolThenAnswerProvider()
+    search_settings = settings.model_copy(
+        update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=search_settings,
+        resolve_provider=make_resolver(provider),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "tool_call_started",
+            "tool_call_succeeded",
+            "text_delta",
+            "run_succeeded",
+        ]
+        assert events[2].payload["sources"] == [
+            {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
+        ]
+        # Sources surface only via message metadata (rendered as chips by the
+        # frontend); the answer text is never amended with a sources block.
+        assert events[3].payload["text"] == "Here is the latest summary."
+
+        assistant = await session.scalar(
+            select(Message).where(Message.run_id == run_id, Message.role == "assistant")
+        )
+        assert assistant is not None
+        assert assistant.content == events[3].payload["text"]
+        assert assistant.metadata_ == {
+            "sources": [
+                {
+                    "id": 1,
+                    "title": "iChat release notes",
+                    "url": "https://example.com/releases",
+                    "snippet": "Version 1.2 shipped today.",
+                    "published_at": None,
+                    "provider": "tavily",
+                }
+            ]
+        }
+        transcript = (
+            await session.scalars(
+                select(RunProviderMessage)
+                .where(RunProviderMessage.run_id == run_id)
+                .order_by(RunProviderMessage.seq.asc())
+            )
+        ).all()
+        assert [row.role for row in transcript] == ["assistant", "tool", "assistant"]
+        assert transcript[0].reasoning_content == "Need live info"
+        assert transcript[1].tool_call_id == "call_1"
+        assert transcript[2].message_id == assistant.id
+
+
+async def test_presearch_assistant_turn_includes_reasoning_content_for_thinking_mode(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session, content="latest iChat release")
+        run = await session.get(Run, run_id)
+        assert run is not None
+        run.provider_options = {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+            "web_search_enabled": True,
+            "web_search_suppressed_by_user": False,
+        }
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    class FakeSearchClient:
+        @property
+        def name(self) -> str:
+            return "tavily"
+
+        async def search(self, request: SearchRequest) -> list[SearchResult]:
+            return [
+                SearchResult(
+                    title="iChat release notes",
+                    url="https://example.com/releases",
+                    snippet="Version 1.2 shipped today.",
+                    provider="tavily",
+                )
+            ]
+
+        async def extract(self, request: ExtractRequest) -> list[ExtractResult]:
+            return []
+
+    monkeypatch.setattr(
+        "app.worker.executor.resolve_search_client",
+        lambda name, *, settings: FakeSearchClient(),
+    )
+
+    class AssertPresearchProvider(SummarizeMixin, Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self,
+            *,
+            model: str,
+            messages: list[ProviderMessage],
+            thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
+        ) -> AsyncIterator[ProviderChunk]:
+            presearch_turns = [
+                message
+                for message in messages
+                if message.role == "assistant" and message.tool_calls
+            ]
+            assert len(presearch_turns) == 1
+            assert presearch_turns[0].reasoning_content
+            assert any(message.role == "tool" for message in messages)
+            yield TextDelta(text="Here is the latest summary [1].")
+            yield Finish(finish_reason="stop")
+
+    search_settings = settings.model_copy(
+        update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=search_settings,
+        resolve_provider=make_resolver(AssertPresearchProvider()),
+    )
+
+    async with session_factory() as session:
+        transcript = (
+            await session.scalars(
+                select(RunProviderMessage)
+                .where(RunProviderMessage.run_id == run_id)
+                .order_by(RunProviderMessage.seq.asc())
+            )
+        ).all()
+        assert [row.role for row in transcript] == ["assistant", "tool", "assistant"]
+        assert transcript[0].reasoning_content
+        assert transcript[0].payload == {"kind": "presearch"}
+
+
+async def test_web_search_final_answer_streams_incremental_deltas(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    """Regression: with web search enabled the final answer must stream as
+    multiple incremental deltas, not one burst written at success time."""
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        run = await session.get(Run, run_id)
+        assert run is not None
+        run.provider_options = {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+            "web_search_enabled": True,
+            "web_search_suppressed_by_user": False,
+        }
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    fake = FakeProvider(
+        script=[
+            ReasoningDelta(text="think"),
+            TextDelta(text="first"),
+            Sleep(seconds=0.2),  # > batch window forces a flush of "first"
+            TextDelta(text="second"),
+            Finish(finish_reason="stop"),
+        ]
+    )
+    search_settings = settings.model_copy(
+        update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=search_settings,
+        resolve_provider=make_resolver(fake),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "reasoning_delta",
+            "text_delta",
+            "text_delta",
+            "run_succeeded",
+        ]
+        assert events[1].payload["text"] == "think"
+        assert [events[2].payload["text"], events[3].payload["text"]] == ["first", "second"]
+
+        assistant = await session.scalar(
+            select(Message).where(Message.run_id == run_id, Message.role == "assistant")
+        )
+        assert assistant is not None
+        assert assistant.content == "firstsecond"
+        assert assistant.reasoning == "think"

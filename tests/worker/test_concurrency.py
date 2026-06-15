@@ -14,6 +14,7 @@ from app.providers import (
     ProviderMessage,
     TextDelta,
     ThinkingOptions,
+    ToolSpec,
 )
 from app.worker.main import run_worker_loop
 from tests.worker.test_main import clean_test_data, make_queued_run
@@ -78,6 +79,7 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.5)
@@ -158,6 +160,7 @@ async def test_worker_loop_respects_max_inflight_cap(
             model: str,
             messages: list[ProviderMessage],
             thinking: ThinkingOptions | None = None,
+            tools: list[ToolSpec] | None = None,
         ) -> AsyncIterator[ProviderChunk]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.3)

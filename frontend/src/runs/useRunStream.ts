@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 
 import { isAbortError } from "../api/errors";
+import type { RunEventResponse, RunToolState } from "../api/types";
 import { useAppActions } from "../app/context";
 
 export function useRunStream() {
@@ -42,6 +43,18 @@ export function useRunStream() {
             if (isActiveRun()) dispatch({ type: "run/reasoningDelta", seq: event.seq, text });
           } else if (event.type === "text_delta") {
             if (isActiveRun()) dispatch({ type: "run/textDelta", seq: event.seq, text });
+          } else if (
+            event.type === "tool_call_started" ||
+            event.type === "tool_call_succeeded" ||
+            event.type === "tool_call_failed"
+          ) {
+            if (isActiveRun()) {
+              dispatch({
+                type: "run/toolState",
+                seq: event.seq,
+                toolState: toolStateFromEvent(event.data),
+              });
+            }
           } else if (
             event.type === "run_succeeded" ||
             event.type === "run_failed" ||
@@ -117,4 +130,31 @@ export function useRunStream() {
   );
 
   return { start, cancel };
+}
+
+function toolStateFromEvent(event: RunEventResponse): RunToolState {
+  const payload = event.payload;
+  const sources = Array.isArray(payload.sources)
+    ? payload.sources
+        .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+        .map((item) => ({
+          id: typeof item.id === "number" ? item.id : Number(item.id ?? 0),
+          title: typeof item.title === "string" ? item.title : "",
+          url: typeof item.url === "string" ? item.url : "",
+        }))
+    : [];
+  const status =
+    event.type === "tool_call_started"
+      ? "running"
+      : event.type === "tool_call_succeeded"
+        ? "succeeded"
+        : "failed";
+  return {
+    status,
+    tool_name: typeof payload.tool_name === "string" ? payload.tool_name : "web_search",
+    query: typeof payload.query === "string" ? payload.query : null,
+    message: typeof payload.message === "string" ? payload.message : null,
+    result_count: typeof payload.result_count === "number" ? payload.result_count : null,
+    sources,
+  };
 }

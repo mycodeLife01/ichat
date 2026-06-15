@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import status
 from sqlalchemy import func, select, text
@@ -10,7 +10,14 @@ from app.models.conversation import Conversation
 from app.models.run import Run, RunEvent
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
-from app.schemas.runs import RunEventResponse, RunEventType, RunStateResponse, RunStatus
+from app.schemas.runs import (
+    RunEventResponse,
+    RunEventType,
+    RunStateResponse,
+    RunStatus,
+    RunToolSourceResponse,
+    RunToolStateResponse,
+)
 
 RUN_NOT_FOUND_MESSAGE = "Run not found"
 TERMINAL_EVENT_TYPES: tuple[RunEventType, ...] = (
@@ -169,6 +176,7 @@ async def get_owned_run_state(
     draft_parts: list[str] = []
     reasoning_parts: list[str] = []
     terminal_event: RunEventResponse | None = None
+    tool_state: RunToolStateResponse | None = None
 
     for event in events:
         latest_seq = event.seq
@@ -182,6 +190,8 @@ async def get_owned_run_state(
                 reasoning_parts.append(text)
         if event.type in TERMINAL_EVENT_TYPES:
             terminal_event = run_event_response(event)
+        if event.type in {"tool_call_started", "tool_call_succeeded", "tool_call_failed"}:
+            tool_state = _tool_state_from_event(event)
 
     return RunStateResponse(
         run_id=run.id,
@@ -189,6 +199,7 @@ async def get_owned_run_state(
         latest_seq=latest_seq,
         draft_text="".join(draft_parts),
         draft_reasoning="".join(reasoning_parts),
+        tool_state=tool_state,
         terminal_event=terminal_event,
     )
 
@@ -210,3 +221,37 @@ async def get_next_run_event_seq(session: AsyncSession, *, run_id: int) -> int:
     if max_seq is None:
         return 1
     return max_seq + 1
+
+
+def _tool_state_from_event(event: RunEvent) -> RunToolStateResponse:
+    payload = event.payload
+    raw_sources = payload.get("sources")
+    sources: list[RunToolSourceResponse] = []
+    if isinstance(raw_sources, list):
+        for item in raw_sources:
+            if not isinstance(item, dict):
+                continue
+            sources.append(
+                RunToolSourceResponse(
+                    id=int(item.get("id", 0)),
+                    title=str(item.get("title", "")),
+                    url=str(item.get("url", "")),
+                )
+            )
+    if event.type == "tool_call_started":
+        status_value: Literal["running", "succeeded", "failed"] = "running"
+    elif event.type == "tool_call_succeeded":
+        status_value = "succeeded"
+    else:
+        status_value = "failed"
+    query = payload.get("query")
+    message = payload.get("message")
+    result_count = payload.get("result_count")
+    return RunToolStateResponse(
+        status=status_value,
+        tool_name=str(payload.get("tool_name", "web_search")),
+        query=query if isinstance(query, str) else None,
+        message=message if isinstance(message, str) else None,
+        result_count=result_count if isinstance(result_count, int) else None,
+        sources=sources,
+    )

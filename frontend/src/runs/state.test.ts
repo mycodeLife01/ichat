@@ -8,6 +8,7 @@ const started: ActiveRunState = {
   latestSeq: 0,
   draftText: "",
   draftReasoning: "",
+  toolState: null,
   status: "started",
   cancelRequested: false,
 };
@@ -98,6 +99,7 @@ describe("activeRunReducer", () => {
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "想",
+      toolState: null,
       status: "streaming",
       cancelRequested: false,
     });
@@ -111,6 +113,7 @@ describe("activeRunReducer", () => {
       latestSeq: 5,
       draftText: "",
       draftReasoning: "",
+      toolState: null,
       status: "cancelling",
     });
     expect(next?.cancelRequested).toBe(true);

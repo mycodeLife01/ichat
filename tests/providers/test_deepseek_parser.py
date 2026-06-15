@@ -1,6 +1,6 @@
 import pytest
 
-from app.providers import Finish, ProviderError, ReasoningDelta, TextDelta
+from app.providers import Finish, ProviderError, ReasoningDelta, TextDelta, ToolCallDelta
 from app.providers.deepseek_parser import parse_sse_line
 
 
@@ -71,3 +71,18 @@ def test_parse_sse_line_prefers_content_when_both_present() -> None:
     result = parse_sse_line(line)
 
     assert result == TextDelta(text="answer")
+
+
+def test_parse_sse_line_returns_tool_call_delta() -> None:
+    line = (
+        'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,'
+        '"id":"call_1","type":"function","function":{"name":"web_search",'
+        '"arguments":"{\\"query\\":"}}]},"finish_reason":null}]}'
+    )
+
+    result = parse_sse_line(line)
+
+    assert isinstance(result, ToolCallDelta)
+    assert result.calls[0].id == "call_1"
+    assert result.calls[0].name == "web_search"
+    assert result.calls[0].arguments == '{"query":'

@@ -2,6 +2,7 @@ import { render, type RenderOptions, type RenderResult } from "@testing-library/
 import type { ReactElement, ReactNode } from "react";
 
 import type { ConversationApi } from "../api/conversations";
+import type { CapabilitiesApi } from "../api/capabilities";
 import type { RunApi } from "../api/runs";
 import type { RunEventResponse, RunStreamEvent } from "../api/types";
 import { AppProvider } from "../app/AppProvider";
@@ -40,6 +41,15 @@ export function createFakeConversationApi(
   };
 }
 
+export function createFakeCapabilitiesApi(
+  overrides: Partial<CapabilitiesApi> = {},
+): CapabilitiesApi {
+  return {
+    get: async () => ({ web_search: { enabled: true } }),
+    ...overrides,
+  };
+}
+
 export async function* fakeStream(
   events: RunEventResponse[],
 ): AsyncGenerator<RunStreamEvent> {
@@ -61,9 +71,11 @@ export function createFakeServices(
   authApi: Partial<AuthApi> = {},
   conversationApi: Partial<ConversationApi> = {},
   runApi: Partial<RunApi> = {},
+  capabilitiesApi: Partial<CapabilitiesApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
+    capabilitiesApi: createFakeCapabilitiesApi(capabilitiesApi),
     conversationApi: createFakeConversationApi(conversationApi),
     runApi: createFakeRunApi(runApi),
   };

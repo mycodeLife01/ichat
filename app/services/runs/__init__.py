@@ -21,11 +21,18 @@ from app.services.runs.service import (
     list_run_events_after,
     run_has_terminal_event,
 )
+from app.services.runs.transcript import (
+    append_provider_message,
+    backfill_provider_message_id,
+    provider_message_from_row,
+)
 
 __all__ = [
     "RUN_NOT_FOUND_MESSAGE",
     "TERMINAL_EVENT_TYPES",
     "append_run_event",
+    "append_provider_message",
+    "backfill_provider_message_id",
     "cancel_owned_run",
     "claim_next_queued_run",
     "get_owned_run_state",
@@ -33,6 +40,7 @@ __all__ = [
     "is_cancelling",
     "list_owned_run_events_after",
     "list_run_events_after",
+    "provider_message_from_row",
     "mark_run_cancelled",
     "mark_run_cancelled_if_cancelling",
     "mark_run_failed",

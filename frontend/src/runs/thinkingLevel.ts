@@ -5,15 +5,27 @@ export type ThinkingLevel = "fast" | "high" | "max";
 export type RunOptionsRequest = {
   thinking_enabled: boolean;
   reasoning_effort?: "high" | "max";
+  web_search_enabled?: boolean;
 };
 
 const STORAGE_KEY = "ichat.thinkingLevel";
 
 const LEVELS: ThinkingLevel[] = ["fast", "high", "max"];
 
-export function toRunOptions(level: ThinkingLevel): RunOptionsRequest {
-  if (level === "fast") return { thinking_enabled: false };
-  return { thinking_enabled: true, reasoning_effort: level };
+export function toRunOptions(
+  level: ThinkingLevel,
+  webSearchEnabled?: boolean,
+): RunOptionsRequest {
+  const webSearchOption =
+    webSearchEnabled === undefined ? {} : { web_search_enabled: webSearchEnabled };
+  if (level === "fast") {
+    return { thinking_enabled: false, ...webSearchOption };
+  }
+  return {
+    thinking_enabled: true,
+    reasoning_effort: level,
+    ...webSearchOption,
+  };
 }
 
 export const thinkingLevelStore = {

@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { createAuthApi } from "../api/auth";
+import { createCapabilitiesApi } from "../api/capabilities";
 import { ApiClient } from "../api/client";
 import { createConversationApi } from "../api/conversations";
 import { createRunApi } from "../api/runs";
@@ -61,6 +62,7 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
     });
     return {
       authApi: createAuthApi(client),
+      capabilitiesApi: createCapabilitiesApi(client),
       conversationApi: createConversationApi(client),
       runApi: createRunApi(client),
     };

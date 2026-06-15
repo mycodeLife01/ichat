@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     auto_title_max_output_tokens: int = 40
     log_level: str
     cors_allowed_origins: str = ""
+    web_search_enabled: bool = False
+    web_search_provider: str = "tavily"
+    tavily_api_key: str = ""
+    tavily_base_url: str = "https://api.tavily.com"
+    web_search_max_tool_calls: int = 2
+    web_search_search_timeout_seconds: float = 12.0
+    web_search_extract_timeout_seconds: float = 8.0
+    web_search_total_timeout_seconds: float = 25.0
+    web_search_default_max_results: int = 5
+    web_search_max_extract_results: int = 3
+    web_search_max_evidence_chars: int = 10_000
+    web_search_max_source_chars: int = 1_200
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -63,6 +75,10 @@ class Settings(BaseSettings):
             for origin in self.cors_allowed_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def web_search_available(self) -> bool:
+        return self.web_search_enabled and bool(self.tavily_api_key.strip())
 
 
 @lru_cache

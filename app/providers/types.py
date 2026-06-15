@@ -4,13 +4,31 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Literal
 
-ProviderRole = Literal["system", "user", "assistant"]
+ProviderRole = Literal["system", "user", "assistant", "tool"]
+
+
+@dataclass(frozen=True)
+class ProviderToolCall:
+    id: str
+    name: str
+    arguments: str
 
 
 @dataclass(frozen=True)
 class ProviderMessage:
     role: ProviderRole
-    content: str
+    content: str | None
+    reasoning_content: str | None = None
+    tool_calls: list[ProviderToolCall] | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    description: str
+    parameters: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -30,13 +48,33 @@ class ReasoningDelta:
 
 
 @dataclass(frozen=True)
+class ProviderToolCallDelta:
+    index: int
+    id: str | None = None
+    name: str | None = None
+    arguments: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolCallDelta:
+    calls: list[ProviderToolCallDelta]
+
+
+@dataclass(frozen=True)
+class ToolCallTurn:
+    tool_calls: list[ProviderToolCall]
+    content: str | None = None
+    reasoning_content: str | None = None
+
+
+@dataclass(frozen=True)
 class Finish:
     finish_reason: str
     usage: dict[str, Any] | None = None
     provider_request_id: str | None = None
 
 
-ProviderChunk = TextDelta | ReasoningDelta | Finish
+ProviderChunk = TextDelta | ReasoningDelta | ToolCallDelta | ToolCallTurn | Finish
 
 
 class ProviderError(Exception):
@@ -67,6 +105,7 @@ class Provider(ABC):
         model: str,
         messages: list[ProviderMessage],
         thinking: ThinkingOptions | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[ProviderChunk]: ...
 
     @abstractmethod

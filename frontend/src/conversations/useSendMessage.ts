@@ -2,6 +2,7 @@ import { useCallback } from "react";
 
 import { useAppActions, useAppState } from "../app/context";
 import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
+import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { selectionStore } from "./selectionStore";
 
 // `start` is injected by AppShell (which owns the single useRunStream instance),
@@ -32,7 +33,7 @@ export function useSendMessage(
         const { message, run } = await conversationApi.sendMessage(
           targetId,
           trimmed,
-          toRunOptions(thinkingLevelStore.read()),
+          toRunOptions(thinkingLevelStore.read(), webSearchPreferenceStore.requestEnabled()),
         );
         dispatch({ type: "conversations/messageAppended", message });
         dispatch({ type: "run/started", runId: run.id, conversationId: targetId });
