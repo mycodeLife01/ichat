@@ -222,7 +222,10 @@ async def test_send_message_creates_user_message_and_queued_run(
             "web_search_enabled": False,
             "web_search_suppressed_by_user": False,
         }
-        assert run.system_prompt_snapshot == "Be helpful."
+        # Snapshot captures the configured default prompt, whatever the
+        # environment sets it to (CI overrides DEFAULT_SYSTEM_PROMPT), so assert
+        # against the resolved setting rather than a literal.
+        assert run.system_prompt_snapshot == get_settings().default_system_prompt
 
 
 async def test_send_message_with_thinking_override_persists_provider_options(
