@@ -12,7 +12,7 @@ import type { MessageSource } from "../api/types";
 import { Icons } from "../ui/icons";
 import { Citation } from "./Citation";
 import { rehypeCitations } from "./citations";
-import { normalizeMathDelimiters } from "./mathDelimiters";
+import { normalizeMathDelimiters, clampStreamingMath } from "./mathDelimiters";
 
 // remark-math emits math wrapped in `<code class="language-math math-inline">`
 // (or `math-display`). The default sanitize schema allows `className` on `code`
@@ -42,6 +42,9 @@ type MarkdownProps = {
   // citation chips. Omitted while streaming, so markers stay plain text.
   sources?: MessageSource[];
   isMobile?: boolean;
+  // True while the reply is still streaming: an unterminated display-math block
+  // is clamped so KaTeX never renders a half-written formula as a red error.
+  streaming?: boolean;
 };
 
 // Code block with a resident copy button in the top-right corner. Copies the
@@ -91,7 +94,7 @@ function Pre(props: ComponentPropsWithoutRef<"pre">) {
   );
 }
 
-export function Markdown({ content, sources, isMobile }: MarkdownProps) {
+export function Markdown({ content, sources, isMobile, streaming }: MarkdownProps) {
   // Memoized so unrelated app re-renders (e.g. typing in the composer, which
   // lives in a shared ancestor) don't re-parse the markdown or remount the
   // citation subtree. Remounting <Citation> would rebuild each <img> favicon,
@@ -125,16 +128,22 @@ export function Markdown({ content, sources, isMobile }: MarkdownProps) {
         : {}),
     } as Components;
 
+    // While streaming, clamp an unterminated display-math block so a
+    // half-written formula never reaches KaTeX (it would render as a red error
+    // and swallow the trailing prose). The final render is never clamped.
+    const normalized = normalizeMathDelimiters(content);
+    const prepared = streaming ? clampStreamingMath(normalized) : normalized;
+
     return (
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
         components={components}
       >
-        {normalizeMathDelimiters(content)}
+        {prepared}
       </ReactMarkdown>
     );
-  }, [content, sources, isMobile]);
+  }, [content, sources, isMobile, streaming]);
 
   return (
     <div className="body md text-[16px] leading-[1.75] text-fg max-[760px]:text-[17px]">

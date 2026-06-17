@@ -111,4 +111,32 @@ describe("Markdown math", () => {
     expect(container.querySelector(".katex")).not.toBeNull();
     expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
   });
+
+  it("renders an asymmetric display block (own-line $$ opener, inline closer)", () => {
+    // micromark would leave such a block's flow open and render the swallowed
+    // tail as a red error; normalize reflows it to a proper flow block so it
+    // parses AND renders centered (.katex-display), with the trailing prose kept.
+    const content =
+      "由 $$f$$ 可得\n\n$$\n\\begin{cases} 2^{x}, & x<0 \\end{cases}$$ 直观看 $$g$$ 在区间上";
+    const { container } = render(<Markdown content={content} />);
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.innerHTML).not.toContain("$$");
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+    expect(screen.getByText(/直观看/)).toBeInTheDocument();
+  });
+
+  it("hides an in-progress formula while streaming instead of showing a red error", () => {
+    // Mid-stream prefix cut inside a display block (closing $$ not yet streamed).
+    const midStream = "由 $$f$$ 可得\n\n$$\n\\begin{cases} 2^{x}, & x<0,";
+    const { container, rerender } = render(<Markdown content={midStream} streaming />);
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.innerHTML).not.toContain("$$");
+    expect(screen.getByText(/由/)).toBeInTheDocument();
+
+    // Once the closer arrives, the final (non-streaming) render shows the block.
+    const complete = midStream + " 0, & x=0 \\end{cases}$$ 直观看";
+    rerender(<Markdown content={complete} />);
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThan(1);
+  });
 });
