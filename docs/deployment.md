@@ -94,7 +94,8 @@ SUMMARY_MODEL=deepseek-chat
 CORS_ALLOWED_ORIGINS=https://chat.feslia.com
 
 # 其他
-DEFAULT_SYSTEM_PROMPT=You are a helpful assistant.
+# 系统提示词的可选覆盖；留空使用 app/prompts/ 内置生产提示词
+DEFAULT_SYSTEM_PROMPT=
 RUN_LEASE_SECONDS=60
 WORKER_POLL_INTERVAL_SECONDS=30
 WORKER_HEARTBEAT_INTERVAL_SECONDS=10

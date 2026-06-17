@@ -39,15 +39,3 @@ class ExtractResult:
     content: str
     title: str | None = None
     provider: str = "tavily"
-
-
-@dataclass(frozen=True)
-class PlannedSearch:
-    query: str
-    max_results: int | None = None
-    depth: SearchDepth = "basic"
-    recency: SearchRecency = "none"
-    extract: bool = False
-    include_domains: list[str] | None = None
-    exclude_domains: list[str] | None = None
-    direct_urls: list[str] | None = None

@@ -20,6 +20,7 @@
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
 | Verifying provider integration behavior | `docs/handover/2026-05-17-deepseek-smoke.md` |
+| Editing the assistant's system prompt or how prompts are assembled/injected | `docs/handover/2026-06-17-system-prompt-management.md` |
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 
 ## Directory guide
@@ -29,7 +30,7 @@
 Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
-- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, `app/worker`, and forbidden cross-module dependencies.
+- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, the top-level capability modules (`app/providers`, `app/context`, `app/prompts`, `app/search`, `app/tools`), `app/worker`, and forbidden cross-module dependencies.
 
 ### `docs/handover/`
 
@@ -50,7 +51,8 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-19-regenerate.md` — regenerate assistant message by editting user message or from the current response
 - `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
 - `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
-- `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata)
+- `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata). Note: the rule-based query planner / pre-search was removed 2026-06-17 — tool calls are now model-driven.
+- `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time
 
 ### `docs/handover/frontend/`
 
@@ -78,7 +80,7 @@ Pre-implementation design specs. Consult for product/design rationale.
 - `2026-05-16-ai-chat-backend-mvp-design.md` — overall MVP scope, architecture, technical decisions
 - `2026-05-17-run-cancellation-design.md` — cancellation design details and HTTP semantics
 - `2026-05-24-frontend-react-rebuild-design.md` — master plan for the React frontend rebuild (step sequence, hooks design, deployment topology)
-- `2026-06-11-web-search-tool-design.md` — web search tool design (tool schema, query planner, agent loop budget, source dedup, evidence compression)
+- `2026-06-11-web-search-tool-design.md` — web search tool design (tool schema, query planner, agent loop budget, source dedup, evidence compression). Note: the rule-based query planner / pre-search it specifies was removed 2026-06-17 (now model-driven); `system_prompt_snapshot` semantics also superseded — see `docs/handover/2026-06-17-system-prompt-management.md`.
 - other dated specs — per-feature designs (auto-title, regenerate, thinking mode, frontend sub-steps)
 
 ### `docs/superpowers/plans/`

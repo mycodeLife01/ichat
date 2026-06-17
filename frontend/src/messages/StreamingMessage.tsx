@@ -31,7 +31,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
             label={toolLabel}
           />
         )}
-        <Markdown content={run.draftText} />
+        <Markdown content={run.draftText} streaming />
         {run.status === "cancelled" && (
           <div className={`status-pill stopped ${statusPill} border-border bg-bg-sunken text-fg-muted`}>
             <span className="h-2 w-2 rounded-[2px] bg-fg-subtle" />

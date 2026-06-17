@@ -11,7 +11,6 @@ from app.search.postprocess import SourceRegistry, build_evidence
 from app.search.types import (
     ExtractRequest,
     ExtractResult,
-    PlannedSearch,
     SearchDepth,
     SearchRecency,
     SearchRequest,
@@ -79,23 +78,6 @@ class WebSearchArgs:
     search_depth: str
     extract: bool
     direct_urls: list[str] | None = None
-
-
-def args_from_planned_search(
-    plan: PlannedSearch,
-    *,
-    settings: Settings,
-) -> WebSearchArgs:
-    return WebSearchArgs(
-        query=plan.query,
-        max_results=plan.max_results or settings.web_search_default_max_results,
-        include_domains=plan.include_domains,
-        exclude_domains=plan.exclude_domains,
-        recency=plan.recency,
-        search_depth=plan.depth,
-        extract=plan.extract,
-        direct_urls=plan.direct_urls,
-    )
 
 
 def parse_tool_arguments(raw: str, *, settings: Settings) -> WebSearchArgs:
