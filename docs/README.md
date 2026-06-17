@@ -30,7 +30,7 @@
 Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
-- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, `app/worker`, and forbidden cross-module dependencies.
+- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, the top-level capability modules (`app/providers`, `app/context`, `app/prompts`, `app/search`, `app/tools`), `app/worker`, and forbidden cross-module dependencies.
 
 ### `docs/handover/`
 
