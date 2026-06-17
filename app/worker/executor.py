@@ -1,11 +1,10 @@
 import asyncio
 import contextlib
-import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol, cast
-from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,6 +12,7 @@ from app.context import build_context
 from app.core.config import Settings
 from app.core.logging import logger
 from app.models.run import Run
+from app.prompts import build_system_prompt
 from app.providers import (
     Finish,
     Provider,
@@ -25,7 +25,7 @@ from app.providers import (
     ToolCallTurn,
 )
 from app.schemas.runs import RunEventType
-from app.search import SourceRegistry, plan_search, resolve_search_client, should_presearch
+from app.search import SourceRegistry, resolve_search_client
 from app.services.conversations import materialize_assistant_message
 from app.services.runs.lifecycle import (
     is_cancelling,
@@ -44,8 +44,6 @@ from app.services.runs.transcript import (
 )
 from app.tools import (
     WEB_SEARCH_TOOL_SPEC,
-    WebSearchArgs,
-    args_from_planned_search,
     parse_tool_arguments,
     run_web_search,
     unavailable_result,
@@ -55,7 +53,6 @@ from app.tools.types import ToolResult
 from app.worker.title import maybe_generate_title
 
 _STREAM_DONE = object()  # sentinel posted on the provider-stream queue
-_PRESEARCH_REASONING_CONTENT = "Internal presearch requested before final answer."
 
 
 class ProviderResolver(Protocol):
@@ -100,10 +97,16 @@ async def execute_run(
         web_search_enabled = _web_search_enabled_from_run(run, settings)
         provider = resolve_provider(provider_name, settings=settings)
         try:
+            system_prompt = build_system_prompt(
+                settings=settings,
+                web_search_enabled=web_search_enabled,
+                now=datetime.now(UTC),
+            )
+            run.system_prompt_snapshot = system_prompt
             messages = await build_context(
                 session,
                 run_id=run_id,
-                system_prompt=settings.default_system_prompt,
+                system_prompt=system_prompt,
                 budget_tokens=settings.context_budget_tokens,
                 count_tokens=provider.count_tokens,
                 # When tools aren't registered for this run, replayed tool-call
@@ -355,7 +358,6 @@ async def _run_agent_loop(
     search_client = resolve_search_client(settings.web_search_provider, settings=settings)
     streaming_started = False
     tool_calls_used = 0
-    user_content = _latest_user_content(provider_messages)
 
     async def append_tool_event(event_type: str, payload: dict[str, object]) -> bool:
         nonlocal streaming_started
@@ -396,55 +398,6 @@ async def _run_agent_loop(
                 )
             await session.commit()
         return True
-
-    async def execute_args(args: WebSearchArgs) -> ToolResult:
-        nonlocal tool_calls_used
-        if tool_calls_used >= settings.web_search_max_tool_calls:
-            result = validation_failed_result(
-                "Web search tool call limit reached. Continuing without more live results.",
-                provider=search_client.name,
-                query=args.query,
-            )
-            await append_tool_event("tool_call_failed", _tool_failed_payload(result))
-            return result
-        tool_calls_used += 1
-        if not settings.web_search_available:
-            result = unavailable_result(provider=settings.web_search_provider, query=args.query)
-            await append_tool_event("tool_call_failed", _tool_failed_payload(result))
-            return result
-        if not await append_tool_event(
-            "tool_call_started",
-            {
-                "tool_name": "web_search",
-                "query": args.query,
-                "provider": search_client.name,
-            },
-        ):
-            return validation_failed_result(
-                "Run is no longer active.",
-                provider=search_client.name,
-                query=args.query,
-            )
-        result = await run_web_search(
-            args=args,
-            client=search_client,
-            registry=registry,
-            settings=settings,
-        )
-        if result.status == "succeeded":
-            await append_tool_event(
-                "tool_call_succeeded",
-                {
-                    "tool_name": "web_search",
-                    "query": args.query,
-                    "provider": search_client.name,
-                    "result_count": result.payload.get("result_count", 0),
-                    "sources": result.sources,
-                },
-            )
-        else:
-            await append_tool_event("tool_call_failed", _tool_failed_payload(result))
-        return result
 
     async def execute_call(call: ProviderToolCall) -> ToolResult:
         nonlocal tool_calls_used
@@ -508,53 +461,6 @@ async def _run_agent_loop(
         else:
             await append_tool_event("tool_call_failed", _tool_failed_payload(result))
         return result
-
-    if should_presearch(user_content):
-        plan = plan_search(user_content)
-        call = ProviderToolCall(
-            id=f"presearch_{run_id}_{uuid4().hex[:8]}",
-            name="web_search",
-            arguments=json.dumps(
-                {
-                    "query": plan.query,
-                    "max_results": plan.max_results or settings.web_search_default_max_results,
-                    "recency": plan.recency,
-                    "search_depth": plan.depth,
-                    "extract": plan.extract,
-                    "include_domains": plan.include_domains,
-                    "exclude_domains": plan.exclude_domains,
-                },
-                ensure_ascii=False,
-            ),
-        )
-        assistant_message = ProviderMessage(
-            role="assistant",
-            content=None,
-            reasoning_content=_PRESEARCH_REASONING_CONTENT,
-            tool_calls=[call],
-        )
-        provider_messages.append(assistant_message)
-        async with session_factory() as session:
-            await append_provider_message(
-                session,
-                run_id=run_id,
-                role="assistant",
-                content=None,
-                reasoning_content=_PRESEARCH_REASONING_CONTENT,
-                tool_calls=[call],
-                payload={"kind": "presearch"},
-                count_tokens=provider.count_tokens,
-            )
-            await session.commit()
-        result = await execute_args(args_from_planned_search(plan, settings=settings))
-        await _append_tool_result_transcript(
-            session_factory=session_factory,
-            run_id=run_id,
-            provider=provider,
-            call=call,
-            result=result,
-            provider_messages=provider_messages,
-        )
 
     while True:
         if cancel_event.is_set():
@@ -875,13 +781,6 @@ async def _persist_agent_success(
         )
         await session.commit()
         return True
-
-
-def _latest_user_content(messages: list[ProviderMessage]) -> str:
-    for message in reversed(messages):
-        if message.role == "user" and isinstance(message.content, str):
-            return message.content
-    return ""
 
 
 def _tool_failed_payload(result: ToolResult) -> dict[str, object]:

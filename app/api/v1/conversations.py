@@ -199,7 +199,6 @@ async def send_message_route(
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
-        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -228,7 +227,6 @@ async def edit_and_regenerate_route(
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
-        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -256,7 +254,6 @@ async def regenerate_route(
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request),
-        system_prompt_snapshot=settings.default_system_prompt,
     )
     await session.commit()
     return SuccessResponse(data=result)

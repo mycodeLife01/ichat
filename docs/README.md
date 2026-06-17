@@ -20,6 +20,7 @@
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
 | Verifying provider integration behavior | `docs/handover/2026-05-17-deepseek-smoke.md` |
+| Editing the assistant's system prompt or how prompts are assembled/injected | `docs/handover/2026-06-17-system-prompt-management.md` |
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 
 ## Directory guide
@@ -51,6 +52,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
 - `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
 - `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata)
+- `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time
 
 ### `docs/handover/frontend/`
 

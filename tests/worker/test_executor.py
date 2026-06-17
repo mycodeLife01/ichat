@@ -177,6 +177,9 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert run.completed_at is not None
         assert run.usage_metadata == {"prompt_tokens": 4, "completion_tokens": 2}
         assert run.provider_request_id == "req-1"
+        # The worker records the assembled system prompt it sent. With web search
+        # off and DEFAULT_SYSTEM_PROMPT overridden in tests, that is the override.
+        assert run.system_prompt_snapshot == settings.default_system_prompt
 
         events = (
             await session.scalars(
@@ -993,101 +996,6 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         assert transcript[0].reasoning_content == "Need live info"
         assert transcript[1].tool_call_id == "call_1"
         assert transcript[2].message_id == assistant.id
-
-
-async def test_presearch_assistant_turn_includes_reasoning_content_for_thinking_mode(
-    session_factory: async_sessionmaker[AsyncSession],
-    settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async with session_factory() as session:
-        run_id = await queue_run(session, content="latest iChat release")
-        run = await session.get(Run, run_id)
-        assert run is not None
-        run.provider_options = {
-            "thinking_enabled": True,
-            "reasoning_effort": "max",
-            "web_search_enabled": True,
-            "web_search_suppressed_by_user": False,
-        }
-        await session.commit()
-
-    async with session_factory() as session:
-        await claim_next_queued_run(
-            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
-        )
-        await session.commit()
-
-    class FakeSearchClient:
-        @property
-        def name(self) -> str:
-            return "tavily"
-
-        async def search(self, request: SearchRequest) -> list[SearchResult]:
-            return [
-                SearchResult(
-                    title="iChat release notes",
-                    url="https://example.com/releases",
-                    snippet="Version 1.2 shipped today.",
-                    provider="tavily",
-                )
-            ]
-
-        async def extract(self, request: ExtractRequest) -> list[ExtractResult]:
-            return []
-
-    monkeypatch.setattr(
-        "app.worker.executor.resolve_search_client",
-        lambda name, *, settings: FakeSearchClient(),
-    )
-
-    class AssertPresearchProvider(SummarizeMixin, Provider):
-        @property
-        def name(self) -> str:
-            return "fake"
-
-        async def stream(
-            self,
-            *,
-            model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
-            tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
-            presearch_turns = [
-                message
-                for message in messages
-                if message.role == "assistant" and message.tool_calls
-            ]
-            assert len(presearch_turns) == 1
-            assert presearch_turns[0].reasoning_content
-            assert any(message.role == "tool" for message in messages)
-            yield TextDelta(text="Here is the latest summary [1].")
-            yield Finish(finish_reason="stop")
-
-    search_settings = settings.model_copy(
-        update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
-    )
-
-    await execute_run(
-        session_factory=session_factory,
-        run_id=run_id,
-        worker_id="worker-x",
-        settings=search_settings,
-        resolve_provider=make_resolver(AssertPresearchProvider()),
-    )
-
-    async with session_factory() as session:
-        transcript = (
-            await session.scalars(
-                select(RunProviderMessage)
-                .where(RunProviderMessage.run_id == run_id)
-                .order_by(RunProviderMessage.seq.asc())
-            )
-        ).all()
-        assert [row.role for row in transcript] == ["assistant", "tool", "assistant"]
-        assert transcript[0].reasoning_content
-        assert transcript[0].payload == {"kind": "presearch"}
 
 
 async def test_web_search_final_answer_streams_incremental_deltas(

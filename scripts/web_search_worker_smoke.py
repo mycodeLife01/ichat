@@ -162,7 +162,6 @@ async def create_started_smoke_run(
             "web_search_enabled": True,
             "web_search_suppressed_by_user": False,
         },
-        system_prompt_snapshot=settings.default_system_prompt,
         lease_owner=SMOKE_WORKER_ID,
         lease_expires_at=now + timedelta(seconds=settings.run_lease_seconds),
         heartbeat_at=now,
