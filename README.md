@@ -160,7 +160,7 @@ PostgreSQL (:5432)           DeepSeek API
 | `DEEPSEEK_BASE_URL` | | `https://api.deepseek.com` | DeepSeek API 地址 |
 | `DEEPSEEK_MODEL` | | `deepseek-chat` | 使用的模型 |
 | `DEEPSEEK_THINKING_ENABLED` | | `false` | 是否启用推理模式 |
-| `DEFAULT_SYSTEM_PROMPT` | | `You are a helpful assistant.` | 系统提示词 |
+| `DEFAULT_SYSTEM_PROMPT` | | `（空）` | 系统提示词的可选覆盖；留空则使用 `app/prompts/` 内置生产提示词 |
 | `RUN_LEASE_SECONDS` | | `60` | Run 租约有效期 |
 | `WORKER_POLL_INTERVAL_SECONDS` | | `30` | Worker 兜底轮询间隔（主要靠 LISTEN/NOTIFY） |
 | `WORKER_HEARTBEAT_INTERVAL_SECONDS` | | `10` | Worker 心跳间隔 |
