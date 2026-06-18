@@ -4,6 +4,8 @@ import { ApiError } from "../api/errors";
 import { useAppActions, useAppState } from "../app/context";
 import { selectionStore } from "./selectionStore";
 
+const INVALID_SELECTION_STATUSES = new Set([403, 404, 422]);
+
 export function useConversationLoader() {
   const { conversationIndex, conversationDetail } = useAppState();
   const { dispatch, services } = useAppActions();
@@ -45,10 +47,15 @@ export function useConversationLoader() {
         dispatch({ type: "conversations/detailLoaded", conversation, messages });
         selectionStore.save(id);
       } catch (error) {
-        // 403/404：失效选择，静默清理回空白态。其它错误也归为 forbidden 简化态。
+        // 403/404/422: invalid or inaccessible URL selection; clear back to blank.
+        // Other errors still use the simplified forbidden detail state.
         dispatch({ type: "conversations/detailForbidden" });
-        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+        if (error instanceof ApiError && INVALID_SELECTION_STATUSES.has(error.status)) {
           dispatch({ type: "conversations/selected", id: null });
+          dispatch({
+            type: "ui/showToast",
+            message: "会话 ID 无效或已失效，已回到新对话",
+          });
           selectionStore.clear();
         }
       }

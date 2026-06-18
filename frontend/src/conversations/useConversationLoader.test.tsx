@@ -172,10 +172,33 @@ describe("useConversationLoader", () => {
 
   function useClearProbe() {
     const loader = useConversationLoader();
-    const { activeRun } = useAppState();
+    const { activeRun, ui } = useAppState();
     const { dispatch } = useAppActions();
-    return { loader, activeRun, dispatch };
+    return { loader, activeRun, ui, dispatch };
   }
+
+  it("clears selection and shows a toast when detail id is invalid (422)", async () => {
+    selectionStore.save("bad-id");
+    const services = createFakeServices(
+      {},
+      {
+        detail: async () => {
+          throw new ApiError({ status: 422 });
+        },
+      },
+    );
+    const { result } = renderHook(() => useClearProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      await result.current.loader.selectConversation("bad-id");
+    });
+
+    expect(result.current.loader.selectedId).toBeNull();
+    expect(selectionStore.read()).toBeNull();
+    expect(result.current.ui.toast?.message).toContain("会话 ID 无效");
+  });
 
   it("clears the active run when selecting another conversation", async () => {
     const services = createFakeServices(

@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { ApiError } from "../api/errors";
 import type {
   ConversationDetailResponse,
   ConversationResponse,
@@ -20,6 +22,16 @@ import {
 import { selectionStore } from "../conversations/selectionStore";
 import { createFakeServices, fakeStream, renderWithApp } from "../test/appHarness";
 import { AppShell } from "./AppShell";
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+function NavigateProbe({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(to)}>Go invalid</button>;
+}
 
 describe("AppShell", () => {
   beforeEach(() => localStorage.clear());
@@ -99,6 +111,80 @@ describe("AppShell", () => {
     // The deep-linked thread renders. If the URL→state sync regressed and reset
     // to "/", newConversation would clear detail and this reply would be absent.
     expect(await screen.findByText("Deep linked reply")).toBeInTheDocument();
+  });
+
+  it("clears an invalid URL conversation id before sending", async () => {
+    const user = userEvent.setup();
+    const currentAssistant: MessageResponse = {
+      id: "502",
+      conversation_id: conversationResponse.id,
+      run_id: "100",
+      role: "assistant",
+      content: "Current reply",
+      reasoning: null,
+      position: 2,
+      created_at: "t",
+    };
+    const draft: ConversationResponse = {
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const userMessage: MessageResponse = {
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
+      content: "你好", reasoning: null, position: 1, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    const create = vi.fn(async () => draft);
+    const sendMessage = vi.fn(async () => ({ message: userMessage, run }));
+    const detail = vi.fn(async (id: string) => {
+      if (id === conversationResponse.id) {
+        return {
+          ...conversationDetailResponse,
+          messages: [...conversationDetailResponse.messages, currentAssistant],
+        };
+      }
+      throw new ApiError({ status: 422 });
+    });
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail,
+        create,
+        sendMessage,
+      },
+      { streamEvents: () => fakeStream([]) },
+    );
+
+    renderWithApp(
+      <>
+        <AppShell />
+        <LocationProbe />
+        <NavigateProbe to="/c/not-a-uuid" />
+      </>,
+      services,
+      undefined,
+      [`/c/${conversationResponse.id}`],
+    );
+
+    expect(await screen.findByText("Current reply")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Go invalid" }));
+
+    await waitFor(() => expect(detail).toHaveBeenLastCalledWith("not-a-uuid"));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/"));
+    expect(await screen.findByRole("status")).toHaveTextContent("会话 ID 无效");
+
+    const textarea = screen.getByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(create).toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith("77", "你好", {
+      thinking_enabled: false,
+      web_search_enabled: false,
+    });
   });
 
   it("shows the welcome heading in the empty state", async () => {
