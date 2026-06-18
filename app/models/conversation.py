@@ -101,3 +101,35 @@ class Message(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+    __table_args__ = (Index("ix_share_links_conversation_id", "conversation_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # High-entropy bearer secret (secrets.token_urlsafe(32) -> 43 chars) that is
+    # the sole external handle for a share. Deliberately not a public_id/UUID:
+    # the read endpoint bypasses ownership checks, so the token must be secret.
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    conversation_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_by: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Created-time snapshot {"title": str|None, "messages": [{role, content,
+    # reasoning, sources}]}. Frozen so later edits to the live conversation do
+    # not leak through the share link.
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

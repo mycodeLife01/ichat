@@ -44,6 +44,7 @@ describe("useAppActions", () => {
         capabilitiesApi: {} as AppActions["services"]["capabilitiesApi"],
         conversationApi: {} as AppActions["services"]["conversationApi"],
         runApi: {} as AppActions["services"]["runApi"],
+        shareApi: {} as AppActions["services"]["shareApi"],
       },
       streamAbort: { register: vi.fn(), abort: vi.fn() },
       stateRef: { current: initialState },

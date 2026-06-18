@@ -54,6 +54,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata). Note: the rule-based query planner / pre-search was removed 2026-06-17 — tool calls are now model-driven.
 - `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time
 - `2026-06-18-public-id-hardening.md` — opaque `public_id` (UUID) replaces sequential ids on the API surface for conversations/messages/runs (bigint PK kept internally); React Router added with `/c/:publicId` deep linking. Phase 1 of the public_id + sharing design.
+- `2026-06-18-conversation-sharing.md` — conversation sharing (Phase 2): `share_links` table (bigint, token-keyed), created-time JSONB snapshot, anonymous `GET /api/v1/share/{token}` read + owner-only create/list/revoke management, at-most-one-active-link-per-conversation (409 on conflict; revoked/expired kept for audit, hidden from listing), public `/share/:token` read-only page, share dialog, CF Pages `_redirects` SPA fallback.
 
 ### `docs/handover/frontend/`
 

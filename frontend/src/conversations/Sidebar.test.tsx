@@ -33,6 +33,7 @@ function baseProps() {
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onRename: vi.fn(),
+    onRequestShare: vi.fn(),
     onRequestDelete: vi.fn(),
     onLogout: vi.fn(),
     onToggleCollapsed: vi.fn(),

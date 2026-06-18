@@ -19,6 +19,7 @@ import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { ShareDialog } from "../ui/ShareDialog";
 import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
@@ -278,6 +279,9 @@ export function AppShell() {
         onSelect={onSelectConversation}
         onNew={onNewConversation}
         onRename={(id, title) => void renameConversation(id, title)}
+        onRequestShare={(id) =>
+          dispatch({ type: "ui/openShare", dialog: { conversationId: id } })
+        }
         onRequestDelete={(id) =>
           dispatch({
             type: "ui/openConfirm",
@@ -380,6 +384,13 @@ export function AppShell() {
             void deleteConversation(confirmTarget)
           }
           onCancel={() => dispatch({ type: "ui/closeConfirm" })}
+        />
+      )}
+
+      {ui.shareDialog != null && (
+        <ShareDialog
+          conversationId={ui.shareDialog.conversationId}
+          onClose={() => dispatch({ type: "ui/closeShare" })}
         />
       )}
 

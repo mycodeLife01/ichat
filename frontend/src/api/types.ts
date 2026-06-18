@@ -139,3 +139,38 @@ export type CapabilitiesResponse = {
     enabled: boolean;
   };
 };
+
+// --- Conversation sharing (read-only snapshots) ---
+
+// Owner-only management view of a share link. Carries the full token so the UI
+// can re-copy an existing link; the share URL is built client-side.
+export type ShareLinkResponse = {
+  token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+// A source kept in a snapshot. Mirrors MessageSource.
+export type SharedSource = {
+  id: number;
+  title: string;
+  url: string;
+  snippet?: string | null;
+  published_at?: string | null;
+  provider?: string | null;
+};
+
+export type SharedMessage = {
+  role: MessageRole;
+  content: string;
+  reasoning?: string | null;
+  sources: SharedSource[];
+};
+
+// Anonymous read payload — the frozen snapshot, no internal ids or user.
+export type PublicShareResponse = {
+  title: string | null;
+  messages: SharedMessage[];
+  created_at: string;
+};

@@ -17,6 +17,7 @@ def test_core_tables_are_registered() -> None:
         "run_events",
         "run_provider_messages",
         "runs",
+        "share_links",
         "users",
     }
 
@@ -121,7 +122,6 @@ def test_run_events_are_sequenced_jsonb_events() -> None:
 
 def test_run_provider_messages_store_protocol_transcript() -> None:
     transcript = Base.metadata.tables["run_provider_messages"]
-
     assert isinstance(transcript.c.tool_calls.type, JSONB)
     assert isinstance(transcript.c.payload.type, JSONB)
     assert any(
@@ -134,3 +134,17 @@ def test_run_provider_messages_store_protocol_transcript() -> None:
         and "role IN ('user', 'assistant', 'tool')" in str(constraint.sqltext)
         for constraint in transcript.constraints
     )
+
+
+def test_share_links_are_bigint_token_keyed_snapshots() -> None:
+    share_links = Base.metadata.tables["share_links"]
+
+    # Token is the external handle; no public_id/UUID column here.
+    assert isinstance(share_links.c.id.type, BigInteger)
+    assert share_links.c.token.unique is True
+    assert isinstance(share_links.c.snapshot.type, JSONB)
+    assert share_links.c.snapshot.nullable is False
+
+    conversation_fk = next(iter(share_links.c.conversation_id.foreign_keys))
+    assert conversation_fk.column.table.name == "conversations"
+    assert conversation_fk.ondelete == "CASCADE"

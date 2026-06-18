@@ -18,6 +18,7 @@ from app.schemas.conversations import (
     SendMessageResponse,
 )
 from app.schemas.responses import SuccessResponse
+from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
 from app.services.auth.dependencies import get_current_user
 from app.services.conversations.service import (
     create_conversation,
@@ -28,6 +29,11 @@ from app.services.conversations.service import (
     regenerate_from_message,
     rename_conversation,
     submit_user_message,
+)
+from app.services.shares.service import (
+    create_share,
+    list_shares,
+    revoke_share,
 )
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
@@ -255,6 +261,65 @@ async def regenerate_route(
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request),
+    )
+    await session.commit()
+    return SuccessResponse(data=result)
+
+
+@router.post(
+    "/{conversation_id}/shares",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SuccessResponse[ShareLinkResponse],
+)
+async def create_share_route(
+    conversation_id: uuid.UUID,
+    request: ShareCreateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ShareLinkResponse]:
+    share = await create_share(
+        session,
+        user=current_user,
+        conversation_public_id=conversation_id,
+        expires_in_days=request.expires_in_days,
+    )
+    await session.commit()
+    return SuccessResponse(data=share)
+
+
+@router.get(
+    "/{conversation_id}/shares",
+    response_model=SuccessResponse[list[ShareLinkResponse]],
+)
+async def list_shares_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[list[ShareLinkResponse]]:
+    shares = await list_shares(
+        session,
+        user=current_user,
+        conversation_public_id=conversation_id,
+    )
+    return SuccessResponse(data=shares)
+
+
+@router.delete(
+    "/{conversation_id}/shares/{share_token}",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def revoke_share_route(
+    conversation_id: uuid.UUID,
+    share_token: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[CommandStatusResponse]:
+    result = await revoke_share(
+        session,
+        user=current_user,
+        conversation_public_id=conversation_id,
+        token=share_token,
     )
     await session.commit()
     return SuccessResponse(data=result)

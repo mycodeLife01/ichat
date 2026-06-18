@@ -313,7 +313,7 @@ export function Message({
 
 // ChatGPT-style trigger pill: stacked favicons of the first sources plus a
 // 「来源」 label; clicking opens the sources side panel.
-function SourcesTrigger({
+export function SourcesTrigger({
   sources,
   onClick,
 }: {

@@ -6,6 +6,7 @@ import type {
   RunResponse,
   RunStateResponse,
   SendMessageResponse,
+  ShareLinkResponse,
   SuccessEnvelope,
 } from "../api/types";
 
@@ -96,6 +97,13 @@ export const runStateResponse: RunStateResponse = {
   draft_reasoning: "",
   tool_state: null,
   terminal_event: null,
+};
+
+export const shareLinkResponse: ShareLinkResponse = {
+  token: "share-token-abc",
+  expires_at: null,
+  revoked_at: null,
+  created_at: "2026-05-24T10:05:00Z",
 };
 
 export function envelope<T>(data: T): SuccessEnvelope<T> {

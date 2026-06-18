@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ConversationApi } from "../api/conversations";
 import type { CapabilitiesApi } from "../api/capabilities";
 import type { RunApi } from "../api/runs";
+import type { ShareApi } from "../api/share";
 import type { RunEventResponse, RunStreamEvent } from "../api/types";
 import { AppProvider } from "../app/AppProvider";
 import type { AuthApi, Services } from "../app/context";
@@ -14,6 +15,7 @@ import {
   conversationResponse,
   runStateResponse,
   sendMessageResponse,
+  shareLinkResponse,
 } from "./apiFixtures";
 
 export function createFakeAuthApi(overrides: Partial<AuthApi> = {}): AuthApi {
@@ -68,17 +70,33 @@ export function createFakeRunApi(overrides: Partial<RunApi> = {}): RunApi {
   };
 }
 
+export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi {
+  return {
+    create: async () => shareLinkResponse,
+    list: async () => [shareLinkResponse],
+    revoke: async () => ({ status: "ok" }),
+    getPublic: async () => ({
+      title: conversationResponse.title,
+      messages: [],
+      created_at: conversationResponse.created_at,
+    }),
+    ...overrides,
+  };
+}
+
 export function createFakeServices(
   authApi: Partial<AuthApi> = {},
   conversationApi: Partial<ConversationApi> = {},
   runApi: Partial<RunApi> = {},
   capabilitiesApi: Partial<CapabilitiesApi> = {},
+  shareApi: Partial<ShareApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
     capabilitiesApi: createFakeCapabilitiesApi(capabilitiesApi),
     conversationApi: createFakeConversationApi(conversationApi),
     runApi: createFakeRunApi(runApi),
+    shareApi: createFakeShareApi(shareApi),
   };
 }
 
