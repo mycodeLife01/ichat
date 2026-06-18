@@ -194,6 +194,27 @@ describe("AppShell", () => {
     expect(await screen.findByText("我们先从哪里开始呢？")).toBeInTheDocument();
   });
 
+  it("opens the root URL as a blank new conversation even with a stored selection", async () => {
+    selectionStore.save(conversationResponse.id);
+    const detail = vi.fn(async () => conversationDetailResponse);
+    const services = createFakeServices(
+      {},
+      { list: async () => [conversationResponse], detail },
+    );
+
+    renderWithApp(
+      <>
+        <AppShell />
+        <LocationProbe />
+      </>,
+      services,
+    );
+
+    expect(await screen.findByText("我们先从哪里开始呢？")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    expect(detail).not.toHaveBeenCalled();
+  });
+
   it("sends a message and replaces the stream with the server reply", async () => {
     const user = userEvent.setup();
 
@@ -347,7 +368,6 @@ describe("AppShell", () => {
   });
 
   it("restores a stopped run's partial after refresh", async () => {
-    selectionStore.save(conversationResponse.id);
     const streamEvents = vi.fn(() => fakeStream([]));
     const services = createFakeServices(
       {},
@@ -371,7 +391,12 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(<AppShell />, services);
+    const { container } = renderWithApp(
+      <AppShell />,
+      services,
+      undefined,
+      [`/c/${conversationResponse.id}`],
+    );
 
     expect(await screen.findByText("写到一半")).toBeInTheDocument();
     expect(screen.getByText("已停止")).toBeInTheDocument();
@@ -380,7 +405,6 @@ describe("AppShell", () => {
   });
 
   it("resumes an in-progress run after refresh and replaces it with the reply", async () => {
-    selectionStore.save(conversationResponse.id);
     const assistantMessage: MessageResponse = {
       id: "502",
       conversation_id: conversationResponse.id,
@@ -414,7 +438,7 @@ describe("AppShell", () => {
       },
     );
 
-    renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services, undefined, [`/c/${conversationResponse.id}`]);
 
     // Resumes from the server-provided cursor, not from the beginning.
     await waitFor(() => expect(streamEvents).toHaveBeenCalled());
@@ -424,7 +448,6 @@ describe("AppShell", () => {
   });
 
   it("edits a user message and streams the regenerated reply", async () => {
-    selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const userMsg: MessageResponse = {
       id: "1", conversation_id: conversationResponse.id, run_id: "100", role: "user",
@@ -453,7 +476,7 @@ describe("AppShell", () => {
       { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "新答案" } }, { ...succeededEvent, seq: 2 }]) },
     );
     const user = userEvent.setup();
-    renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services, undefined, [`/c/${conversationResponse.id}`]);
 
     expect(await screen.findByText("旧答案")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
@@ -472,7 +495,6 @@ describe("AppShell", () => {
   });
 
   it("regenerates an assistant reply", async () => {
-    selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const userMsg: MessageResponse = {
       id: "1", conversation_id: conversationResponse.id, run_id: "100", role: "user",
@@ -500,7 +522,7 @@ describe("AppShell", () => {
       { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "第二版答案" } }, { ...succeededEvent, seq: 2 }]) },
     );
     const user = userEvent.setup();
-    renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services, undefined, [`/c/${conversationResponse.id}`]);
 
     expect(await screen.findByText("第一版答案")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
@@ -605,7 +627,6 @@ describe("AppShell", () => {
   it("scrolls the thread to the bottom after sending into an existing conversation", async () => {
     // Existing conversation (id unchanged on send): the scroll must be forced
     // by the new user message itself, not by the enter-conversation jump.
-    selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const oldUser: MessageResponse = {
       id: "1", conversation_id: titled.id, run_id: "99", role: "user",
@@ -633,7 +654,12 @@ describe("AppShell", () => {
       { streamEvents: () => fakeStream([]) },
     );
     const user = userEvent.setup();
-    const { container } = renderWithApp(<AppShell />, services);
+    const { container } = renderWithApp(
+      <AppShell />,
+      services,
+      undefined,
+      [`/c/${conversationResponse.id}`],
+    );
 
     await screen.findByText("旧答案");
 

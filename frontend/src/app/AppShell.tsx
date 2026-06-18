@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
 import { Topbar } from "../conversations/Topbar";
-import { selectionStore } from "../conversations/selectionStore";
 import { useConversationLoader } from "../conversations/useConversationLoader";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
@@ -57,7 +56,7 @@ export function AppShell() {
   // address bar is shareable/deep-linkable. Parsed from the path (rather than a
   // <Route> match) so a single AppShell instance survives `/` ↔ `/c/:id` without
   // remounting and re-running bootstrap. `routerReady` gates the URL↔state sync
-  // until the one-time bootstrap (list load + initial redirect) settles.
+  // until the one-time bootstrap (list load + capabilities) settles.
   const location = useLocation();
   const navigate = useNavigate();
   const publicId = location.pathname.match(/^\/c\/([^/]+)/)?.[1];
@@ -171,9 +170,9 @@ export function AppShell() {
           : "idle"
       : "idle";
 
-  // Bootstrap (once): load list + capabilities, then settle the initial route.
-  // Landing on `/` with a remembered conversation redirects to its deep link so
-  // a refresh restores it; an explicit `/c/:publicId` (deep link) is left as-is.
+  // Bootstrap (once): load list + capabilities, then let the current URL drive
+  // the initial route. Landing on `/` is always a blank new conversation; only
+  // `/c/:publicId` loads an existing conversation.
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -187,10 +186,6 @@ export function AppShell() {
         setWebSearchAvailable(false);
       }
       if (!active) return;
-      if (!publicId) {
-        const storedId = selectionStore.read();
-        if (storedId) navigate(`/c/${storedId}`, { replace: true });
-      }
       setRouterReady(true);
     })();
     return () => {
@@ -200,8 +195,7 @@ export function AppShell() {
   }, []);
 
   // URL → state: select the conversation named in the path (and recover any
-  // in-flight run), or reset to a blank new conversation at the root. Guarded by
-  // routerReady so it doesn't fight the bootstrap redirect.
+  // in-flight run), or reset to a blank new conversation at the root.
   useEffect(() => {
     if (!routerReady) return;
     if (publicId) {
