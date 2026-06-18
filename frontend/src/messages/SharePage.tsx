@@ -85,41 +85,47 @@ export function SharePage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
-        {state.status === "loading" && (
-          <div className="px-8 pt-16 text-center text-[14px] text-fg-subtle">加载中…</div>
-        )}
-        {state.status === "error" && (
-          <div className="mx-auto max-w-[var(--reading-width)] px-8 pt-16 text-center">
-            <h1 className="mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
-            <p className="text-[14px] leading-[1.6] text-fg-muted">
-              该分享链接可能已被撤销、已过期，或从未存在。
-            </p>
-            <Link
-              to="/"
-              className="mt-5 inline-block rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
-            >
-              前往 iChat
-            </Link>
-          </div>
-        )}
-        {state.status === "ready" && (
-          <SharedThread
-            share={state.share}
-            isMobile={isMobile}
-            onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
-          />
-        )}
-      </div>
+      {/* Header stays full-width and fixed above; the scrollable thread and the
+          SourcesPanel are flex-row siblings (matching AppShell) so the panel
+          slides in from the right and the content column shrinks to make room
+          without disturbing the header. */}
+      <div className="flex min-h-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+          {state.status === "loading" && (
+            <div className="px-8 pt-16 text-center text-[14px] text-fg-subtle">加载中…</div>
+          )}
+          {state.status === "error" && (
+            <div className="mx-auto max-w-[var(--reading-width)] px-8 pt-16 text-center">
+              <h1 className="mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
+              <p className="text-[14px] leading-[1.6] text-fg-muted">
+                该分享链接可能已被撤销、已过期，或从未存在。
+              </p>
+              <Link
+                to="/"
+                className="mt-5 inline-block rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
+              >
+                前往 iChat
+              </Link>
+            </div>
+          )}
+          {state.status === "ready" && (
+            <SharedThread
+              share={state.share}
+              isMobile={isMobile}
+              onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
+            />
+          )}
+        </div>
 
-      <SourcesPanel
-        sources={sourcesPanel.sources}
-        open={sourcesPanel.open}
-        isMobile={isMobile}
-        onClose={() =>
-          setSourcesPanel((prev) => (prev.open ? { ...prev, open: false } : prev))
-        }
-      />
+        <SourcesPanel
+          sources={sourcesPanel.sources}
+          open={sourcesPanel.open}
+          isMobile={isMobile}
+          onClose={() =>
+            setSourcesPanel((prev) => (prev.open ? { ...prev, open: false } : prev))
+          }
+        />
+      </div>
     </div>
   );
 }

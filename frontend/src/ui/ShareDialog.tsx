@@ -99,70 +99,74 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
           创建一个只读链接，任何人都可查看此刻的会话快照。之后的新消息不会出现在链接中。
         </p>
 
-        {loading ? (
-          <div className="py-4 text-center text-[13px] text-fg-subtle">加载中…</div>
-        ) : activeLink ? (
-          // One active link per conversation: show it with copy + revoke. To
-          // issue a different one, revoke this first.
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[12.5px] text-fg">{shareUrl(activeLink.token)}</div>
-                <div className="mt-0.5 text-[11.5px] text-fg-subtle">
-                  生效中
-                  {activeLink.expires_at && (
-                    <> · 到期 {new Date(activeLink.expires_at).toLocaleDateString()}</>
-                  )}
+        {/* Reserve a stable min-height across the loading / active-link /
+            create-form states so swapping between them doesn't jolt the
+            dialog's height (the list call resolves fast, so the brief loading
+            state would otherwise flash a visible resize). Shorter states are
+            centered within the reserved height. */}
+        <div className="flex min-h-[60px] flex-col justify-center">
+          {loading ? (
+            <div className="text-center text-[13px] text-fg-subtle">加载中…</div>
+          ) : activeLink ? (
+            // One active link per conversation: show it with copy + revoke. To
+            // issue a different one, revoke this first.
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12.5px] text-fg">{shareUrl(activeLink.token)}</div>
+                  <div className="mt-0.5 text-[11.5px] text-fg-subtle">
+                    生效中
+                    {activeLink.expires_at && (
+                      <> · 到期 {new Date(activeLink.expires_at).toLocaleDateString()}</>
+                    )}
+                  </div>
                 </div>
+                <button
+                  className={ghostBtn}
+                  aria-label="复制链接"
+                  onClick={() => copy(activeLink.token)}
+                >
+                  <Icons.Copy size={14} />
+                </button>
+                <button
+                  className={`${ghostBtn} hover:text-danger`}
+                  aria-label="撤销链接"
+                  onClick={() => void revoke(activeLink.token)}
+                >
+                  <Icons.Trash size={14} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1.5" role="radiogroup" aria-label="过期时间">
+                {EXPIRY_OPTIONS.map((option, index) => (
+                  <button
+                    key={option.label}
+                    role="radio"
+                    aria-checked={index === expiryIndex}
+                    className={`rounded-md border px-3 py-1.5 text-[13px] transition-colors duration-[120ms] ${
+                      index === expiryIndex
+                        ? "border-accent bg-accent text-accent-fg"
+                        : "border-border text-fg-muted hover:bg-bg-hover hover:text-fg"
+                    }`}
+                    onClick={() => setExpiryIndex(index)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
               <button
-                className={ghostBtn}
-                aria-label="复制链接"
-                onClick={() => copy(activeLink.token)}
+                className={`${primaryBtn} ml-auto inline-flex items-center gap-1.5`}
+                disabled={creating}
+                onClick={() => void create()}
               >
-                <Icons.Copy size={14} />
-              </button>
-              <button
-                className={`${ghostBtn} hover:text-danger`}
-                aria-label="撤销链接"
-                onClick={() => void revoke(activeLink.token)}
-              >
-                <Icons.Trash size={14} />
+                <Icons.Share size={14} />
+                创建链接
               </button>
             </div>
-            {/* <p className="text-[12px] leading-[1.6] text-fg-subtle">
-              每个对话同时只能有一个有效链接。撤销后即可创建新的链接。
-            </p> */}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1.5" role="radiogroup" aria-label="过期时间">
-              {EXPIRY_OPTIONS.map((option, index) => (
-                <button
-                  key={option.label}
-                  role="radio"
-                  aria-checked={index === expiryIndex}
-                  className={`rounded-md border px-3 py-1.5 text-[13px] transition-colors duration-[120ms] ${
-                    index === expiryIndex
-                      ? "border-accent bg-accent text-accent-fg"
-                      : "border-border text-fg-muted hover:bg-bg-hover hover:text-fg"
-                  }`}
-                  onClick={() => setExpiryIndex(index)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <button
-              className={`${primaryBtn} ml-auto inline-flex items-center gap-1.5`}
-              disabled={creating}
-              onClick={() => void create()}
-            >
-              <Icons.Share size={14} />
-              创建链接
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
