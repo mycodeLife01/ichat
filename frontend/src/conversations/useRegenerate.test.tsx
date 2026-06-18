@@ -10,7 +10,7 @@ import {
 import { createFakeServices, makeWrapper } from "../test/appHarness";
 import { useRegenerate } from "./useRegenerate";
 
-type Start = (runId: number, conversationId: number, afterSeq: number) => void;
+type Start = (runId: string, conversationId: string, afterSeq: number) => void;
 
 function useRegenProbe(start: Start) {
   const { editAndRegenerate, regenerate } = useRegenerate(start);
@@ -40,10 +40,10 @@ describe("useRegenerate", () => {
     await selectConversation(result);
 
     await act(async () => {
-      await result.current.editAndRegenerate(501, "改写");
+      await result.current.editAndRegenerate("501", "改写");
     });
 
-    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 501, "改写", {
+    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, "501", "改写", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -66,10 +66,10 @@ describe("useRegenerate", () => {
     await selectConversation(result);
 
     await act(async () => {
-      await result.current.regenerate(2);
+      await result.current.regenerate("2");
     });
 
-    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2, {
+    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, "2", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -88,13 +88,13 @@ describe("useRegenerate", () => {
 
     // No selection yet → regenerate is a no-op.
     await act(async () => {
-      await result.current.regenerate(2);
+      await result.current.regenerate("2");
     });
     expect(regenerate).not.toHaveBeenCalled();
 
     await selectConversation(result);
     await act(async () => {
-      await result.current.editAndRegenerate(501, "   ");
+      await result.current.editAndRegenerate("501", "   ");
     });
     expect(editAndRegenerate).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe("useRegenerate", () => {
     await selectConversation(result);
 
     await act(async () => {
-      await result.current.regenerate(2);
+      await result.current.regenerate("2");
     });
 
     expect(regenerate).toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe("useRegenerate", () => {
     await selectConversation(result);
 
     await act(async () => {
-      await result.current.regenerate(2);
+      await result.current.regenerate("2");
     });
 
     expect(result.current.ui.toast?.message).toBe("操作失败，请重试");

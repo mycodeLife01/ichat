@@ -33,8 +33,8 @@ describe("runApi", () => {
     vi.mocked(client.request).mockResolvedValueOnce({ status: "ok" });
     const api = createRunApi(client);
 
-    await api.state(100);
-    await api.cancel(100);
+    await api.state("100");
+    await api.cancel("100");
 
     expect(client.request).toHaveBeenNthCalledWith(1, "/runs/100/state");
     expect(client.request).toHaveBeenNthCalledWith(2, "/runs/100/cancel", {
@@ -55,7 +55,7 @@ describe("runApi", () => {
     );
     const api = createRunApi(client);
 
-    await expect(collectAsync(api.streamEvents(100, 7))).resolves.toEqual([
+    await expect(collectAsync(api.streamEvents("100", 7))).resolves.toEqual([
       { seq: 1, type: "text_delta", data: textDeltaEvent },
       { seq: 2, type: "run_succeeded", data: succeededEvent },
     ]);

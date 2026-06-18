@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
@@ -127,14 +128,14 @@ async def list_conversations_route(
     response_model=SuccessResponse[ConversationDetailResponse],
 )
 async def get_conversation_route(
-    conversation_id: int,
+    conversation_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[ConversationDetailResponse]:
     conversation = await get_conversation_detail(
         session,
         user=current_user,
-        conversation_id=conversation_id,
+        conversation_public_id=conversation_id,
     )
     return SuccessResponse(data=conversation)
 
@@ -144,7 +145,7 @@ async def get_conversation_route(
     response_model=SuccessResponse[ConversationResponse],
 )
 async def rename_conversation_route(
-    conversation_id: int,
+    conversation_id: uuid.UUID,
     request: ConversationRenameRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -152,7 +153,7 @@ async def rename_conversation_route(
     conversation = await rename_conversation(
         session,
         user=current_user,
-        conversation_id=conversation_id,
+        conversation_public_id=conversation_id,
         title=request.title,
     )
     await session.commit()
@@ -165,14 +166,14 @@ async def rename_conversation_route(
     response_model_exclude_none=True,
 )
 async def delete_conversation_route(
-    conversation_id: int,
+    conversation_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[CommandStatusResponse]:
     result = await delete_conversation(
         session,
         user=current_user,
-        conversation_id=conversation_id,
+        conversation_public_id=conversation_id,
     )
     await session.commit()
     return SuccessResponse(data=result)
@@ -185,7 +186,7 @@ async def delete_conversation_route(
     response_model_exclude_none=True,
 )
 async def send_message_route(
-    conversation_id: int,
+    conversation_id: uuid.UUID,
     request: MessageCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -194,7 +195,7 @@ async def send_message_route(
     result = await submit_user_message(
         session,
         user=current_user,
-        conversation_id=conversation_id,
+        conversation_public_id=conversation_id,
         content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
@@ -211,8 +212,8 @@ async def send_message_route(
     response_model_exclude_none=True,
 )
 async def edit_and_regenerate_route(
-    conversation_id: int,
-    message_id: int,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
     request: MessageCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -221,8 +222,8 @@ async def edit_and_regenerate_route(
     result = await edit_user_message_and_regenerate(
         session,
         user=current_user,
-        conversation_id=conversation_id,
-        message_id=message_id,
+        conversation_public_id=conversation_id,
+        message_public_id=message_id,
         new_content=request.content,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
@@ -239,8 +240,8 @@ async def edit_and_regenerate_route(
     response_model_exclude_none=True,
 )
 async def regenerate_route(
-    conversation_id: int,
-    message_id: int,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -249,8 +250,8 @@ async def regenerate_route(
     result = await regenerate_from_message(
         session,
         user=current_user,
-        conversation_id=conversation_id,
-        message_id=message_id,
+        conversation_public_id=conversation_id,
+        message_public_id=message_id,
         provider_name="deepseek",
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request),

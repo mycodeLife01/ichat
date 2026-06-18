@@ -23,7 +23,7 @@ export const authTokenResponse: AuthTokenResponse = {
 };
 
 export const conversationResponse: ConversationResponse = {
-  id: 10,
+  id: "10",
   title: "First chat",
   activated_at: "2026-05-24T10:00:00Z",
   created_at: "2026-05-24T09:59:00Z",
@@ -31,9 +31,9 @@ export const conversationResponse: ConversationResponse = {
 };
 
 export const assistantRun: RunResponse = {
-  id: 100,
+  id: "100",
   conversation_id: conversationResponse.id,
-  user_message_id: 501,
+  user_message_id: "501",
   status: "streaming",
   provider_name: "deepseek",
   provider_model: "deepseek-chat",
@@ -42,7 +42,7 @@ export const assistantRun: RunResponse = {
 
 export const sendMessageResponse: SendMessageResponse = {
   message: {
-    id: 501,
+    id: "501",
     conversation_id: conversationResponse.id,
     run_id: assistantRun.id,
     role: "user",

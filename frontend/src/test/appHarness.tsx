@@ -1,5 +1,6 @@
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 
 import type { ConversationApi } from "../api/conversations";
 import type { CapabilitiesApi } from "../api/capabilities";
@@ -83,7 +84,11 @@ export function createFakeServices(
 
 export function makeWrapper(services: Services) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <AppProvider services={services}>{children}</AppProvider>;
+    return (
+      <MemoryRouter>
+        <AppProvider services={services}>{children}</AppProvider>
+      </MemoryRouter>
+    );
   };
 }
 
@@ -91,6 +96,12 @@ export function renderWithApp(
   ui: ReactElement,
   services: Services,
   options?: RenderOptions,
+  initialEntries: string[] = ["/"],
 ): RenderResult {
-  return render(<AppProvider services={services}>{ui}</AppProvider>, options);
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <AppProvider services={services}>{ui}</AppProvider>
+    </MemoryRouter>,
+    options,
+  );
 }

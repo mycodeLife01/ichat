@@ -4,8 +4,8 @@ import { useAppActions } from "../app/context";
 import { findPendingRunId } from "./pendingRun";
 
 type StartStream = (
-  runId: number,
-  conversationId: number,
+  runId: string,
+  conversationId: string,
   afterSeq: number,
 ) => Promise<void> | void;
 
@@ -19,7 +19,7 @@ export function useRunRecovery(start: StartStream) {
   const { conversationApi, runApi } = services;
 
   return useCallback(
-    async (conversationId: number): Promise<void> => {
+    async (conversationId: string): Promise<void> => {
       const { conversationDetail, activeRun } = stateRef.current;
       if (conversationDetail.conversation?.id !== conversationId) return;
       // Already attached (e.g. re-clicking the active conversation): nothing to do.

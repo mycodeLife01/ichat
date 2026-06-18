@@ -11,16 +11,16 @@ export type SidebarUser = { email: string; name: string };
 
 type SidebarProps = {
   items: ConversationResponse[];
-  selectedId: number | null;
+  selectedId: string | null;
   user: SidebarUser | null;
   isMobile: boolean;
   collapsed: boolean;
   mobileOpen: boolean;
-  pendingTitleIds: number[];
-  onSelect: (id: number) => void;
+  pendingTitleIds: string[];
+  onSelect: (id: string) => void;
   onNew: () => void;
-  onRename: (id: number, title: string) => void;
-  onRequestDelete: (id: number) => void;
+  onRename: (id: string, title: string) => void;
+  onRequestDelete: (id: string) => void;
   onLogout: () => void;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
@@ -66,8 +66,8 @@ export function Sidebar({
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
-  const [renameId, setRenameId] = useState<number | null>(null);
-  const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = () => setMenuFor(null);

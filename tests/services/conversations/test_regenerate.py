@@ -127,13 +127,13 @@ async def test_edit_user_message_archives_target_and_inserts_new_message_and_run
         conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
         target = messages[2]  # user message at position 3
         assistant_after = messages[3]  # assistant at position 4
-        user_message_id_before_edit = target.id
+        target_db_id = target.id
 
         result = await edit_user_message_and_regenerate(
             session,
             user=user,
-            conversation_id=conversation.id,
-            message_id=target.id,
+            conversation_public_id=conversation.public_id,
+            message_public_id=target.public_id,
             new_content="updated user text",
             provider_name="deepseek",
             provider_model="deepseek-chat",
@@ -143,10 +143,12 @@ async def test_edit_user_message_archives_target_and_inserts_new_message_and_run
     async with session_factory() as session:
         kept_first_user = await session.get(Message, messages[0].id)
         kept_first_assistant = await session.get(Message, messages[1].id)
-        archived_target = await session.get(Message, user_message_id_before_edit)
+        archived_target = await session.get(Message, target_db_id)
         archived_assistant = await session.get(Message, assistant_after.id)
-        new_message = await session.get(Message, result.message.id)
-        new_run = await session.get(Run, result.run.id)
+        new_message = await session.scalar(
+            select(Message).where(Message.public_id == result.message.id)
+        )
+        new_run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
 
     assert kept_first_user is not None and kept_first_user.archived_at is None
     assert kept_first_assistant is not None and kept_first_assistant.archived_at is None
@@ -155,13 +157,13 @@ async def test_edit_user_message_archives_target_and_inserts_new_message_and_run
     assert archived_assistant is not None and archived_assistant.archived_at is not None
 
     assert new_message is not None
+    assert new_run is not None
     assert new_message.role == "user"
     assert new_message.content == "updated user text"
     assert new_message.position == 5  # MAX(position)+1 over all rows, archived included
     assert new_message.archived_at is None
-    assert new_message.run_id == result.run.id
+    assert new_message.run_id == new_run.id
 
-    assert new_run is not None
     assert result.run.status == "queued"
     assert new_run.user_message_id == new_message.id
     assert new_run.provider_name == "deepseek"
@@ -180,8 +182,8 @@ async def test_edit_rejects_assistant_message(
             await edit_user_message_and_regenerate(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=assistant_message.id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=assistant_message.public_id,
                 new_content="nope",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
@@ -204,8 +206,8 @@ async def test_edit_rejects_archived_target(
             await edit_user_message_and_regenerate(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=messages[0].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[0].public_id,
                 new_content="changed",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
@@ -228,8 +230,8 @@ async def test_edit_rejects_cross_user_target(
             await edit_user_message_and_regenerate(
                 session,
                 user=intruder,
-                conversation_id=conversation.id,
-                message_id=messages[2].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[2].public_id,
                 new_content="changed",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
@@ -260,8 +262,8 @@ async def test_edit_rejects_when_active_run_exists(
             await edit_user_message_and_regenerate(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=messages[0].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[0].public_id,
                 new_content="changed",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
@@ -285,8 +287,8 @@ async def test_regenerate_from_user_message_archives_following_only(
         result = await regenerate_from_message(
             session,
             user=user,
-            conversation_id=conversation.id,
-            message_id=anchor.id,
+            conversation_public_id=conversation.public_id,
+            message_public_id=anchor.public_id,
             provider_name="deepseek",
             provider_model="deepseek-chat",
         )
@@ -297,7 +299,7 @@ async def test_regenerate_from_user_message_archives_following_only(
         assistant_archived = await session.get(Message, assistant_after.id)
         kept_user = await session.get(Message, first_user.id)
         kept_assistant = await session.get(Message, first_assistant.id)
-        new_run = await session.get(Run, result.run.id)
+        new_run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
 
     assert anchor_after is not None and anchor_after.archived_at is None
     assert kept_user is not None and kept_user.archived_at is None
@@ -305,7 +307,7 @@ async def test_regenerate_from_user_message_archives_following_only(
     assert assistant_archived is not None and assistant_archived.archived_at is not None
 
     # No new message inserted; reply will materialize when worker runs.
-    assert result.message.id == anchor.id
+    assert result.message.id == anchor.public_id
     assert new_run is not None
     assert result.run.status == "queued"
     assert new_run.user_message_id == anchor.id
@@ -323,8 +325,8 @@ async def test_regenerate_from_assistant_message_resolves_to_parent_user(
         result = await regenerate_from_message(
             session,
             user=user,
-            conversation_id=conversation.id,
-            message_id=target_assistant.id,
+            conversation_public_id=conversation.public_id,
+            message_public_id=target_assistant.public_id,
             provider_name="deepseek",
             provider_model="deepseek-chat",
         )
@@ -333,13 +335,13 @@ async def test_regenerate_from_assistant_message_resolves_to_parent_user(
     async with session_factory() as session:
         anchor_after = await session.get(Message, expected_user_anchor.id)
         assistant_archived = await session.get(Message, target_assistant.id)
-        new_run = await session.get(Run, result.run.id)
+        new_run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
 
     assert anchor_after is not None and anchor_after.archived_at is None
     assert assistant_archived is not None and assistant_archived.archived_at is not None
     assert new_run is not None
     assert new_run.user_message_id == expected_user_anchor.id
-    assert result.message.id == expected_user_anchor.id
+    assert result.message.id == expected_user_anchor.public_id
 
 
 async def test_regenerate_rejects_assistant_without_run_id(
@@ -355,8 +357,8 @@ async def test_regenerate_rejects_assistant_without_run_id(
             await regenerate_from_message(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=messages[3].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[3].public_id,
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
             )
@@ -378,8 +380,8 @@ async def test_regenerate_rejects_archived_target(
             await regenerate_from_message(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=messages[3].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[3].public_id,
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
             )
@@ -401,8 +403,8 @@ async def test_regenerate_rejects_cross_user_target(
             await regenerate_from_message(
                 session,
                 user=intruder,
-                conversation_id=conversation.id,
-                message_id=messages[3].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[3].public_id,
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
             )
@@ -431,8 +433,8 @@ async def test_regenerate_rejects_when_active_run_exists(
             await regenerate_from_message(
                 session,
                 user=user,
-                conversation_id=conversation.id,
-                message_id=messages[3].id,
+                conversation_public_id=conversation.public_id,
+                message_public_id=messages[3].public_id,
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
             )

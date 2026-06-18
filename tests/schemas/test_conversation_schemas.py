@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -45,17 +46,20 @@ def test_message_create_request_rejects_blank_content() -> None:
 
 def test_conversation_detail_response_contains_visible_messages() -> None:
     now = datetime.now(UTC)
+    conversation_id = uuid4()
+    run_id = uuid4()
+    message_id = uuid4()
     conversation = ConversationResponse(
-        id=1,
+        id=conversation_id,
         title="Project chat",
         activated_at=now,
         created_at=now,
         updated_at=now,
     )
     message = MessageResponse(
-        id=10,
-        conversation_id=1,
-        run_id=20,
+        id=message_id,
+        conversation_id=conversation_id,
+        run_id=run_id,
         role="user",
         content="Hello",
         position=1,
@@ -66,7 +70,7 @@ def test_conversation_detail_response_contains_visible_messages() -> None:
         messages=[message],
     )
 
-    assert detail.id == 1
+    assert detail.id == conversation_id
     assert detail.activated_at == now
     assert detail.messages == [message]
 
@@ -74,7 +78,7 @@ def test_conversation_detail_response_contains_visible_messages() -> None:
 def test_conversation_response_allows_null_activated_at() -> None:
     now = datetime.now(UTC)
     response = ConversationResponse(
-        id=1,
+        id=uuid4(),
         title=None,
         activated_at=None,
         created_at=now,
@@ -86,19 +90,22 @@ def test_conversation_response_allows_null_activated_at() -> None:
 
 def test_send_message_response_contains_message_and_run() -> None:
     now = datetime.now(UTC)
+    conversation_id = uuid4()
+    run_id = uuid4()
+    message_id = uuid4()
     message = MessageResponse(
-        id=10,
-        conversation_id=1,
-        run_id=20,
+        id=message_id,
+        conversation_id=conversation_id,
+        run_id=run_id,
         role="user",
         content="Hello",
         position=1,
         created_at=now,
     )
     run = RunResponse(
-        id=20,
-        conversation_id=1,
-        user_message_id=10,
+        id=run_id,
+        conversation_id=conversation_id,
+        user_message_id=message_id,
         status="queued",
         provider_name="deepseek",
         provider_model="deepseek-chat",
@@ -106,5 +113,5 @@ def test_send_message_response_contains_message_and_run() -> None:
     )
     response = SendMessageResponse(message=message, run=run)
 
-    assert response.message.id == 10
+    assert response.message.id == message_id
     assert response.run.status == "queued"

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { activeRunReducer, initialActiveRunState, type ActiveRunState } from "./state";
 
 const started: ActiveRunState = {
-  runId: 100,
-  conversationId: 10,
+  runId: "100",
+  conversationId: "10",
   latestSeq: 0,
   draftText: "",
   draftReasoning: "",
@@ -17,8 +17,8 @@ describe("activeRunReducer", () => {
   it("starts a run from null", () => {
     const next = activeRunReducer(null, {
       type: "run/started",
-      runId: 100,
-      conversationId: 10,
+      runId: "100",
+      conversationId: "10",
     });
     expect(next).toEqual(started);
   });
@@ -86,16 +86,16 @@ describe("activeRunReducer", () => {
   it("restores a run from server state", () => {
     const next = activeRunReducer(null, {
       type: "run/restored",
-      runId: 100,
-      conversationId: 10,
+      runId: "100",
+      conversationId: "10",
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "想",
       status: "streaming",
     });
     expect(next).toEqual({
-      runId: 100,
-      conversationId: 10,
+      runId: "100",
+      conversationId: "10",
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "想",
@@ -108,8 +108,8 @@ describe("activeRunReducer", () => {
   it("marks cancelRequested when restoring a cancelling run", () => {
     const next = activeRunReducer(null, {
       type: "run/restored",
-      runId: 100,
-      conversationId: 10,
+      runId: "100",
+      conversationId: "10",
       latestSeq: 5,
       draftText: "",
       draftReasoning: "",

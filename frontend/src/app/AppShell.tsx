@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
 import { Topbar } from "../conversations/Topbar";
@@ -50,6 +51,16 @@ export function AppShell() {
     renameConversation,
     deleteConversation,
   } = useConversationLoader();
+
+  // The conversation public id is carried in the URL (`/c/:publicId`), so the
+  // address bar is shareable/deep-linkable. Parsed from the path (rather than a
+  // <Route> match) so a single AppShell instance survives `/` ↔ `/c/:id` without
+  // remounting and re-running bootstrap. `routerReady` gates the URL↔state sync
+  // until the one-time bootstrap (list load + initial redirect) settles.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const publicId = location.pathname.match(/^\/c\/([^/]+)/)?.[1];
+  const [routerReady, setRouterReady] = useState(false);
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
@@ -131,18 +142,18 @@ export function AppShell() {
     [dispatch],
   );
 
-  // Switching to / creating a conversation must not inherit a pending animation:
-  // the target layout should render immediately. The sources panel belongs to a
+  // Switching to / creating a conversation drives the URL; the param-sync effect
+  // below performs the actual load + run recovery. The sources panel belongs to a
   // message in the previous thread, so it closes too.
-  const onSelectConversation = (id: number) => {
+  const onSelectConversation = (id: string) => {
     setAnimateComposer(false);
     closeSources();
-    void selectConversation(id).then(() => recover(id));
+    if (id !== selectedId) navigate(`/c/${id}`);
   };
   const onNewConversation = () => {
     setAnimateComposer(false);
     closeSources();
-    newConversation();
+    navigate("/");
   };
 
   // demo Composer state: idle / streaming / stopping. Derived from status alone:
@@ -159,8 +170,9 @@ export function AppShell() {
           : "idle"
       : "idle";
 
-  // Bootstrap: load list, restore stored selection, then re-attach to a run the
-  // thread may still be waiting on (refresh recovery).
+  // Bootstrap (once): load list + capabilities, then settle the initial route.
+  // Landing on `/` with a remembered conversation redirects to its deep link so
+  // a refresh restores it; an explicit `/c/:publicId` (deep link) is left as-is.
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -174,20 +186,47 @@ export function AppShell() {
         setWebSearchAvailable(false);
       }
       if (!active) return;
-      const storedId = selectionStore.read();
-      if (storedId != null) {
-        await selectConversation(storedId);
-        if (!active) return;
-        await recover(storedId);
-      } else {
-        newConversation();
+      if (!publicId) {
+        const storedId = selectionStore.read();
+        if (storedId) navigate(`/c/${storedId}`, { replace: true });
       }
+      setRouterReady(true);
     })();
     return () => {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // URL → state: select the conversation named in the path (and recover any
+  // in-flight run), or reset to a blank new conversation at the root. Guarded by
+  // routerReady so it doesn't fight the bootstrap redirect.
+  useEffect(() => {
+    if (!routerReady) return;
+    if (publicId) {
+      if (publicId !== stateRef.current.conversationIndex.selectedId) {
+        void selectConversation(publicId).then(() => recover(publicId));
+      }
+    } else if (stateRef.current.conversationIndex.selectedId != null) {
+      newConversation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicId, routerReady]);
+
+  // state → URL: mirror selection changes that originate in state (first message
+  // of a new conversation, delete auto-select) back into the address bar. Read
+  // the selection from stateRef, not the render closure: when a deep link is
+  // being opened, the URL→state effect above has already set selectedId
+  // synchronously via dispatch, but this render's `selectedId` is still stale
+  // (null) — using it would navigate back to "/" and blow away the deep link.
+  useEffect(() => {
+    if (!routerReady) return;
+    const current = stateRef.current.conversationIndex.selectedId;
+    if ((publicId ?? null) !== current) {
+      navigate(current ? `/c/${current}` : "/");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, routerReady]);
 
   // Ctrl/⌘+Shift+O starts a new conversation (see ui/hotkeys.ts for why not N).
   useEffect(() => {
@@ -335,12 +374,10 @@ export function AppShell() {
           confirmLabel="删除"
           destructive
           onConfirm={() =>
-            void deleteConversation(confirmTarget).then(() => {
-              // Deletion may auto-select the next conversation; attach to its
-              // pending run the same way a manual selection would.
-              const nextId = stateRef.current.conversationIndex.selectedId;
-              if (nextId != null) void recover(nextId);
-            })
+            // Deletion may auto-select the next conversation; the resulting
+            // selection change drives the URL, and the URL→state effect attaches
+            // to any pending run — no explicit recovery needed here.
+            void deleteConversation(confirmTarget)
           }
           onCancel={() => dispatch({ type: "ui/closeConfirm" })}
         />

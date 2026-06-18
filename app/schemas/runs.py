@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Any, Literal
 
@@ -51,7 +52,7 @@ class RunToolStateResponse(BaseModel):
 
 
 class RunStateResponse(BaseModel):
-    run_id: int
+    run_id: uuid.UUID
     status: RunStatus
     latest_seq: int
     draft_text: str

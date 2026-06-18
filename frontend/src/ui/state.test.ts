@@ -23,9 +23,9 @@ describe("uiReducer", () => {
   it("opens and closes the confirm dialog", () => {
     const open = uiReducer(initialUiState, {
       type: "ui/openConfirm",
-      dialog: { kind: "deleteConversation", conversationId: 7 },
+      dialog: { kind: "deleteConversation", conversationId: "7" },
     });
-    expect(open.confirmDialog).toEqual({ kind: "deleteConversation", conversationId: 7 });
+    expect(open.confirmDialog).toEqual({ kind: "deleteConversation", conversationId: "7" });
     const closed = uiReducer(open, { type: "ui/closeConfirm" });
     expect(closed.confirmDialog).toBeNull();
   });

@@ -23,7 +23,7 @@ export type CommandStatusResponse = {
 };
 
 export type ConversationResponse = {
-  id: number;
+  id: string;
   title: string | null;
   activated_at: string | null;
   created_at: string;
@@ -46,9 +46,9 @@ export type MessageMetadata = {
 };
 
 export type MessageResponse = {
-  id: number;
-  conversation_id: number;
-  run_id: number | null;
+  id: string;
+  conversation_id: string;
+  run_id: string | null;
   role: MessageRole;
   content: string;
   reasoning: string | null;
@@ -67,9 +67,9 @@ export type RunStatus =
   | "cancelled";
 
 export type RunResponse = {
-  id: number;
-  conversation_id: number;
-  user_message_id: number;
+  id: string;
+  conversation_id: string;
+  user_message_id: string;
   status: RunStatus;
   provider_name: string;
   provider_model: string;
@@ -104,7 +104,7 @@ export type RunEventResponse = {
 };
 
 export type RunStateResponse = {
-  run_id: number;
+  run_id: string;
   status: RunStatus;
   latest_seq: number;
   draft_text: string;

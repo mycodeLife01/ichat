@@ -62,7 +62,7 @@ describe("useConversationLoader", () => {
   });
 
   it("clears selection when detail is forbidden (404)", async () => {
-    selectionStore.save(999);
+    selectionStore.save("999");
     const services = createFakeServices(
       {},
       {
@@ -76,7 +76,7 @@ describe("useConversationLoader", () => {
     });
 
     await act(async () => {
-      await result.current.selectConversation(999);
+      await result.current.selectConversation("999");
     });
 
     expect(result.current.selectedId).toBeNull();
@@ -85,7 +85,7 @@ describe("useConversationLoader", () => {
   });
 
   it("new conversation resets detail and clears persistence", async () => {
-    selectionStore.save(5);
+    selectionStore.save("5");
     const services = createFakeServices();
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),
@@ -187,7 +187,7 @@ describe("useConversationLoader", () => {
     });
 
     await act(async () => {
-      result.current.dispatch({ type: "run/started", runId: 1, conversationId: 10 });
+      result.current.dispatch({ type: "run/started", runId: "1", conversationId: "10" });
     });
     expect(result.current.activeRun).not.toBeNull();
 
@@ -204,7 +204,7 @@ describe("useConversationLoader", () => {
     });
 
     await act(async () => {
-      result.current.dispatch({ type: "run/started", runId: 1, conversationId: 10 });
+      result.current.dispatch({ type: "run/started", runId: "1", conversationId: "10" });
     });
     expect(result.current.activeRun).not.toBeNull();
 

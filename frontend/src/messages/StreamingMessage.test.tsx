@@ -6,8 +6,8 @@ import { StreamingMessage } from "./StreamingMessage";
 
 function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<ActiveRunState> {
   return {
-    runId: 1,
-    conversationId: 10,
+    runId: "1",
+    conversationId: "10",
     latestSeq: 1,
     draftText: "",
     draftReasoning: "",

@@ -19,7 +19,7 @@ export function useRunStream() {
   const controllerRef = useRef<AbortController | null>(null);
 
   const start = useCallback(
-    async (runId: number, conversationId: number, afterSeq: number): Promise<void> => {
+    async (runId: string, conversationId: string, afterSeq: number): Promise<void> => {
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -110,7 +110,7 @@ export function useRunStream() {
   // the local stream — the server's run_cancelled event arrives over SSE and
   // drives the terminal transition (so "已停止" only shows after the real terminal).
   const cancel = useCallback(
-    async (runId: number): Promise<void> => {
+    async (runId: string): Promise<void> => {
       // The stop button disables on "stopping", but that only lands after a
       // render — rapid double clicks (or other callers) can get here first.
       // stateRef advances synchronously on dispatch, so this dedups reliably.

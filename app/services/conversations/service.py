@@ -1,3 +1,5 @@
+import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal, cast
 
@@ -17,6 +19,7 @@ from app.schemas.conversations import (
     RunResponse,
     SendMessageResponse,
 )
+from app.schemas.runs import RunStatus
 
 CONVERSATION_NOT_FOUND_MESSAGE = "Conversation not found"
 ACTIVE_RUN_STATUSES = ("queued", "started", "streaming", "cancelling")
@@ -30,11 +33,16 @@ def conversation_response(conversation: Conversation) -> ConversationResponse:
     return ConversationResponse.model_validate(conversation)
 
 
-def message_response(message: Message) -> MessageResponse:
+def message_response(
+    message: Message,
+    *,
+    conversation_public_id: uuid.UUID,
+    run_public_id: uuid.UUID | None,
+) -> MessageResponse:
     return MessageResponse(
-        id=message.id,
-        conversation_id=message.conversation_id,
-        run_id=message.run_id,
+        id=message.public_id,
+        conversation_id=conversation_public_id,
+        run_id=run_public_id,
         role=cast(Literal["user", "assistant"], message.role),
         content=message.content,
         reasoning=message.reasoning,
@@ -44,8 +52,21 @@ def message_response(message: Message) -> MessageResponse:
     )
 
 
-def run_response(run: Run) -> RunResponse:
-    return RunResponse.model_validate(run)
+def run_response(
+    run: Run,
+    *,
+    conversation_public_id: uuid.UUID,
+    user_message_public_id: uuid.UUID,
+) -> RunResponse:
+    return RunResponse(
+        id=run.public_id,
+        conversation_id=conversation_public_id,
+        user_message_id=user_message_public_id,
+        status=cast(RunStatus, run.status),
+        provider_name=run.provider_name,
+        provider_model=run.provider_model,
+        created_at=run.created_at,
+    )
 
 
 async def create_conversation(
@@ -83,12 +104,12 @@ async def get_conversation_detail(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    conversation_public_id: uuid.UUID,
 ) -> ConversationDetailResponse:
     conversation = await get_owned_visible_conversation(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
     messages = (
         await session.scalars(
@@ -100,9 +121,21 @@ async def get_conversation_detail(
             .order_by(Message.position.asc())
         )
     ).all()
+    run_public_ids = await _run_public_id_map(session, messages)
     return ConversationDetailResponse(
         **conversation_response(conversation).model_dump(),
-        messages=[message_response(message) for message in messages],
+        messages=[
+            message_response(
+                message,
+                conversation_public_id=conversation.public_id,
+                run_public_id=(
+                    run_public_ids.get(message.run_id)
+                    if message.run_id is not None
+                    else None
+                ),
+            )
+            for message in messages
+        ],
     )
 
 
@@ -110,13 +143,13 @@ async def rename_conversation(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    conversation_public_id: uuid.UUID,
     title: str,
 ) -> ConversationResponse:
     conversation = await get_owned_visible_conversation(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
     conversation.title = title.strip()
     conversation.updated_at = await get_database_now(session)
@@ -129,12 +162,12 @@ async def delete_conversation(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    conversation_public_id: uuid.UUID,
 ) -> CommandStatusResponse:
     conversation = await get_owned_visible_conversation(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
     now = await get_database_now(session)
     conversation.deleted_at = now
@@ -147,7 +180,7 @@ async def submit_user_message(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    conversation_public_id: uuid.UUID,
     content: str,
     provider_name: str,
     provider_model: str,
@@ -157,7 +190,7 @@ async def submit_user_message(
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
     await ensure_no_active_run(session, conversation_id=conversation.id)
     next_position = await get_next_message_position(session, conversation_id=conversation.id)
@@ -195,8 +228,16 @@ async def submit_user_message(
     )
 
     return SendMessageResponse(
-        message=message_response(message),
-        run=run_response(run),
+        message=message_response(
+            message,
+            conversation_public_id=conversation.public_id,
+            run_public_id=run.public_id,
+        ),
+        run=run_response(
+            run,
+            conversation_public_id=conversation.public_id,
+            user_message_public_id=message.public_id,
+        ),
     )
 
 
@@ -204,8 +245,8 @@ async def edit_user_message_and_regenerate(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
-    message_id: int,
+    conversation_public_id: uuid.UUID,
+    message_public_id: uuid.UUID,
     new_content: str,
     provider_name: str,
     provider_model: str,
@@ -215,12 +256,12 @@ async def edit_user_message_and_regenerate(
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
-    target = await _get_owned_unarchived_message_for_update(
+    target = await _get_owned_unarchived_message_by_public_id(
         session,
         conversation_id=conversation.id,
-        message_id=message_id,
+        message_public_id=message_public_id,
     )
     if target.role != "user":
         raise AppError(status.HTTP_409_CONFLICT, EDIT_TARGET_NOT_USER_MESSAGE)
@@ -264,8 +305,16 @@ async def edit_user_message_and_regenerate(
     )
 
     return SendMessageResponse(
-        message=message_response(new_message),
-        run=run_response(run),
+        message=message_response(
+            new_message,
+            conversation_public_id=conversation.public_id,
+            run_public_id=run.public_id,
+        ),
+        run=run_response(
+            run,
+            conversation_public_id=conversation.public_id,
+            user_message_public_id=new_message.public_id,
+        ),
     )
 
 
@@ -273,8 +322,8 @@ async def regenerate_from_message(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
-    message_id: int,
+    conversation_public_id: uuid.UUID,
+    message_public_id: uuid.UUID,
     provider_name: str,
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
@@ -283,12 +332,12 @@ async def regenerate_from_message(
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
-        conversation_id=conversation_id,
+        public_id=conversation_public_id,
     )
-    target = await _get_owned_unarchived_message_for_update(
+    target = await _get_owned_unarchived_message_by_public_id(
         session,
         conversation_id=conversation.id,
-        message_id=message_id,
+        message_public_id=message_public_id,
     )
 
     if target.role == "assistant":
@@ -334,9 +383,22 @@ async def regenerate_from_message(
         {"payload": str(run.id)},
     )
 
+    anchor_run_public_id: uuid.UUID | None = None
+    if anchor.run_id is not None:
+        anchor_run = await session.get(Run, anchor.run_id)
+        anchor_run_public_id = anchor_run.public_id if anchor_run is not None else None
+
     return SendMessageResponse(
-        message=message_response(anchor),
-        run=run_response(run),
+        message=message_response(
+            anchor,
+            conversation_public_id=conversation.public_id,
+            run_public_id=anchor_run_public_id,
+        ),
+        run=run_response(
+            run,
+            conversation_public_id=conversation.public_id,
+            user_message_public_id=anchor.public_id,
+        ),
     )
 
 
@@ -344,11 +406,11 @@ async def get_owned_visible_conversation(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    public_id: uuid.UUID,
 ) -> Conversation:
     conversation = await session.scalar(
         select(Conversation).where(
-            Conversation.id == conversation_id,
+            Conversation.public_id == public_id,
             Conversation.user_id == user.id,
             Conversation.deleted_at.is_(None),
         )
@@ -362,12 +424,12 @@ async def get_owned_visible_conversation_for_update(
     session: AsyncSession,
     *,
     user: User,
-    conversation_id: int,
+    public_id: uuid.UUID,
 ) -> Conversation:
     conversation = await session.scalar(
         select(Conversation)
         .where(
-            Conversation.id == conversation_id,
+            Conversation.public_id == public_id,
             Conversation.user_id == user.id,
             Conversation.deleted_at.is_(None),
         )
@@ -514,6 +576,41 @@ async def _get_owned_unarchived_message_for_update(
     if message is None:
         raise AppError(status.HTTP_404_NOT_FOUND, MESSAGE_NOT_FOUND_MESSAGE)
     return message
+
+
+async def _get_owned_unarchived_message_by_public_id(
+    session: AsyncSession,
+    *,
+    conversation_id: int,
+    message_public_id: uuid.UUID,
+) -> Message:
+    message = await session.scalar(
+        select(Message)
+        .where(
+            Message.public_id == message_public_id,
+            Message.conversation_id == conversation_id,
+            Message.archived_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if message is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, MESSAGE_NOT_FOUND_MESSAGE)
+    return message
+
+
+async def _run_public_id_map(
+    session: AsyncSession,
+    messages: Sequence[Message],
+) -> dict[int, uuid.UUID]:
+    """Map internal run ids referenced by messages to their public ids.
+
+    Runs in a single query so conversation detail avoids a per-message lookup.
+    """
+    run_ids = {message.run_id for message in messages if message.run_id is not None}
+    if not run_ids:
+        return {}
+    rows = await session.execute(select(Run.id, Run.public_id).where(Run.id.in_(run_ids)))
+    return {row.id: row.public_id for row in rows}
 
 
 def normalize_optional_title(title: str | None) -> str | None:

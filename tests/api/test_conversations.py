@@ -1,4 +1,5 @@
 import os
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -212,7 +213,9 @@ async def test_send_message_creates_user_message_and_queued_run(
     assert detail_response.json()["data"]["messages"][0]["content"] == "Hello"
 
     async with session_factory() as session:
-        run = await session.get(Run, data["run"]["id"])
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(data["run"]["id"]))
+        )
         assert run is not None
         # No per-request override → env defaults resolved at creation time
         # (conftest sets DEEPSEEK_THINKING_ENABLED=false, effort default high).
@@ -250,7 +253,7 @@ async def test_send_message_with_thinking_override_persists_provider_options(
     assert message_response.status_code == status.HTTP_201_CREATED
     run_id = message_response.json()["data"]["run"]["id"]
     async with session_factory() as session:
-        run = await session.get(Run, run_id)
+        run = await session.scalar(select(Run).where(Run.public_id == uuid.UUID(run_id)))
         assert run is not None
         assert run.provider_options == {
             "thinking_enabled": True,
@@ -327,10 +330,11 @@ async def seed_completed_turn(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     user_email: str,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Insert a finished turn (user + assistant + succeeded run) for the user.
 
-    Returns the ids of conversation, user_message, assistant_message.
+    Returns the public ids (for URLs/response comparison) and internal db ids
+    (for direct ORM lookups) of conversation, user_message, assistant_message.
     """
     async with session_factory() as session:
         user = await session.scalar(select(User).where(User.email == user_email))
@@ -370,9 +374,12 @@ async def seed_completed_turn(
         await session.commit()
 
         return {
-            "conversation_id": conversation.id,
-            "user_message_id": user_message.id,
-            "assistant_message_id": assistant_message.id,
+            "conversation_id": str(conversation.public_id),
+            "user_message_id": str(user_message.public_id),
+            "assistant_message_id": str(assistant_message.public_id),
+            "conversation_db_id": conversation.id,
+            "user_message_db_id": user_message.id,
+            "assistant_message_db_id": assistant_message.id,
         }
 
 
@@ -404,8 +411,8 @@ async def test_edit_and_regenerate_endpoint_creates_new_message_and_run(
     assert body["run"]["status"] == "queued"
 
     async with session_factory() as session:
-        old_user = await session.get(Message, seeded["user_message_id"])
-        old_assistant = await session.get(Message, seeded["assistant_message_id"])
+        old_user = await session.get(Message, seeded["user_message_db_id"])
+        old_assistant = await session.get(Message, seeded["assistant_message_db_id"])
         assert old_user is not None and old_user.archived_at is not None
         assert old_assistant is not None and old_assistant.archived_at is not None
 
@@ -436,8 +443,8 @@ async def test_regenerate_endpoint_reuses_user_message_for_assistant_target(
     assert body["run"]["user_message_id"] == seeded["user_message_id"]
 
     async with session_factory() as session:
-        anchor = await session.get(Message, seeded["user_message_id"])
-        archived_assistant = await session.get(Message, seeded["assistant_message_id"])
+        anchor = await session.get(Message, seeded["user_message_db_id"])
+        archived_assistant = await session.get(Message, seeded["assistant_message_db_id"])
         assert anchor is not None and anchor.archived_at is None
         assert archived_assistant is not None and archived_assistant.archived_at is not None
 
@@ -465,7 +472,7 @@ async def test_regenerate_endpoint_accepts_thinking_options_body(
     assert response.status_code == status.HTTP_201_CREATED
     run_id = response.json()["data"]["run"]["id"]
     async with session_factory() as session:
-        run = await session.get(Run, run_id)
+        run = await session.scalar(select(Run).where(Run.public_id == uuid.UUID(run_id)))
         assert run is not None
         assert run.provider_options == {
             "thinking_enabled": True,
@@ -501,7 +508,7 @@ async def test_send_message_suppresses_web_search_when_user_says_not_to_search(
     assert response.status_code == status.HTTP_201_CREATED
     run_id = response.json()["data"]["run"]["id"]
     async with session_factory() as session:
-        run = await session.get(Run, run_id)
+        run = await session.scalar(select(Run).where(Run.public_id == uuid.UUID(run_id)))
         assert run is not None
         assert run.provider_options is not None
         assert run.provider_options["web_search_enabled"] is False
@@ -566,8 +573,8 @@ async def test_regenerate_endpoint_conflicts_with_active_run(
     async with session_factory() as session:
         session.add(
             Run(
-                conversation_id=seeded["conversation_id"],
-                user_message_id=seeded["user_message_id"],
+                conversation_id=seeded["conversation_db_id"],
+                user_message_id=seeded["user_message_db_id"],
                 status="queued",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",

@@ -17,8 +17,8 @@ type MessageProps = {
   isMobile?: boolean;
   // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: number, content: string) => void;
-  onRegenerate?: (messageId: number) => void;
+  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onRegenerate?: (messageId: string) => void;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };

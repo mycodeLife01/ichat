@@ -3,9 +3,9 @@ import type { AppAction } from "../app/store";
 
 export type ConversationIndexState = {
   items: ConversationResponse[];
-  selectedId: number | null;
-  draftId: number | null;
-  pendingTitleIds: number[];
+  selectedId: string | null;
+  draftId: string | null;
+  pendingTitleIds: string[];
   status: "idle" | "loading" | "error";
 };
 
@@ -33,13 +33,13 @@ export type ConversationIndexAction =
   | { type: "conversations/listLoading" }
   | { type: "conversations/listLoaded"; items: ConversationResponse[] }
   | { type: "conversations/listError" }
-  | { type: "conversations/selected"; id: number | null }
+  | { type: "conversations/selected"; id: string | null }
   | { type: "conversations/renamed"; conversation: ConversationResponse }
-  | { type: "conversations/removed"; id: number }
-  | { type: "conversations/draftCreated"; id: number }
+  | { type: "conversations/removed"; id: string }
+  | { type: "conversations/draftCreated"; id: string }
   | { type: "conversations/draftActivated" }
-  | { type: "conversations/titlePending"; id: number }
-  | { type: "conversations/titleResolved"; id: number };
+  | { type: "conversations/titlePending"; id: string }
+  | { type: "conversations/titleResolved"; id: string };
 
 export function conversationIndexReducer(
   state: ConversationIndexState,

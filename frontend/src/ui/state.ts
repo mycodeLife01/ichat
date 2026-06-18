@@ -2,7 +2,7 @@ import type { AppAction } from "../app/store";
 
 export type ConfirmDialogState = {
   kind: "deleteConversation";
-  conversationId: number;
+  conversationId: string;
 };
 
 // A monotonic id (not the message) keys the Toast component so that triggering

@@ -4,8 +4,8 @@ import type { AppAction } from "../app/store";
 // AbortController is intentionally NOT stored in the reducer (not serializable).
 // useRunStream registers its abort via streamAbort; only serializable state lives here.
 export type ActiveRunState = {
-  runId: number;
-  conversationId: number;
+  runId: string;
+  conversationId: string;
   latestSeq: number;
   draftText: string;
   draftReasoning: string;
@@ -17,11 +17,11 @@ export type ActiveRunState = {
 export const initialActiveRunState: ActiveRunState = null;
 
 export type ActiveRunAction =
-  | { type: "run/started"; runId: number; conversationId: number }
+  | { type: "run/started"; runId: string; conversationId: string }
   | {
       type: "run/restored";
-      runId: number;
-      conversationId: number;
+      runId: string;
+      conversationId: string;
       latestSeq: number;
       draftText: string;
       draftReasoning: string;

@@ -6,7 +6,7 @@ import type { ConversationResponse } from "../api/types";
 import { Sidebar } from "./Sidebar";
 
 function makeConversation(
-  id: number,
+  id: string,
   title: string,
   updatedAt: string,
 ): ConversationResponse {
@@ -23,13 +23,13 @@ const today = new Date().toISOString();
 
 function baseProps() {
   return {
-    items: [makeConversation(1, "今天的对话", today)],
-    selectedId: 1,
+    items: [makeConversation("1", "今天的对话", today)],
+    selectedId: "1",
     user: { email: "a@b.com", name: "alice" },
     isMobile: false,
     collapsed: false,
     mobileOpen: false,
-    pendingTitleIds: [] as number[],
+    pendingTitleIds: [] as string[],
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onRename: vi.fn(),
@@ -54,8 +54,8 @@ describe("Sidebar", () => {
     const { container } = render(
       <Sidebar
         {...props}
-        items={[makeConversation(1, "", today)]}
-        pendingTitleIds={[1]}
+        items={[makeConversation("1", "", today)]}
+        pendingTitleIds={["1"]}
       />,
     );
     expect(container.querySelector(".title-skeleton")).toBeTruthy();
@@ -80,7 +80,7 @@ describe("Sidebar", () => {
     await user.clear(input);
     await user.type(input, "新名字{Enter}");
 
-    expect(props.onRename).toHaveBeenCalledWith(1, "新名字");
+    expect(props.onRename).toHaveBeenCalledWith("1", "新名字");
   });
 
   it("requests delete via the row menu", async () => {
@@ -91,7 +91,7 @@ describe("Sidebar", () => {
     await user.click(screen.getByRole("button", { name: "更多" }));
     await user.click(screen.getByRole("button", { name: "删除对话" }));
 
-    expect(props.onRequestDelete).toHaveBeenCalledWith(1);
+    expect(props.onRequestDelete).toHaveBeenCalledWith("1");
   });
 
   it("mobile: opens a bottom sheet with rename / delete", async () => {
@@ -106,7 +106,7 @@ describe("Sidebar", () => {
     expect(document.querySelector(".history-menu")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "删除对话" }));
-    expect(props.onRequestDelete).toHaveBeenCalledWith(1);
+    expect(props.onRequestDelete).toHaveBeenCalledWith("1");
   });
 
   it("mobile: rename from the sheet enters in-place editing", async () => {
@@ -120,7 +120,7 @@ describe("Sidebar", () => {
     await user.clear(input);
     await user.type(input, "改名{Enter}");
 
-    expect(props.onRename).toHaveBeenCalledWith(1, "改名");
+    expect(props.onRename).toHaveBeenCalledWith("1", "改名");
   });
 
   it("logs out", async () => {

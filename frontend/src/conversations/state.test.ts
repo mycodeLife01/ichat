@@ -37,9 +37,9 @@ describe("conversationIndexReducer", () => {
   it("selects a conversation and the new (null) state", () => {
     const selected = conversationIndexReducer(initialConversationIndexState, {
       type: "conversations/selected",
-      id: 10,
+      id: "10",
     });
-    expect(selected.selectedId).toBe(10);
+    expect(selected.selectedId).toBe("10");
 
     const cleared = conversationIndexReducer(selected, {
       type: "conversations/selected",
@@ -162,9 +162,9 @@ describe("conversation slices - streaming additions", () => {
   it("sets and clears draftId", () => {
     const created = conversationIndexReducer(initialConversationIndexState, {
       type: "conversations/draftCreated",
-      id: 42,
+      id: "42",
     });
-    expect(created.draftId).toBe(42);
+    expect(created.draftId).toBe("42");
     const activated = conversationIndexReducer(created, {
       type: "conversations/draftActivated",
     });
@@ -174,31 +174,31 @@ describe("conversation slices - streaming additions", () => {
   it("adds and removes title-pending ids without duplicates", () => {
     const one = conversationIndexReducer(initialConversationIndexState, {
       type: "conversations/titlePending",
-      id: 7,
+      id: "7",
     });
-    expect(one.pendingTitleIds).toEqual([7]);
+    expect(one.pendingTitleIds).toEqual(["7"]);
     // Idempotent: re-adding the same id does not duplicate it.
     const stillOne = conversationIndexReducer(one, {
       type: "conversations/titlePending",
-      id: 7,
+      id: "7",
     });
-    expect(stillOne.pendingTitleIds).toEqual([7]);
+    expect(stillOne.pendingTitleIds).toEqual(["7"]);
     const two = conversationIndexReducer(stillOne, {
       type: "conversations/titlePending",
-      id: 9,
+      id: "9",
     });
-    expect(two.pendingTitleIds).toEqual([7, 9]);
+    expect(two.pendingTitleIds).toEqual(["7", "9"]);
     const resolved = conversationIndexReducer(two, {
       type: "conversations/titleResolved",
-      id: 7,
+      id: "7",
     });
-    expect(resolved.pendingTitleIds).toEqual([9]);
+    expect(resolved.pendingTitleIds).toEqual(["9"]);
   });
 
   it("clears pendingTitleIds on app/reset", () => {
     const pending = conversationIndexReducer(initialConversationIndexState, {
       type: "conversations/titlePending",
-      id: 7,
+      id: "7",
     });
     const reset = conversationIndexReducer(pending, { type: "app/reset" });
     expect(reset.pendingTitleIds).toEqual([]);

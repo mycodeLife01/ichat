@@ -7,8 +7,8 @@ type MessageThreadProps = {
   messages: MessageResponse[];
   isMobile?: boolean;
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: number, content: string) => void;
-  onRegenerate?: (messageId: number) => void;
+  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onRegenerate?: (messageId: string) => void;
   onShowSources?: (sources: MessageSource[]) => void;
   children?: ReactNode;
 };

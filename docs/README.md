@@ -53,6 +53,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
 - `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata). Note: the rule-based query planner / pre-search was removed 2026-06-17 — tool calls are now model-driven.
 - `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time
+- `2026-06-18-public-id-hardening.md` — opaque `public_id` (UUID) replaces sequential ids on the API surface for conversations/messages/runs (bigint PK kept internally); React Router added with `/c/:publicId` deep linking. Phase 1 of the public_id + sharing design.
 
 ### `docs/handover/frontend/`
 
@@ -81,6 +82,7 @@ Pre-implementation design specs. Consult for product/design rationale.
 - `2026-05-17-run-cancellation-design.md` — cancellation design details and HTTP semantics
 - `2026-05-24-frontend-react-rebuild-design.md` — master plan for the React frontend rebuild (step sequence, hooks design, deployment topology)
 - `2026-06-11-web-search-tool-design.md` — web search tool design (tool schema, query planner, agent loop budget, source dedup, evidence compression). Note: the rule-based query planner / pre-search it specifies was removed 2026-06-17 (now model-driven); `system_prompt_snapshot` semantics also superseded — see `docs/handover/2026-06-17-system-prompt-management.md`.
+- `2026-06-18-public-id-and-conversation-sharing-design.md` — opaque `public_id` (dual-key, keep bigint PK) to drop sequential IDs from the API surface, plus conversation sharing via a separate `share_links` token + read-only snapshot. Includes scope/format/sharing-semantics open decisions.
 - other dated specs — per-feature designs (auto-title, regenerate, thinking mode, frontend sub-steps)
 
 ### `docs/superpowers/plans/`

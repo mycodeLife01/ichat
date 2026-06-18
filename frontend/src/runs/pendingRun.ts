@@ -4,7 +4,7 @@ import type { MessageResponse } from "../api/types";
 // has no materialized assistant reply for that run — the run is either still
 // generating, or finished without materializing (failed/cancelled). Used on
 // conversation entry to decide whether to recover from the server's run state.
-export function findPendingRunId(messages: MessageResponse[]): number | null {
+export function findPendingRunId(messages: MessageResponse[]): string | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const candidate = messages[i];
     if (candidate.role !== "user" || candidate.run_id == null) continue;
