@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from app.schemas.runs import RunEventResponse, RunStateResponse
 
@@ -26,15 +27,16 @@ def test_run_state_response_contains_draft_and_terminal_event() -> None:
         created_at=datetime(2026, 5, 17, 12, 1, tzinfo=UTC),
     )
 
+    run_id = uuid4()
     state = RunStateResponse(
-        run_id=10,
+        run_id=run_id,
         status="succeeded",
         latest_seq=4,
         draft_text="Hello world",
         terminal_event=terminal,
     )
 
-    assert state.run_id == 10
+    assert state.run_id == run_id
     assert state.status == "succeeded"
     assert state.latest_seq == 4
     assert state.draft_text == "Hello world"

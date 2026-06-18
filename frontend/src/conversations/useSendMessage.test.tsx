@@ -10,14 +10,14 @@ import { selectionStore } from "./selectionStore";
 import { useSendMessage } from "./useSendMessage";
 
 const draft: ConversationResponse = {
-  id: 77,
+  id: "77",
   title: null,
   activated_at: null,
   created_at: "t",
   updated_at: "t",
 };
 
-type Start = (runId: number, conversationId: number, afterSeq: number) => void;
+type Start = (runId: string, conversationId: string, afterSeq: number) => void;
 
 function useSendProbe(start: Start) {
   const send = useSendMessage(start);
@@ -48,14 +48,14 @@ describe("useSendMessage", () => {
     });
 
     expect(create).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(77, "你好", {
+    expect(sendMessage).toHaveBeenCalledWith("77", "你好", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
-    expect(result.current.conversationIndex.selectedId).toBe(77);
-    expect(result.current.conversationIndex.draftId).toBe(77);
-    expect(selectionStore.read()).toBe(77);
-    expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, 77, 0);
+    expect(result.current.conversationIndex.selectedId).toBe("77");
+    expect(result.current.conversationIndex.draftId).toBe("77");
+    expect(selectionStore.read()).toBe("77");
+    expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, "77", 0);
     await waitFor(() =>
       expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id),
     );
@@ -69,14 +69,14 @@ describe("useSendMessage", () => {
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
     await act(async () => {
-      result.current.dispatch({ type: "conversations/selected", id: 55 });
+      result.current.dispatch({ type: "conversations/selected", id: "55" });
     });
     await act(async () => {
       await result.current.send("世界");
     });
 
     expect(create).not.toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(55, "世界", {
+    expect(sendMessage).toHaveBeenCalledWith("55", "世界", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -94,13 +94,13 @@ describe("useSendMessage", () => {
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
     await act(async () => {
-      result.current.dispatch({ type: "conversations/selected", id: 55 });
+      result.current.dispatch({ type: "conversations/selected", id: "55" });
     });
     await act(async () => {
       await result.current.send("查一下最新版本");
     });
 
-    expect(sendMessage).toHaveBeenCalledWith(55, "查一下最新版本", {
+    expect(sendMessage).toHaveBeenCalledWith("55", "查一下最新版本", {
       thinking_enabled: false,
       web_search_enabled: true,
     });
@@ -110,7 +110,7 @@ describe("useSendMessage", () => {
       await result.current.send("再查一下");
     });
 
-    expect(sendMessage).toHaveBeenLastCalledWith(55, "再查一下", {
+    expect(sendMessage).toHaveBeenLastCalledWith("55", "再查一下", {
       thinking_enabled: false,
       web_search_enabled: false,
     });

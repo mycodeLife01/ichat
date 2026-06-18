@@ -25,6 +25,10 @@ TEST_DATABASE_URL = os.environ.get(
 )
 TEST_EMAIL_DOMAIN = "runs-api-test.example.com"
 
+# A syntactically valid UUID that never matches a seeded run, used to exercise
+# auth/validation paths without depending on a real run.
+MISSING_RUN_ID = "00000000-0000-0000-0000-000000000000"
+
 
 async def ready() -> bool:
     return True
@@ -175,14 +179,14 @@ async def test_get_run_state_returns_current_draft(
             event_type="text_delta",
             payload={"text": " world"},
         )
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.get(f"/api/v1/runs/{run_id}/state", headers=headers)
+    response = await client.get(f"/api/v1/runs/{run_public_id}/state", headers=headers)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"] == {
-        "run_id": run_id,
+        "run_id": run_public_id,
         "status": "streaming",
         "latest_seq": 3,
         "draft_text": "Hello world",
@@ -193,7 +197,7 @@ async def test_get_run_state_returns_current_draft(
 
 
 async def test_run_state_requires_authentication(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/runs/1/state")
+    response = await client.get(f"/api/v1/runs/{MISSING_RUN_ID}/state")
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.json() == {"detail": "Authentication required"}
@@ -217,10 +221,10 @@ async def test_cross_user_run_state_returns_not_found(
 
     async with session_factory() as session:
         run = await create_run_for_user(session, user_id=alice["user"]["id"])
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.get(f"/api/v1/runs/{run_id}/state", headers=bob_headers)
+    response = await client.get(f"/api/v1/runs/{run_public_id}/state", headers=bob_headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}
@@ -251,10 +255,12 @@ async def test_run_events_replay_starts_after_seq_and_stops_at_terminal(
             payload={"text": "Hello"},
         )
         await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.get(f"/api/v1/runs/{run_id}/events?after_seq=1", headers=headers)
+    response = await client.get(
+        f"/api/v1/runs/{run_public_id}/events?after_seq=1", headers=headers
+    )
 
     assert response.status_code == status.HTTP_200_OK
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -287,10 +293,12 @@ async def test_run_events_returns_empty_stream_when_after_seq_passed_terminal(
         )
         await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
         await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.get(f"/api/v1/runs/{run_id}/events?after_seq=2", headers=headers)
+    response = await client.get(
+        f"/api/v1/runs/{run_public_id}/events?after_seq=2", headers=headers
+    )
 
     assert response.status_code == status.HTTP_200_OK
     assert response.text == ""
@@ -307,7 +315,9 @@ async def test_run_events_rejects_negative_after_seq(
     )
     headers = auth_headers(alice)
 
-    response = await client.get("/api/v1/runs/1/events?after_seq=-1", headers=headers)
+    response = await client.get(
+        f"/api/v1/runs/{MISSING_RUN_ID}/events?after_seq=-1", headers=headers
+    )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -330,10 +340,10 @@ async def test_cross_user_run_events_returns_not_found(
 
     async with session_factory() as session:
         run = await create_run_for_user(session, user_id=alice["user"]["id"])
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.get(f"/api/v1/runs/{run_id}/events", headers=bob_headers)
+    response = await client.get(f"/api/v1/runs/{run_public_id}/events", headers=bob_headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}
@@ -356,11 +366,14 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
             user_id=alice["user"]["id"],
             status_value="streaming",
         )
-        run_id = run.id
+        run_db_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
     response_task = asyncio.create_task(
-        client.get(f"/api/v1/runs/{run_id}/events?after_seq=0", headers=headers, timeout=3.0)
+        client.get(
+            f"/api/v1/runs/{run_public_id}/events?after_seq=0", headers=headers, timeout=3.0
+        )
     )
 
     try:
@@ -370,11 +383,13 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
         async with session_factory() as session:
             await append_run_event(
                 session,
-                run_id=run_id,
+                run_id=run_db_id,
                 event_type="text_delta",
                 payload={"text": "Late hello"},
             )
-            await append_run_event(session, run_id=run_id, event_type="run_succeeded", payload={})
+            await append_run_event(
+                session, run_id=run_db_id, event_type="run_succeeded", payload={}
+            )
             await session.commit()
 
         response = await asyncio.wait_for(response_task, timeout=3.0)
@@ -397,7 +412,7 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
 
 
 async def test_cancel_run_requires_authentication(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/runs/1/cancel")
+    response = await client.post(f"/api/v1/runs/{MISSING_RUN_ID}/cancel")
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.json() == {"detail": "Authentication required"}
@@ -420,16 +435,17 @@ async def test_cancel_queued_run_returns_ok_and_marks_cancelled(
             user_id=alice["user"]["id"],
             status_value="queued",
         )
-        run_id = run.id
+        run_db_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+    response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=headers)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"data": {"status": "ok"}}
 
     async with session_factory() as session:
-        persisted_run = await session.get(Run, run_id)
+        persisted_run = await session.get(Run, run_db_id)
         assert persisted_run is not None
         assert persisted_run.status == "cancelled"
         assert persisted_run.cancelled_at is not None
@@ -437,7 +453,7 @@ async def test_cancel_queued_run_returns_ok_and_marks_cancelled(
 
         events = (
             await session.scalars(
-                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+                select(RunEvent).where(RunEvent.run_id == run_db_id).order_by(RunEvent.seq.asc())
             )
         ).all()
         assert [event.type for event in events] == ["run_cancelled"]
@@ -461,23 +477,24 @@ async def test_cancel_streaming_run_returns_ok_and_marks_cancelling(
             status_value="streaming",
         )
         await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
-        run_id = run.id
+        run_db_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+    response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=headers)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"data": {"status": "ok"}}
 
     async with session_factory() as session:
-        persisted_run = await session.get(Run, run_id)
+        persisted_run = await session.get(Run, run_db_id)
         assert persisted_run is not None
         assert persisted_run.status == "cancelling"
         assert persisted_run.cancelled_at is None
 
         events = (
             await session.scalars(
-                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+                select(RunEvent).where(RunEvent.run_id == run_db_id).order_by(RunEvent.seq.asc())
             )
         ).all()
         assert [event.type for event in events] == ["run_started"]
@@ -501,11 +518,12 @@ async def test_cancel_terminal_run_is_idempotent(
             status_value="cancelled",
         )
         await append_run_event(session, run_id=run.id, event_type="run_cancelled", payload={})
-        run_id = run.id
+        run_db_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    first_response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
-    second_response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+    first_response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=headers)
+    second_response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=headers)
 
     assert first_response.status_code == status.HTTP_200_OK
     assert first_response.json() == {"data": {"status": "ok"}}
@@ -513,13 +531,13 @@ async def test_cancel_terminal_run_is_idempotent(
     assert second_response.json() == {"data": {"status": "ok"}}
 
     async with session_factory() as session:
-        persisted_run = await session.get(Run, run_id)
+        persisted_run = await session.get(Run, run_db_id)
         assert persisted_run is not None
         assert persisted_run.status == "cancelled"
 
         events = (
             await session.scalars(
-                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+                select(RunEvent).where(RunEvent.run_id == run_db_id).order_by(RunEvent.seq.asc())
             )
         ).all()
         assert [event.type for event in events] == ["run_cancelled"]
@@ -547,10 +565,10 @@ async def test_cross_user_cancel_run_returns_not_found(
             user_id=alice["user"]["id"],
             status_value="streaming",
         )
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=bob_headers)
+    response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=bob_headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}
@@ -576,10 +594,10 @@ async def test_cancel_run_for_deleted_conversation_returns_not_found(
         conversation = await session.get(Conversation, run.conversation_id)
         assert conversation is not None
         conversation.deleted_at = datetime.now(UTC)
-        run_id = run.id
+        run_public_id = str(run.public_id)
         await session.commit()
 
-    response = await client.post(f"/api/v1/runs/{run_id}/cancel", headers=headers)
+    response = await client.post(f"/api/v1/runs/{run_public_id}/cancel", headers=headers)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json() == {"detail": "Run not found"}

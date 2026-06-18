@@ -6,8 +6,8 @@ import type { MessageResponse } from "../api/types";
 import { Message } from "./Message";
 
 const userMessage: MessageResponse = {
-  id: 1,
-  conversation_id: 10,
+  id: "1",
+  conversation_id: "10",
   run_id: null,
   role: "user",
   content: "你好",
@@ -17,9 +17,9 @@ const userMessage: MessageResponse = {
 };
 
 const assistantMessage: MessageResponse = {
-  id: 2,
-  conversation_id: 10,
-  run_id: 100,
+  id: "2",
+  conversation_id: "10",
+  run_id: "100",
   role: "assistant",
   content: "**回答**正文",
   reasoning: "我的推理",

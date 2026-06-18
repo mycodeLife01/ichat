@@ -20,10 +20,10 @@ export function useTitlePolling() {
   // Dedup on the actual running loop, not on pendingTitleIds: the kickoff (e.g.
   // useRunStream) may already have set the id pending, and an effect may call us
   // again for the same id — only one loop should run.
-  const running = useRef(new Set<number>());
+  const running = useRef(new Set<string>());
 
   return useCallback(
-    async (conversationId: number, options: PollOptions = {}): Promise<void> => {
+    async (conversationId: string, options: PollOptions = {}): Promise<void> => {
       const { attempts = 20, delayMs = 750, sleep = realSleep } = options;
 
       if (running.current.has(conversationId)) return;

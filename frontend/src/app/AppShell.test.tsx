@@ -46,9 +46,9 @@ describe("AppShell", () => {
           messages: [
             ...conversationDetailResponse.messages,
             {
-              id: 502,
+              id: "502",
               conversation_id: conversationResponse.id,
-              run_id: 100,
+              run_id: "100",
               role: "assistant" as const,
               content: "Hi!",
               reasoning: null,
@@ -68,6 +68,39 @@ describe("AppShell", () => {
     expect(await screen.findByText("Hello")).toBeInTheDocument();
   });
 
+  it("loads the conversation named in the URL on a deep link", async () => {
+    // Entering directly at /c/:publicId (copy-pasted/bookmarked link) must load
+    // that conversation, not fall back to the blank new-chat state. Settled
+    // thread (assistant reply present) so entry triggers no run recovery.
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "Deep linked reply",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
+      },
+    );
+    renderWithApp(<AppShell />, services, undefined, [`/c/${conversationResponse.id}`]);
+
+    // The deep-linked thread renders. If the URL→state sync regressed and reset
+    // to "/", newConversation would clear detail and this reply would be absent.
+    expect(await screen.findByText("Deep linked reply")).toBeInTheDocument();
+  });
+
   it("shows the welcome heading in the empty state", async () => {
     const services = createFakeServices({}, { list: async () => [] });
     renderWithApp(<AppShell />, services);
@@ -79,18 +112,18 @@ describe("AppShell", () => {
     const user = userEvent.setup();
 
     const draft: ConversationResponse = {
-      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
     };
     const userMessage: MessageResponse = {
-      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
       content: "你好", reasoning: null, position: 1, created_at: "t",
     };
     const assistantMessage: MessageResponse = {
-      id: 2, conversation_id: 77, run_id: 100, role: "assistant",
+      id: "2", conversation_id: "77", run_id: "100", role: "assistant",
       content: "你好呀", reasoning: null, position: 2, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
@@ -134,14 +167,14 @@ describe("AppShell", () => {
     const user = userEvent.setup();
 
     const draft: ConversationResponse = {
-      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
     };
     const userMessage: MessageResponse = {
-      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
       content: "你好", reasoning: null, position: 1, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
@@ -172,14 +205,14 @@ describe("AppShell", () => {
     const user = userEvent.setup();
 
     const draft: ConversationResponse = {
-      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
     };
     const userMessage: MessageResponse = {
-      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
       content: "你好", reasoning: null, position: 1, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
@@ -263,9 +296,9 @@ describe("AppShell", () => {
   it("resumes an in-progress run after refresh and replaces it with the reply", async () => {
     selectionStore.save(conversationResponse.id);
     const assistantMessage: MessageResponse = {
-      id: 502,
+      id: "502",
       conversation_id: conversationResponse.id,
-      run_id: 100,
+      run_id: "100",
       role: "assistant",
       content: "Hello there!",
       reasoning: null,
@@ -299,7 +332,7 @@ describe("AppShell", () => {
 
     // Resumes from the server-provided cursor, not from the beginning.
     await waitFor(() => expect(streamEvents).toHaveBeenCalled());
-    expect(streamEvents.mock.calls[0]).toEqual([100, 1, expect.anything()]);
+    expect(streamEvents.mock.calls[0]).toEqual(["100", 1, expect.anything()]);
     // Terminal success swaps in the materialized assistant reply.
     expect(await screen.findByText("Hello there!")).toBeInTheDocument();
   });
@@ -308,17 +341,17 @@ describe("AppShell", () => {
     selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const userMsg: MessageResponse = {
-      id: 1, conversation_id: conversationResponse.id, run_id: 100, role: "user",
+      id: "1", conversation_id: conversationResponse.id, run_id: "100", role: "user",
       content: "原问题", reasoning: null, position: 1, created_at: "t",
     };
     const assistantMsg: MessageResponse = {
-      id: 2, conversation_id: conversationResponse.id, run_id: 100, role: "assistant",
+      id: "2", conversation_id: conversationResponse.id, run_id: "100", role: "assistant",
       content: "旧答案", reasoning: null, position: 2, created_at: "t",
     };
-    const editedUser: MessageResponse = { ...userMsg, id: 3, content: "新问题", run_id: 101 };
-    const newAssistant: MessageResponse = { ...assistantMsg, id: 4, content: "新答案", run_id: 101 };
+    const editedUser: MessageResponse = { ...userMsg, id: "3", content: "新问题", run_id: "101" };
+    const newAssistant: MessageResponse = { ...assistantMsg, id: "4", content: "新答案", run_id: "101" };
     const newRun: RunResponse = {
-      id: 101, conversation_id: conversationResponse.id, user_message_id: 3, status: "streaming",
+      id: "101", conversation_id: conversationResponse.id, user_message_id: "3", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
 
@@ -343,7 +376,7 @@ describe("AppShell", () => {
     await user.type(editor, "新问题");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, 1, "新问题", {
+    expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, "1", "新问题", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -356,16 +389,16 @@ describe("AppShell", () => {
     selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const userMsg: MessageResponse = {
-      id: 1, conversation_id: conversationResponse.id, run_id: 100, role: "user",
+      id: "1", conversation_id: conversationResponse.id, run_id: "100", role: "user",
       content: "问题", reasoning: null, position: 1, created_at: "t",
     };
     const oldAssistant: MessageResponse = {
-      id: 2, conversation_id: conversationResponse.id, run_id: 100, role: "assistant",
+      id: "2", conversation_id: conversationResponse.id, run_id: "100", role: "assistant",
       content: "第一版答案", reasoning: null, position: 2, created_at: "t",
     };
-    const newAssistant: MessageResponse = { ...oldAssistant, id: 3, content: "第二版答案", run_id: 101 };
+    const newAssistant: MessageResponse = { ...oldAssistant, id: "3", content: "第二版答案", run_id: "101" };
     const newRun: RunResponse = {
-      id: 101, conversation_id: conversationResponse.id, user_message_id: 1, status: "streaming",
+      id: "101", conversation_id: conversationResponse.id, user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
 
@@ -386,7 +419,7 @@ describe("AppShell", () => {
     expect(await screen.findByText("第一版答案")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
 
-    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, 2, {
+    expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, "2", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -396,14 +429,14 @@ describe("AppShell", () => {
 
   it("disables the mutate buttons while a run is streaming", async () => {
     const draft: ConversationResponse = {
-      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
     };
     const userMessage: MessageResponse = {
-      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
       content: "你好", reasoning: null, position: 1, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const services = createFakeServices(
@@ -429,14 +462,14 @@ describe("AppShell", () => {
     const user = userEvent.setup();
 
     const draft: ConversationResponse = {
-      id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
     };
     const userMessage: MessageResponse = {
-      id: 1, conversation_id: 77, run_id: 100, role: "user",
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
       content: "你好", reasoning: null, position: 1, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: 77, user_message_id: 1, status: "streaming",
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
@@ -489,19 +522,19 @@ describe("AppShell", () => {
     selectionStore.save(conversationResponse.id);
     const titled = { ...conversationResponse, title: "对话A" };
     const oldUser: MessageResponse = {
-      id: 1, conversation_id: titled.id, run_id: 99, role: "user",
+      id: "1", conversation_id: titled.id, run_id: "99", role: "user",
       content: "旧问题", reasoning: null, position: 1, created_at: "t",
     };
     const oldAssistant: MessageResponse = {
-      id: 2, conversation_id: titled.id, run_id: 99, role: "assistant",
+      id: "2", conversation_id: titled.id, run_id: "99", role: "assistant",
       content: "旧答案", reasoning: null, position: 2, created_at: "t",
     };
     const newUser: MessageResponse = {
-      id: 3, conversation_id: titled.id, run_id: 100, role: "user",
+      id: "3", conversation_id: titled.id, run_id: "100", role: "user",
       content: "新问题", reasoning: null, position: 3, created_at: "t",
     };
     const run: RunResponse = {
-      id: 100, conversation_id: titled.id, user_message_id: 3, status: "streaming",
+      id: "100", conversation_id: titled.id, user_message_id: "3", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const services = createFakeServices(
@@ -538,7 +571,7 @@ describe("AppShell", () => {
       {
         list: async () => [],
         create: async () => ({
-          id: 77, title: null, activated_at: null, created_at: "t", updated_at: "t",
+          id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
         }),
         sendMessage: async () => {
           throw new Error("network");

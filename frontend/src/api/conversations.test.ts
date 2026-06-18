@@ -43,7 +43,7 @@ describe("conversationApi", () => {
     vi.mocked(client.request).mockResolvedValue(conversationDetailResponse);
     const api = createConversationApi(client);
 
-    await api.detail(10);
+    await api.detail("10");
 
     expect(client.request).toHaveBeenCalledWith("/conversations/10");
   });
@@ -54,8 +54,8 @@ describe("conversationApi", () => {
     vi.mocked(client.request).mockResolvedValueOnce({ status: "ok" });
     const api = createConversationApi(client);
 
-    await api.rename(10, "Renamed");
-    await api.remove(10);
+    await api.rename("10", "Renamed");
+    await api.remove("10");
 
     expect(client.request).toHaveBeenNthCalledWith(1, "/conversations/10", {
       method: "PATCH",
@@ -71,9 +71,9 @@ describe("conversationApi", () => {
     vi.mocked(client.request).mockResolvedValue(sendMessageResponse);
     const api = createConversationApi(client);
 
-    await api.sendMessage(10, "Hello");
-    await api.editAndRegenerate(10, 501, "Edited");
-    await api.regenerate(10, 502);
+    await api.sendMessage("10", "Hello");
+    await api.editAndRegenerate("10", "501", "Edited");
+    await api.regenerate("10", "502");
 
     expect(client.request).toHaveBeenNthCalledWith(
       1,
@@ -98,9 +98,9 @@ describe("conversationApi", () => {
     const api = createConversationApi(client);
     const options = { thinking_enabled: true, reasoning_effort: "max" } as const;
 
-    await api.sendMessage(10, "Hello", options);
-    await api.editAndRegenerate(10, 501, "Edited", options);
-    await api.regenerate(10, 502, { thinking_enabled: false });
+    await api.sendMessage("10", "Hello", options);
+    await api.editAndRegenerate("10", "501", "Edited", options);
+    await api.regenerate("10", "502", { thinking_enabled: false });
 
     expect(client.request).toHaveBeenNthCalledWith(
       1,

@@ -12,7 +12,7 @@ import {
 import { createFakeServices, makeWrapper } from "../test/appHarness";
 import { useRunRecovery } from "./useRunRecovery";
 
-type Start = (runId: number, conversationId: number, afterSeq: number) => void;
+type Start = (runId: string, conversationId: string, afterSeq: number) => void;
 
 function useRecoveryProbe(start: Start) {
   const recover = useRunRecovery(start);
@@ -26,9 +26,9 @@ const materializedDetail: ConversationDetailResponse = {
   messages: [
     sendMessageResponse.message,
     {
-      id: 502,
+      id: "502",
       conversation_id: conversationResponse.id,
-      run_id: 100,
+      run_id: "100",
       role: "assistant",
       content: "Hi there",
       reasoning: null,
@@ -85,9 +85,9 @@ describe("useRunRecovery", () => {
       await result.current.recover(conversationResponse.id);
     });
 
-    expect(state).toHaveBeenCalledWith(100);
+    expect(state).toHaveBeenCalledWith("100");
     expect(result.current.activeRun).toEqual({
-      runId: 100,
+      runId: "100",
       conversationId: conversationResponse.id,
       latestSeq: runStateResponse.latest_seq,
       draftText: runStateResponse.draft_text,
@@ -97,7 +97,7 @@ describe("useRunRecovery", () => {
       cancelRequested: false,
     });
     expect(start).toHaveBeenCalledWith(
-      100,
+      "100",
       conversationResponse.id,
       runStateResponse.latest_seq,
     );
@@ -174,7 +174,7 @@ describe("useRunRecovery", () => {
     await act(async () => {
       result.current.dispatch({
         type: "run/started",
-        runId: 100,
+        runId: "100",
         conversationId: conversationResponse.id,
       });
     });
@@ -192,7 +192,7 @@ describe("useRunRecovery", () => {
 
     await enterConversation(result);
     await act(async () => {
-      await result.current.recover(999);
+      await result.current.recover("999");
     });
 
     expect(state).not.toHaveBeenCalled();

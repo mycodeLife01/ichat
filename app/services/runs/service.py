@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
@@ -38,13 +39,13 @@ async def get_owned_visible_run(
     session: AsyncSession,
     *,
     user: User,
-    run_id: int,
+    run_public_id: uuid.UUID,
 ) -> Run:
     run = await session.scalar(
         select(Run)
         .join(Conversation, Run.conversation_id == Conversation.id)
         .where(
-            Run.id == run_id,
+            Run.public_id == run_public_id,
             Conversation.user_id == user.id,
             Conversation.deleted_at.is_(None),
         )
@@ -58,13 +59,13 @@ async def cancel_owned_run(
     session: AsyncSession,
     *,
     user: User,
-    run_id: int,
+    run_public_id: uuid.UUID,
 ) -> CommandStatusResponse:
     run = await session.scalar(
         select(Run)
         .join(Conversation, Run.conversation_id == Conversation.id)
         .where(
-            Run.id == run_id,
+            Run.public_id == run_public_id,
             Conversation.user_id == user.id,
             Conversation.deleted_at.is_(None),
         )
@@ -133,10 +134,10 @@ async def list_owned_run_events_after(
     session: AsyncSession,
     *,
     user: User,
-    run_id: int,
+    run_public_id: uuid.UUID,
     after_seq: int,
 ) -> list[RunEventResponse]:
-    run = await get_owned_visible_run(session, user=user, run_id=run_id)
+    run = await get_owned_visible_run(session, user=user, run_public_id=run_public_id)
     return await list_run_events_after(session, run_id=run.id, after_seq=after_seq)
 
 
@@ -163,9 +164,9 @@ async def get_owned_run_state(
     session: AsyncSession,
     *,
     user: User,
-    run_id: int,
+    run_public_id: uuid.UUID,
 ) -> RunStateResponse:
-    run = await get_owned_visible_run(session, user=user, run_id=run_id)
+    run = await get_owned_visible_run(session, user=user, run_public_id=run_public_id)
     events = (
         await session.scalars(
             select(RunEvent).where(RunEvent.run_id == run.id).order_by(RunEvent.seq.asc())
@@ -194,7 +195,7 @@ async def get_owned_run_state(
             tool_state = _tool_state_from_event(event)
 
     return RunStateResponse(
-        run_id=run.id,
+        run_id=run.public_id,
         status=cast(RunStatus, run.status),
         latest_seq=latest_seq,
         draft_text="".join(draft_parts),

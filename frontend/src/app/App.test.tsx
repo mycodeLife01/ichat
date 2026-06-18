@@ -37,4 +37,27 @@ describe("App auth gate", () => {
     expect(await screen.findByRole("tab", { name: "登录" })).toBeInTheDocument();
     expect(tokenStore.read()).toBeNull();
   });
+
+  it("renders the public share page without authentication", async () => {
+    // No session in localStorage and no token-keyed selection. The /share/:token
+    // route must render the snapshot, never the auth screen.
+    const services = createFakeServices(
+      {},
+      {},
+      {},
+      {},
+      {
+        getPublic: async () => ({
+          title: "Shared chat",
+          messages: [{ role: "user", content: "shared question", sources: [] }],
+          created_at: "2026-05-24T10:05:00Z",
+        }),
+      },
+    );
+
+    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    expect(await screen.findByText("shared question")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "登录" })).toBeNull();
+  });
 });

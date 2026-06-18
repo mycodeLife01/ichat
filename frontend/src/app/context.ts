@@ -4,6 +4,7 @@ import type { LoginRequest, RegisterRequest } from "../api/auth";
 import type { CapabilitiesApi } from "../api/capabilities";
 import type { ConversationApi } from "../api/conversations";
 import type { RunApi } from "../api/runs";
+import type { ShareApi } from "../api/share";
 import type { AuthTokenResponse, CommandStatusResponse } from "../api/types";
 import type { AppAction, AppState } from "./store";
 
@@ -19,6 +20,7 @@ export type Services = {
   capabilitiesApi: CapabilitiesApi;
   conversationApi: ConversationApi;
   runApi: RunApi;
+  shareApi: ShareApi;
 };
 
 // Lets useRunStream (later step) register its abort, and lets logout / auth

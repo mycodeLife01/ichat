@@ -8,7 +8,7 @@ import { selectionStore } from "./selectionStore";
 // `start` is injected by AppShell (which owns the single useRunStream instance),
 // so this hook stays free of streaming wiring and is trivially testable with a spy.
 export function useSendMessage(
-  start: (runId: number, conversationId: number, afterSeq: number) => void,
+  start: (runId: string, conversationId: string, afterSeq: number) => void,
 ) {
   const { conversationIndex } = useAppState();
   const { dispatch, services } = useAppActions();

@@ -164,7 +164,7 @@ async def test_list_owned_run_events_after_filters_by_seq(
         events = await list_owned_run_events_after(
             session,
             user=user,
-            run_id=run.id,
+            run_public_id=run.public_id,
             after_seq=1,
         )
 
@@ -193,9 +193,9 @@ async def test_get_owned_run_state_builds_draft_from_text_delta_events(
         )
         await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
 
-        state = await get_owned_run_state(session, user=user, run_id=run.id)
+        state = await get_owned_run_state(session, user=user, run_public_id=run.public_id)
 
-    assert state.run_id == run.id
+    assert state.run_id == run.public_id
     assert state.status == "succeeded"
     assert state.latest_seq == 4
     assert state.draft_text == "Hello world"
@@ -227,7 +227,7 @@ async def test_cross_user_run_access_returns_not_found(
         _, _, run = await create_run(session, user=owner)
 
         with pytest.raises(AppError) as exc_info:
-            await get_owned_visible_run(session, user=other_user, run_id=run.id)
+            await get_owned_visible_run(session, user=other_user, run_public_id=run.public_id)
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Run not found"
@@ -243,7 +243,7 @@ async def test_deleted_conversation_run_access_returns_not_found(
         await session.flush()
 
         with pytest.raises(AppError) as exc_info:
-            await get_owned_run_state(session, user=user, run_id=run.id)
+            await get_owned_run_state(session, user=user, run_public_id=run.public_id)
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Run not found"
@@ -258,7 +258,7 @@ async def test_cancel_owned_queued_run_marks_cancelled_and_writes_terminal_event
         run.lease_owner = "stale-worker"
         run.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
         run_id = run.id
-        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        result = await cancel_owned_run(session, user=user, run_public_id=run.public_id)
         await session.commit()
 
     assert result.status == "ok"
@@ -292,7 +292,7 @@ async def test_cancel_owned_active_run_marks_cancelling_without_terminal_event(
         _, _, run = await create_run(session, user=user, status_value=active_status)
         run_id = run.id
         await append_run_event(session, run_id=run_id, event_type="run_started", payload={})
-        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        result = await cancel_owned_run(session, user=user, run_public_id=run.public_id)
         await session.commit()
 
     assert result.status == "ok"
@@ -330,7 +330,7 @@ async def test_cancel_owned_terminal_run_is_idempotent(
         _, _, run = await create_run(session, user=user, status_value=terminal_status)
         run_id = run.id
         await append_run_event(session, run_id=run_id, event_type=event_type, payload={})
-        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        result = await cancel_owned_run(session, user=user, run_public_id=run.public_id)
         await session.commit()
 
     assert result.status == "ok"
@@ -355,7 +355,7 @@ async def test_cancel_owned_cancelling_run_is_idempotent(
         user = await create_user(session, "alice")
         _, _, run = await create_run(session, user=user, status_value="cancelling")
         run_id = run.id
-        result = await cancel_owned_run(session, user=user, run_id=run_id)
+        result = await cancel_owned_run(session, user=user, run_public_id=run.public_id)
         await session.commit()
 
     assert result.status == "ok"
@@ -382,7 +382,7 @@ async def test_cancel_owned_run_cross_user_returns_not_found(
         _, _, run = await create_run(session, user=owner, status_value="streaming")
 
         with pytest.raises(AppError) as exc_info:
-            await cancel_owned_run(session, user=other_user, run_id=run.id)
+            await cancel_owned_run(session, user=other_user, run_public_id=run.public_id)
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Run not found"
@@ -406,7 +406,7 @@ async def test_get_owned_run_state_builds_draft_reasoning_from_reasoning_delta_e
         )
         await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
 
-        state = await get_owned_run_state(session, user=user, run_id=run.id)
+        state = await get_owned_run_state(session, user=user, run_public_id=run.public_id)
 
     assert state.draft_text == "answer"
     assert state.draft_reasoning == "think more"
@@ -422,7 +422,7 @@ async def test_cancel_owned_run_deleted_conversation_returns_not_found(
         await session.flush()
 
         with pytest.raises(AppError) as exc_info:
-            await cancel_owned_run(session, user=user, run_id=run.id)
+            await cancel_owned_run(session, user=user, run_public_id=run.public_id)
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Run not found"

@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Any, Literal
 
@@ -53,19 +54,19 @@ class MessageCreateRequest(RunOptionsRequest):
 
 
 class ConversationResponse(BaseModel):
-    id: int
+    id: uuid.UUID = Field(validation_alias="public_id")
     title: str | None
     activated_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class MessageResponse(BaseModel):
-    id: int
-    conversation_id: int
-    run_id: int | None
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    run_id: uuid.UUID | None
     role: Literal["user", "assistant"]
     content: str
     reasoning: str | None = None
@@ -77,9 +78,9 @@ class MessageResponse(BaseModel):
 
 
 class RunResponse(BaseModel):
-    id: int
-    conversation_id: int
-    user_message_id: int
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    user_message_id: uuid.UUID
     status: Literal[
         "queued",
         "started",

@@ -1,9 +1,11 @@
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 
 import type { ConversationApi } from "../api/conversations";
 import type { CapabilitiesApi } from "../api/capabilities";
 import type { RunApi } from "../api/runs";
+import type { ShareApi } from "../api/share";
 import type { RunEventResponse, RunStreamEvent } from "../api/types";
 import { AppProvider } from "../app/AppProvider";
 import type { AuthApi, Services } from "../app/context";
@@ -13,6 +15,7 @@ import {
   conversationResponse,
   runStateResponse,
   sendMessageResponse,
+  shareLinkResponse,
 } from "./apiFixtures";
 
 export function createFakeAuthApi(overrides: Partial<AuthApi> = {}): AuthApi {
@@ -67,23 +70,43 @@ export function createFakeRunApi(overrides: Partial<RunApi> = {}): RunApi {
   };
 }
 
+export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi {
+  return {
+    create: async () => shareLinkResponse,
+    list: async () => [shareLinkResponse],
+    revoke: async () => ({ status: "ok" }),
+    getPublic: async () => ({
+      title: conversationResponse.title,
+      messages: [],
+      created_at: conversationResponse.created_at,
+    }),
+    ...overrides,
+  };
+}
+
 export function createFakeServices(
   authApi: Partial<AuthApi> = {},
   conversationApi: Partial<ConversationApi> = {},
   runApi: Partial<RunApi> = {},
   capabilitiesApi: Partial<CapabilitiesApi> = {},
+  shareApi: Partial<ShareApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
     capabilitiesApi: createFakeCapabilitiesApi(capabilitiesApi),
     conversationApi: createFakeConversationApi(conversationApi),
     runApi: createFakeRunApi(runApi),
+    shareApi: createFakeShareApi(shareApi),
   };
 }
 
 export function makeWrapper(services: Services) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <AppProvider services={services}>{children}</AppProvider>;
+    return (
+      <MemoryRouter>
+        <AppProvider services={services}>{children}</AppProvider>
+      </MemoryRouter>
+    );
   };
 }
 
@@ -91,6 +114,12 @@ export function renderWithApp(
   ui: ReactElement,
   services: Services,
   options?: RenderOptions,
+  initialEntries: string[] = ["/"],
 ): RenderResult {
-  return render(<AppProvider services={services}>{ui}</AppProvider>, options);
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <AppProvider services={services}>{ui}</AppProvider>
+    </MemoryRouter>,
+    options,
+  );
 }

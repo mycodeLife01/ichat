@@ -11,16 +11,17 @@ export type SidebarUser = { email: string; name: string };
 
 type SidebarProps = {
   items: ConversationResponse[];
-  selectedId: number | null;
+  selectedId: string | null;
   user: SidebarUser | null;
   isMobile: boolean;
   collapsed: boolean;
   mobileOpen: boolean;
-  pendingTitleIds: number[];
-  onSelect: (id: number) => void;
+  pendingTitleIds: string[];
+  onSelect: (id: string) => void;
   onNew: () => void;
-  onRename: (id: number, title: string) => void;
-  onRequestDelete: (id: number) => void;
+  onRename: (id: string, title: string) => void;
+  onRequestShare: (id: string) => void;
+  onRequestDelete: (id: string) => void;
   onLogout: () => void;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
@@ -61,13 +62,14 @@ export function Sidebar({
   onSelect,
   onNew,
   onRename,
+  onRequestShare,
   onRequestDelete,
   onLogout,
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
-  const [renameId, setRenameId] = useState<number | null>(null);
-  const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = () => setMenuFor(null);
@@ -110,6 +112,17 @@ export function Sidebar({
         >
           <Icons.Pen size={13} />
           重命名
+        </button>
+        <button
+          className={`${sheetItem} text-fg`}
+          style={itemStyle}
+          onClick={() => {
+            onRequestShare(c.id);
+            setMenuFor(null);
+          }}
+        >
+          <Icons.Share size={13} />
+          分享
         </button>
         <button
           className={`${sheetItem} text-danger`}

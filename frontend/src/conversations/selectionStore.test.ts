@@ -11,19 +11,13 @@ describe("selectionStore", () => {
   });
 
   it("saves and reads an id", () => {
-    selectionStore.save(42);
-    expect(selectionStore.read()).toBe(42);
+    selectionStore.save("conv-42");
+    expect(selectionStore.read()).toBe("conv-42");
   });
 
   it("clears the id", () => {
-    selectionStore.save(42);
+    selectionStore.save("conv-42");
     selectionStore.clear();
     expect(selectionStore.read()).toBeNull();
-  });
-
-  it("drops a corrupt value", () => {
-    localStorage.setItem("ichat.selectedConversationId", "not-a-number");
-    expect(selectionStore.read()).toBeNull();
-    expect(localStorage.getItem("ichat.selectedConversationId")).toBeNull();
   });
 });

@@ -28,7 +28,7 @@ export function useConversationLoader() {
   }, [dispatch]);
 
   const selectConversation = useCallback(
-    async (id: number) => {
+    async (id: string) => {
       // Re-clicking the active conversation is a no-op: avoid a redundant refetch.
       // Users who want to reload the current conversation should refresh the page.
       if (id === conversationIndex.selectedId) {
@@ -57,7 +57,7 @@ export function useConversationLoader() {
   );
 
   const renameConversation = useCallback(
-    async (id: number, title: string) => {
+    async (id: string, title: string) => {
       const trimmed = title.trim();
       if (trimmed === "") return;
       // Unchanged after trimming (e.g. blur without editing) — skip the API call.
@@ -70,7 +70,7 @@ export function useConversationLoader() {
   );
 
   const deleteConversation = useCallback(
-    async (id: number) => {
+    async (id: string) => {
       await conversationApi.remove(id);
       const remaining = conversationIndex.items.filter((c) => c.id !== id);
       dispatch({ type: "conversations/removed", id });

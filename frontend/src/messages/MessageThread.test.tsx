@@ -6,11 +6,11 @@ import { MessageThread } from "./MessageThread";
 
 const messages: MessageResponse[] = [
   {
-    id: 1, conversation_id: 10, run_id: null, role: "user",
+    id: "1", conversation_id: "10", run_id: null, role: "user",
     content: "问题", reasoning: null, position: 1, created_at: "2026-06-08T10:00:00Z",
   },
   {
-    id: 2, conversation_id: 10, run_id: 100, role: "assistant",
+    id: "2", conversation_id: "10", run_id: "100", role: "assistant",
     content: "答案", reasoning: null, position: 2, created_at: "2026-06-08T10:00:01Z",
   },
 ];

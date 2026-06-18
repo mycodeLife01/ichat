@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -36,11 +37,11 @@ def _get_subscription_manager(request: Request) -> RunEventSubscriptionManager |
     response_model=SuccessResponse[RunStateResponse],
 )
 async def get_run_state_route(
-    run_id: int,
+    run_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[RunStateResponse]:
-    state = await get_owned_run_state(session, user=current_user, run_id=run_id)
+    state = await get_owned_run_state(session, user=current_user, run_public_id=run_id)
     return SuccessResponse(data=state)
 
 
@@ -50,18 +51,18 @@ async def get_run_state_route(
     response_model_exclude_none=True,
 )
 async def cancel_run_route(
-    run_id: int,
+    run_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[CommandStatusResponse]:
-    result = await cancel_owned_run(session, user=current_user, run_id=run_id)
+    result = await cancel_owned_run(session, user=current_user, run_public_id=run_id)
     await session.commit()
     return SuccessResponse(data=result)
 
 
 @router.get("/{run_id}/events")
 async def stream_run_events_route(
-    run_id: int,
+    run_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     manager: Annotated[
@@ -69,16 +70,19 @@ async def stream_run_events_route(
     ],
     after_seq: Annotated[int, Query(ge=0)] = 0,
 ) -> StreamingResponse:
-    await get_owned_visible_run(session, user=current_user, run_id=run_id)
+    run = await get_owned_visible_run(session, user=current_user, run_public_id=run_id)
+    # Internal id drives event replay and pg_notify wakeups; the public id is
+    # only the addressable handle on the URL.
+    internal_run_id = run.id
     fallback_interval = get_settings().sse_fallback_interval_seconds
 
     async def event_stream() -> AsyncIterator[str]:
         cursor = after_seq
-        wake = manager.subscribe(run_id) if manager is not None else None
+        wake = manager.subscribe(internal_run_id) if manager is not None else None
         try:
             while True:
                 events = await list_run_events_after(
-                    session, run_id=run_id, after_seq=cursor
+                    session, run_id=internal_run_id, after_seq=cursor
                 )
                 for event in events:
                     cursor = event.seq
@@ -86,7 +90,7 @@ async def stream_run_events_route(
                     if event.type in TERMINAL_EVENT_TYPES:
                         return
 
-                if await run_has_terminal_event(session, run_id=run_id):
+                if await run_has_terminal_event(session, run_id=internal_run_id):
                     return
 
                 await session.rollback()
@@ -99,7 +103,7 @@ async def stream_run_events_route(
                     await asyncio.sleep(fallback_interval)
         finally:
             if manager is not None and wake is not None:
-                manager.unsubscribe(run_id, wake)
+                manager.unsubscribe(internal_run_id, wake)
 
     return StreamingResponse(
         event_stream(),

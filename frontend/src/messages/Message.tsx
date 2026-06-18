@@ -17,8 +17,8 @@ type MessageProps = {
   isMobile?: boolean;
   // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: number, content: string) => void;
-  onRegenerate?: (messageId: number) => void;
+  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onRegenerate?: (messageId: string) => void;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };
@@ -313,7 +313,7 @@ export function Message({
 
 // ChatGPT-style trigger pill: stacked favicons of the first sources plus a
 // 「来源」 label; clicking opens the sources side panel.
-function SourcesTrigger({
+export function SourcesTrigger({
   sources,
   onClick,
 }: {

@@ -20,16 +20,16 @@ export function createRunApi(
   const resolveClient = () => client ?? getDefaultApiClient();
 
   return {
-    state(runId: number): Promise<RunStateResponse> {
+    state(runId: string): Promise<RunStateResponse> {
       return resolveClient().request<RunStateResponse>(`/runs/${runId}/state`);
     },
-    cancel(runId: number): Promise<CommandStatusResponse> {
+    cancel(runId: string): Promise<CommandStatusResponse> {
       return resolveClient().request<CommandStatusResponse>(`/runs/${runId}/cancel`, {
         method: "POST",
       });
     },
     async *streamEvents(
-      runId: number,
+      runId: string,
       afterSeq: number,
       options: Pick<ApiRequestOptions, "signal"> = {},
     ): AsyncGenerator<RunStreamEvent> {

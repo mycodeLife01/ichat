@@ -81,7 +81,11 @@ async def test_list_conversations_hides_drafts_and_returns_activated_only(
         draft = await create_conversation(session, user=user, title=None)
         activated = await create_conversation(session, user=user, title="Project chat")
         await create_conversation(session, user=other_user, title="Other chat")
-        await ensure_conversation_activated(session, conversation_id=activated.id)
+        activated_db = await session.scalar(
+            select(Conversation).where(Conversation.public_id == activated.id)
+        )
+        assert activated_db is not None
+        await ensure_conversation_activated(session, conversation_id=activated_db.id)
         await session.commit()
 
         conversations = await list_conversations(session, user=user)
@@ -100,7 +104,9 @@ async def test_get_conversation_detail_allows_owner_to_open_draft(
         draft = await create_conversation(session, user=user, title=None)
         await session.commit()
 
-        detail = await get_conversation_detail(session, user=user, conversation_id=draft.id)
+        detail = await get_conversation_detail(
+            session, user=user, conversation_public_id=draft.id
+        )
 
     assert detail.id == draft.id
     assert detail.activated_at is None
@@ -112,7 +118,9 @@ async def test_deleted_conversation_detail_returns_not_found(
 ) -> None:
     async with session_factory() as session:
         user = await create_user(session, "alice")
-        conversation = await create_conversation(session, user=user, title="Project chat")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
         visible = Message(
             conversation_id=conversation.id,
             role="user",
@@ -127,11 +135,15 @@ async def test_deleted_conversation_detail_returns_not_found(
         )
         session.add_all([visible, archived])
         await session.flush()
-        await delete_conversation(session, user=user, conversation_id=conversation.id)
+        await delete_conversation(
+            session, user=user, conversation_public_id=conversation.public_id
+        )
         await session.commit()
 
         with pytest.raises(AppError) as exc_info:
-            await get_conversation_detail(session, user=user, conversation_id=conversation.id)
+            await get_conversation_detail(
+                session, user=user, conversation_public_id=conversation.public_id
+            )
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Conversation not found"
@@ -142,7 +154,9 @@ async def test_get_conversation_detail_hides_archived_messages(
 ) -> None:
     async with session_factory() as session:
         user = await create_user(session, "alice")
-        conversation = await create_conversation(session, user=user, title="Project chat")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
         visible = Message(
             conversation_id=conversation.id,
             role="user",
@@ -158,11 +172,14 @@ async def test_get_conversation_detail_hides_archived_messages(
         session.add_all([visible, archived])
         await session.flush()
         archived.archived_at = datetime.now(UTC)
+        visible_public_id = visible.public_id
         await session.commit()
 
-        detail = await get_conversation_detail(session, user=user, conversation_id=conversation.id)
+        detail = await get_conversation_detail(
+            session, user=user, conversation_public_id=conversation.public_id
+        )
 
-    assert [message.id for message in detail.messages] == [visible.id]
+    assert [message.id for message in detail.messages] == [visible_public_id]
 
 
 async def test_rename_conversation_updates_title(
@@ -175,7 +192,7 @@ async def test_rename_conversation_updates_title(
         updated = await rename_conversation(
             session,
             user=user,
-            conversation_id=conversation.id,
+            conversation_public_id=conversation.id,
             title="  New title  ",
         )
         await session.commit()
@@ -194,7 +211,9 @@ async def test_cross_user_conversation_access_returns_not_found(
         await session.commit()
 
         with pytest.raises(AppError) as exc_info:
-            await get_conversation_detail(session, user=other_user, conversation_id=conversation.id)
+            await get_conversation_detail(
+                session, user=other_user, conversation_public_id=conversation.id
+            )
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert exc_info.value.detail == "Conversation not found"
@@ -210,15 +229,17 @@ async def test_submit_user_message_creates_message_and_queued_run(
         result = await submit_user_message(
             session,
             user=user,
-            conversation_id=conversation.id,
+            conversation_public_id=conversation.id,
             content="Hello",
             provider_name="deepseek",
             provider_model="deepseek-chat",
         )
         await session.commit()
 
-        stored_message = await session.get(Message, result.message.id)
-        stored_run = await session.get(Run, result.run.id)
+        stored_message = await session.scalar(
+            select(Message).where(Message.public_id == result.message.id)
+        )
+        stored_run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
 
     assert result.message.role == "user"
     assert result.message.content == "Hello"
@@ -229,9 +250,10 @@ async def test_submit_user_message_creates_message_and_queued_run(
     assert result.run.provider_model == "deepseek-chat"
     assert result.run.user_message_id == result.message.id
     assert stored_message is not None
-    assert stored_message.run_id == result.run.id
     assert stored_run is not None
-    assert stored_run.id == result.run.id
+    assert stored_message.run_id == stored_run.id
+    assert stored_run.public_id == result.run.id
+    assert stored_message.public_id == result.message.id
 
 
 async def test_submit_user_message_persists_provider_options_on_run(
@@ -244,7 +266,7 @@ async def test_submit_user_message_persists_provider_options_on_run(
         result = await submit_user_message(
             session,
             user=user,
-            conversation_id=conversation.id,
+            conversation_public_id=conversation.id,
             content="Hello",
             provider_name="deepseek",
             provider_model="deepseek-chat",
@@ -252,7 +274,7 @@ async def test_submit_user_message_persists_provider_options_on_run(
         )
         await session.commit()
 
-        stored_run = await session.get(Run, result.run.id)
+        stored_run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
 
     assert stored_run is not None
     assert stored_run.provider_options == {
@@ -266,7 +288,9 @@ async def test_submit_user_message_uses_next_visible_position_after_terminal_run
 ) -> None:
     async with session_factory() as session:
         user = await create_user(session, "alice")
-        conversation = await create_conversation(session, user=user, title="Project chat")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
         previous_message = Message(
             conversation_id=conversation.id,
             role="user",
@@ -289,7 +313,7 @@ async def test_submit_user_message_uses_next_visible_position_after_terminal_run
         result = await submit_user_message(
             session,
             user=user,
-            conversation_id=conversation.id,
+            conversation_public_id=conversation.public_id,
             content="Second",
             provider_name="deepseek",
             provider_model="deepseek-chat",
@@ -308,7 +332,7 @@ async def test_submit_user_message_rejects_active_run(
         first = await submit_user_message(
             session,
             user=user,
-            conversation_id=conversation.id,
+            conversation_public_id=conversation.id,
             content="Hello",
             provider_name="deepseek",
             provider_model="deepseek-chat",
@@ -318,7 +342,7 @@ async def test_submit_user_message_rejects_active_run(
             await submit_user_message(
                 session,
                 user=user,
-                conversation_id=conversation.id,
+                conversation_public_id=conversation.id,
                 content="Again",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",
@@ -335,13 +359,15 @@ async def test_submit_user_message_rejects_deleted_conversation(
     async with session_factory() as session:
         user = await create_user(session, "alice")
         conversation = await create_conversation(session, user=user, title="Project chat")
-        await delete_conversation(session, user=user, conversation_id=conversation.id)
+        await delete_conversation(
+            session, user=user, conversation_public_id=conversation.id
+        )
 
         with pytest.raises(AppError) as exc_info:
             await submit_user_message(
                 session,
                 user=user,
-                conversation_id=conversation.id,
+                conversation_public_id=conversation.id,
                 content="Hello",
                 provider_name="deepseek",
                 provider_model="deepseek-chat",

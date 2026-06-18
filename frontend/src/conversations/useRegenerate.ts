@@ -5,8 +5,8 @@ import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
 import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 
 type StartStream = (
-  runId: number,
-  conversationId: number,
+  runId: string,
+  conversationId: string,
   afterSeq: number,
 ) => Promise<void> | void;
 
@@ -21,8 +21,8 @@ export function useRegenerate(start: StartStream) {
 
   const run = useCallback(
     async (
-      call: () => Promise<{ run: { id: number } }>,
-      conversationId: number,
+      call: () => Promise<{ run: { id: string } }>,
+      conversationId: string,
     ): Promise<void> => {
       try {
         const { run: started } = await call();
@@ -42,7 +42,7 @@ export function useRegenerate(start: StartStream) {
   );
 
   const editAndRegenerate = useCallback(
-    async (messageId: number, content: string): Promise<void> => {
+    async (messageId: string, content: string): Promise<void> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       const trimmed = content.trim();
       if (conversationId == null || trimmed === "") return;
@@ -61,7 +61,7 @@ export function useRegenerate(start: StartStream) {
   );
 
   const regenerate = useCallback(
-    async (messageId: number): Promise<void> => {
+    async (messageId: string): Promise<void> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       if (conversationId == null) return;
       await run(

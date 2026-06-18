@@ -1,24 +1,20 @@
-const SELECTION_STORAGE_KEY = "ichat.selectedConversationId";
+// Bumped from the legacy numeric-id key so stale numeric selections (pre
+// public_id) are ignored rather than sent to the API as invalid UUIDs.
+const SELECTION_STORAGE_KEY = "ichat.selectedConversationPublicId";
 
 export type SelectionStore = {
-  read(): number | null;
-  save(id: number): void;
+  read(): string | null;
+  save(id: string): void;
   clear(): void;
 };
 
 export const selectionStore: SelectionStore = {
   read() {
     const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
-    if (!raw) return null;
-    const value = Number(raw);
-    if (!Number.isInteger(value)) {
-      localStorage.removeItem(SELECTION_STORAGE_KEY);
-      return null;
-    }
-    return value;
+    return raw && raw.length > 0 ? raw : null;
   },
   save(id) {
-    localStorage.setItem(SELECTION_STORAGE_KEY, String(id));
+    localStorage.setItem(SELECTION_STORAGE_KEY, id);
   },
   clear() {
     localStorage.removeItem(SELECTION_STORAGE_KEY);

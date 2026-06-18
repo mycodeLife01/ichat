@@ -181,7 +181,7 @@ export function Composer({
               </button>
             ) : (
               <button
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] border border-border-strong bg-bg-raised p-0 text-[13px] font-medium text-fg transition-[opacity_120ms,transform_60ms,background_120ms] hover:bg-bg-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-[13px] font-medium text-accent-fg transition-[opacity_120ms,transform_60ms,background_120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
                 aria-label={state === "stopping" ? "停止中" : "停止生成"}
                 disabled={state === "stopping"}

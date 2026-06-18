@@ -20,25 +20,25 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         body: { title: title ?? null },
       });
     },
-    detail(conversationId: number): Promise<ConversationDetailResponse> {
+    detail(conversationId: string): Promise<ConversationDetailResponse> {
       return resolveClient().request<ConversationDetailResponse>(
         `/conversations/${conversationId}`,
       );
     },
-    rename(conversationId: number, title: string): Promise<ConversationResponse> {
+    rename(conversationId: string, title: string): Promise<ConversationResponse> {
       return resolveClient().request<ConversationResponse>(`/conversations/${conversationId}`, {
         method: "PATCH",
         body: { title },
       });
     },
-    remove(conversationId: number): Promise<CommandStatusResponse> {
+    remove(conversationId: string): Promise<CommandStatusResponse> {
       return resolveClient().request<CommandStatusResponse>(
         `/conversations/${conversationId}`,
         { method: "DELETE" },
       );
     },
     sendMessage(
-      conversationId: number,
+      conversationId: string,
       content: string,
       options?: RunOptionsRequest,
     ): Promise<SendMessageResponse> {
@@ -48,8 +48,8 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       );
     },
     editAndRegenerate(
-      conversationId: number,
-      messageId: number,
+      conversationId: string,
+      messageId: string,
       content: string,
       options?: RunOptionsRequest,
     ): Promise<SendMessageResponse> {
@@ -59,8 +59,8 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       );
     },
     regenerate(
-      conversationId: number,
-      messageId: number,
+      conversationId: string,
+      messageId: string,
       options?: RunOptionsRequest,
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(

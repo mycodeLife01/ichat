@@ -23,7 +23,7 @@ export type CommandStatusResponse = {
 };
 
 export type ConversationResponse = {
-  id: number;
+  id: string;
   title: string | null;
   activated_at: string | null;
   created_at: string;
@@ -46,9 +46,9 @@ export type MessageMetadata = {
 };
 
 export type MessageResponse = {
-  id: number;
-  conversation_id: number;
-  run_id: number | null;
+  id: string;
+  conversation_id: string;
+  run_id: string | null;
   role: MessageRole;
   content: string;
   reasoning: string | null;
@@ -67,9 +67,9 @@ export type RunStatus =
   | "cancelled";
 
 export type RunResponse = {
-  id: number;
-  conversation_id: number;
-  user_message_id: number;
+  id: string;
+  conversation_id: string;
+  user_message_id: string;
   status: RunStatus;
   provider_name: string;
   provider_model: string;
@@ -104,7 +104,7 @@ export type RunEventResponse = {
 };
 
 export type RunStateResponse = {
-  run_id: number;
+  run_id: string;
   status: RunStatus;
   latest_seq: number;
   draft_text: string;
@@ -138,4 +138,39 @@ export type CapabilitiesResponse = {
   web_search: {
     enabled: boolean;
   };
+};
+
+// --- Conversation sharing (read-only snapshots) ---
+
+// Owner-only management view of a share link. Carries the full token so the UI
+// can re-copy an existing link; the share URL is built client-side.
+export type ShareLinkResponse = {
+  token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+// A source kept in a snapshot. Mirrors MessageSource.
+export type SharedSource = {
+  id: number;
+  title: string;
+  url: string;
+  snippet?: string | null;
+  published_at?: string | null;
+  provider?: string | null;
+};
+
+export type SharedMessage = {
+  role: MessageRole;
+  content: string;
+  reasoning?: string | null;
+  sources: SharedSource[];
+};
+
+// Anonymous read payload — the frozen snapshot, no internal ids or user.
+export type PublicShareResponse = {
+  title: string | null;
+  messages: SharedMessage[];
+  created_at: string;
 };
