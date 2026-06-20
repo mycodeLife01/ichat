@@ -16,6 +16,15 @@ function renderDialog(shareOverrides: Parameters<typeof createFakeServices>[4]) 
 }
 
 describe("ShareDialog", () => {
+  it("uses an animated loading icon while the share link request is pending", () => {
+    renderDialog({ list: () => new Promise(() => {}) });
+
+    const loading = screen.getByRole("status", { name: "加载中" });
+    expect(loading).toBeInTheDocument();
+    expect(loading.querySelector("svg")).toHaveClass("animate-spin");
+    expect(screen.queryByText("加载中…")).toBeNull();
+  });
+
   it("creates a link when none is active yet", async () => {
     const user = userEvent.setup();
     const created: ShareLinkResponse = {
