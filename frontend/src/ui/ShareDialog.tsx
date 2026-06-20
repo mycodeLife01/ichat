@@ -106,7 +106,13 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
             centered within the reserved height. */}
         <div className="flex min-h-[60px] flex-col justify-center">
           {loading ? (
-            <div className="text-center text-[13px] text-fg-subtle">加载中…</div>
+            <div
+              className="flex justify-center text-fg-subtle"
+              role="status"
+              aria-label="加载中"
+            >
+              <Icons.Loading className="animate-spin" size={18} />
+            </div>
           ) : activeLink ? (
             // One active link per conversation: show it with copy + revoke. To
             // issue a different one, revoke this first.
