@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Icons } from "../ui/icons";
 
@@ -11,13 +11,7 @@ type ThinkingBlockProps = {
 };
 
 export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps) {
-  const [open, setOpen] = useState(streaming);
-
-  // Expand while reasoning streams; auto-collapse once body text arrives
-  // (caller flips `streaming` to false). Manual toggling within a phase persists.
-  useEffect(() => {
-    setOpen(streaming);
-  }, [streaming]);
+  const [open, setOpen] = useState(true);
 
   return (
     <div
@@ -51,7 +45,7 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
       </div>
       {content && (
         <div
-          className={`mt-1.5 max-h-[360px] overflow-y-auto text-[14px] whitespace-pre-wrap text-fg-muted [scrollbar-gutter:stable] max-[760px]:text-[15px]${open ? "" : " hidden"}`}
+          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-fg-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
         >
           {content}
         </div>
