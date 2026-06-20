@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 
 import { useAppActions } from "../app/context";
+import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "./pagination";
 
 type PollOptions = {
   attempts?: number;
@@ -47,8 +48,15 @@ export function useTitlePolling() {
           }
 
           if (detail.title?.trim()) {
-            const list = await conversationApi.list();
-            dispatch({ type: "conversations/listLoaded", items: list });
+            const list = await conversationApi.list({
+              limit: CONVERSATION_PAGE_SIZE,
+              skip: 0,
+            });
+            dispatch({
+              type: "conversations/listLoaded",
+              items: list,
+              hasMore: hasMoreConversationPages(list.length),
+            });
             // The topbar reads conversationDetail (not the sidebar list) — sync
             // its title too; the renamed action updates detail when ids match.
             const updated = list.find((c) => c.id === conversationId);
@@ -68,4 +76,3 @@ export function useTitlePolling() {
     [dispatch, conversationApi, stateRef],
   );
 }
-

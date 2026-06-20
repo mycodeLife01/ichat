@@ -38,13 +38,15 @@ describe("AppShell", () => {
   afterEach(() => localStorage.clear());
 
   it("loads and lists conversations on mount", async () => {
+    const list = vi.fn(async () => [conversationResponse]);
     const services = createFakeServices(
       {},
-      { list: async () => [conversationResponse] },
+      { list },
     );
     renderWithApp(<AppShell />, services);
 
     expect(await screen.findByText(conversationResponse.title as string)).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
   });
 
   it("loads detail when a conversation is selected", async () => {

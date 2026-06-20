@@ -21,8 +21,12 @@ describe("conversationApi", () => {
     const api = createConversationApi(client);
 
     await api.list();
+    await api.list({ limit: 30, skip: 60 });
 
-    expect(client.request).toHaveBeenCalledWith("/conversations");
+    expect(client.request).toHaveBeenNthCalledWith(1, "/conversations");
+    expect(client.request).toHaveBeenNthCalledWith(2, "/conversations", {
+      query: { limit: 30, skip: 60 },
+    });
   });
 
   it("creates a conversation with optional title", async () => {

@@ -143,7 +143,7 @@ describe("useRunRecovery", () => {
     });
 
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);
-    expect(list).toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
     expect(result.current.conversationDetail.messages).toEqual(materializedDetail.messages);
     expect(result.current.activeRun).toBeNull();
     expect(start).not.toHaveBeenCalled();

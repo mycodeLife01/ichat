@@ -2,18 +2,29 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/errors";
+import type { ConversationResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import { conversationDetailResponse, conversationResponse } from "../test/apiFixtures";
 import { createFakeServices, makeWrapper } from "../test/appHarness";
+import { CONVERSATION_PAGE_SIZE } from "./pagination";
 import { selectionStore } from "./selectionStore";
 import { useConversationLoader } from "./useConversationLoader";
+
+function makeConversation(index: number): ConversationResponse {
+  return {
+    ...conversationResponse,
+    id: String(index),
+    title: `Conversation ${index}`,
+  };
+}
 
 describe("useConversationLoader", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
-  it("loads the list", async () => {
-    const services = createFakeServices({}, { list: async () => [conversationResponse] });
+  it("loads the first page of the list", async () => {
+    const list = vi.fn(async () => [conversationResponse]);
+    const services = createFakeServices({}, { list });
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),
     });
@@ -23,6 +34,39 @@ describe("useConversationLoader", () => {
     });
 
     expect(result.current.items).toEqual([conversationResponse]);
+    expect(result.current.hasMore).toBe(false);
+    expect(list).toHaveBeenCalledWith({ limit: CONVERSATION_PAGE_SIZE, skip: 0 });
+  });
+
+  it("loads the next page when more conversations are available", async () => {
+    const firstPage = Array.from({ length: CONVERSATION_PAGE_SIZE }, (_, index) =>
+      makeConversation(index + 1),
+    );
+    const secondPage = [makeConversation(CONVERSATION_PAGE_SIZE + 1)];
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+    const services = createFakeServices({}, { list });
+    const { result } = renderHook(() => useConversationLoader(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      await result.current.loadList();
+    });
+    expect(result.current.hasMore).toBe(true);
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    expect(list).toHaveBeenNthCalledWith(2, {
+      limit: CONVERSATION_PAGE_SIZE,
+      skip: CONVERSATION_PAGE_SIZE,
+    });
+    expect(result.current.items).toHaveLength(CONVERSATION_PAGE_SIZE + 1);
+    expect(result.current.hasMore).toBe(false);
   });
 
   it("selects a conversation and persists the id", async () => {

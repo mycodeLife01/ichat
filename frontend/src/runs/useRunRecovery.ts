@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import { useAppActions } from "../app/context";
+import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "../conversations/pagination";
 import { findPendingRunId } from "./pendingRun";
 
 type StartStream = (
@@ -43,9 +44,13 @@ export function useRunRecovery(start: StartStream) {
         try {
           const [detail, list] = await Promise.all([
             conversationApi.detail(conversationId),
-            conversationApi.list(),
+            conversationApi.list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 }),
           ]);
-          dispatch({ type: "conversations/listLoaded", items: list });
+          dispatch({
+            type: "conversations/listLoaded",
+            items: list,
+            hasMore: hasMoreConversationPages(list.length),
+          });
           dispatch({ type: "conversations/draftActivated" });
           if (stateRef.current.conversationIndex.selectedId === conversationId) {
             const { messages, ...conversation } = detail;

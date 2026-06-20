@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type UIEvent } from "react";
 
 import type { ConversationResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
@@ -17,8 +17,11 @@ type SidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
   pendingTitleIds: string[];
+  hasMore: boolean;
+  isLoadingMore: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onLoadMore: () => void;
   onRename: (id: string, title: string) => void;
   onRequestShare: (id: string) => void;
   onRequestDelete: (id: string) => void;
@@ -59,8 +62,11 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   pendingTitleIds,
+  hasMore,
+  isLoadingMore,
   onSelect,
   onNew,
+  onLoadMore,
   onRename,
   onRequestShare,
   onRequestDelete,
@@ -78,6 +84,16 @@ export function Sidebar({
   }, []);
 
   const groups = useMemo(() => groupByDate(items), [items]);
+
+  const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (!hasMore || isLoadingMore) return;
+    const element = event.currentTarget;
+    const distanceToBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (distanceToBottom <= 48) {
+      onLoadMore();
+    }
+  };
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
@@ -245,7 +261,11 @@ export function Sidebar({
 
           {/* -mr-3/pr-3 cancel the parent's px-3 so the scrollbar sits flush
               against the sidebar's right border; rows keep their position. */}
-          <div className="mt-[18px] -mr-3 flex flex-1 flex-col gap-px overflow-y-auto pr-3">
+          <div
+            className="mt-[18px] -mr-3 flex flex-1 flex-col gap-px overflow-y-auto pr-3"
+            data-testid="conversation-history"
+            onScroll={handleHistoryScroll}
+          >
             {groups.today.length > 0 && (
               <>
                 <div className={sectionLabel}>今天</div>
@@ -267,6 +287,11 @@ export function Sidebar({
             {items.length === 0 && (
               <div className="px-2.5 py-4 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
                 还没有已保存的对话。开始一次对话后会自动出现在这里。
+              </div>
+            )}
+            {isLoadingMore && (
+              <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+                正在加载...
               </div>
             )}
           </div>

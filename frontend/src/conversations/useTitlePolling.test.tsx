@@ -63,7 +63,7 @@ describe("useTitlePolling", () => {
     });
 
     expect(detail).toHaveBeenCalledTimes(2); // polled until the title showed up
-    expect(list).toHaveBeenCalled(); // sidebar refreshed with the real title
+    expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 }); // sidebar refreshed
     expect(result.current.pendingTitleIds).not.toContain(cid);
   });
 
