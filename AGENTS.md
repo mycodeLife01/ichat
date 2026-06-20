@@ -27,6 +27,12 @@ When entering the implementation phase, develop directly on the current branch b
 
 Use a worktree only when the user explicitly asks for one. If a generic workflow or external skill recommends using a worktree, this project rule takes precedence.
 
+## Git
+
+Branch names must start with a change type/scope segment such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`. Prefer this project style over author or agent prefixes such as `codex/`. Examples: `fix/share-toast-loading-icon`, `feat/conversation-sharing`, `docs/git-workflow-rules`.
+
+Commit messages must follow the Conventional Commits specification, for example `fix(frontend): replace share loading text with icon` or `docs: add git workflow constraints`.
+
 ## Subagent Model Policy
 
 When the user explicitly authorizes subagent use, choose models by task role:
