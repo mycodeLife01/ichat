@@ -3,6 +3,7 @@ import { useCallback, useRef } from "react";
 import { isAbortError } from "../api/errors";
 import type { RunEventResponse, RunToolState } from "../api/types";
 import { useAppActions } from "../app/context";
+import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "../conversations/pagination";
 
 export function useRunStream() {
   const { dispatch, services, streamAbort, stateRef } = useAppActions();
@@ -74,9 +75,13 @@ export function useRunStream() {
               // moved on. Only the view-bound dispatches below are gated.
               const [detail, list] = await Promise.all([
                 conversationApi.detail(conversationId),
-                conversationApi.list(),
+                conversationApi.list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 }),
               ]);
-              dispatch({ type: "conversations/listLoaded", items: list });
+              dispatch({
+                type: "conversations/listLoaded",
+                items: list,
+                hasMore: hasMoreConversationPages(list.length),
+              });
               dispatch({ type: "conversations/draftActivated" });
               if (stateRef.current.conversationIndex.selectedId === conversationId) {
                 const { messages, ...conversation } = detail;

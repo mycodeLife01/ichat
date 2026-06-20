@@ -22,9 +22,31 @@ describe("conversationIndexReducer", () => {
     const loaded = conversationIndexReducer(loading, {
       type: "conversations/listLoaded",
       items: [conversationResponse],
+      hasMore: true,
     });
     expect(loaded.status).toBe("idle");
     expect(loaded.items).toEqual([conversationResponse]);
+    expect(loaded.hasMore).toBe(true);
+  });
+
+  it("appends a page and deduplicates conversations", () => {
+    const base = conversationIndexReducer(initialConversationIndexState, {
+      type: "conversations/listLoaded",
+      items: [conversationResponse],
+      hasMore: true,
+    });
+    const next = conversationIndexReducer(base, {
+      type: "conversations/listPageLoaded",
+      items: [
+        conversationResponse,
+        { ...conversationResponse, id: "11", title: "Second chat" },
+      ],
+      hasMore: false,
+    });
+
+    expect(next.status).toBe("idle");
+    expect(next.items.map((item) => item.id)).toEqual(["10", "11"]);
+    expect(next.hasMore).toBe(false);
   });
 
   it("sets error status", () => {

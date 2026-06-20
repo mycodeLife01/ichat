@@ -85,17 +85,24 @@ async def list_conversations(
     session: AsyncSession,
     *,
     user: User,
+    limit: int | None = None,
+    skip: int = 0,
 ) -> list[ConversationResponse]:
-    conversations = (
-        await session.scalars(
-            select(Conversation)
-            .where(
-                Conversation.user_id == user.id,
-                Conversation.deleted_at.is_(None),
-                Conversation.activated_at.is_not(None),
-            )
-            .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+    statement = (
+        select(Conversation)
+        .where(
+            Conversation.user_id == user.id,
+            Conversation.deleted_at.is_(None),
+            Conversation.activated_at.is_not(None),
         )
+        .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        .offset(skip)
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
+
+    conversations = (
+        await session.scalars(statement)
     ).all()
     return [conversation_response(conversation) for conversation in conversations]
 

@@ -6,7 +6,8 @@ export type ConversationIndexState = {
   selectedId: string | null;
   draftId: string | null;
   pendingTitleIds: string[];
-  status: "idle" | "loading" | "error";
+  status: "idle" | "loading" | "loadingMore" | "error";
+  hasMore: boolean;
 };
 
 export const initialConversationIndexState: ConversationIndexState = {
@@ -15,6 +16,7 @@ export const initialConversationIndexState: ConversationIndexState = {
   draftId: null,
   pendingTitleIds: [],
   status: "idle",
+  hasMore: true,
 };
 
 export type ConversationDetailState = {
@@ -31,7 +33,17 @@ export const initialConversationDetailState: ConversationDetailState = {
 
 export type ConversationIndexAction =
   | { type: "conversations/listLoading" }
-  | { type: "conversations/listLoaded"; items: ConversationResponse[] }
+  | {
+      type: "conversations/listLoaded";
+      items: ConversationResponse[];
+      hasMore?: boolean;
+    }
+  | { type: "conversations/listLoadingMore" }
+  | {
+      type: "conversations/listPageLoaded";
+      items: ConversationResponse[];
+      hasMore: boolean;
+    }
   | { type: "conversations/listError" }
   | { type: "conversations/selected"; id: string | null }
   | { type: "conversations/renamed"; conversation: ConversationResponse }
@@ -49,7 +61,26 @@ export function conversationIndexReducer(
     case "conversations/listLoading":
       return { ...state, status: "loading" };
     case "conversations/listLoaded":
-      return { ...state, items: action.items, status: "idle" };
+      return {
+        ...state,
+        items: action.items,
+        hasMore: action.hasMore ?? false,
+        status: "idle",
+      };
+    case "conversations/listLoadingMore":
+      return { ...state, status: "loadingMore" };
+    case "conversations/listPageLoaded": {
+      const existingIds = new Set(state.items.map((conversation) => conversation.id));
+      const appended = action.items.filter(
+        (conversation) => !existingIds.has(conversation.id),
+      );
+      return {
+        ...state,
+        items: [...state.items, ...appended],
+        hasMore: action.hasMore,
+        status: "idle",
+      };
+    }
     case "conversations/listError":
       return { ...state, status: "error" };
     case "conversations/selected":

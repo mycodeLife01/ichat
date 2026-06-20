@@ -1,6 +1,6 @@
 import os
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -94,6 +94,34 @@ async def test_list_conversations_hides_drafts_and_returns_activated_only(
     assert conversations[0].title == "Project chat"
     assert conversations[0].activated_at is not None
     assert draft.activated_at is None
+
+
+async def test_list_conversations_applies_limit_and_skip(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        base_time = datetime(2026, 5, 17, 12, 0, tzinfo=UTC)
+        for index, title in enumerate(["old", "middle", "new"]):
+            conversation_time = base_time + timedelta(minutes=index)
+            session.add(
+                Conversation(
+                    user_id=user.id,
+                    title=title,
+                    activated_at=conversation_time,
+                    updated_at=conversation_time,
+                )
+            )
+        await session.commit()
+
+        conversations = await list_conversations(
+            session,
+            user=user,
+            limit=2,
+            skip=1,
+        )
+
+    assert [conversation.title for conversation in conversations] == ["middle", "old"]
 
 
 async def test_get_conversation_detail_allows_owner_to_open_draft(

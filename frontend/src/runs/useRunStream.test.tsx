@@ -48,7 +48,7 @@ describe("useRunStream", () => {
     });
 
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);
-    expect(list).toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
     expect(result.current.activeRun).toBeNull();
     expect(result.current.conversationDetail.messages).toEqual(
       conversationDetailResponse.messages,
@@ -73,7 +73,7 @@ describe("useRunStream", () => {
     });
 
     expect(detail).toHaveBeenCalled();
-    expect(list).toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
     // detailLoaded skipped: detail not applied to the (different) current view.
     expect(result.current.conversationDetail.messages).toEqual([]);
   });

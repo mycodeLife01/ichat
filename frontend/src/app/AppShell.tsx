@@ -46,6 +46,9 @@ export function AppShell() {
     selectedId,
     detail,
     loadList,
+    loadMore,
+    hasMore,
+    isLoadingMore,
     selectConversation,
     newConversation,
     renameConversation,
@@ -270,8 +273,11 @@ export function AppShell() {
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
         onNew={onNewConversation}
+        onLoadMore={() => void loadMore()}
         onRename={(id, title) => void renameConversation(id, title)}
         onRequestShare={(id) =>
           dispatch({ type: "ui/openShare", dialog: { conversationId: id } })

@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import { ApiError } from "../api/errors";
 import { useAppActions, useAppState } from "../app/context";
+import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "./pagination";
 import { selectionStore } from "./selectionStore";
 
 const INVALID_SELECTION_STATUSES = new Set([403, 404, 422]);
@@ -10,16 +11,59 @@ export function useConversationLoader() {
   const { conversationIndex, conversationDetail } = useAppState();
   const { dispatch, services } = useAppActions();
   const { conversationApi } = services;
+  const loadingMoreRef = useRef(false);
 
   const loadList = useCallback(async () => {
     dispatch({ type: "conversations/listLoading" });
     try {
-      const items = await conversationApi.list();
-      dispatch({ type: "conversations/listLoaded", items });
+      const items = await conversationApi.list({
+        limit: CONVERSATION_PAGE_SIZE,
+        skip: 0,
+      });
+      dispatch({
+        type: "conversations/listLoaded",
+        items,
+        hasMore: hasMoreConversationPages(items.length),
+      });
     } catch {
       dispatch({ type: "conversations/listError" });
     }
   }, [dispatch, conversationApi]);
+
+  const loadMore = useCallback(async () => {
+    if (
+      loadingMoreRef.current ||
+      !conversationIndex.hasMore ||
+      conversationIndex.status === "loading" ||
+      conversationIndex.status === "loadingMore"
+    ) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+    dispatch({ type: "conversations/listLoadingMore" });
+    try {
+      const items = await conversationApi.list({
+        limit: CONVERSATION_PAGE_SIZE,
+        skip: conversationIndex.items.length,
+      });
+      dispatch({
+        type: "conversations/listPageLoaded",
+        items,
+        hasMore: hasMoreConversationPages(items.length),
+      });
+    } catch {
+      dispatch({ type: "conversations/listError" });
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [
+    dispatch,
+    conversationApi,
+    conversationIndex.hasMore,
+    conversationIndex.items.length,
+    conversationIndex.status,
+  ]);
 
   const newConversation = useCallback(() => {
     dispatch({ type: "run/cleared" });
@@ -97,9 +141,12 @@ export function useConversationLoader() {
     items: conversationIndex.items,
     selectedId: conversationIndex.selectedId,
     listStatus: conversationIndex.status,
+    hasMore: conversationIndex.hasMore,
+    isLoadingMore: conversationIndex.status === "loadingMore",
     detail: conversationDetail,
     detailStatus: conversationDetail.status,
     loadList,
+    loadMore,
     selectConversation,
     newConversation,
     renameConversation,

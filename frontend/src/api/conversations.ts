@@ -7,12 +7,22 @@ import type {
   SendMessageResponse,
 } from "./types";
 
+export type ConversationListParams = {
+  limit?: number;
+  skip?: number;
+};
+
 export function createConversationApi(client?: Pick<ApiClient, "request">) {
   const resolveClient = () => client ?? getDefaultApiClient();
 
   return {
-    list(): Promise<ConversationResponse[]> {
-      return resolveClient().request<ConversationResponse[]>("/conversations");
+    list(params?: ConversationListParams): Promise<ConversationResponse[]> {
+      if (params === undefined) {
+        return resolveClient().request<ConversationResponse[]>("/conversations");
+      }
+      return resolveClient().request<ConversationResponse[]>("/conversations", {
+        query: params,
+      });
     },
     create(title?: string): Promise<ConversationResponse> {
       return resolveClient().request<ConversationResponse>("/conversations", {

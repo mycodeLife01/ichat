@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -124,8 +124,15 @@ async def create_conversation_route(
 async def list_conversations_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+    skip: Annotated[int, Query(ge=0)] = 0,
 ) -> SuccessResponse[list[ConversationResponse]]:
-    conversations = await list_conversations(session, user=current_user)
+    conversations = await list_conversations(
+        session,
+        user=current_user,
+        limit=limit,
+        skip=skip,
+    )
     return SuccessResponse(data=conversations)
 
 

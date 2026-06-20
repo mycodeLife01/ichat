@@ -1,7 +1,7 @@
 import os
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
@@ -172,6 +172,45 @@ async def test_rename_draft_does_not_make_it_visible(client: AsyncClient) -> Non
     assert detail_response.status_code == status.HTTP_200_OK
     assert detail_response.json()["data"]["title"] == "Draft title"
     assert detail_response.json()["data"]["activated_at"] is None
+
+
+async def test_list_conversations_accepts_limit_and_skip(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-list-pagination-api",
+        email=f"alice-list-pagination@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        user = await session.scalar(
+            select(User).where(User.email == f"alice-list-pagination@{TEST_EMAIL_DOMAIN}")
+        )
+        assert user is not None
+        base_time = datetime(2026, 5, 17, 12, 0, tzinfo=UTC)
+        for index, title in enumerate(["old", "middle", "new"]):
+            conversation_time = base_time + timedelta(minutes=index)
+            session.add(
+                Conversation(
+                    user_id=user.id,
+                    title=title,
+                    activated_at=conversation_time,
+                    updated_at=conversation_time,
+                )
+            )
+        await session.commit()
+
+    response = await client.get(
+        "/api/v1/conversations?limit=1&skip=1",
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()["data"]
+    assert [conversation["title"] for conversation in data] == ["middle"]
 
 
 async def test_send_message_creates_user_message_and_queued_run(

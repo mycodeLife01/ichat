@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,8 +30,11 @@ function baseProps() {
     collapsed: false,
     mobileOpen: false,
     pendingTitleIds: [] as string[],
+    hasMore: false,
+    isLoadingMore: false,
     onSelect: vi.fn(),
     onNew: vi.fn(),
+    onLoadMore: vi.fn(),
     onRename: vi.fn(),
     onRequestShare: vi.fn(),
     onRequestDelete: vi.fn(),
@@ -122,6 +125,19 @@ describe("Sidebar", () => {
     await user.type(input, "改名{Enter}");
 
     expect(props.onRename).toHaveBeenCalledWith("1", "改名");
+  });
+
+  it("requests another page when scrolled near the bottom", () => {
+    const props = { ...baseProps(), hasMore: true };
+    render(<Sidebar {...props} />);
+    const history = screen.getByTestId("conversation-history");
+    Object.defineProperty(history, "scrollHeight", { value: 1000, configurable: true });
+    Object.defineProperty(history, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(history, "scrollTop", { value: 560, configurable: true });
+
+    fireEvent.scroll(history);
+
+    expect(props.onLoadMore).toHaveBeenCalled();
   });
 
   it("logs out", async () => {
