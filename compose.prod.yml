@@ -12,6 +12,10 @@ services:
       - "postgres"
       - "-c"
       - "max_connections=300"
+    # Bind to loopback only: reachable from the host (and via SSH tunnel), never
+    # exposed to the public internet. Use Navicat's built-in SSH tunnel to connect.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
