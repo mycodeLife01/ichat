@@ -206,67 +206,59 @@ async def test_expired_token_does_not_reset_verified_user(session: AsyncSession)
 # --- guards ---
 
 
-async def test_register_guard_cooldown_blocks_repeat(
+async def test_register_email_cooldown_blocks_repeat(
     session: AsyncSession, redis: aioredis.FakeRedis
 ) -> None:
     email = f"guard-{uuid4().hex}@{TEST_DOMAIN}"
-    key = await verification.register_email_guard(
-        session, redis, email=email, client_ip="1.2.3.4", settings=get_settings()
+    key = await verification.acquire_register_email_cooldown(
+        session, redis, email=email, settings=get_settings()
     )
     assert key is not None
     with pytest.raises(AppError) as exc:
-        await verification.register_email_guard(
-            session, redis, email=email, client_ip="1.2.3.4", settings=get_settings()
+        await verification.acquire_register_email_cooldown(
+            session, redis, email=email, settings=get_settings()
         )
     assert exc.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert "Retry-After" in (exc.value.headers or {})
 
 
-async def test_register_guard_ip_limit(
-    session: AsyncSession, redis: aioredis.FakeRedis
-) -> None:
+async def test_register_ip_guard_limit(redis: aioredis.FakeRedis) -> None:
     settings = _settings(auth_rate_register_ip_limit=1)
-    await verification.register_email_guard(
-        session,
-        redis,
-        email=f"a-{uuid4().hex}@{TEST_DOMAIN}",
-        client_ip="9.9.9.9",
-        settings=settings,
-    )
+    await verification.register_ip_guard(redis, client_ip="9.9.9.9", settings=settings)
     with pytest.raises(AppError) as exc:
-        await verification.register_email_guard(
-            session,
-            redis,
-            email=f"b-{uuid4().hex}@{TEST_DOMAIN}",
-            client_ip="9.9.9.9",
-            settings=settings,
-        )
+        await verification.register_ip_guard(redis, client_ip="9.9.9.9", settings=settings)
     assert exc.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-async def test_register_guard_degrades_when_redis_down(session: AsyncSession) -> None:
+async def test_register_cooldown_degrades_when_redis_down(session: AsyncSession) -> None:
     user = await make_user(session)
     # A recent token exists for this email -> DB cooldown should block.
     await issue_email_verification_token(session, user=user, ttl_seconds=86400)
 
     with pytest.raises(AppError) as exc:
-        await verification.register_email_guard(
-            session, _BrokenRedis(), email=user.email, client_ip="1.2.3.4", settings=get_settings()
+        await verification.acquire_register_email_cooldown(
+            session, _BrokenRedis(), email=user.email, settings=get_settings()
         )
     assert exc.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-async def test_register_guard_degrades_open_without_recent_token(
+async def test_register_cooldown_degrades_open_without_recent_token(
     session: AsyncSession,
 ) -> None:
-    key = await verification.register_email_guard(
+    key = await verification.acquire_register_email_cooldown(
         session,
         _BrokenRedis(),
         email=f"fresh-{uuid4().hex}@{TEST_DOMAIN}",
-        client_ip="1.2.3.4",
         settings=get_settings(),
     )
     assert key is None  # degraded, no cooldown key to release
+
+
+async def test_register_ip_guard_fails_open_when_redis_down() -> None:
+    # IP flood guard must never hard-fail registration on a Redis outage.
+    await verification.register_ip_guard(
+        _BrokenRedis(), client_ip="1.2.3.4", settings=get_settings()
+    )
 
 
 async def test_resend_guard_fails_closed_when_redis_down(session: AsyncSession) -> None:

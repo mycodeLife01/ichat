@@ -55,9 +55,10 @@ async def register(
 ) -> SuccessResponse[AuthTokenResponse]:
     redis = rate_limit.get_redis()
     client_ip = rate_limit.client_ip_from_request(request)
-    cooldown_key = await verification.register_email_guard(
-        session, redis, email=str(body.email), client_ip=client_ip, settings=settings
-    )
+    # IP flood protection up front; the per-email cooldown runs only after the
+    # unique-email check passes, so a duplicate email returns 409 (not a 429).
+    await verification.register_ip_guard(redis, client_ip=client_ip, settings=settings)
+    cooldown_key: str | None = None
     try:
         token_response = await register_user(
             session,
@@ -70,6 +71,9 @@ async def register(
         )
         user = await session.get(User, token_response.user.id)
         assert user is not None  # just created in this transaction
+        cooldown_key = await verification.acquire_register_email_cooldown(
+            session, redis, email=str(body.email), settings=settings
+        )
         outbox_id = await verification.create_verification_email(
             session, user=user, settings=settings
         )

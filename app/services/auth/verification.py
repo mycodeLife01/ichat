@@ -92,18 +92,10 @@ async def verify_email(
     await session.flush()
 
 
-async def register_email_guard(
-    session: AsyncSession,
-    redis: Redis,
-    *,
-    email: str,
-    client_ip: str,
-    settings: Settings,
-) -> str | None:
-    """Anti-abuse for register. Returns the acquired cooldown key (release on
-    rollback) or None when degraded. Raises 429 when blocked.
-    """
-    normalized_email = email.strip().lower()
+async def register_ip_guard(
+    redis: Redis, *, client_ip: str, settings: Settings
+) -> None:
+    """IP flood protection for register. Fails open when Redis is unavailable."""
     try:
         ip_result = await rate_limit.check_ip_rate_limit(
             redis,
@@ -113,6 +105,28 @@ async def register_email_guard(
         )
         if not ip_result.allowed:
             raise _too_many_requests(ip_result.retry_after_seconds, RATE_LIMITED_MESSAGE)
+    except AppError:
+        raise
+    except Exception:
+        # Register is the conversion-critical path: never hard-fail on Redis.
+        logger.warning("Redis unavailable during register IP guard; failing open")
+
+
+async def acquire_register_email_cooldown(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    email: str,
+    settings: Settings,
+) -> str | None:
+    """Per-email send cooldown for register.
+
+    Called only after the unique-email check passes (so a duplicate email still
+    returns 409 rather than being masked by a 429). Returns the acquired cooldown
+    key (release on rollback) or None when degraded. Raises 429 when blocked.
+    """
+    normalized_email = email.strip().lower()
+    try:
         cooldown_key = rate_limit.cooldown_email_key(PURPOSE_EMAIL_VERIFICATION, normalized_email)
         acquired = await rate_limit.try_cooldown(
             redis, cooldown_key, settings.auth_email_verification_cooldown_seconds
@@ -125,9 +139,8 @@ async def register_email_guard(
     except AppError:
         raise
     except Exception:
-        # Redis down: keep registration available. Email cooldown via DB; IP
-        # window fails open (no DB record of IP).
-        logger.warning("Redis unavailable during register guard; degrading to DB cooldown")
+        # Redis down: keep registration available. Email cooldown via DB.
+        logger.warning("Redis unavailable during register cooldown; degrading to DB cooldown")
         await _enforce_db_email_cooldown(session, normalized_email, settings)
         return None
 
