@@ -24,6 +24,16 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Celery broker + auth cooldown / IP rate-limit keys. Internal only.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   migrate:
     image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
     env_file:
@@ -46,6 +56,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker:
     image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
@@ -57,6 +69,31 @@ services:
       replicas: 2
     depends_on:
       postgres:
+        condition: service_healthy
+
+  celery-worker:
+    image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Executes send_email_outbox / sweep_email_outbox. Safe to scale to N.
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
+    # Schedules the periodic outbox sweep ONLY. MUST stay a single instance
+    # (multiple beats double-schedule); restart + monitor this single point.
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
+    depends_on:
+      redis:
         condition: service_healthy
 
   nginx:

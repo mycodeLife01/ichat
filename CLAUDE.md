@@ -114,6 +114,14 @@ Backend is a three-service architecture orchestrated via Docker Compose:
 - **Worker** (standalone process) — polls PostgreSQL queue, claims Runs, calls DeepSeek streaming API, persists events
 - **PostgreSQL** — sole state store, also serves as task queue (`FOR UPDATE SKIP LOCKED`)
 
+Email verification (added 2026-06) adds an independent async email stack alongside the above; the LLM worker is unaffected:
+
+- **Redis** — Celery broker + short-TTL auth cooldown / IP rate-limit keys (never holds business state)
+- **celery-worker** — sends queued emails from the `email_outbox` table (claim/lease/retry/dead), uses an independent sync (psycopg) engine
+- **celery-beat** — single-instance scheduler for the periodic `email_outbox` sweep only
+
+See [the email verification handover](docs/handover/2026-06-26-email-verification.md) for details.
+
 The frontend is a **separate SPA** (`frontend/`), no longer served by FastAPI. It is deployed on Cloudflare Pages (`https://chat.feslia.com`) and calls the API cross-origin (`https://feslia.com/api/v1`); allowed origins are controlled by the `CORS_ALLOWED_ORIGINS` env var. Local dev runs on the Vite dev server (`:5173`).
 
 Key mechanisms:

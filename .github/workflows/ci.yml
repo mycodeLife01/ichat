@@ -26,6 +26,13 @@ jobs:
       WORKER_POLL_INTERVAL_SECONDS: "2"
       WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
       LOG_LEVEL: INFO
+      # Email/Redis: tests use fakeredis and the fake email provider, so no real
+      # Redis service is needed. fake keeps config validation from requiring
+      # Postmark credentials.
+      EMAIL_PROVIDER: fake
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      FRONTEND_APP_URL: http://localhost:5173
     services:
       postgres:
         image: postgres:16-alpine

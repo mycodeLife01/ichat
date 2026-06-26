@@ -21,6 +21,15 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    # Celery broker + auth cooldown / IP rate-limit keys. Internal only.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   migrate:
     build:
       context: .
@@ -47,6 +56,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   worker:
     build:
@@ -62,6 +73,35 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+  celery-worker:
+    build:
+      context: .
+    image: ichat-worker:local
+    env_file:
+      - .env
+    # Executes send_email_outbox / sweep_email_outbox. Safe to scale to N.
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build:
+      context: .
+    image: ichat-worker:local
+    env_file:
+      - .env
+    # Schedules the periodic outbox sweep ONLY. Must be a single instance
+    # (multiple beats double-schedule). Execution happens on celery-worker.
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
