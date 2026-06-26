@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Self
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +49,39 @@ class Settings(BaseSettings):
     web_search_max_evidence_chars: int = 10_000
     web_search_max_source_chars: int = 1_200
 
+    # --- Redis / Celery (email + rate limiting) ---
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/0"
+    # Result backend deliberately disabled: task outcomes are written to
+    # email_outbox, never read back through Celery.
+    celery_result_backend: str = ""
+
+    # --- Email / verification ---
+    frontend_app_url: str = "http://localhost:5173"
+    # postmark | console | fake. console/fake skip Postmark credential checks.
+    email_provider: str = "console"
+    email_from: str = "iChat <no-reply@mail.feslia.com>"
+    email_reply_to: str = ""
+    postmark_server_token: str = ""
+    postmark_message_stream: str = "outbound"
+    postmark_base_url: str = "https://api.postmarkapp.com"
+    postmark_timeout_seconds: float = 10.0
+
+    auth_email_verification_token_ttl_seconds: int = 86_400
+    auth_email_verification_cooldown_seconds: int = 60
+
+    # IP-dimension sliding-window rate limits (limit per window seconds).
+    auth_rate_register_ip_limit: int = 5
+    auth_rate_register_ip_window_seconds: int = 3_600
+    auth_rate_resend_ip_limit: int = 10
+    auth_rate_resend_ip_window_seconds: int = 3_600
+    auth_rate_verify_ip_limit: int = 30
+    auth_rate_verify_ip_window_seconds: int = 60
+
+    email_outbox_max_attempts: int = 5
+    email_outbox_lease_seconds: int = 120
+    email_outbox_sweep_interval_seconds: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -69,6 +103,36 @@ class Settings(BaseSettings):
                 f"deepseek_reasoning_effort must be one of {sorted(allowed)}, got {value!r}"
             )
         return normalized
+
+    @field_validator("email_provider")
+    @classmethod
+    def normalize_email_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"postmark", "console", "fake"}
+        if normalized not in allowed:
+            raise ValueError(
+                f"email_provider must be one of {sorted(allowed)}, got {value!r}"
+            )
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_postmark_config(self) -> Self:
+        # Only enforce Postmark credentials when it is the active provider, so
+        # console/fake can boot in dev/CI without secrets.
+        if self.email_provider == "postmark":
+            missing = [
+                name
+                for name, value in (
+                    ("postmark_server_token", self.postmark_server_token),
+                    ("email_from", self.email_from),
+                )
+                if not value.strip()
+            ]
+            if missing:
+                raise ValueError(
+                    f"email_provider=postmark requires non-empty: {', '.join(missing)}"
+                )
+        return self
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

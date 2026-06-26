@@ -7,20 +7,24 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic",
     "asyncpg",
+    "celery[redis]",
     "email-validator",
     "fastapi",
     "httpx",
     "loguru>=0.7.3",
+    "psycopg[binary]",
     "pydantic-settings",
     "pwdlib[argon2]",
     "pyjwt[crypto]",
     "python-dotenv",
+    "redis",
     "sqlalchemy[asyncio]",
     "uvicorn[standard]",
 ]
 
 [dependency-groups]
 dev = [
+    "fakeredis[lua]",
     "mypy",
     "pytest",
     "pytest-asyncio",
@@ -47,4 +51,12 @@ warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = "asyncpg.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "celery.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fakeredis.*"
 ignore_missing_imports = true
