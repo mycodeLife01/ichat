@@ -10,8 +10,9 @@ _PUBLIC_ID_TABLES = ("conversations", "runs", "messages")
 
 def test_core_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
+        "auth_tokens",
         "conversations",
-        "email_verification_tokens",
+        "email_outbox",
         "messages",
         "refresh_tokens",
         "run_events",
@@ -148,3 +149,35 @@ def test_share_links_are_bigint_token_keyed_snapshots() -> None:
     conversation_fk = next(iter(share_links.c.conversation_id.foreign_keys))
     assert conversation_fk.column.table.name == "conversations"
     assert conversation_fk.ondelete == "CASCADE"
+
+
+def test_auth_tokens_have_active_partial_unique_index() -> None:
+    auth_tokens = Base.metadata.tables["auth_tokens"]
+
+    assert auth_tokens.c.token_hash.unique is True
+    user_fk = next(iter(auth_tokens.c.user_id.foreign_keys))
+    assert user_fk.column.table.name == "users"
+    assert user_fk.ondelete == "CASCADE"
+    # At most one active (unused, unrevoked) token per (user, purpose).
+    assert any(
+        index.unique
+        and [getattr(expression, "name", None) for expression in index.expressions]
+        == ["user_id", "purpose"]
+        and str(index.dialect_options["postgresql"]["where"])
+        == "used_at IS NULL AND revoked_at IS NULL"
+        for index in auth_tokens.indexes
+    )
+
+
+def test_email_outbox_is_jsonb_payload_queue() -> None:
+    outbox = Base.metadata.tables["email_outbox"]
+
+    assert isinstance(outbox.c.id.type, BigInteger)
+    assert isinstance(outbox.c.payload.type, JSONB)
+    assert outbox.c.payload.nullable is False
+    # Claim/sweep scan indexes.
+    index_columns = {
+        tuple(column.name for column in index.columns) for index in outbox.indexes
+    }
+    assert ("status", "next_attempt_at") in index_columns
+    assert ("locked_until",) in index_columns
