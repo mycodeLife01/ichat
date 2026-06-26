@@ -76,8 +76,20 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
   );
 
   useEffect(() => {
-    dispatch({ type: "auth/restored", session: tokenStore.read() });
-  }, [dispatch]);
+    const restored = tokenStore.read();
+    dispatch({ type: "auth/restored", session: restored });
+    // Refresh the user mirror from the server (picks up email_verified changes).
+    // 401 is handled by the client's onAuthExpired; other failures are ignored.
+    if (restored) {
+      void services.authApi
+        .me()
+        .then((user) => {
+          tokenStore.updateUser(user);
+          dispatch({ type: "auth/userUpdated", user });
+        })
+        .catch(() => {});
+    }
+  }, [dispatch, services]);
 
   return (
     <StateContext.Provider value={state}>

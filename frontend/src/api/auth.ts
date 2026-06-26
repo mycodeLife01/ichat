@@ -1,5 +1,9 @@
 import { getDefaultApiClient, type ApiClient } from "./client";
-import type { AuthTokenResponse, CommandStatusResponse } from "./types";
+import type {
+  AuthTokenResponse,
+  AuthUserResponse,
+  CommandStatusResponse,
+} from "./types";
 
 export type RegisterRequest = {
   username: string;
@@ -47,6 +51,25 @@ export function createAuthApi(client?: Pick<ApiClient, "request">) {
         auth: false,
         retryOnUnauthorized: false,
       });
+    },
+    me(): Promise<AuthUserResponse> {
+      return resolveClient().request<AuthUserResponse>("/auth/me", {
+        method: "GET",
+      });
+    },
+    verifyEmail(token: string): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>("/auth/verify-email", {
+        method: "POST",
+        body: { token },
+        auth: false,
+        retryOnUnauthorized: false,
+      });
+    },
+    resendVerificationEmail(): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>(
+        "/auth/resend-verification-email",
+        { method: "POST" },
+      );
     },
   };
 }

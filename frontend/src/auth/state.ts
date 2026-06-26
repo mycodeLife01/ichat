@@ -1,4 +1,5 @@
 import type { AppAction } from "../app/store";
+import type { AuthUserResponse } from "../api/types";
 import type { AuthSession } from "./tokenStore";
 
 export type AuthState = {
@@ -17,7 +18,8 @@ export type AuthAction =
   | { type: "auth/restored"; session: AuthSession | null }
   | { type: "auth/submitStarted" }
   | { type: "auth/loggedIn"; session: AuthSession }
-  | { type: "auth/submitFailed" };
+  | { type: "auth/submitFailed" }
+  | { type: "auth/userUpdated"; user: AuthUserResponse };
 
 export function authReducer(state: AuthState, action: AppAction): AuthState {
   switch (action.type) {
@@ -29,6 +31,11 @@ export function authReducer(state: AuthState, action: AppAction): AuthState {
       return { ...state, session: action.session, status: "idle" };
     case "auth/submitFailed":
       return { ...state, status: "idle" };
+    case "auth/userUpdated":
+      // Refresh the user mirror in place; no-op if logged out.
+      return state.session
+        ? { ...state, session: { ...state.session, user: action.user } }
+        : state;
     case "app/reset":
       return { ...initialAuthState, bootstrapped: true };
     default:

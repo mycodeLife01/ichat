@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import type { LoginRequest, RegisterRequest } from "../api/auth";
+import type { AuthUserResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import { createAuthSession, tokenStore } from "./tokenStore";
 
@@ -54,6 +55,15 @@ export function useAuthSession() {
     dispatch({ type: "app/reset" });
   }, [dispatch, services, streamAbort]);
 
+  // Refresh the cached user mirror (e.g. after email verification). Keeps the
+  // same session/tokens; throws on failure (401 is handled by the API client).
+  const refreshUser = useCallback(async (): Promise<AuthUserResponse> => {
+    const user = await services.authApi.me();
+    tokenStore.updateUser(user);
+    dispatch({ type: "auth/userUpdated", user });
+    return user;
+  }, [dispatch, services]);
+
   return {
     session: auth.session,
     user: auth.session?.user ?? null,
@@ -63,5 +73,6 @@ export function useAuthSession() {
     login,
     register,
     logout,
+    refreshUser,
   };
 }

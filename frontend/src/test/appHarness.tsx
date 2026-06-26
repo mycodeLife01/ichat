@@ -24,6 +24,9 @@ export function createFakeAuthApi(overrides: Partial<AuthApi> = {}): AuthApi {
     login: async () => authTokenResponse,
     refresh: async () => authTokenResponse,
     logout: async () => ({ status: "ok" }),
+    me: async () => authTokenResponse.user,
+    verifyEmail: async () => ({ status: "ok" }),
+    resendVerificationEmail: async () => ({ status: "ok" }),
     ...overrides,
   };
 }
