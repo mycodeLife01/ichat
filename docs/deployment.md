@@ -159,6 +159,12 @@ docker compose -f compose.prod.yml logs -f
 - **CI** (`.github/workflows/ci.yml`)：每次 push/PR 到 `main` 时运行 lint、类型检查、测试和镜像构建
 - **Deploy** (`.github/workflows/deploy.yml`)：push 到 `main` 后自动构建镜像并部署到服务器
 
+Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml` 与
+`deploy/nginx.conf` 同步到 `DEPLOY_PATH`，同步成功后才通过 SSH 执行镜像拉取、迁移和
+`up -d --remove-orphans`。生产部署按工作流串行执行，避免并发提交覆盖彼此的部署定义；
+最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。任一步失败都会终止部署，不会
+继续使用服务器上的旧拓扑。
+
 ### 配置 GitHub Secrets
 
 在仓库 Settings → Secrets and variables → Actions 中添加以下 secrets：
@@ -258,12 +264,14 @@ git push origin main
 │  CI（lint → mypy → pytest → build） │  检测到 push 自动构建
 │      ↓                              │  pnpm build → 发布到
 │  Deploy（build → push ghcr.io       │  chat.feslia.com
-│          → SSH deploy）             └─
+│          → 同步 Compose/nginx       └─
+│          → SSH deploy）
 │      ↓
 │  服务器执行:
-│      docker compose pull
+│      docker compose --profile migrate pull
 │      docker compose run --rm migrate
 │      docker compose up -d
+│      docker compose up -d --force-recreate nginx
 └─
 ```
 

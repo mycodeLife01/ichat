@@ -8,6 +8,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -47,6 +51,18 @@ jobs:
     needs: build-and-push
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload deployment definitions
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "compose.prod.yml,deploy/nginx.conf"
+          target: ${{ secrets.DEPLOY_PATH }}
+          overwrite: true
+
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -54,8 +70,10 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            docker compose -f compose.prod.yml pull
+            set -eu
+            cd "${{ secrets.DEPLOY_PATH }}"
+            docker compose -f compose.prod.yml --profile migrate pull
             docker compose -f compose.prod.yml run --rm migrate
             docker compose -f compose.prod.yml up -d --remove-orphans
+            docker compose -f compose.prod.yml up -d --no-deps --force-recreate nginx
             docker image prune -f
