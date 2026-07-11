@@ -35,18 +35,74 @@ Commit messages must follow the Conventional Commits specification, for example 
 
 ## Subagent Model Policy
 
-When using subagent, choose models by task role:
-- Orchestrator and reviewer subagents must use `claude-fable-5` with `high` thinking effort level.
-- Executor and worker subagents must use `claude-sonnet-5` with `max` thinking effort level.
+When the user explicitly authorizes subagent use, choose models by task role:
+- Orchestrator and reviewer subagents must use `claude-opus-4-8` with `xhigh` thinking effort level.
+- Executor and worker subagents must use `claude-sonnet-4-6` with `max` thinking effort level.
 - Read-only and explore subagents must use `claude-haiku-4-5-20251001` with `medium` thinking effort level.
 
 ## Development Guidelines
 
-- Before making changes, read the relevant entry points and existing implementation. Do not code from memory. When trade-offs are required, state the key assumptions and their impact.
-- For low-risk, easily reversible ambiguities, proceed with the most reasonable assumption consistent with the existing code and requirements. Ask the user only when the ambiguity would materially affect the implementation direction, data model, compatibility, or external state.
-- Make the smallest change necessary to satisfy the current requirement. Do not add unrequested features, abstractions, or configuration. Do not refactor, reformat, or clean up unrelated code; remove only unused items introduced by the current change.
-- Define reproducible success criteria for the change, and run tests or checks proportional to the risk. If a check fails, diagnose and fix the issue. If verification is not possible, clearly state why, the associated risks, and the recommended commands to run.
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
 
 # Reference
 
