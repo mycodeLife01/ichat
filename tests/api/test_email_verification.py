@@ -17,14 +17,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import app.api.v1.auth as auth_routes
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import create_app
 from app.models.auth_token import AuthToken
 from app.models.email_outbox import EmailOutbox
 from app.models.user import User
-from app.services.auth import rate_limit
+from app.services.auth import orchestration, rate_limit
 
 TEST_DATABASE_URL = os.environ.get(
     "EMAIL_VERIFY_TEST_DATABASE_URL",
@@ -65,8 +64,7 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 @pytest.fixture()
 def infra(monkeypatch: pytest.MonkeyPatch) -> Iterator[Infra]:
     handle = Infra(redis=aioredis.FakeRedis(decode_responses=True))
-    monkeypatch.setattr(rate_limit, "get_redis", lambda: handle.redis)
-    monkeypatch.setattr(auth_routes, "_enqueue_email", handle.enqueued.append)
+    monkeypatch.setattr(orchestration.send_email_outbox, "delay", handle.enqueued.append)
     yield handle
 
 
@@ -81,6 +79,7 @@ async def app(
             yield session
 
     application.dependency_overrides[get_session] = override_get_session
+    application.dependency_overrides[rate_limit.get_redis] = lambda: infra.redis
     yield application
     application.dependency_overrides.clear()
 

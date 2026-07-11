@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
-from loguru import logger
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -18,27 +18,16 @@ from app.schemas.auth import (
     VerifyEmailRequest,
 )
 from app.schemas.responses import SuccessResponse
-from app.services.auth import rate_limit, verification
+from app.services.auth import orchestration, rate_limit
 from app.services.auth.dependencies import get_current_user
 from app.services.auth.service import (
     login_user,
     logout,
     refresh_tokens,
-    register_user,
     user_response,
 )
-from app.tasks.email_tasks import send_email_outbox
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-
-
-def _enqueue_email(outbox_id: int) -> None:
-    """Best-effort Celery dispatch. The DB row is the source of truth; if the
-    broker is down, celery-beat's sweep re-enqueues it later."""
-    try:
-        send_email_outbox.delay(outbox_id)
-    except Exception:  # noqa: BLE001 - delivery must not fail the request
-        logger.warning("Failed to enqueue email outbox {id}; sweep will recover", id=outbox_id)
 
 
 @router.post(
@@ -52,38 +41,17 @@ async def register(
     body: RegisterRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
 ) -> SuccessResponse[AuthTokenResponse]:
-    redis = rate_limit.get_redis()
-    client_ip = rate_limit.client_ip_from_request(request)
-    # IP flood protection up front; the per-email cooldown runs only after the
-    # unique-email check passes, so a duplicate email returns 409 (not a 429).
-    await verification.register_ip_guard(redis, client_ip=client_ip, settings=settings)
-    cooldown_key: str | None = None
-    try:
-        token_response = await register_user(
-            session,
-            username=body.username,
-            email=str(body.email),
-            password=body.password,
-            jwt_secret=settings.jwt_secret,
-            access_token_ttl_seconds=settings.jwt_access_token_ttl_seconds,
-            refresh_token_ttl_seconds=settings.refresh_token_ttl_seconds,
-        )
-        user = await session.get(User, token_response.user.id)
-        assert user is not None  # just created in this transaction
-        cooldown_key = await verification.acquire_register_email_cooldown(
-            session, redis, email=str(body.email), settings=settings
-        )
-        outbox_id = await verification.create_verification_email(
-            session, user=user, settings=settings
-        )
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        if cooldown_key is not None:
-            await rate_limit.release_cooldown(redis, cooldown_key)
-        raise
-    _enqueue_email(outbox_id)
+    token_response = await orchestration.register_with_verification(
+        session,
+        redis,
+        username=body.username,
+        email=str(body.email),
+        password=body.password,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
     return SuccessResponse(data=token_response)
 
 
@@ -165,13 +133,15 @@ async def verify_email_route(
     body: VerifyEmailRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
 ) -> SuccessResponse[CommandStatusResponse]:
-    redis = rate_limit.get_redis()
-    await verification.verify_ip_guard(
-        redis, client_ip=rate_limit.client_ip_from_request(request), settings=settings
+    await orchestration.verify_email_address(
+        session,
+        redis,
+        raw_token=body.token,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
     )
-    await verification.verify_email(session, raw_token=body.token)
-    await session.commit()
     return SuccessResponse(data=CommandStatusResponse())
 
 
@@ -185,26 +155,13 @@ async def resend_verification_email(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     user: Annotated[User, Depends(get_current_user)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
 ) -> SuccessResponse[CommandStatusResponse]:
-    # Already verified: succeed without sending (and without consuming a slot).
-    if user.email_verified:
-        return SuccessResponse(data=CommandStatusResponse())
-
-    redis = rate_limit.get_redis()
-    client_ip = rate_limit.client_ip_from_request(request)
-    cooldown_key = await verification.resend_guard(
-        redis, user=user, client_ip=client_ip, settings=settings
+    await orchestration.resend_verification_email(
+        session,
+        redis,
+        user=user,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
     )
-    try:
-        outbox_id = await verification.create_verification_email_for_user(
-            session, user_id=user.id, settings=settings
-        )
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        if cooldown_key is not None:
-            await rate_limit.release_cooldown(redis, cooldown_key)
-        raise
-    if outbox_id is not None:
-        _enqueue_email(outbox_id)
     return SuccessResponse(data=CommandStatusResponse())
