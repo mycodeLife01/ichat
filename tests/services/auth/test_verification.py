@@ -270,6 +270,40 @@ async def test_resend_guard_fails_closed_when_redis_down(session: AsyncSession) 
     assert exc.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
+async def test_resend_guard_acquires_user_and_email_cooldowns(
+    session: AsyncSession, redis: aioredis.FakeRedis
+) -> None:
+    user = await make_user(session)
+
+    keys = await verification.resend_guard(
+        redis, user=user, client_ip="1.2.3.4", settings=get_settings()
+    )
+
+    assert keys == [
+        verification.rate_limit.cooldown_user_key("email_verification", user.id),
+        verification.rate_limit.cooldown_email_key("email_verification", user.email),
+    ]
+    assert all([await redis.exists(key) for key in keys])
+
+
+async def test_resend_guard_releases_new_user_cooldown_when_email_is_blocked(
+    session: AsyncSession, redis: aioredis.FakeRedis
+) -> None:
+    user = await make_user(session)
+    user_key = verification.rate_limit.cooldown_user_key("email_verification", user.id)
+    email_key = verification.rate_limit.cooldown_email_key("email_verification", user.email)
+    await redis.set(email_key, "1", ex=60)
+
+    with pytest.raises(AppError) as exc:
+        await verification.resend_guard(
+            redis, user=user, client_ip="1.2.3.4", settings=get_settings()
+        )
+
+    assert exc.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert await redis.exists(user_key) == 0
+    assert await redis.exists(email_key) == 1
+
+
 async def test_verify_guard_fails_open_when_redis_down() -> None:
     # Should not raise.
     await verification.verify_ip_guard(

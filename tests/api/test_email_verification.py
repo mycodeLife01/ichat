@@ -8,6 +8,7 @@ import os
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import cast
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -191,15 +192,35 @@ async def test_verify_email_happy_path(
     assert me.json()["data"]["email_verified"] is True
 
 
-async def test_verify_email_invalid_token_is_generic_400(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/auth/verify-email", json={"token": "bogus"})
+async def test_verify_email_valid_but_unknown_token_is_generic_400(client: AsyncClient) -> None:
+    response = await client.post("/api/v1/auth/verify-email", json={"token": "a" * 43})
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json() == {"detail": "Invalid or expired verification link"}
 
 
-async def test_verify_email_empty_token_is_422(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/auth/verify-email", json={"token": ""})
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"token": ""},
+        {"token": "   "},
+        {"token": "a" * 42},
+        {"token": "a" * 44},
+        {"token": "a" * 42 + "!"},
+    ],
+)
+async def test_verify_email_invalid_format_is_422_before_use_case(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    body: dict[str, str],
+) -> None:
+    verify_email_address = AsyncMock()
+    monkeypatch.setattr(orchestration, "verify_email_address", verify_email_address)
+
+    response = await client.post("/api/v1/auth/verify-email", json=body)
+
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    verify_email_address.assert_not_awaited()
 
 
 async def test_verify_email_reused_token_fails(
@@ -218,10 +239,18 @@ async def test_verify_email_reused_token_fails(
 # --- resend-verification-email ---
 
 
-async def test_resend_creates_new_outbox(
-    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+async def test_resend_after_email_cooldown_expires_creates_new_outbox(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    infra: Infra,
 ) -> None:
     data = await register(client)
+    # Removing the TTL key models Redis expiry without sleeping in the test.
+    await infra.redis.delete(
+        rate_limit.cooldown_email_key(
+            "email_verification", f"alice@{TEST_DOMAIN}"
+        )
+    )
 
     response = await client.post(
         "/api/v1/auth/resend-verification-email", headers=auth_header(data)
@@ -272,8 +301,28 @@ async def test_resend_when_verified_is_ok_without_sending(
     assert len(outboxes) == 1  # no new email after verification
 
 
-async def test_resend_cooldown_returns_429_with_retry_after(client: AsyncClient) -> None:
+async def test_register_email_cooldown_blocks_immediate_resend(
+    client: AsyncClient,
+) -> None:
     data = await register(client)
+
+    response = await client.post(
+        "/api/v1/auth/resend-verification-email", headers=auth_header(data)
+    )
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "retry-after" in {k.lower() for k in response.headers}
+
+
+async def test_resend_cooldown_returns_429_with_retry_after(
+    client: AsyncClient, infra: Infra
+) -> None:
+    data = await register(client)
+    await infra.redis.delete(
+        rate_limit.cooldown_email_key(
+            "email_verification", f"alice@{TEST_DOMAIN}"
+        )
+    )
 
     first = await client.post(
         "/api/v1/auth/resend-verification-email", headers=auth_header(data)

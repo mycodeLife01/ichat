@@ -168,8 +168,9 @@ async def resend_guard(
     user: User,
     client_ip: str,
     settings: Settings,
-) -> str | None:
+) -> list[str]:
     """Anti-abuse for resend. Fails closed when Redis is unavailable."""
+    acquired_keys: list[str] = []
     try:
         ip_result = await rate_limit.check_ip_rate_limit(
             redis,
@@ -179,18 +180,27 @@ async def resend_guard(
         )
         if not ip_result.allowed:
             raise _too_many_requests(ip_result.retry_after_seconds, RATE_LIMITED_MESSAGE)
-        cooldown_key = rate_limit.cooldown_user_key(PURPOSE_EMAIL_VERIFICATION, user.id)
-        acquired = await rate_limit.try_cooldown(
-            redis, cooldown_key, settings.auth_email_verification_cooldown_seconds
-        )
-        if not acquired:
-            raise _too_many_requests(
-                settings.auth_email_verification_cooldown_seconds, COOLDOWN_MESSAGE
+        cooldown_keys = [
+            rate_limit.cooldown_user_key(PURPOSE_EMAIL_VERIFICATION, user.id),
+            rate_limit.cooldown_email_key(PURPOSE_EMAIL_VERIFICATION, user.email),
+        ]
+        for cooldown_key in cooldown_keys:
+            acquired = await rate_limit.try_cooldown(
+                redis, cooldown_key, settings.auth_email_verification_cooldown_seconds
             )
-        return cooldown_key
+            if not acquired:
+                raise _too_many_requests(
+                    settings.auth_email_verification_cooldown_seconds, COOLDOWN_MESSAGE
+                )
+            acquired_keys.append(cooldown_key)
+        return acquired_keys
     except AppError:
+        for cooldown_key in acquired_keys:
+            await rate_limit.release_cooldown(redis, cooldown_key)
         raise
     except Exception:
+        for cooldown_key in acquired_keys:
+            await rate_limit.release_cooldown(redis, cooldown_key)
         logger.warning("Redis unavailable during resend guard; failing closed")
         raise _too_many_requests(
             settings.auth_email_verification_cooldown_seconds, RATE_LIMITED_MESSAGE
@@ -224,7 +234,20 @@ async def create_verification_email_for_user(
     Returns the outbox id, or None if the user vanished or is already verified
     (idempotent under concurrent resends).
     """
-    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
+    user = await lock_unverified_user(session, user_id=user_id)
     if user is None or user.email_verified:
         return None
     return await create_verification_email(session, user=user, settings=settings)
+
+
+async def lock_unverified_user(session: AsyncSession, *, user_id: int) -> User | None:
+    """Lock and refresh a user, returning None when resend is already unnecessary."""
+    user = await session.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None or user.email_verified:
+        return None
+    return user

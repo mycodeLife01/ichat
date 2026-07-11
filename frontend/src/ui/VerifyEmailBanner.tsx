@@ -18,12 +18,15 @@ export function VerifyEmailBanner() {
     setSending(true);
     try {
       await services.authApi.resendVerificationEmail();
-      dispatch({ type: "ui/showToast", message: "验证邮件已发送，请检查邮箱。" });
+      dispatch({
+        type: "ui/showToast",
+        message: "Verification email sent. Check your inbox.",
+      });
     } catch (error) {
       const tooMany = error instanceof ApiError && error.status === 429;
       dispatch({
         type: "ui/showToast",
-        message: tooMany ? "请稍后再试" : "发送失败，请稍后重试",
+        message: tooMany ? "Please try again later." : "Could not send the email. Try again.",
       });
     } finally {
       setSending(false);
@@ -32,7 +35,7 @@ export function VerifyEmailBanner() {
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-raised px-4 py-2 text-[13px] text-fg-muted">
-      <span>请验证你的邮箱，确保账号安全。</span>
+      <span>Verify your email to keep your account secure.</span>
       <span className="text-fg-subtle">{user.email}</span>
       <button
         type="button"
@@ -40,7 +43,7 @@ export function VerifyEmailBanner() {
         disabled={sending}
         className="ml-auto rounded-md border border-border bg-bg px-2.5 py-1 text-[12.5px] font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong disabled:opacity-60"
       >
-        {sending ? "发送中…" : "重新发送验证邮件"}
+        {sending ? "Sending…" : "Resend verification email"}
       </button>
     </div>
   );

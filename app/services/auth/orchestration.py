@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loguru import logger
 from redis.asyncio import Redis
@@ -18,7 +18,7 @@ from app.tasks.email_tasks import send_email_outbox
 
 @dataclass
 class _EmailTransaction:
-    cooldown_key: str | None = None
+    cooldown_keys: list[str] = field(default_factory=list)
     outbox_id: int | None = None
 
 
@@ -42,8 +42,8 @@ async def _email_transaction(
         try:
             await session.rollback()
         finally:
-            if transaction.cooldown_key is not None:
-                await rate_limit.release_cooldown(redis, transaction.cooldown_key)
+            for cooldown_key in transaction.cooldown_keys:
+                await rate_limit.release_cooldown(redis, cooldown_key)
         raise
 
     if transaction.outbox_id is not None:
@@ -75,9 +75,11 @@ async def register_with_verification(
         )
         user = await session.get(User, token_response.user.id)
         assert user is not None  # created and flushed by register_user
-        transaction.cooldown_key = await verification.acquire_register_email_cooldown(
+        cooldown_key = await verification.acquire_register_email_cooldown(
             session, redis, email=email, settings=settings
         )
+        if cooldown_key is not None:
+            transaction.cooldown_keys.append(cooldown_key)
         transaction.outbox_id = await verification.create_verification_email(
             session, user=user, settings=settings
         )
@@ -111,11 +113,14 @@ async def resend_verification_email(
     if user.email_verified:
         return
 
-    cooldown_key = await verification.resend_guard(
-        redis, user=user, client_ip=client_ip, settings=settings
-    )
     async with _email_transaction(session, redis) as transaction:
-        transaction.cooldown_key = cooldown_key
-        transaction.outbox_id = await verification.create_verification_email_for_user(
-            session, user_id=user.id, settings=settings
+        locked_user = await verification.lock_unverified_user(session, user_id=user.id)
+        if locked_user is None:
+            return
+        cooldown_keys = await verification.resend_guard(
+            redis, user=locked_user, client_ip=client_ip, settings=settings
+        )
+        transaction.cooldown_keys.extend(cooldown_keys)
+        transaction.outbox_id = await verification.create_verification_email(
+            session, user=locked_user, settings=settings
         )

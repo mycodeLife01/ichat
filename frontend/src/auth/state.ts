@@ -16,6 +16,7 @@ export const initialAuthState: AuthState = {
 
 export type AuthAction =
   | { type: "auth/restored"; session: AuthSession | null }
+  | { type: "auth/bootstrapCompleted" }
   | { type: "auth/submitStarted" }
   | { type: "auth/loggedIn"; session: AuthSession }
   | { type: "auth/submitFailed" }
@@ -24,7 +25,9 @@ export type AuthAction =
 export function authReducer(state: AuthState, action: AppAction): AuthState {
   switch (action.type) {
     case "auth/restored":
-      return { ...state, session: action.session, bootstrapped: true };
+      return { ...state, session: action.session, bootstrapped: false };
+    case "auth/bootstrapCompleted":
+      return { ...state, bootstrapped: true };
     case "auth/submitStarted":
       return { ...state, status: "submitting" };
     case "auth/loggedIn":

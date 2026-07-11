@@ -9,7 +9,7 @@ import { authTokenResponse } from "../test/apiFixtures";
 import { createFakeServices, renderWithApp } from "../test/appHarness";
 import { VerifyEmailBanner } from "./VerifyEmailBanner";
 
-const BANNER_TEXT = "请验证你的邮箱，确保账号安全。";
+const BANNER_TEXT = "Verify your email to keep your account secure.";
 
 function ToastProbe() {
   const { ui } = useAppState();
@@ -60,11 +60,13 @@ describe("VerifyEmailBanner", () => {
       createFakeServices({ resendVerificationEmail }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "重新发送验证邮件" }));
+    await user.click(await screen.findByRole("button", { name: "Resend verification email" }));
 
     expect(resendVerificationEmail).toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByTestId("toast")).toHaveTextContent("验证邮件已发送，请检查邮箱。"),
+      expect(screen.getByTestId("toast")).toHaveTextContent(
+        "Verification email sent. Check your inbox.",
+      ),
     );
   });
 
@@ -82,8 +84,10 @@ describe("VerifyEmailBanner", () => {
       createFakeServices({ resendVerificationEmail }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "重新发送验证邮件" }));
+    await user.click(await screen.findByRole("button", { name: "Resend verification email" }));
 
-    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("请稍后再试"));
+    await waitFor(() =>
+      expect(screen.getByTestId("toast")).toHaveTextContent("Please try again later."),
+    );
   });
 });
