@@ -7,8 +7,8 @@
 - 每项工作使用独立目录：`.scratch/<feature-slug>/`。
 - 功能目标和 ticket 索引写入 `.scratch/<feature-slug>/PRD.md`。
 - 每张实施 ticket 使用独立文件：`.scratch/<feature-slug>/issues/<NN>-<slug>.md`，编号从 `01` 开始。
-- Ticket 顶部使用 `Type:`、`Status:` 和 `Blocked by:` 记录类型、triage 状态和阻塞编号。
-- `Status` 使用 `docs/agents/triage-labels.md` 定义的状态名称。
+- Ticket 顶部使用 `Type:`、`Status:` 和 `Blocked by:` 记录类型、triage/完成状态和阻塞编号。
+- `Status` 使用 `docs/agents/triage-labels.md` 定义的状态名称；实现并验证完成后设为 `completed`。
 - `Blocked by: None` 表示可以立即开始；否则列出所有阻塞 ticket 编号。
 - 讨论记录追加到对应 ticket 的 `## Comments` 小节，不覆盖历史内容。
 

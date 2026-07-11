@@ -8,4 +8,6 @@
 | `ready-for-human` | `ready-for-human` | 需要人工实施 |
 | `wontfix` | `wontfix` | 不计划实施 |
 
-工程技能提到标准角色时，使用本表对应的状态名称。
+以上五项是 triage 角色。实施完成后使用额外终态 `completed`，表示 ticket 已实现并完成验证，不再属于 frontier。
+
+工程技能提到标准 triage 角色时，使用本表对应的五个状态名称。

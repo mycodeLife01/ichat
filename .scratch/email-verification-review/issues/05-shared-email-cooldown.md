@@ -2,7 +2,7 @@
 
 Type: task
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: 01
 
