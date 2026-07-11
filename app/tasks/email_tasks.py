@@ -21,21 +21,15 @@ def send_email_outbox(outbox_id: int) -> str:
     settings = get_settings()
     provider = get_email_provider(settings)
     factory = get_sync_session_factory()
-    with factory() as session:
-        try:
-            result = process_outbox(
-                session,
-                outbox_id=outbox_id,
-                settings=settings,
-                provider=provider,
-                task_id=uuid4().hex,
-            )
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
+    result = process_outbox(
+        factory,
+        outbox_id=outbox_id,
+        settings=settings,
+        provider=provider,
+        task_id=uuid4().hex,
+    )
     logger.info("send_email_outbox outbox_id={id} result={result}", id=outbox_id, result=result)
-    return result
+    return result.value
 
 
 @celery_app.task(name="app.tasks.email_tasks.sweep_email_outbox")  # type: ignore[untyped-decorator]

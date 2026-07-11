@@ -1,20 +1,17 @@
-"""Synchronous email_outbox operations for the Celery worker.
-
-Mirrors the LLM run claim/lease pattern in app/services/runs/lifecycle.py:
-a row is claimed with ``SELECT ... FOR UPDATE`` under a ``locked_until`` lease,
-and recovered by the periodic sweep if a worker dies mid-send. Idempotent and
-safe under concurrent workers — only one claim succeeds per row.
-"""
+"""Durable synchronous email_outbox delivery for Celery workers."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
-from app.models.email_outbox import EmailOutbox
+from app.models.email_outbox import EmailOutbox, OutboxStatus
 from app.services.email.postmark import EmailMessage, EmailProvider, EmailSendError
 from app.services.email.renderer import render
 
@@ -22,46 +19,112 @@ from app.services.email.renderer import render
 BACKOFF_SCHEDULE_SECONDS = (60, 300, 900, 3600, 21600)
 _MAX_ERROR_LEN = 1000
 
-STATUS_PENDING = "pending"
-STATUS_SENDING = "sending"
-STATUS_SENT = "sent"
-STATUS_DEAD = "dead"
+class OutboxProcessResult(StrEnum):
+    """Outcome of one task invocation, separate from persisted row state."""
+
+    SKIPPED = "skipped"
+    SENT = "sent"
+    RETRY = "retry"
+    DEAD = "dead"
+    LEASE_LOST = "lease_lost"
+
+
+@dataclass(frozen=True)
+class ClaimedOutbox:
+    """Detached message data captured by a committed lease claim."""
+
+    id: int
+    recipient_email: str
+    template: str
+    payload: dict[str, Any]
+    attempt_count: int
 
 
 def claim_outbox(
     session: Session, outbox_id: int, *, task_id: str, lease_seconds: int
-) -> EmailOutbox | None:
-    """Claim a pending, due row under a lease. Returns None if not claimable."""
+) -> ClaimedOutbox | None:
+    """Atomically claim a due row in the caller's short transaction."""
     now = datetime.now(UTC)
-    outbox = session.execute(
-        select(EmailOutbox).where(EmailOutbox.id == outbox_id).with_for_update()
-    ).scalar_one_or_none()
-    if outbox is None or outbox.status != STATUS_PENDING or outbox.next_attempt_at > now:
+    row = session.execute(
+        update(EmailOutbox)
+        .where(
+            EmailOutbox.id == outbox_id,
+            EmailOutbox.status == OutboxStatus.PENDING,
+            EmailOutbox.next_attempt_at <= now,
+        )
+        .values(
+            status=OutboxStatus.SENDING,
+            locked_by=task_id,
+            locked_until=now + timedelta(seconds=lease_seconds),
+            updated_at=now,
+        )
+        .returning(
+            EmailOutbox.id,
+            EmailOutbox.recipient_email,
+            EmailOutbox.template,
+            EmailOutbox.payload,
+            EmailOutbox.attempt_count,
+        )
+    ).one_or_none()
+    if row is None:
         return None
-    outbox.status = STATUS_SENDING
-    outbox.locked_by = task_id
-    outbox.locked_until = now + timedelta(seconds=lease_seconds)
-    outbox.updated_at = now
-    session.flush()
-    return outbox
+    return ClaimedOutbox(
+        id=row.id,
+        recipient_email=row.recipient_email,
+        template=row.template,
+        payload=row.payload,
+        attempt_count=row.attempt_count,
+    )
 
 
-def bump_attempt(session: Session, outbox: EmailOutbox) -> None:
-    """Increment attempt_count immediately before invoking the provider.
+def bump_attempt(session: Session, *, outbox_id: int, task_id: str) -> bool:
+    """Persist one provider attempt while the caller still owns a live lease."""
+    now = datetime.now(UTC)
+    bumped_id = session.scalar(
+        update(EmailOutbox)
+        .where(
+            EmailOutbox.id == outbox_id,
+            EmailOutbox.status == OutboxStatus.SENDING,
+            EmailOutbox.locked_by == task_id,
+            EmailOutbox.locked_until >= now,
+        )
+        .values(
+            attempt_count=EmailOutbox.attempt_count + 1,
+            updated_at=now,
+        )
+        .returning(EmailOutbox.id)
+    )
+    return bumped_id is not None
 
-    attempt_count counts real Postmark dispatch attempts, so a claim-then-crash
-    (before any send) is re-claimed without consuming the retry budget.
-    """
-    outbox.attempt_count += 1
-    outbox.updated_at = datetime.now(UTC)
-    session.flush()
+
+def _owned_outbox(session: Session, *, outbox_id: int, task_id: str) -> EmailOutbox | None:
+    now = datetime.now(UTC)
+    return session.scalar(
+        select(EmailOutbox)
+        .where(
+            EmailOutbox.id == outbox_id,
+            EmailOutbox.status == OutboxStatus.SENDING,
+            EmailOutbox.locked_by == task_id,
+            EmailOutbox.locked_until >= now,
+        )
+        .with_for_update()
+    )
 
 
 def mark_sent(
-    session: Session, outbox: EmailOutbox, *, provider: str, provider_message_id: str | None
-) -> None:
+    session: Session,
+    *,
+    outbox_id: int,
+    task_id: str,
+    provider: str,
+    provider_message_id: str | None,
+) -> bool:
+    """Record success only if this task still owns the live lease."""
+    outbox = _owned_outbox(session, outbox_id=outbox_id, task_id=task_id)
+    if outbox is None:
+        return False
     now = datetime.now(UTC)
-    outbox.status = STATUS_SENT
+    outbox.status = OutboxStatus.SENT
     outbox.provider = provider
     outbox.provider_message_id = provider_message_id
     outbox.sent_at = now
@@ -69,56 +132,70 @@ def mark_sent(
     outbox.locked_until = None
     outbox.last_error = None
     outbox.updated_at = now
-    session.flush()
+    return True
 
 
 def mark_failure(
-    session: Session, outbox: EmailOutbox, *, error: str, max_attempts: int
-) -> None:
-    """Schedule a retry, or mark dead once the attempt budget is exhausted."""
+    session: Session,
+    *,
+    outbox_id: int,
+    task_id: str,
+    error: str,
+    max_attempts: int,
+) -> OutboxProcessResult | None:
+    """Schedule a retry or exhaust the budget for the current lease owner."""
+    outbox = _owned_outbox(session, outbox_id=outbox_id, task_id=task_id)
+    if outbox is None:
+        return None
     now = datetime.now(UTC)
     outbox.last_error = error[:_MAX_ERROR_LEN]
     outbox.locked_by = None
     outbox.locked_until = None
     if outbox.attempt_count >= max_attempts:
-        outbox.status = STATUS_DEAD
+        outbox.status = OutboxStatus.DEAD
+        result = OutboxProcessResult.DEAD
     else:
-        outbox.status = STATUS_PENDING
+        outbox.status = OutboxStatus.PENDING
         index = min(outbox.attempt_count, len(BACKOFF_SCHEDULE_SECONDS)) - 1
         outbox.next_attempt_at = now + timedelta(seconds=BACKOFF_SCHEDULE_SECONDS[index])
+        result = OutboxProcessResult.RETRY
     outbox.updated_at = now
-    session.flush()
+    return result
 
 
-def mark_dead(session: Session, outbox: EmailOutbox, *, error: str) -> None:
+def mark_dead(
+    session: Session, *, outbox_id: int, task_id: str, error: str
+) -> bool:
+    """Permanently fail an outbox only if this task still owns its live lease."""
+    outbox = _owned_outbox(session, outbox_id=outbox_id, task_id=task_id)
+    if outbox is None:
+        return False
     now = datetime.now(UTC)
-    outbox.status = STATUS_DEAD
+    outbox.status = OutboxStatus.DEAD
     outbox.last_error = error[:_MAX_ERROR_LEN]
     outbox.locked_by = None
     outbox.locked_until = None
     outbox.updated_at = now
-    session.flush()
+    return True
 
 
 def sweep_outbox(session: Session) -> list[int]:
-    """Recover expired leases and return the ids of all due pending rows.
-
-    Run periodically (celery-beat schedules it; any worker executes it). Resets
-    rows stuck in ``sending`` past their lease back to ``pending`` so a worker
-    that crashed before/while sending does not deadlock the row.
-    """
+    """Recover expired leases and return all due pending outbox ids."""
     now = datetime.now(UTC)
     expired = (
         session.execute(
             select(EmailOutbox)
-            .where(EmailOutbox.status == STATUS_SENDING, EmailOutbox.locked_until < now)
+            .where(
+                EmailOutbox.status == OutboxStatus.SENDING,
+                EmailOutbox.locked_until < now,
+            )
             .with_for_update(skip_locked=True)
         )
         .scalars()
         .all()
     )
     for outbox in expired:
-        outbox.status = STATUS_PENDING
+        outbox.status = OutboxStatus.PENDING
         outbox.locked_by = None
         outbox.locked_until = None
         if outbox.next_attempt_at < now:
@@ -129,7 +206,7 @@ def sweep_outbox(session: Session) -> list[int]:
     due = (
         session.execute(
             select(EmailOutbox.id).where(
-                EmailOutbox.status == STATUS_PENDING,
+                EmailOutbox.status == OutboxStatus.PENDING,
                 EmailOutbox.next_attempt_at <= now,
             )
         )
@@ -140,53 +217,84 @@ def sweep_outbox(session: Session) -> list[int]:
 
 
 def process_outbox(
-    session: Session,
+    session_factory: sessionmaker[Session],
     *,
     outbox_id: int,
     settings: Settings,
     provider: EmailProvider,
     task_id: str,
-) -> str:
-    """Claim, render, send, and record the outcome for one outbox row.
+) -> OutboxProcessResult:
+    """Deliver one outbox using short durable transactions around network I/O."""
+    with session_factory() as session:
+        claimed = claim_outbox(
+            session,
+            outbox_id,
+            task_id=task_id,
+            lease_seconds=settings.email_outbox_lease_seconds,
+        )
+        session.commit()
+    if claimed is None:
+        return OutboxProcessResult.SKIPPED
+    if claimed.attempt_count >= settings.email_outbox_max_attempts:
+        with session_factory() as session:
+            terminated = mark_dead(
+                session,
+                outbox_id=claimed.id,
+                task_id=task_id,
+                error="Email outbox attempt budget exhausted",
+            )
+            session.commit()
+        return OutboxProcessResult.DEAD if terminated else OutboxProcessResult.LEASE_LOST
 
-    Returns one of: ``skipped`` (not claimable), ``sent``, ``retry``, ``dead``.
-    The caller is responsible for committing the session.
-    """
-    outbox = claim_outbox(
-        session, outbox_id, task_id=task_id, lease_seconds=settings.email_outbox_lease_seconds
-    )
-    if outbox is None:
-        return "skipped"
-
-    rendered = render(outbox.template, outbox.payload)
+    rendered = render(claimed.template, claimed.payload)
     message = EmailMessage(
-        to=outbox.recipient_email,
+        to=claimed.recipient_email,
         subject=rendered.subject,
         html=rendered.html,
         text=rendered.text,
-        tag=outbox.template,
-        metadata={"outbox_id": str(outbox.id)},
+        tag=claimed.template,
+        metadata={"outbox_id": str(claimed.id)},
     )
 
-    bump_attempt(session, outbox)
+    with session_factory() as session:
+        owns_attempt = bump_attempt(session, outbox_id=claimed.id, task_id=task_id)
+        session.commit()
+    if not owns_attempt:
+        return OutboxProcessResult.LEASE_LOST
+
     try:
         result = provider.send(message)
     except EmailSendError as exc:
-        if exc.retryable:
-            mark_failure(
-                session,
-                outbox,
-                error=str(exc),
-                max_attempts=settings.email_outbox_max_attempts,
-            )
-            return STATUS_DEAD if outbox.status == STATUS_DEAD else "retry"
-        mark_dead(session, outbox, error=str(exc))
-        return STATUS_DEAD
+        with session_factory() as session:
+            if exc.retryable:
+                outcome = mark_failure(
+                    session,
+                    outbox_id=claimed.id,
+                    task_id=task_id,
+                    error=str(exc),
+                    max_attempts=settings.email_outbox_max_attempts,
+                )
+            else:
+                outcome = (
+                    OutboxProcessResult.DEAD
+                    if mark_dead(
+                        session,
+                        outbox_id=claimed.id,
+                        task_id=task_id,
+                        error=str(exc),
+                    )
+                    else None
+                )
+            session.commit()
+        return outcome or OutboxProcessResult.LEASE_LOST
 
-    mark_sent(
-        session,
-        outbox,
-        provider=result.provider,
-        provider_message_id=result.provider_message_id,
-    )
-    return STATUS_SENT
+    with session_factory() as session:
+        recorded = mark_sent(
+            session,
+            outbox_id=claimed.id,
+            task_id=task_id,
+            provider=result.provider,
+            provider_message_id=result.provider_message_id,
+        )
+        session.commit()
+    return OutboxProcessResult.SENT if recorded else OutboxProcessResult.LEASE_LOST

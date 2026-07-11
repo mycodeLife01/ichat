@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.errors import AppError
-from app.models.email_outbox import EmailOutbox
+from app.models.email_outbox import EmailOutbox, OutboxStatus
 from app.models.user import User
 from app.services.auth import rate_limit
 from app.services.auth.token_service import (
@@ -63,7 +63,7 @@ async def create_verification_email(
             "username": user.username,
             "expires_in_hours": ttl // 3600,
         },
-        status="pending",
+        status=OutboxStatus.PENDING,
         next_attempt_at=moment,
     )
     session.add(outbox)

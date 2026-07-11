@@ -1,12 +1,20 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Enum, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.base import Base
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "pending"
+    SENDING = "sending"
+    SENT = "sent"
+    DEAD = "dead"
 
 
 class EmailOutbox(Base):
@@ -32,7 +40,17 @@ class EmailOutbox(Base):
     template: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # pending -> sending -> sent | dead
-    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
+    status: Mapped[OutboxStatus] = mapped_column(
+        Enum(
+            OutboxStatus,
+            native_enum=False,
+            values_callable=lambda statuses: [status.value for status in statuses],
+            validate_strings=True,
+            length=32,
+        ),
+        nullable=False,
+        server_default=OutboxStatus.PENDING.value,
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
