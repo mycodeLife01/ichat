@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="iChat 当前 Auth 模块的交互式工作方式解析">
+  <title>iChat Auth · 认证信号台</title>
+  <style>
+    :root {
+      --fog: #eef4f5;
+      --paper: #f9fcfc;
+      --ink: #17272e;
+      --blue: #0b4662;
+      --blue-soft: #cfe1e7;
+      --cyan: #1d8491;
+      --amber: #d89416;
+      --red: #bd493f;
+      --muted: #62777f;
+      --line: #bdd0d5;
+      --display: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+      --body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+      --shadow: 0 18px 55px rgb(11 70 98 / 0.10);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgb(11 70 98 / 0.035) 1px, transparent 1px) 0 0 / 28px 28px,
+        linear-gradient(rgb(11 70 98 / 0.035) 1px, transparent 1px) 0 0 / 28px 28px,
+        var(--fog);
+      font-family: var(--body);
+      line-height: 1.65;
+    }
+
+    button, a { font: inherit; }
+    button:focus-visible, a:focus-visible {
+      outline: 3px solid var(--amber);
+      outline-offset: 4px;
+    }
+
+    .shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
+    .masthead {
+      min-height: 80vh;
+      display: grid;
+      align-items: center;
+      padding: 56px 0 48px;
+      position: relative;
+      overflow: hidden;
+    }
+    .masthead::before {
+      content: "AUTH";
+      position: absolute;
+      right: -0.04em;
+      top: 0.02em;
+      color: rgb(11 70 98 / 0.045);
+      font: 800 clamp(9rem, 29vw, 28rem)/0.9 var(--mono);
+      letter-spacing: -0.12em;
+      pointer-events: none;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.7fr);
+      gap: clamp(40px, 8vw, 110px);
+      align-items: end;
+      position: relative;
+      z-index: 1;
+    }
+    .eyebrow, .micro {
+      margin: 0 0 18px;
+      color: var(--blue);
+      font: 700 0.73rem/1.2 var(--mono);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 780px;
+      margin-bottom: 28px;
+      font: 700 clamp(3.6rem, 8vw, 7.6rem)/0.91 var(--display);
+      letter-spacing: -0.075em;
+      color: var(--blue);
+    }
+    h1 em { color: var(--red); font-style: normal; }
+    .lede {
+      max-width: 720px;
+      margin-bottom: 0;
+      color: #344b54;
+      font-size: clamp(1.05rem, 2vw, 1.32rem);
+    }
+    .thesis {
+      border-left: 6px solid var(--amber);
+      background: rgb(249 252 252 / 0.82);
+      box-shadow: var(--shadow);
+      padding: 28px 30px;
+      backdrop-filter: blur(9px);
+    }
+    .thesis strong {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--blue);
+      font: 700 1.35rem/1.35 var(--display);
+    }
+    .thesis p { margin: 0; color: var(--muted); }
+
+    .section { padding: 92px 0; }
+    .section-heading {
+      display: grid;
+      grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1fr);
+      gap: 48px;
+      margin-bottom: 44px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      align-items: end;
+    }
+    h2 {
+      margin-bottom: 0;
+      color: var(--blue);
+      font: 700 clamp(2.35rem, 5vw, 4.6rem)/1 var(--display);
+      letter-spacing: -0.05em;
+    }
+    .section-heading p { max-width: 720px; margin: 0; color: var(--muted); }
+
+    .signal-console {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .flow-tabs {
+      display: flex;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--line);
+      scrollbar-width: thin;
+    }
+    .flow-tab {
+      flex: 1 0 auto;
+      min-width: 130px;
+      padding: 18px 20px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      font: 700 0.8rem/1.2 var(--mono);
+      letter-spacing: 0.06em;
+      transition: background 160ms ease, color 160ms ease;
+    }
+    .flow-tab:hover { color: var(--blue); background: #edf5f6; }
+    .flow-tab[aria-selected="true"] { color: white; background: var(--blue); }
+    .flow-stage { padding: clamp(24px, 4vw, 52px); }
+    .flow-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 32px;
+      align-items: start;
+      margin-bottom: 46px;
+    }
+    .flow-summary h3 {
+      margin-bottom: 8px;
+      color: var(--ink);
+      font: 700 clamp(1.8rem, 4vw, 3.3rem)/1.1 var(--display);
+    }
+    .flow-summary p { max-width: 720px; margin: 0; color: var(--muted); }
+    .http-chip {
+      padding: 10px 14px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      white-space: nowrap;
+      font: 700 0.75rem/1 var(--mono);
+    }
+    .rail-wrap { overflow-x: auto; padding: 12px 2px 22px; }
+    .rail {
+      display: flex;
+      min-width: 920px;
+      align-items: stretch;
+      position: relative;
+    }
+    .rail::before {
+      content: "";
+      position: absolute;
+      left: 5%; right: 5%; top: 28px;
+      height: 2px;
+      background: var(--line);
+    }
+    .rail-step {
+      flex: 1;
+      min-width: 142px;
+      padding: 0 12px;
+      position: relative;
+      opacity: 0.45;
+      transform: translateY(5px);
+      transition: opacity 220ms ease, transform 220ms ease;
+    }
+    .rail-step.is-lit { opacity: 1; transform: translateY(0); }
+    .rail-step::before {
+      content: "";
+      display: block;
+      width: 18px; height: 18px;
+      margin: 19px auto 22px;
+      border: 5px solid var(--paper);
+      outline: 2px solid var(--line);
+      border-radius: 50%;
+      background: var(--line);
+      position: relative;
+      z-index: 1;
+      transition: background 180ms ease, outline-color 180ms ease, box-shadow 180ms ease;
+    }
+    .rail-step.is-lit::before {
+      background: var(--amber);
+      outline-color: var(--amber);
+      box-shadow: 0 0 0 8px rgb(216 148 22 / 0.14);
+    }
+    .rail-layer {
+      display: block;
+      margin-bottom: 9px;
+      color: var(--cyan);
+      text-align: center;
+      font: 700 0.66rem/1.2 var(--mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .rail-step strong { display: block; margin-bottom: 8px; font-size: 0.96rem; line-height: 1.35; }
+    .rail-step p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
+    .flow-foot {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      margin-top: 34px;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+    .flow-note { padding: 20px; background: var(--fog); }
+    .flow-note span { display: block; margin-bottom: 5px; color: var(--muted); font: 700 0.66rem/1.2 var(--mono); letter-spacing: 0.1em; }
+    .flow-note strong { font-size: 0.9rem; }
+
+    .layer-map {
+      display: grid;
+      grid-template-columns: 0.78fr 1.4fr 1fr;
+      border: 1px solid var(--line);
+      background: var(--line);
+      gap: 1px;
+    }
+    .layer-card { min-height: 230px; padding: 30px; background: var(--paper); }
+    .layer-card:nth-child(2) { background: var(--blue); color: white; }
+    .layer-card:nth-child(2) .micro, .layer-card:nth-child(2) p { color: #c8e2e7; }
+    .layer-card h3 { margin-bottom: 14px; font: 700 1.55rem/1.2 var(--display); }
+    .layer-card p { color: var(--muted); font-size: 0.92rem; }
+    .layer-card code { display: block; margin-top: 24px; font: 0.73rem/1.7 var(--mono); word-break: break-word; }
+
+    .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    .truth-box, .failure-box { border: 1px solid var(--line); background: var(--paper); }
+    .box-head { padding: 26px 28px; border-bottom: 1px solid var(--line); }
+    .box-head h3 { margin: 0; color: var(--blue); font: 700 1.7rem/1.2 var(--display); }
+    .truth-list { margin: 0; padding: 0; list-style: none; }
+    .truth-list li {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 16px;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--line);
+    }
+    .truth-list li:last-child { border-bottom: 0; }
+    .truth-mark { color: var(--cyan); font: 800 1rem/1.5 var(--mono); }
+    .truth-list strong { display: block; margin-bottom: 5px; }
+    .truth-list p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    .failure-row {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 18px;
+      padding: 21px 28px;
+      border-bottom: 1px solid var(--line);
+    }
+    .failure-row:last-child { border-bottom: 0; }
+    .failure-row code { color: var(--red); font: 700 0.74rem/1.5 var(--mono); }
+    .failure-row p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+    .endpoint-table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); }
+    .endpoint-table th, .endpoint-table td { padding: 18px 20px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .endpoint-table th { color: var(--muted); background: #e3edef; font: 700 0.68rem/1.2 var(--mono); letter-spacing: 0.09em; }
+    .endpoint-table td:first-child, .endpoint-table td:nth-child(2) { font: 700 0.76rem/1.5 var(--mono); white-space: nowrap; }
+    .endpoint-table tr:last-child td { border-bottom: 0; }
+    .status { display: inline-block; min-width: 42px; padding: 4px 7px; color: white; background: var(--cyan); text-align: center; }
+    .status.warn { background: var(--red); }
+
+    .code-map { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .code-link { padding: 22px; border-left: 5px solid var(--cyan); background: var(--paper); }
+    .code-link code { display: block; margin-bottom: 8px; color: var(--blue); font: 700 0.79rem/1.5 var(--mono); word-break: break-word; }
+    .code-link p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+
+    footer { padding: 38px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.82rem; }
+    footer .shell { display: flex; justify-content: space-between; gap: 24px; }
+    footer code { font-family: var(--mono); }
+
+    @media (max-width: 820px) {
+      .shell { width: min(100% - 24px, 720px); }
+      .masthead { min-height: auto; padding-top: 72px; }
+      .hero-grid, .section-heading, .split-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: 38px; }
+      .section { padding: 66px 0; }
+      .section-heading { gap: 18px; }
+      .layer-map { grid-template-columns: 1fr; }
+      .layer-card { min-height: auto; }
+      .flow-summary { grid-template-columns: 1fr; }
+      .flow-foot { grid-template-columns: 1fr; }
+      .endpoint-wrap { overflow-x: auto; }
+      .endpoint-table { min-width: 760px; }
+      .code-map { grid-template-columns: 1fr; }
+      footer .shell { flex-direction: column; }
+    }
+
+    @media (max-width: 480px) {
+      h1 { font-size: 3.35rem; }
+      .flow-stage { padding: 22px 16px; }
+      .thesis { padding: 24px; }
+      .failure-row { grid-template-columns: 1fr; gap: 6px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="shell hero-grid">
+      <div>
+        <p class="eyebrow">iChat / Architecture plate / 2026.07</p>
+        <h1>认证不是一道门，<br>而是一条<em>可恢复</em>的路径。</h1>
+        <p class="lede">Auth 模块同时管理身份、短期凭证、邮箱所有权与邮件投递。真正的边界不在某个路由，而在事务提交：提交前可以整体撤销，提交后投递失败也不能改写 API 的成功。</p>
+      </div>
+      <aside class="thesis">
+        <p class="micro">核心判断</p>
+        <strong>PostgreSQL 保存事实，Redis 只保存短期防滥用状态，Celery 只负责搬运任务。</strong>
+        <p>因此 Redis 或 broker 暂时不可用时，系统仍能依据每条路径的风险选择 fail-open、fail-closed 或由 outbox sweep 恢复。</p>
+      </aside>
+    </div>
+  </header>
+
+  <main>
+    <section class="section" id="flows">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="micro">Signal rail</p><h2>七条请求路径</h2></div>
+          <p>切换一条路径，观察请求脉冲经过哪些层。节点按真实调用顺序排列；事务边界、失败策略与最终响应会随路径一起变化。</p>
+        </div>
+        <div class="signal-console">
+          <div class="flow-tabs" role="tablist" aria-label="Auth 请求路径"></div>
+          <div class="flow-stage" id="flow-panel" role="tabpanel" tabindex="0">
+            <div class="flow-summary">
+              <div><h3 id="flow-title"></h3><p id="flow-copy"></p></div>
+              <span class="http-chip" id="flow-http"></span>
+            </div>
+            <div class="rail-wrap"><div class="rail" id="flow-rail"></div></div>
+            <div class="flow-foot" id="flow-foot"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="layers">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="micro">Responsibility</p><h2>三层，不越界</h2></div>
+          <p>当前实现把“HTTP 怎么说”“业务要做什么”“底层原子动作怎么完成”分开。邮箱流程比普通登录多一层用例编排，是因为它横跨限流、事务与异步投递。</p>
+        </div>
+        <div class="layer-map">
+          <article class="layer-card">
+            <p class="micro">Transport</p><h3>API 路由</h3>
+            <p>解析 schema、注入 session/settings/Redis、提取真实客户端 IP、调用服务并包装统一响应。</p>
+            <code>app/api/v1/auth.py</code>
+          </article>
+          <article class="layer-card">
+            <p class="micro">Use case boundary</p><h3>认证编排</h3>
+            <p>注册、验证、重发拥有统一事务控制：commit、rollback、cooldown 补偿，以及 commit 之后的 best-effort 投递。</p>
+            <code>app/services/auth/orchestration.py</code>
+          </article>
+          <article class="layer-card">
+            <p class="micro">Domain operations</p><h3>原子服务</h3>
+            <p>密码哈希、JWT/refresh token、一次性 auth token、Redis 限流、验证邮件与 outbox 行分别保持单一职责。</p>
+            <code>service.py · verification.py<br>token_service.py · rate_limit.py</code>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="truth">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="micro">Truth & failure</p><h2>事实与故障</h2></div>
+          <p>理解 Auth 的捷径，是先分清哪些数据代表业务事实，哪些只用于加速或抑制滥用；再看每个外部依赖失效时，请求应继续还是拒绝。</p>
+        </div>
+        <div class="split-grid">
+          <article class="truth-box">
+            <div class="box-head"><h3>不可破坏的不变量</h3></div>
+            <ol class="truth-list">
+              <li><span class="truth-mark">A</span><div><strong>原始 token 不入库</strong><p>auth token 与 refresh token 都只保存哈希；原始邮箱 token 只出现于一次性的邮件链接。</p></div></li>
+              <li><span class="truth-mark">B</span><div><strong>同用途只有一个 active token</strong><p>重发先撤销旧 token；PostgreSQL partial unique index 为并发竞态兜底。</p></div></li>
+              <li><span class="truth-mark">C</span><div><strong>验证必须匹配当前邮箱</strong><p>token 未过期、未使用、未撤销，且 sent_to_email 等于用户当前邮箱，才设置 email_verified。</p></div></li>
+              <li><span class="truth-mark">D</span><div><strong>邮件先落 outbox，再异步发送</strong><p>API 成功以数据库 commit 为界；Celery 任务只携带 outbox_id，不携带业务内容。</p></div></li>
+            </ol>
+          </article>
+          <article class="failure-box">
+            <div class="box-head"><h3>依赖失效时怎么走</h3></div>
+            <div class="failure-row"><code>REGISTER / REDIS</code><p>IP 限流 fail-open；邮箱 cooldown 改查 PostgreSQL，优先保证注册可用。</p></div>
+            <div class="failure-row"><code>RESEND / REDIS</code><p>fail-closed，返回 429。重发不是关键转化路径，宁可暂拒也不放大邮件滥用。</p></div>
+            <div class="failure-row"><code>VERIFY / REDIS</code><p>fail-open。验证 token 具有高熵，不应因限流存储故障阻断用户。</p></div>
+            <div class="failure-row"><code>DB / BEFORE COMMIT</code><p>rollback 整个事务，并尽力删除已经取得的 cooldown key，然后原样抛出错误。</p></div>
+            <div class="failure-row"><code>BROKER / AFTER COMMIT</code><p>记录 warning，但 API 保持成功；pending outbox 由 celery-beat 的 sweep 后续重投。</p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="contract">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="micro">HTTP contract</p><h2>接口速查</h2></div>
+          <p>所有成功响应都包在 <code>{ "data": ... }</code> 中。Bearer access token 保护 <code>/me</code> 与重发接口；邮箱未验证不会限制聊天功能。</p>
+        </div>
+        <div class="endpoint-wrap">
+          <table class="endpoint-table">
+            <thead><tr><th>方法</th><th>路径</th><th>认证</th><th>成功</th><th>关键失败</th></tr></thead>
+            <tbody>
+              <tr><td>POST</td><td>/register</td><td>公开</td><td><span class="status">201</span> 用户 + access/refresh token</td><td>重复用户名/邮箱 409；限流 429</td></tr>
+              <tr><td>POST</td><td>/login</td><td>公开</td><td><span class="status">200</span> 新 access/refresh token</td><td>统一凭证错误 401</td></tr>
+              <tr><td>POST</td><td>/refresh</td><td>refresh token</td><td><span class="status">200</span> 轮换后的 token 对</td><td>过期、撤销或重放 401</td></tr>
+              <tr><td>POST</td><td>/logout</td><td>refresh token</td><td><span class="status">200</span> 幂等撤销</td><td>不存在也返回成功</td></tr>
+              <tr><td>GET</td><td>/me</td><td>Bearer</td><td><span class="status">200</span> 当前用户</td><td>缺失或无效 access token 401</td></tr>
+              <tr><td>POST</td><td>/verify-email</td><td>公开 token</td><td><span class="status">200</span> email_verified=true</td><td><span class="status warn">400</span> 当前实现对无效/过期链接返回通用错误</td></tr>
+              <tr><td>POST</td><td>/resend-verification-email</td><td>Bearer</td><td><span class="status">200</span> 已验证时也幂等成功</td><td>Redis 故障或 cooldown 429</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="code">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="micro">Code atlas</p><h2>从哪里读代码</h2></div>
+          <p>建议先读路由看外部契约，再读 orchestration 看事务边界，最后按问题进入具体原子服务或数据模型。</p>
+        </div>
+        <div class="code-map">
+          <article class="code-link"><code>app/api/v1/auth.py</code><p>七个 HTTP 入口、依赖注入与统一响应。</p></article>
+          <article class="code-link"><code>app/services/auth/orchestration.py</code><p>注册、验证、重发的用例流程与共享事务补偿。</p></article>
+          <article class="code-link"><code>app/services/auth/service.py</code><p>注册、登录、refresh 轮换、logout 与用户响应组装。</p></article>
+          <article class="code-link"><code>app/services/auth/verification.py</code><p>邮箱限流策略、token + outbox 创建及验证动作。</p></article>
+          <article class="code-link"><code>app/services/auth/token_service.py</code><p>一次性 auth token 的签发、撤销和原子消费。</p></article>
+          <article class="code-link"><code>app/services/auth/rate_limit.py</code><p>Redis cooldown 与 IP 滑动窗口，故障策略由调用方决定。</p></article>
+          <article class="code-link"><code>app/tasks/email_tasks.py</code><p>Celery 投递与 sweep；任务只携带 outbox_id。</p></article>
+          <article class="code-link"><code>app/models/{user,auth_token,email_outbox}.py</code><p>用户、凭证和邮件事实源的数据约束。</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell"><span>iChat Auth · 当前分支实现剖面</span><code>FastAPI · PostgreSQL · Redis · Celery</code></div>
+  </footer>
+
+  <script>
+    const flows = [
+      {
+        id: "register", label: "注册", http: "POST · /register · 201",
+        title: "注册并准备验证邮件",
+        copy: "先保护入口，再在同一数据库事务中创建用户、refresh token、邮箱 token 与 outbox；只有 commit 成功后才触发异步投递。",
+        notes: [["事务", "用户、凭证、outbox 原子提交"], ["Redis", "IP fail-open；邮箱可降级查 DB"], ["投递", "broker 失败仍返回 201"]],
+        steps: [["API", "解析与注入", "校验 body，提取 X-Real-IP"], ["REDIS", "IP 滑窗", "超限 429；故障时继续"], ["AUTH", "注册用户", "查重、哈希密码、签发 token"], ["REDIS", "邮箱 cooldown", "取得 60s 槽位，故障改查 DB"], ["POSTGRES", "写入事实", "user + refresh + auth_token + outbox"], ["TX", "COMMIT", "失败则 rollback 并释放 cooldown"], ["CELERY", "异步投递", "delay(outbox_id)，sweep 可恢复"]]
+      },
+      {
+        id: "login", label: "登录", http: "POST · /login · 200",
+        title: "校验凭证并签发一对新 token",
+        copy: "用户名或邮箱统一归一化查询；错误信息不暴露账号是否存在。登录不经过邮箱验证编排，因为它没有 cooldown、outbox 或异步投递。",
+        notes: [["查询", "用户名 / 邮箱不区分大小写"], ["安全", "账号、密码错误统一返回 401"], ["事务", "refresh token 落库后 commit"]],
+        steps: [["API", "解析登录请求", "identifier + password"], ["POSTGRES", "查询 active 用户", "username 或 email"], ["CRYPTO", "校验密码", "verify_password(password_hash)"], ["AUTH", "生成 access JWT", "短期、含 user_id"], ["AUTH", "生成 refresh token", "原文返回，哈希入库"], ["TX", "COMMIT", "响应统一包进 data"]]
+      },
+      {
+        id: "refresh", label: "刷新", http: "POST · /refresh · 200",
+        title: "一次性轮换 refresh token",
+        copy: "refresh token 是可撤销的数据库凭证。每次刷新先确认旧 token 有效，再撤销它并签发新的一对，旧 token 重放会得到 401。",
+        notes: [["输入", "客户端提交 refresh token"], ["轮换", "旧 token revoked_at 立即写入"], ["重放", "再次使用旧 token 返回 401"]],
+        steps: [["API", "接收 refresh token", "不需要 Bearer access token"], ["CRYPTO", "计算 token hash", "数据库从不保存原文"], ["POSTGRES", "校验 token", "存在、未撤销、未过期"], ["POSTGRES", "校验用户", "存在且 is_active"], ["AUTH", "撤旧发新", "旧 revoked，新 access + refresh"], ["TX", "COMMIT", "原子完成轮换"]]
+      },
+      {
+        id: "logout", label: "登出", http: "POST · /logout · 200",
+        title: "幂等撤销 refresh token",
+        copy: "登出只影响指定 refresh token，不建立服务端 access-token 黑名单；已签发 access JWT 仍按自身短 TTL 到期。",
+        notes: [["幂等", "token 不存在或已撤销仍返回 ok"], ["撤销", "设置 revoked_at"], ["Access JWT", "不会被即时拉黑"]],
+        steps: [["API", "接收 refresh token", "LogoutRequest"], ["CRYPTO", "计算 token hash", "查找对应数据库行"], ["POSTGRES", "按需撤销", "未撤销才写 revoked_at"], ["TX", "COMMIT", "返回 {status: ok}"]]
+      },
+      {
+        id: "me", label: "当前用户", http: "GET · /me · 200",
+        title: "从 Bearer JWT 恢复当前用户",
+        copy: "HTTPBearer 提取 access token，解码 user_id 后重新查询数据库，因此已停用或已删除用户不能仅凭旧 JWT 继续通过。",
+        notes: [["凭证", "Authorization: Bearer <access>"], ["校验", "JWT 签名 + exp"], ["响应", "含 email_verified 当前值"]],
+        steps: [["API", "提取 Bearer", "缺失直接 401"], ["CRYPTO", "解码 JWT", "校验签名和过期时间"], ["POSTGRES", "加载用户", "user_id + is_active"], ["API", "组装用户响应", "不返回 password_hash"]]
+      },
+      {
+        id: "verify", label: "验证邮箱", http: "POST · /verify-email · 200",
+        title: "原子消费一次性邮箱 token",
+        copy: "公开链接携带高熵 token。数据库用带条件的 UPDATE…RETURNING 保证并发双击只有一个请求能消费成功。",
+        notes: [["Redis", "验证限流 fail-open"], ["并发", "只有一个消费者赢得 UPDATE"], ["当前错误", "无效或过期 token 返回 400"]],
+        steps: [["API", "解析链接 token", "提取客户端 IP"], ["REDIS", "IP 滑窗", "超限 429；故障时继续"], ["CRYPTO", "计算 SHA-256", "原始 token 不入库"], ["POSTGRES", "原子消费", "未用、未撤销、未过期"], ["AUTH", "核对当前邮箱", "sent_to_email 必须一致"], ["POSTGRES", "标记已验证", "email_verified = true"], ["TX", "COMMIT", "同一 token 再用会失败"]]
+      },
+      {
+        id: "resend", label: "重发邮件", http: "POST · /resend-verification-email · 200",
+        title: "重发，但不允许放大滥用",
+        copy: "需要当前用户。已验证用户直接幂等成功；未验证用户先经过更严格的 fail-closed 防护，再锁用户行并生成新 token 与 outbox。",
+        notes: [["前置", "Bearer 用户；已验证直接成功"], ["Redis", "IP + user cooldown，故障 429"], ["并发", "FOR UPDATE 后再次检查状态"]],
+        steps: [["API", "恢复当前用户", "Bearer access token"], ["AUTH", "检查已验证", "true 则不占 cooldown、不发信"], ["REDIS", "IP + user cooldown", "超限或故障都返回 429"], ["POSTGRES", "锁定用户行", "并发下重查 email_verified"], ["AUTH", "撤旧并发新 token", "同时写入 pending outbox"], ["TX", "COMMIT", "失败 rollback + 释放 cooldown"], ["CELERY", "异步投递", "broker 失败由 sweep 恢复"]]
+      }
+    ];
+
+    const tabs = document.querySelector(".flow-tabs");
+    const rail = document.querySelector("#flow-rail");
+    let timers = [];
+
+    flows.forEach((flow, index) => {
+      const button = document.createElement("button");
+      button.className = "flow-tab";
+      button.type = "button";
+      button.id = `tab-${flow.id}`;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-controls", "flow-panel");
+      button.setAttribute("aria-selected", index === 0 ? "true" : "false");
+      button.textContent = flow.label;
+      button.addEventListener("click", () => renderFlow(index));
+      button.addEventListener("keydown", event => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const next = (index + (event.key === 'ArrowRight' ? 1 : -1) + flows.length) % flows.length;
+        tabs.children[next].focus();
+        renderFlow(next);
+      });
+      tabs.appendChild(button);
+    });
+
+    function renderFlow(index) {
+      timers.forEach(clearTimeout);
+      timers = [];
+      const flow = flows[index];
+      [...tabs.children].forEach((tab, tabIndex) => tab.setAttribute("aria-selected", tabIndex === index ? "true" : "false"));
+      document.querySelector("#flow-panel").setAttribute("aria-labelledby", `tab-${flow.id}`);
+      document.querySelector("#flow-title").textContent = flow.title;
+      document.querySelector("#flow-copy").textContent = flow.copy;
+      document.querySelector("#flow-http").textContent = flow.http;
+      rail.replaceChildren();
+      flow.steps.forEach(([layer, title, copy], stepIndex) => {
+        const step = document.createElement("article");
+        step.className = "rail-step";
+        step.innerHTML = `<span class="rail-layer">${layer}</span><strong>${title}</strong><p>${copy}</p>`;
+        rail.appendChild(step);
+        timers.push(setTimeout(() => step.classList.add("is-lit"), 110 * stepIndex));
+      });
+      const foot = document.querySelector("#flow-foot");
+      foot.replaceChildren();
+      flow.notes.forEach(([label, copy]) => {
+        const note = document.createElement("div");
+        note.className = "flow-note";
+        note.innerHTML = `<span>${label}</span><strong>${copy}</strong>`;
+        foot.appendChild(note);
+      });
+    }
+
+    renderFlow(0);
+  </script>
+</body>
+</html>
