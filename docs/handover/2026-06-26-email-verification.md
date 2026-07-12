@@ -138,6 +138,84 @@ docker compose exec api alembic upgrade head
 #   → POST /api/v1/auth/verify-email → GET /api/v1/auth/me 返回 email_verified=true
 ```
 
+## 2026-07-12 生产就绪验收
+
+验收在本地完整依赖拓扑中执行：PostgreSQL、Redis、API、2 个 LLM worker、Celery worker 和单实例 Celery beat。邮件 provider 使用 `console`，因此验证了真实 API、数据库、broker、worker 与 outbox 状态流转，但没有向外部邮箱发送邮件。
+
+### 执行命令与结果
+
+```bash
+# 依赖与迁移
+uv sync --all-groups --frozen
+pnpm --dir frontend install --frozen-lockfile
+docker compose up -d postgres redis
+DATABASE_URL=postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat \
+  uv run alembic upgrade head
+
+# 后端
+DATABASE_URL=postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat \
+EMAIL_PROVIDER=fake \
+REDIS_URL=redis://localhost:6379/0 \
+CELERY_BROKER_URL=redis://localhost:6379/0 \
+  uv run pytest --tb=short -q
+uv run ruff check .
+uv run mypy app
+
+# 前端
+pnpm --dir frontend exec vitest run
+pnpm --dir frontend run lint
+pnpm --dir frontend run typecheck
+pnpm --dir frontend run build
+
+# Compose 解析、完整开发拓扑与健康检查
+docker compose config --quiet
+docker compose -f compose.prod.yml config --quiet
+docker compose up -d --build
+docker compose ps --all
+curl -fsS http://localhost:8000/healthz
+curl -fsS http://localhost:8000/readyz
+docker compose exec -T redis redis-cli ping
+docker compose exec -T postgres pg_isready -U ichat -d ichat
+docker compose exec -T celery-worker celery -A app.tasks.celery_app inspect ping
+```
+
+结果：
+
+- 后端：`346 passed`；Ruff 全部通过；严格 MyPy 在 80 个 source files 上无错误。
+- 前端：56 个 test files、323 个 tests 全部通过；ESLint、TypeScript typecheck 和生产构建通过。Vite 仅报告现有主 bundle 超过 500 kB 的非阻塞警告。
+- Compose：开发与生产配置均解析成功；开发拓扑全部启动，migration 以 0 退出，PostgreSQL / Redis healthy，API `/healthz` 与 `/readyz` 均返回 `{"status":"ok"}`，Celery worker ping 返回 `pong`。
+- Postmark：使用当前 `.env` 中的 Server Token，以 `EMAIL_PROVIDER=postmark` 完成配置模型校验；未调用 Postmark API，也未发送真实邮件。
+
+### 真实依赖 smoke 结果
+
+使用唯一测试用户通过运行中的 API 执行以下流程，并直接观察 PostgreSQL outbox 状态及 Celery worker 日志：
+
+1. `POST /api/v1/auth/register` 返回 201，创建 token 与 outbox。
+2. 注册后立即 `POST /resend-verification-email` 返回 429，并包含 `Retry-After`，证明注册与重发共享邮箱 cooldown。
+3. 非法格式 token 调用 `POST /verify-email` 返回 422。
+4. 注册 outbox（本次本地 ID 776）由 Celery worker 通过 `console` provider 发送，最终为 `sent`、`attempt_count=1`。
+5. outbox 验证链接返回 200；随后 `GET /auth/me` 返回 `email_verified=true`。
+6. 重复使用同一验证链接返回 400。
+7. 另建一条模拟崩溃 worker 的过期 `sending` lease（本次本地 ID 777），触发 `sweep_email_outbox`；sweep 将其恢复并重新入队，Celery worker 最终写为 `sent`、`attempt_count=1`、锁字段清空、provider 为 `console`。
+
+对应 Celery 日志包含：
+
+```text
+send_email_outbox outbox_id=776 result=sent
+sweep_email_outbox re-enqueued 1 outbox rows
+send_email_outbox outbox_id=777 result=sent
+```
+
+自动化套件同时覆盖并发 claim、发送前/后崩溃、过期 owner 不能覆盖新 lease、有效 lease 不被 sweep、重试预算耗尽及非重试错误进入 dead。
+
+### 上线前仍需人工完成
+
+1. 生产 `.env` 设置 `EMAIL_PROVIDER=postmark`，确认 `FRONTEND_APP_URL=https://chat.feslia.com`、sender、MessageStream 与 Server Token 均为生产值，然后 force-recreate `api celery-worker celery-beat`。
+2. 在 Postmark 控制台确认 `mail.feslia.com` 的 DKIM、SPF / Return-Path 与 `no-reply@mail.feslia.com` sender 均已验证；向受控真实邮箱执行一次送达测试。此次本地验收没有发送真实邮件。
+3. 在生产服务器实际执行迁移与完整拓扑部署，确认 Redis、API、LLM worker、Celery worker、单实例 Celery beat 和 nginx 均运行；本地验收只验证了生产 Compose 解析和自动部署顺序，没有操作生产服务器。
+4. 同步 Cloudflare 最新 IP 段到 nginx 与源站防火墙，确保公网只能经 Cloudflare 访问源站 80 / 8443。
+5. 上线后监控 Celery worker / beat，检查 `dead` outbox，并确认 beat 始终只有一个实例。
+
 ## 未来扩展
 
 复用 `auth_tokens` / outbox / rate limit / Postmark adapter 即可加 `password_reset`、`account_deletion`，以及接 Postmark bounce/delivery webhook 记录最终投递状态。
