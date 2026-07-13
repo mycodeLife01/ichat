@@ -8,7 +8,9 @@
                 │ 跨域 API 调用（CORS）
                 ▼
 用户 → Nginx (80/8443) → FastAPI API (8000) → PostgreSQL (5432)
-                                            → Worker (后台任务)
+                                            → Worker (LLM run)
+                                            → Redis (Celery broker + 限流)
+                                            → Celery Worker / Beat (发送验证邮件)
 ```
 
 部署分两条线：
@@ -93,6 +95,15 @@ SUMMARY_MODEL=deepseek-chat
 # CORS —— 前端域名，逗号分隔精确 origin；空 = 全部拒绝
 CORS_ALLOWED_ORIGINS=https://chat.feslia.com
 
+# 邮箱验证 / 认证邮件（详见 docs/handover/2026-06-26-email-verification.md）
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+FRONTEND_APP_URL=https://chat.feslia.com
+EMAIL_PROVIDER=postmark            # 生产用 postmark；dev/CI 用 console/fake
+EMAIL_FROM=iChat <no-reply@mail.feslia.com>
+POSTMARK_SERVER_TOKEN=<Postmark Server API Token>
+POSTMARK_MESSAGE_STREAM=outbound
+
 # 其他
 # 系统提示词的可选覆盖；留空使用 app/prompts/ 内置生产提示词
 DEFAULT_SYSTEM_PROMPT=
@@ -107,6 +118,8 @@ LOG_LEVEL=INFO
 > **注意**：修改 `.env` 中的 `CORS_ALLOWED_ORIGINS` 后，必须 `docker compose -f compose.prod.yml up -d --force-recreate api` 才会生效——`restart` 不会重新加载 env。
 
 > **Web Search**：后端通过 `GET /api/v1/capabilities` 对前端公开联网搜索是否可用；只有 `WEB_SEARCH_ENABLED=true` 且 `TAVILY_API_KEY` 非空时返回 enabled。修改 `WEB_SEARCH_ENABLED`、`TAVILY_API_KEY` 或相关超时/额度配置后，需至少 force-recreate `api` 和 `worker` 容器，让 capabilities 与 worker runtime 同步加载新 env。
+
+> **邮箱验证 / Celery**：新增 `redis`、`celery-worker`、`celery-beat` 三服务（已在 `compose.prod.yml`）。`celery-beat` 必须**单实例**。修改邮件相关 env 后须 force-recreate `api celery-worker celery-beat`。Postmark DNS/DKIM/SPF 配置、dead outbox 排查、以及 nginx Cloudflare realip + 源站防火墙锁 CF 段的运维清单详见 `docs/handover/2026-06-26-email-verification.md`。`deploy/nginx.conf` 已含 CF `set_real_ip_from` 段，CF IP 段变更时需按该清单同步。
 
 ### 5. 创建证书目录（可选，HTTPS 用）
 
@@ -145,6 +158,12 @@ docker compose -f compose.prod.yml logs -f
 
 - **CI** (`.github/workflows/ci.yml`)：每次 push/PR 到 `main` 时运行 lint、类型检查、测试和镜像构建
 - **Deploy** (`.github/workflows/deploy.yml`)：push 到 `main` 后自动构建镜像并部署到服务器
+
+Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml` 与
+`deploy/nginx.conf` 同步到 `DEPLOY_PATH`，同步成功后才通过 SSH 执行镜像拉取、迁移和
+`up -d --remove-orphans`。生产部署按工作流串行执行，避免并发提交覆盖彼此的部署定义；
+最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。任一步失败都会终止部署，不会
+继续使用服务器上的旧拓扑。
 
 ### 配置 GitHub Secrets
 
@@ -245,12 +264,14 @@ git push origin main
 │  CI（lint → mypy → pytest → build） │  检测到 push 自动构建
 │      ↓                              │  pnpm build → 发布到
 │  Deploy（build → push ghcr.io       │  chat.feslia.com
-│          → SSH deploy）             └─
+│          → 同步 Compose/nginx       └─
+│          → SSH deploy）
 │      ↓
 │  服务器执行:
-│      docker compose pull
+│      docker compose --profile migrate pull
 │      docker compose run --rm migrate
 │      docker compose up -d
+│      docker compose up -d --force-recreate nginx
 └─
 ```
 

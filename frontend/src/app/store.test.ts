@@ -5,16 +5,18 @@ import { createAuthSession } from "../auth/tokenStore";
 import { initialState, rootReducer } from "./store";
 
 describe("rootReducer auth slice", () => {
-  it("marks bootstrapped on auth/restored with a session", () => {
+  it("restores a session before marking bootstrap complete", () => {
     const session = createAuthSession(authTokenResponse);
-    const next = rootReducer(initialState, { type: "auth/restored", session });
+    const restoring = rootReducer(initialState, { type: "auth/restored", session });
+    const next = rootReducer(restoring, { type: "auth/bootstrapCompleted" });
 
     expect(next.auth.session).toEqual(session);
     expect(next.auth.bootstrapped).toBe(true);
   });
 
-  it("marks bootstrapped on auth/restored with no session", () => {
-    const next = rootReducer(initialState, { type: "auth/restored", session: null });
+  it("completes bootstrap with no restored session", () => {
+    const restoring = rootReducer(initialState, { type: "auth/restored", session: null });
+    const next = rootReducer(restoring, { type: "auth/bootstrapCompleted" });
 
     expect(next.auth.session).toBeNull();
     expect(next.auth.bootstrapped).toBe(true);

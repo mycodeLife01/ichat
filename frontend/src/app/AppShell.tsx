@@ -19,6 +19,7 @@ import { useAuthSession } from "../auth/useAuthSession";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ShareDialog } from "../ui/ShareDialog";
+import { VerifyEmailBanner } from "../ui/VerifyEmailBanner";
 import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import { useAppActions, useAppState } from "./context";
@@ -299,6 +300,7 @@ export function AppShell() {
       <main
         className={`main relative flex min-w-0 flex-1 flex-col${animateComposer ? " composer-animate" : ""}`}
       >
+        <VerifyEmailBanner />
         <Topbar
           title={activeConversation?.title ?? null}
           titlePending={selectedId != null && pendingTitleIds.includes(selectedId)}

@@ -14,6 +14,7 @@ export type TokenStore = {
   read(): AuthSession | null;
   save(session: AuthSession): void;
   clear(): void;
+  updateUser(user: AuthUserResponse): void;
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
 };
@@ -53,6 +54,12 @@ export const tokenStore: TokenStore = {
   },
   clear() {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+  },
+  updateUser(user) {
+    const session = readSession();
+    if (session) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ ...session, user }));
+    }
   },
   getAccessToken() {
     return readSession()?.accessToken ?? null;

@@ -5,7 +5,7 @@ import type { CapabilitiesApi } from "../api/capabilities";
 import type { ConversationApi } from "../api/conversations";
 import type { RunApi } from "../api/runs";
 import type { ShareApi } from "../api/share";
-import type { AuthTokenResponse, CommandStatusResponse } from "../api/types";
+import type { AuthTokenResponse, AuthUserResponse, CommandStatusResponse } from "../api/types";
 import type { AppAction, AppState } from "./store";
 
 export type AuthApi = {
@@ -13,6 +13,9 @@ export type AuthApi = {
   login(body: LoginRequest): Promise<AuthTokenResponse>;
   refresh(refreshToken: string): Promise<AuthTokenResponse>;
   logout(refreshToken: string): Promise<CommandStatusResponse>;
+  me(): Promise<AuthUserResponse>;
+  verifyEmail(token: string): Promise<CommandStatusResponse>;
+  resendVerificationEmail(): Promise<CommandStatusResponse>;
 };
 
 export type Services = {

@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 
 import { AuthScreen } from "../auth/AuthScreen";
 import { useAuthSession } from "../auth/useAuthSession";
+import { VerifyEmailPage } from "../auth/VerifyEmailPage";
 import { SharePage } from "../messages/SharePage";
 import { AppShell } from "./AppShell";
 
@@ -11,6 +12,8 @@ export function App() {
       {/* Public, login-free read-only snapshot. Kept outside AuthGate so an
           anonymous visitor never waits on (or is gated by) auth bootstrap. */}
       <Route path="/share/:token" element={<SharePage />} />
+      {/* Public email verification: the link must work logged-out too. */}
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="*" element={<AuthGate />} />
     </Routes>
   );

@@ -76,8 +76,25 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
   );
 
   useEffect(() => {
-    dispatch({ type: "auth/restored", session: tokenStore.read() });
-  }, [dispatch]);
+    const restored = tokenStore.read();
+    dispatch({ type: "auth/restored", session: restored });
+    if (!restored) {
+      dispatch({ type: "auth/bootstrapCompleted" });
+      return;
+    }
+
+    // Finish the startup /me refresh before declaring auth recovery complete.
+    // Public flows can then safely make decisions from the recovered session
+    // without this older request overwriting a newer user mirror.
+    void services.authApi
+      .me()
+      .then((user) => {
+        tokenStore.updateUser(user);
+        dispatch({ type: "auth/userUpdated", user });
+      })
+      .catch(() => {})
+      .finally(() => dispatch({ type: "auth/bootstrapCompleted" }));
+  }, [dispatch, services]);
 
   return (
     <StateContext.Provider value={state}>
