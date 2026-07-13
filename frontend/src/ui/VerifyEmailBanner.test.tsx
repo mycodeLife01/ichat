@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ import { createFakeServices, renderWithApp } from "../test/appHarness";
 import { VerifyEmailBanner } from "./VerifyEmailBanner";
 
 const BANNER_TEXT = "Verify your email to keep your account secure.";
+const SENT_TEXT = "We sent a verification email to";
 
 function ToastProbe() {
   const { ui } = useAppState();
@@ -29,14 +30,22 @@ function verifiedSession() {
 
 describe("VerifyEmailBanner", () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.useRealTimers();
+  });
 
-  it("shows for an unverified user", async () => {
+  it("shows for an unverified user with a Send button and does not auto-send", async () => {
+    const resendVerificationEmail = vi.fn(async () => ({ status: "ok" }));
     tokenStore.save(unverifiedSession());
-    renderWithApp(<VerifyEmailBanner />, createFakeServices());
+    renderWithApp(<VerifyEmailBanner />, createFakeServices({ resendVerificationEmail }));
 
     expect(await screen.findByText(BANNER_TEXT)).toBeInTheDocument();
     expect(screen.getByText(authTokenResponse.user.email)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Send verification email" }),
+    ).toBeInTheDocument();
+    expect(resendVerificationEmail).not.toHaveBeenCalled();
   });
 
   it("hides for a verified user", async () => {
@@ -48,10 +57,12 @@ describe("VerifyEmailBanner", () => {
     expect(screen.queryByText(BANNER_TEXT)).toBeNull();
   });
 
-  it("resends and shows a success toast", async () => {
+  it("sends, shows a success toast, and enters a cooldown countdown", async () => {
+    // shouldAdvanceTime keeps waitFor's real-time polling alive under fake timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const resendVerificationEmail = vi.fn(async () => ({ status: "ok" }));
     tokenStore.save(unverifiedSession());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
     renderWithApp(
       <>
         <VerifyEmailBanner />
@@ -60,7 +71,7 @@ describe("VerifyEmailBanner", () => {
       createFakeServices({ resendVerificationEmail }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "Resend verification email" }));
+    await user.click(await screen.findByRole("button", { name: "Send verification email" }));
 
     expect(resendVerificationEmail).toHaveBeenCalled();
     await waitFor(() =>
@@ -68,9 +79,35 @@ describe("VerifyEmailBanner", () => {
         "Verification email sent. Check your inbox.",
       ),
     );
+    expect(screen.getByText(SENT_TEXT, { exact: false })).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Resend in 60s" });
+    expect(button).toBeDisabled();
   });
 
-  it("shows a try-later toast on 429", async () => {
+  it("re-enables as Resend after the cooldown elapses", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const resendVerificationEmail = vi.fn(async () => ({ status: "ok" }));
+    tokenStore.save(unverifiedSession());
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+    renderWithApp(<VerifyEmailBanner />, createFakeServices({ resendVerificationEmail }));
+
+    await user.click(await screen.findByRole("button", { name: "Send verification email" }));
+    await screen.findByRole("button", { name: "Resend in 60s" });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByRole("button", { name: "Resend in 59s" })).toBeDisabled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_000);
+    });
+
+    const button = screen.getByRole("button", { name: "Resend verification email" });
+    expect(button).toBeEnabled();
+  });
+
+  it("shows a try-later toast on 429 and keeps the Send label", async () => {
     const resendVerificationEmail = vi.fn(async () => {
       throw new ApiError({ status: 429 });
     });
@@ -84,10 +121,40 @@ describe("VerifyEmailBanner", () => {
       createFakeServices({ resendVerificationEmail }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "Resend verification email" }));
+    await user.click(await screen.findByRole("button", { name: "Send verification email" }));
 
     await waitFor(() =>
       expect(screen.getByTestId("toast")).toHaveTextContent("Please try again later."),
     );
+    expect(
+      screen.getByRole("button", { name: "Send verification email" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(BANNER_TEXT)).toBeInTheDocument();
+  });
+
+  it("shows a failure toast on other errors and keeps the Send label", async () => {
+    const resendVerificationEmail = vi.fn(async () => {
+      throw new ApiError({ status: 500 });
+    });
+    tokenStore.save(unverifiedSession());
+    const user = userEvent.setup();
+    renderWithApp(
+      <>
+        <VerifyEmailBanner />
+        <ToastProbe />
+      </>,
+      createFakeServices({ resendVerificationEmail }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Send verification email" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("toast")).toHaveTextContent(
+        "Could not send the email. Try again.",
+      ),
+    );
+    const button = screen.getByRole("button", { name: "Send verification email" });
+    expect(button).toBeEnabled();
+    expect(screen.getByText(BANNER_TEXT)).toBeInTheDocument();
   });
 });
