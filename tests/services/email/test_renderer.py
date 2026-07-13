@@ -3,8 +3,11 @@ import pytest
 from app.services.email.renderer import (
     EMAIL_VERIFICATION_SUBJECT,
     EMAIL_VERIFICATION_TEMPLATE,
+    PASSWORD_RESET_SUBJECT,
+    PASSWORD_RESET_TEMPLATE,
     render,
     render_email_verification,
+    render_password_reset,
 )
 
 
@@ -32,6 +35,24 @@ def test_render_dispatches_by_template() -> None:
     assert rendered.subject == EMAIL_VERIFICATION_SUBJECT
 
 
+def test_render_password_reset_includes_link_user_and_expiry() -> None:
+    url = "https://chat.feslia.com/reset-password?token=abc123"
+    rendered = render_password_reset(
+        {"reset_url": url, "username": "alice", "expires_in_minutes": 30}
+    )
+
+    assert rendered.subject == PASSWORD_RESET_SUBJECT
+    assert url in rendered.html
+    assert url in rendered.text
+    assert "alice" in rendered.text
+    assert "30 minutes" in rendered.text
+
+
+def test_render_dispatches_password_reset() -> None:
+    rendered = render(PASSWORD_RESET_TEMPLATE, {"reset_url": "https://x/reset"})
+    assert rendered.subject == PASSWORD_RESET_SUBJECT
+
+
 def test_render_unknown_template_raises() -> None:
     with pytest.raises(ValueError):
-        render("password_reset", {"verification_url": "https://x"})
+        render("no-such-template", {"verification_url": "https://x"})

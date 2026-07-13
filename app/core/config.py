@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     auth_email_verification_token_ttl_seconds: int = 86_400
     auth_email_verification_cooldown_seconds: int = 60
+    auth_password_reset_token_ttl_seconds: int = 1_800
 
     # IP-dimension sliding-window rate limits (limit per window seconds).
     auth_rate_register_ip_limit: int = 5
@@ -77,6 +78,8 @@ class Settings(BaseSettings):
     auth_rate_resend_ip_window_seconds: int = 3_600
     auth_rate_verify_ip_limit: int = 30
     auth_rate_verify_ip_window_seconds: int = 60
+    auth_rate_password_reset_request_ip_limit: int = 5
+    auth_rate_password_reset_request_ip_window_seconds: int = 3_600
 
     email_outbox_max_attempts: int = 5
     email_outbox_lease_seconds: int = 120

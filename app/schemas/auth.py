@@ -40,6 +40,10 @@ class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
 
 
+class RequestPasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
 class AuthUserResponse(BaseModel):
     id: int
     username: str

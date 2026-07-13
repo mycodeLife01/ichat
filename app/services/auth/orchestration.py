@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.models.user import User
 from app.schemas.auth import AuthTokenResponse
-from app.services.auth import rate_limit, verification
+from app.services.auth import account, rate_limit, verification
 from app.services.auth.service import register_user
 from app.tasks.email_tasks import send_email_outbox
 
@@ -123,4 +123,36 @@ async def resend_verification_email(
         transaction.cooldown_keys.extend(cooldown_keys)
         transaction.outbox_id = await verification.create_verification_email(
             session, user=locked_user, settings=settings
+        )
+
+
+async def request_password_reset(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    email: str,
+    client_ip: str,
+    settings: Settings,
+) -> None:
+    """Anti-enumeration reset request: constant outcome for any email.
+
+    The cooldown is claimed before the existence check so unknown emails burn
+    the same 429 budget as registered ones. Only an existing, active user gets
+    a token and an outbox row.
+    """
+    await account.password_reset_request_ip_guard(
+        redis, client_ip=client_ip, settings=settings
+    )
+
+    async with _email_transaction(session, redis) as transaction:
+        cooldown_key = await account.acquire_password_reset_cooldown(
+            session, redis, email=email, settings=settings
+        )
+        if cooldown_key is not None:
+            transaction.cooldown_keys.append(cooldown_key)
+        user = await account.find_active_user_by_email(session, email=email)
+        if user is None:
+            return
+        transaction.outbox_id = await account.create_password_reset_email(
+            session, user=user, settings=settings
         )
