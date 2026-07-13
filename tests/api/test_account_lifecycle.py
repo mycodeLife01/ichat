@@ -7,6 +7,7 @@ PostgreSQL, Redis replaced with fakeredis, Celery enqueue captured.
 import os
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from urllib.parse import parse_qs, urlparse
 
@@ -36,6 +37,7 @@ TEST_DATABASE_URL = os.environ.get(
 )
 TEST_DOMAIN = "account-lifecycle-api-test.example.com"
 PASSWORD = "correct-password"
+EXPIRED_AT = datetime.now(UTC) - timedelta(minutes=1)
 
 
 async def ready() -> bool:
@@ -413,12 +415,10 @@ async def test_reset_password_rejects_expired_token(
     await request_reset(client, email)
     token = await latest_reset_token(session_factory, email)
     async with session_factory() as session:
-        from datetime import UTC, datetime, timedelta
-
         await session.execute(
             update(AuthToken)
             .where(AuthToken.purpose == PURPOSE_PASSWORD_RESET)
-            .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+            .values(expires_at=EXPIRED_AT)
         )
         await session.commit()
 
@@ -780,3 +780,195 @@ async def test_request_deletion_invalid_format_is_422(
         "/api/v1/auth/request-account-deletion", json=body, headers=auth_header(data)
     )
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+# --- confirm-account-deletion ---
+
+
+async def latest_deletion_token(
+    session_factory: async_sessionmaker[AsyncSession], email: str
+) -> str:
+    rows = await outbox_rows(session_factory, email, PURPOSE_ACCOUNT_DELETION)
+    assert rows
+    return link_token(rows[-1], "deletion_url")
+
+
+async def confirm_deletion(client: AsyncClient, token: str) -> Response:
+    return await client.post(
+        "/api/v1/auth/confirm-account-deletion", json={"token": token}
+    )
+
+
+async def test_confirm_deletion_end_to_end_locks_out_account(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    conversation = await client.post(
+        "/api/v1/conversations", json={"title": "keep me"}, headers=auth_header(data)
+    )
+    assert conversation.status_code == status.HTTP_201_CREATED
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+
+    response = await confirm_deletion(client, token)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {"status": "ok"}
+
+    # Deactivated everywhere: login, refresh, and bearer access all rejected.
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_401_UNAUTHORIZED
+    refresh = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": data["refresh_token"]}
+    )
+    assert refresh.status_code == status.HTTP_401_UNAUTHORIZED
+    me = await client.get("/api/v1/auth/me", headers=auth_header(data))
+    assert me.status_code == status.HTTP_401_UNAUTHORIZED
+
+    # Soft deletion: the row is deactivated, data stays.
+    async with session_factory() as session:
+        user = await session.get(User, user_id_of(data))
+        assert user is not None
+        assert user.is_active is False
+        from app.models.conversation import Conversation
+
+        conversations = (
+            await session.execute(
+                select(Conversation).where(Conversation.user_id == user.id)
+            )
+        ).scalars().all()
+        assert len(conversations) == 1
+
+
+async def test_confirm_deletion_revokes_tokens_of_every_purpose(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession], infra: Infra
+) -> None:
+    data = await register(client)  # register issues an email_verification token
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+
+    response = await confirm_deletion(client, token)
+    assert response.status_code == status.HTTP_200_OK
+
+    async with session_factory() as session:
+        active = (
+            await session.execute(
+                select(AuthToken).where(
+                    AuthToken.user_id == user_id_of(data),
+                    AuthToken.used_at.is_(None),
+                    AuthToken.revoked_at.is_(None),
+                )
+            )
+        ).scalars().all()
+    assert active == []
+
+
+async def test_confirm_deletion_rejects_reused_token(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+
+    first = await confirm_deletion(client, token)
+    second = await confirm_deletion(client, token)
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.json() == {"detail": "Invalid or expired confirmation link"}
+
+
+async def test_confirm_deletion_rejects_expired_token_and_keeps_account_active(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+    async with session_factory() as session:
+        await session.execute(
+            update(AuthToken)
+            .where(AuthToken.purpose == PURPOSE_ACCOUNT_DELETION)
+            .values(expires_at=EXPIRED_AT)
+        )
+        await session.commit()
+
+    response = await confirm_deletion(client, token)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_200_OK
+
+
+async def test_confirm_deletion_rejects_token_revoked_by_password_change(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+    changed = await change_password(client, data, PASSWORD, "brand-new-password")
+    assert changed.status_code == status.HTTP_200_OK
+
+    response = await confirm_deletion(client, token)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"token": ""}, {"token": "a" * 42}, {"token": "a" * 42 + "!"}],
+)
+async def test_confirm_deletion_invalid_format_is_422(
+    client: AsyncClient, body: dict[str, str]
+) -> None:
+    response = await client.post("/api/v1/auth/confirm-account-deletion", json=body)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_confirm_deletion_ip_rate_limit(client: AsyncClient, app: FastAPI) -> None:
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"auth_rate_verify_ip_limit": 1}
+    )
+
+    first = await confirm_deletion(client, "a" * 43)
+    second = await confirm_deletion(client, "b" * 43)
+
+    assert first.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+async def test_confirm_deletion_fails_open_when_redis_down(
+    client: AsyncClient, app: FastAPI, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+    app.dependency_overrides[rate_limit.get_redis] = lambda: BrokenRedis()
+
+    response = await confirm_deletion(client, token)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_deleted_account_reset_request_is_silent_and_constant(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession], infra: Infra
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+    await confirm_deletion(client, token)
+    infra.enqueued.clear()
+
+    response = await request_reset(client, email)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {"status": "ok"}
+    assert await outbox_rows(session_factory, email, PURPOSE_PASSWORD_RESET) == []
+    assert await tokens_of(session_factory, user_id_of(data), PURPOSE_PASSWORD_RESET) == []
+    assert infra.enqueued == []

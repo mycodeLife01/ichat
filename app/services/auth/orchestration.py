@@ -227,3 +227,19 @@ async def request_account_deletion(
         transaction.outbox_id = await account.create_account_deletion_email(
             session, user=user, settings=settings
         )
+
+
+async def confirm_account_deletion(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    raw_token: str,
+    client_ip: str,
+    settings: Settings,
+) -> None:
+    """Rate-limit, consume the deletion token, and commit the deactivation."""
+    await account.token_consume_ip_guard(
+        redis, action="confirm_account_deletion", client_ip=client_ip, settings=settings
+    )
+    async with _email_transaction(session, redis):
+        await account.confirm_account_deletion(session, raw_token=raw_token)

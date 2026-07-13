@@ -58,6 +58,10 @@ class RequestAccountDeletionRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class ConfirmAccountDeletionRequest(BaseModel):
+    token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
+
+
 class AuthUserResponse(BaseModel):
     id: int
     username: str

@@ -12,6 +12,7 @@ from app.schemas.auth import (
     AuthUserResponse,
     ChangePasswordRequest,
     CommandStatusResponse,
+    ConfirmAccountDeletionRequest,
     LoginRequest,
     LogoutRequest,
     RefreshTokenRequest,
@@ -259,6 +260,28 @@ async def request_account_deletion(
         redis,
         user=user,
         password=body.password,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
+    return SuccessResponse(data=CommandStatusResponse())
+
+
+@router.post(
+    "/confirm-account-deletion",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def confirm_account_deletion(
+    request: Request,
+    body: ConfirmAccountDeletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
+) -> SuccessResponse[CommandStatusResponse]:
+    await orchestration.confirm_account_deletion(
+        session,
+        redis,
+        raw_token=body.token,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
     )

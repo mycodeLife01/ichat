@@ -27,6 +27,7 @@ from app.services.auth.token_service import (
     issue_auth_token,
     latest_token_created_at,
     revoke_active_tokens,
+    revoke_all_active_tokens,
 )
 from app.services.email.renderer import (
     ACCOUNT_DELETION_SUBJECT,
@@ -38,6 +39,7 @@ from app.services.email.renderer import (
 COOLDOWN_MESSAGE = "Please wait before requesting another email"
 RATE_LIMITED_MESSAGE = "Too many requests, please try again later"
 INVALID_RESET_MESSAGE = "Invalid or expired reset link"
+INVALID_DELETION_MESSAGE = "Invalid or expired confirmation link"
 INVALID_CURRENT_PASSWORD_MESSAGE = "Current password is incorrect"
 
 CHANGE_PASSWORD_ACTION = "change_password"
@@ -397,3 +399,30 @@ async def create_account_deletion_email(
     session.add(outbox)
     await session.flush()
     return outbox.id
+
+async def confirm_account_deletion(
+    session: AsyncSession, *, raw_token: str, now: datetime | None = None
+) -> None:
+    """Consume an account_deletion token and soft-delete the account.
+
+    Deactivation (is_active=False) is the whole enforcement surface: login,
+    refresh, and the current-user dependency all reject inactive users. Data
+    stays in place — physical erasure is a later, separate stage (see the
+    account-deletion ADR). Every credential goes: all refresh tokens and all
+    active auth tokens of every purpose.
+    """
+    moment = now or datetime.now(UTC)
+    consumed = await consume_auth_token(
+        session, raw_token=raw_token, purpose=PURPOSE_ACCOUNT_DELETION, now=moment
+    )
+    if consumed is None:
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_DELETION_MESSAGE)
+    user_id, _sent_to_email = consumed
+    user = await session.get(User, user_id)
+    if user is None:
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_DELETION_MESSAGE)
+
+    user.is_active = False
+    await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
+    await revoke_all_active_tokens(session, user_id=user.id, now=moment)
+    await session.flush()
