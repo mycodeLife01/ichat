@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     auth_rate_verify_ip_window_seconds: int = 60
     auth_rate_password_reset_request_ip_limit: int = 5
     auth_rate_password_reset_request_ip_window_seconds: int = 3_600
+    # change-password anti-brute-force: failed attempts per user + IP window.
+    auth_rate_password_change_user_limit: int = 5
+    auth_rate_password_change_user_window_seconds: int = 900
+    auth_rate_password_change_ip_limit: int = 10
+    auth_rate_password_change_ip_window_seconds: int = 3_600
 
     email_outbox_max_attempts: int = 5
     email_outbox_lease_seconds: int = 120

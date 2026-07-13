@@ -175,3 +175,28 @@ async def reset_password(
         await account.reset_password(
             session, raw_token=raw_token, new_password=new_password
         )
+
+
+async def change_password(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+    client_ip: str,
+    settings: Settings,
+) -> None:
+    """Guard against online brute force, then rotate the password."""
+    await account.change_password_guard(
+        redis, user_id=user.id, client_ip=client_ip, settings=settings
+    )
+    async with _email_transaction(session, redis):
+        await account.change_password(
+            session,
+            redis,
+            user=user,
+            current_password=current_password,
+            new_password=new_password,
+            settings=settings,
+        )

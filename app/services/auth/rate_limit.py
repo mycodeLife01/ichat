@@ -83,6 +83,10 @@ def ip_rate_key(action: str, ip: str) -> str:
     return f"auth:rate:{action}:ip:{ip}"
 
 
+def failure_key(action: str, user_id: int) -> str:
+    return f"auth:fail:{action}:user:{user_id}"
+
+
 async def try_cooldown(redis: Redis, key: str, ttl_seconds: int) -> bool:
     """Claim a cooldown slot. Returns False if one is already active.
 
@@ -116,3 +120,27 @@ async def check_ip_rate_limit(
     )
     allowed, retry_after = int(raw[0]), int(raw[1])
     return RateLimitResult(allowed=allowed == 1, retry_after_seconds=retry_after)
+
+
+async def check_failure_budget(redis: Redis, key: str, *, limit: int) -> RateLimitResult:
+    """Admit only while recorded failures stay under the limit.
+
+    Unlike the sliding window, checking does not consume budget — only
+    ``record_failure`` does, so successful attempts stay free.
+    """
+    raw = await redis.get(key)
+    count = int(raw) if raw else 0
+    if count < limit:
+        return RateLimitResult(allowed=True, retry_after_seconds=0)
+    ttl = int(await redis.ttl(key))
+    return RateLimitResult(allowed=False, retry_after_seconds=max(ttl, 1))
+
+
+async def record_failure(redis: Redis, key: str, *, window_seconds: int) -> None:
+    """Best-effort failure count bump; the window starts at the first failure."""
+    try:
+        count = int(await redis.incr(key))
+        if count == 1:
+            await redis.expire(key, window_seconds)
+    except Exception:  # noqa: BLE001 - the guard is fail-closed when Redis is down
+        pass

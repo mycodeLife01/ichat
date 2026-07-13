@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.auth import (
     AuthTokenResponse,
     AuthUserResponse,
+    ChangePasswordRequest,
     CommandStatusResponse,
     LoginRequest,
     LogoutRequest,
@@ -207,6 +208,31 @@ async def reset_password(
         session,
         redis,
         raw_token=body.token,
+        new_password=body.new_password,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
+    return SuccessResponse(data=CommandStatusResponse())
+
+
+@router.post(
+    "/change-password",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def change_password(
+    request: Request,
+    body: ChangePasswordRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(get_current_user)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
+) -> SuccessResponse[CommandStatusResponse]:
+    await orchestration.change_password(
+        session,
+        redis,
+        user=user,
+        current_password=body.current_password,
         new_password=body.new_password,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,

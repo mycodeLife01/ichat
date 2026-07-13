@@ -508,3 +508,142 @@ async def test_reset_password_fails_open_when_redis_down(
 
     assert response.status_code == status.HTTP_200_OK
     assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
+
+# --- change-password ---
+
+
+async def change_password(
+    client: AsyncClient,
+    data: dict[str, object],
+    current_password: str,
+    new_password: str,
+) -> Response:
+    return await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": current_password, "new_password": new_password},
+        headers=auth_header(data),
+    )
+
+
+async def test_change_password_end_to_end(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+
+    response = await change_password(client, data, PASSWORD, "brand-new-password")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {"status": "ok"}
+
+    assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_401_UNAUTHORIZED
+
+    # Every session is kicked, including the one that made the change.
+    refresh = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": data["refresh_token"]}
+    )
+    assert refresh.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_change_password_revokes_pending_sensitive_tokens(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+
+    response = await change_password(client, data, PASSWORD, "brand-new-password")
+    assert response.status_code == status.HTTP_200_OK
+
+    reset_tokens = await tokens_of(session_factory, user_id_of(data), PURPOSE_PASSWORD_RESET)
+    assert reset_tokens and all(t.revoked_at is not None for t in reset_tokens)
+
+
+async def test_change_password_wrong_current_password_changes_nothing(
+    client: AsyncClient,
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+
+    response = await change_password(client, data, "not-the-password", "brand-new-password")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json() == {"detail": "Current password is incorrect"}
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_200_OK
+
+
+async def test_change_password_locks_out_after_repeated_failures(
+    client: AsyncClient, app: FastAPI
+) -> None:
+    data = await register(client)
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"auth_rate_password_change_user_limit": 2}
+    )
+
+    first = await change_password(client, data, "not-the-password", "brand-new-password")
+    second = await change_password(client, data, "not-the-password", "brand-new-password")
+    # Budget exhausted: even the correct password is now rejected with 429.
+    third = await change_password(client, data, PASSWORD, "brand-new-password")
+
+    assert first.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.status_code == status.HTTP_400_BAD_REQUEST
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "retry-after" in {k.lower() for k in third.headers}
+
+
+async def test_change_password_ip_rate_limit(client: AsyncClient, app: FastAPI) -> None:
+    data = await register(client)
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"auth_rate_password_change_ip_limit": 1}
+    )
+
+    first = await change_password(client, data, PASSWORD, "brand-new-password")
+    second = await change_password(client, data, "brand-new-password", "third-password-1")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+async def test_change_password_fails_closed_when_redis_down(
+    client: AsyncClient, app: FastAPI
+) -> None:
+    data = await register(client)
+    app.dependency_overrides[rate_limit.get_redis] = lambda: BrokenRedis()
+
+    response = await change_password(client, data, PASSWORD, "brand-new-password")
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "retry-after" in {k.lower() for k in response.headers}
+    # Fail-closed means no change happened.
+    assert (
+        await login(client, f"alice@{TEST_DOMAIN}", PASSWORD)
+    ).status_code == status.HTTP_200_OK
+
+
+async def test_change_password_requires_auth(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": "brand-new-password"},
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"current_password": PASSWORD},
+        {"current_password": PASSWORD, "new_password": "short"},
+        {"current_password": PASSWORD, "new_password": "x" * 129},
+        {"current_password": "short", "new_password": "brand-new-password"},
+    ],
+)
+async def test_change_password_invalid_format_is_422(
+    client: AsyncClient, body: dict[str, str]
+) -> None:
+    data = await register(client)
+    response = await client.post(
+        "/api/v1/auth/change-password", json=body, headers=auth_header(data)
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

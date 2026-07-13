@@ -18,7 +18,7 @@ from app.core.errors import AppError
 from app.models.email_outbox import EmailOutbox, OutboxStatus
 from app.models.user import User
 from app.services.auth import rate_limit
-from app.services.auth.passwords import hash_password
+from app.services.auth.passwords import hash_password, verify_password
 from app.services.auth.service import revoke_all_refresh_tokens
 from app.services.auth.token_service import (
     PURPOSE_ACCOUNT_DELETION,
@@ -33,6 +33,9 @@ from app.services.email.renderer import PASSWORD_RESET_SUBJECT, PASSWORD_RESET_T
 COOLDOWN_MESSAGE = "Please wait before requesting another email"
 RATE_LIMITED_MESSAGE = "Too many requests, please try again later"
 INVALID_RESET_MESSAGE = "Invalid or expired reset link"
+INVALID_CURRENT_PASSWORD_MESSAGE = "Current password is incorrect"
+
+CHANGE_PASSWORD_ACTION = "change_password"
 
 
 def _too_many_requests(retry_after_seconds: int, detail: str) -> AppError:
@@ -182,6 +185,78 @@ async def reset_password(
     user.password_hash = hash_password(new_password)
     if sent_to_email == user.email:
         user.email_verified = True
+    await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
+    await revoke_active_tokens(
+        session, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET, now=moment
+    )
+    await revoke_active_tokens(
+        session, user_id=user.id, purpose=PURPOSE_ACCOUNT_DELETION, now=moment
+    )
+    await session.flush()
+
+
+async def change_password_guard(
+    redis: Redis, *, user_id: int, client_ip: str, settings: Settings
+) -> None:
+    """Anti-brute-force for change-password. Fails closed on Redis outage.
+
+    Two dimensions: an IP sliding window plus a per-user failed-attempt budget
+    (only wrong-password attempts consume it, via ``record_password_change_failure``).
+    """
+    try:
+        ip_result = await rate_limit.check_ip_rate_limit(
+            redis,
+            rate_limit.ip_rate_key(CHANGE_PASSWORD_ACTION, client_ip),
+            limit=settings.auth_rate_password_change_ip_limit,
+            window_seconds=settings.auth_rate_password_change_ip_window_seconds,
+        )
+        if not ip_result.allowed:
+            raise _too_many_requests(ip_result.retry_after_seconds, RATE_LIMITED_MESSAGE)
+        budget = await rate_limit.check_failure_budget(
+            redis,
+            rate_limit.failure_key(CHANGE_PASSWORD_ACTION, user_id),
+            limit=settings.auth_rate_password_change_user_limit,
+        )
+        if not budget.allowed:
+            raise _too_many_requests(budget.retry_after_seconds, RATE_LIMITED_MESSAGE)
+    except AppError:
+        raise
+    except Exception:
+        # A password-bearing endpoint must not become an uncounted oracle
+        # while Redis is down.
+        logger.warning("Redis unavailable during change-password guard; failing closed")
+        raise _too_many_requests(
+            settings.auth_rate_password_change_user_window_seconds, RATE_LIMITED_MESSAGE
+        ) from None
+
+
+async def change_password(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+    settings: Settings,
+    now: datetime | None = None,
+) -> None:
+    """Verify the current password and set the new one.
+
+    A wrong current password consumes the caller's failure budget. Success
+    enforces the cross-invalidation matrix: every refresh token (all devices,
+    including the current one) plus pending password_reset / account_deletion
+    tokens.
+    """
+    moment = now or datetime.now(UTC)
+    if not verify_password(current_password, user.password_hash):
+        await rate_limit.record_failure(
+            redis,
+            rate_limit.failure_key(CHANGE_PASSWORD_ACTION, user.id),
+            window_seconds=settings.auth_rate_password_change_user_window_seconds,
+        )
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_CURRENT_PASSWORD_MESSAGE)
+
+    user.password_hash = hash_password(new_password)
     await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
     await revoke_active_tokens(
         session, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET, now=moment
