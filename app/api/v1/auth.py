@@ -16,6 +16,7 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     RegisterRequest,
     RequestPasswordResetRequest,
+    ResetPasswordRequest,
     VerifyEmailRequest,
 )
 from app.schemas.responses import SuccessResponse
@@ -184,6 +185,29 @@ async def request_password_reset(
         session,
         redis,
         email=str(body.email),
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
+    return SuccessResponse(data=CommandStatusResponse())
+
+
+@router.post(
+    "/reset-password",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
+) -> SuccessResponse[CommandStatusResponse]:
+    await orchestration.reset_password(
+        session,
+        redis,
+        raw_token=body.token,
+        new_password=body.new_password,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
     )

@@ -18,15 +18,21 @@ from app.core.errors import AppError
 from app.models.email_outbox import EmailOutbox, OutboxStatus
 from app.models.user import User
 from app.services.auth import rate_limit
+from app.services.auth.passwords import hash_password
+from app.services.auth.service import revoke_all_refresh_tokens
 from app.services.auth.token_service import (
+    PURPOSE_ACCOUNT_DELETION,
     PURPOSE_PASSWORD_RESET,
+    consume_auth_token,
     issue_auth_token,
     latest_token_created_at,
+    revoke_active_tokens,
 )
 from app.services.email.renderer import PASSWORD_RESET_SUBJECT, PASSWORD_RESET_TEMPLATE
 
 COOLDOWN_MESSAGE = "Please wait before requesting another email"
 RATE_LIMITED_MESSAGE = "Too many requests, please try again later"
+INVALID_RESET_MESSAGE = "Invalid or expired reset link"
 
 
 def _too_many_requests(retry_after_seconds: int, detail: str) -> AppError:
@@ -127,6 +133,63 @@ async def _enforce_db_email_cooldown(
         raise _too_many_requests(
             settings.auth_email_verification_cooldown_seconds, COOLDOWN_MESSAGE
         )
+
+
+async def token_consume_ip_guard(
+    redis: Redis, *, action: str, client_ip: str, settings: Settings
+) -> None:
+    """IP rate limit for token-consuming endpoints (verify-style limits).
+
+    Fails open: a high-entropy single-use token must never be blocked by a
+    Redis outage.
+    """
+    try:
+        result = await rate_limit.check_ip_rate_limit(
+            redis,
+            rate_limit.ip_rate_key(action, client_ip),
+            limit=settings.auth_rate_verify_ip_limit,
+            window_seconds=settings.auth_rate_verify_ip_window_seconds,
+        )
+        if not result.allowed:
+            raise _too_many_requests(result.retry_after_seconds, RATE_LIMITED_MESSAGE)
+    except AppError:
+        raise
+    except Exception:
+        logger.warning("Redis unavailable during {action} IP guard; failing open", action=action)
+
+
+async def reset_password(
+    session: AsyncSession, *, raw_token: str, new_password: str, now: datetime | None = None
+) -> None:
+    """Consume a password_reset token and set the new password.
+
+    Also enforces the cross-invalidation matrix (all refresh tokens plus
+    pending password_reset / account_deletion tokens) and, when the token was
+    sent to the user's current email, counts as an email verification (see
+    CONTEXT.md).
+    """
+    moment = now or datetime.now(UTC)
+    consumed = await consume_auth_token(
+        session, raw_token=raw_token, purpose=PURPOSE_PASSWORD_RESET, now=moment
+    )
+    if consumed is None:
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_RESET_MESSAGE)
+    user_id, sent_to_email = consumed
+    user = await session.get(User, user_id)
+    if user is None or not user.is_active:
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_RESET_MESSAGE)
+
+    user.password_hash = hash_password(new_password)
+    if sent_to_email == user.email:
+        user.email_verified = True
+    await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
+    await revoke_active_tokens(
+        session, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET, now=moment
+    )
+    await revoke_active_tokens(
+        session, user_id=user.id, purpose=PURPOSE_ACCOUNT_DELETION, now=moment
+    )
+    await session.flush()
 
 
 async def create_password_reset_email(

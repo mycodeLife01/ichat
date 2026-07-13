@@ -156,3 +156,22 @@ async def request_password_reset(
         transaction.outbox_id = await account.create_password_reset_email(
             session, user=user, settings=settings
         )
+
+
+async def reset_password(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    raw_token: str,
+    new_password: str,
+    client_ip: str,
+    settings: Settings,
+) -> None:
+    """Rate-limit, consume the reset token, and commit the new password."""
+    await account.token_consume_ip_guard(
+        redis, action="reset_password", client_ip=client_ip, settings=settings
+    )
+    async with _email_transaction(session, redis):
+        await account.reset_password(
+            session, raw_token=raw_token, new_password=new_password
+        )

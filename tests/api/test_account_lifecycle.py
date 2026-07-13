@@ -24,7 +24,11 @@ from app.models.auth_token import AuthToken
 from app.models.email_outbox import EmailOutbox
 from app.models.user import User
 from app.services.auth import orchestration, rate_limit
-from app.services.auth.token_service import PURPOSE_PASSWORD_RESET
+from app.services.auth.token_service import (
+    PURPOSE_ACCOUNT_DELETION,
+    PURPOSE_PASSWORD_RESET,
+    issue_auth_token,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "ACCOUNT_LIFECYCLE_TEST_DATABASE_URL",
@@ -303,3 +307,204 @@ async def test_request_reset_stays_available_when_redis_down(
     assert first.status_code == status.HTTP_200_OK
     assert len(await outbox_rows(session_factory, email, PURPOSE_PASSWORD_RESET)) == 1
     assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+# --- reset-password ---
+
+
+async def latest_reset_token(
+    session_factory: async_sessionmaker[AsyncSession], email: str
+) -> str:
+    rows = await outbox_rows(session_factory, email, PURPOSE_PASSWORD_RESET)
+    assert rows
+    return link_token(rows[-1], "reset_url")
+
+
+async def login(client: AsyncClient, identifier: str, password: str) -> Response:
+    return await client.post(
+        "/api/v1/auth/login", json={"identifier": identifier, "password": password}
+    )
+
+
+async def reset_password(client: AsyncClient, token: str, new_password: str) -> Response:
+    return await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": new_password},
+    )
+
+
+async def test_reset_password_end_to_end(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    token = await latest_reset_token(session_factory, email)
+
+    response = await reset_password(client, token, "brand-new-password")
+
+    assert response.status_code == status.HTTP_200_OK
+    # Command response only — no auto-login credentials.
+    assert response.json()["data"] == {"status": "ok"}
+
+    assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_401_UNAUTHORIZED
+
+    # All pre-reset sessions are forced out.
+    refresh = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": data["refresh_token"]}
+    )
+    assert refresh.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_reset_password_marks_email_verified_and_revokes_pending_tokens(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    token = await latest_reset_token(session_factory, email)
+    # Pending sensitive token of the other purpose must be revoked too.
+    async with session_factory() as session:
+        user = await session.get(User, user_id_of(data))
+        assert user is not None
+        await issue_auth_token(
+            session, user=user, purpose=PURPOSE_ACCOUNT_DELETION, ttl_seconds=1800
+        )
+        await session.commit()
+
+    response = await reset_password(client, token, "brand-new-password")
+    assert response.status_code == status.HTTP_200_OK
+
+    logged_in = await login(client, email, "brand-new-password")
+    me = await client.get(
+        "/api/v1/auth/me", headers=auth_header(logged_in.json()["data"])
+    )
+    assert me.json()["data"]["email_verified"] is True
+
+    deletion_tokens = await tokens_of(
+        session_factory, user_id_of(data), PURPOSE_ACCOUNT_DELETION
+    )
+    assert all(t.revoked_at is not None for t in deletion_tokens)
+
+
+async def test_reset_password_rejects_reused_token(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    token = await latest_reset_token(session_factory, email)
+
+    first = await reset_password(client, token, "brand-new-password")
+    second = await reset_password(client, token, "another-password-1")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.json() == {"detail": "Invalid or expired reset link"}
+    # The failed second attempt must not have changed the password.
+    assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
+
+
+async def test_reset_password_rejects_expired_token(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    token = await latest_reset_token(session_factory, email)
+    async with session_factory() as session:
+        from datetime import UTC, datetime, timedelta
+
+        await session.execute(
+            update(AuthToken)
+            .where(AuthToken.purpose == PURPOSE_PASSWORD_RESET)
+            .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+        )
+        await session.commit()
+
+    response = await reset_password(client, token, "brand-new-password")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (await login(client, email, PASSWORD)).status_code == status.HTTP_200_OK
+
+
+async def test_reset_password_rejects_token_revoked_by_newer_request(
+    client: AsyncClient, session_factory: async_sessionmaker[AsyncSession], infra: Infra
+) -> None:
+    await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    old_token = await latest_reset_token(session_factory, email)
+    await clear_email_cooldown(infra, PURPOSE_PASSWORD_RESET, email)
+    await request_reset(client, email)
+
+    response = await reset_password(client, old_token, "brand-new-password")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"token": "a" * 43},  # valid format, unknown token -> 400 handled elsewhere
+    ],
+)
+async def test_reset_password_unknown_token_is_generic_400(
+    client: AsyncClient, body: dict[str, str]
+) -> None:
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={**body, "new_password": "brand-new-password"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"token": "a" * 42, "new_password": "brand-new-password"},
+        {"token": "a" * 42 + "!", "new_password": "brand-new-password"},
+        {"token": "a" * 43, "new_password": "short"},
+        {"token": "a" * 43, "new_password": "x" * 129},
+        {"token": "a" * 43},
+    ],
+)
+async def test_reset_password_invalid_format_is_422(
+    client: AsyncClient, body: dict[str, str]
+) -> None:
+    response = await client.post("/api/v1/auth/reset-password", json=body)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_reset_password_ip_rate_limit(client: AsyncClient, app: FastAPI) -> None:
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"auth_rate_verify_ip_limit": 1}
+    )
+
+    first = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "a" * 43, "new_password": "brand-new-password"},
+    )
+    second = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "b" * 43, "new_password": "brand-new-password"},
+    )
+
+    assert first.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+async def test_reset_password_fails_open_when_redis_down(
+    client: AsyncClient, app: FastAPI, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_reset(client, email)
+    token = await latest_reset_token(session_factory, email)
+    app.dependency_overrides[rate_limit.get_redis] = lambda: BrokenRedis()
+
+    response = await reset_password(client, token, "brand-new-password")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert (await login(client, email, "brand-new-password")).status_code == status.HTTP_200_OK
