@@ -23,6 +23,7 @@
 | Editing the assistant's system prompt or how prompts are assembled/injected | `docs/handover/2026-06-17-system-prompt-management.md` |
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
+| Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
 
 ## Directory guide
 
@@ -32,6 +33,12 @@ Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
 - `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, the top-level capability modules (`app/providers`, `app/context`, `app/prompts`, `app/search`, `app/tools`), `app/worker`, and forbidden cross-module dependencies.
+
+### `docs/adr/`
+
+Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching your area before proposing changes; conflicts with an ADR must be raised explicitly, never silently overridden (see `docs/agents/domain.md`).
+
+- `2026-07-13-account-deletion-soft-deactivation.md` — account deletion = soft deactivation (`is_active=false` + full credential revocation), data retained; physical erasure (cooling-off period + periodic job) deferred to a later iteration.
 
 ### `docs/handover/`
 
@@ -57,6 +64,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-18-public-id-hardening.md` — opaque `public_id` (UUID) replaces sequential ids on the API surface for conversations/messages/runs (bigint PK kept internally); React Router added with `/c/:publicId` deep linking. Phase 1 of the public_id + sharing design.
 - `2026-06-18-conversation-sharing.md` — conversation sharing (Phase 2): `share_links` table (bigint, token-keyed), created-time JSONB snapshot, anonymous `GET /api/v1/share/{token}` read + owner-only create/list/revoke management, at-most-one-active-link-per-conversation (409 on conflict; revoked/expired kept for audit, hidden from listing), public `/share/:token` read-only page, share dialog, CF Pages `_redirects` SPA fallback.
 - `2026-06-26-email-verification.md` — email verification + auth-email infra: `auth_tokens`/`email_outbox` tables, Redis cooldown + IP sliding-window rate limiting, Postmark/console/fake providers, Celery worker/beat outbox delivery (claim/lease/retry/dead/sweep), `GET /auth/me` + `POST /auth/verify-email` + `POST /auth/resend-verification-email`, nginx Cloudflare realip + firewall ops checklist.
+- `2026-07-13-password-reset-account-deletion.md` — password reset / change-password / account deletion (five new auth endpoints), purpose-generalized token service, cross-invalidation matrix, anti-enumeration constant responses, per-endpoint rate-limit & Redis failure modes, soft-deactivation semantics + ops recovery notes.
 
 ### `docs/handover/frontend/`
 
