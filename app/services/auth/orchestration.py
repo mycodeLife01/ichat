@@ -200,3 +200,30 @@ async def change_password(
             new_password=new_password,
             settings=settings,
         )
+
+
+async def request_account_deletion(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    user: User,
+    password: str,
+    client_ip: str,
+    settings: Settings,
+) -> None:
+    """Sudo-check the password, then send the deletion confirmation email.
+
+    The IP guard runs before the password check so a stolen session cannot
+    guess passwords faster than the window allows.
+    """
+    await account.deletion_request_ip_guard(redis, client_ip=client_ip, settings=settings)
+    account.verify_sudo_password(user=user, password=password)
+
+    async with _email_transaction(session, redis) as transaction:
+        cooldown_keys = await account.acquire_deletion_cooldowns(
+            redis, user=user, settings=settings
+        )
+        transaction.cooldown_keys.extend(cooldown_keys)
+        transaction.outbox_id = await account.create_account_deletion_email(
+            session, user=user, settings=settings
+        )

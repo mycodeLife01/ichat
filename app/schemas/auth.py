@@ -54,6 +54,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class RequestAccountDeletionRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
+
+
 class AuthUserResponse(BaseModel):
     id: int
     username: str

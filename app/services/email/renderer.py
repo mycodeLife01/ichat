@@ -13,6 +13,8 @@ EMAIL_VERIFICATION_TEMPLATE = "email_verification"
 EMAIL_VERIFICATION_SUBJECT = "Verify your iChat email"
 PASSWORD_RESET_TEMPLATE = "password_reset"
 PASSWORD_RESET_SUBJECT = "Reset your iChat password"
+ACCOUNT_DELETION_TEMPLATE = "account_deletion"
+ACCOUNT_DELETION_SUBJECT = "Confirm your iChat account deletion"
 
 # Email clients ignore external stylesheets and most modern CSS, so the layout
 # uses nested tables with inline styles (the only portable approach). Colors
@@ -170,9 +172,51 @@ def render_password_reset(payload: dict[str, Any]) -> RenderedEmail:
     return RenderedEmail(subject=PASSWORD_RESET_SUBJECT, html=html_body, text=text)
 
 
+def render_account_deletion(payload: dict[str, Any]) -> RenderedEmail:
+    deletion_url = payload["deletion_url"]
+    username = payload.get("username") or "there"
+    expires_in_minutes = payload.get("expires_in_minutes")
+    expiry_line = (
+        f"This link expires in {expires_in_minutes} minutes and can be used once."
+        if expires_in_minutes
+        else "This link will expire soon and can be used once."
+    )
+    footer_line = (
+        "If you did not request this, someone may have access to your account "
+        "— change your password immediately."
+    )
+
+    text = (
+        f"Hi {username},\n\n"
+        "We received a request to delete your iChat account. Confirm the "
+        "deletion by opening this link:\n"
+        f"{deletion_url}\n\n"
+        "Once confirmed, your account is deactivated immediately and you will "
+        "be signed out everywhere.\n\n"
+        f"{expiry_line}\n\n"
+        f"{footer_line}"
+    )
+    html_body = _render_card_html(
+        subject=ACCOUNT_DELETION_SUBJECT,
+        preheader="Confirm the deletion of your iChat account.",
+        heading="Delete your account",
+        intro=(
+            f"Hi {username}, we received a request to delete your iChat account. "
+            "Once confirmed, your account is deactivated immediately and you "
+            "will be signed out everywhere."
+        ),
+        button_label="Delete my account",
+        action_url=deletion_url,
+        expiry_line=expiry_line,
+        footer_line=footer_line,
+    )
+    return RenderedEmail(subject=ACCOUNT_DELETION_SUBJECT, html=html_body, text=text)
+
+
 _RENDERERS = {
     EMAIL_VERIFICATION_TEMPLATE: render_email_verification,
     PASSWORD_RESET_TEMPLATE: render_password_reset,
+    ACCOUNT_DELETION_TEMPLATE: render_account_deletion,
 }
 
 

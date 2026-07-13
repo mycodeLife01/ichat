@@ -647,3 +647,136 @@ async def test_change_password_invalid_format_is_422(
         "/api/v1/auth/change-password", json=body, headers=auth_header(data)
     )
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+# --- request-account-deletion ---
+
+
+async def request_deletion(
+    client: AsyncClient, data: dict[str, object], password: str
+) -> Response:
+    return await client.post(
+        "/api/v1/auth/request-account-deletion",
+        json={"password": password},
+        headers=auth_header(data),
+    )
+
+
+async def test_request_deletion_issues_token_and_sends_confirmation_email(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    infra: Infra,
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+
+    response = await request_deletion(client, data, PASSWORD)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {"status": "ok"}
+
+    tokens = await tokens_of(session_factory, user_id_of(data), PURPOSE_ACCOUNT_DELETION)
+    assert len(tokens) == 1
+    rows = await outbox_rows(session_factory, email, PURPOSE_ACCOUNT_DELETION)
+    assert len(rows) == 1
+    assert "/confirm-account-deletion?token=" in cast(str, rows[0].payload["deletion_url"])
+    assert rows[0].id in infra.enqueued
+
+
+async def test_request_deletion_wrong_password_sends_nothing(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    infra: Infra,
+) -> None:
+    data = await register(client)
+    infra.enqueued.clear()
+
+    response = await request_deletion(client, data, "not-the-password")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert await tokens_of(session_factory, user_id_of(data), PURPOSE_ACCOUNT_DELETION) == []
+    assert await outbox_rows(
+        session_factory, f"alice@{TEST_DOMAIN}", PURPOSE_ACCOUNT_DELETION
+    ) == []
+    assert infra.enqueued == []
+
+
+async def test_request_deletion_cooldown_returns_429(
+    client: AsyncClient,
+) -> None:
+    data = await register(client)
+
+    first = await request_deletion(client, data, PASSWORD)
+    second = await request_deletion(client, data, PASSWORD)
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "retry-after" in {k.lower() for k in second.headers}
+
+
+async def test_request_deletion_after_cooldown_rotates_token(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    infra: Infra,
+) -> None:
+    data = await register(client)
+    email = f"alice@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    await clear_email_cooldown(infra, PURPOSE_ACCOUNT_DELETION, email)
+    await infra.redis.delete(
+        rate_limit.cooldown_user_key(PURPOSE_ACCOUNT_DELETION, user_id_of(data))
+    )
+
+    response = await request_deletion(client, data, PASSWORD)
+
+    assert response.status_code == status.HTTP_200_OK
+    tokens = await tokens_of(session_factory, user_id_of(data), PURPOSE_ACCOUNT_DELETION)
+    active = [t for t in tokens if t.used_at is None and t.revoked_at is None]
+    assert len(tokens) == 2
+    assert len(active) == 1
+
+
+async def test_request_deletion_ip_rate_limit(client: AsyncClient, app: FastAPI) -> None:
+    data = await register(client)
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"auth_rate_deletion_request_ip_limit": 1}
+    )
+
+    first = await request_deletion(client, data, "not-the-password")
+    second = await request_deletion(client, data, "not-the-password")
+
+    # The IP window counts attempts before the password check (throttles guessing).
+    assert first.status_code == status.HTTP_400_BAD_REQUEST
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+async def test_request_deletion_fails_closed_when_redis_down(
+    client: AsyncClient,
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client)
+    app.dependency_overrides[rate_limit.get_redis] = lambda: BrokenRedis()
+
+    response = await request_deletion(client, data, PASSWORD)
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "retry-after" in {k.lower() for k in response.headers}
+    assert await tokens_of(session_factory, user_id_of(data), PURPOSE_ACCOUNT_DELETION) == []
+
+
+async def test_request_deletion_requires_auth(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/auth/request-account-deletion", json={"password": PASSWORD}
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.parametrize("body", [{}, {"password": "short"}, {"password": "x" * 129}])
+async def test_request_deletion_invalid_format_is_422(
+    client: AsyncClient, body: dict[str, str]
+) -> None:
+    data = await register(client)
+    response = await client.post(
+        "/api/v1/auth/request-account-deletion", json=body, headers=auth_header(data)
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

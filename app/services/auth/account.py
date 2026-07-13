@@ -28,7 +28,12 @@ from app.services.auth.token_service import (
     latest_token_created_at,
     revoke_active_tokens,
 )
-from app.services.email.renderer import PASSWORD_RESET_SUBJECT, PASSWORD_RESET_TEMPLATE
+from app.services.email.renderer import (
+    ACCOUNT_DELETION_SUBJECT,
+    ACCOUNT_DELETION_TEMPLATE,
+    PASSWORD_RESET_SUBJECT,
+    PASSWORD_RESET_TEMPLATE,
+)
 
 COOLDOWN_MESSAGE = "Please wait before requesting another email"
 RATE_LIMITED_MESSAGE = "Too many requests, please try again later"
@@ -36,6 +41,7 @@ INVALID_RESET_MESSAGE = "Invalid or expired reset link"
 INVALID_CURRENT_PASSWORD_MESSAGE = "Current password is incorrect"
 
 CHANGE_PASSWORD_ACTION = "change_password"
+DELETION_REQUEST_ACTION = "request_account_deletion"
 
 
 def _too_many_requests(retry_after_seconds: int, detail: str) -> AppError:
@@ -284,6 +290,104 @@ async def create_password_reset_email(
         template=PASSWORD_RESET_TEMPLATE,
         payload={
             "reset_url": reset_url,
+            "username": user.username,
+            "expires_in_minutes": ttl // 60,
+        },
+        status=OutboxStatus.PENDING,
+        next_attempt_at=moment,
+    )
+    session.add(outbox)
+    await session.flush()
+    return outbox.id
+
+async def deletion_request_ip_guard(
+    redis: Redis, *, client_ip: str, settings: Settings
+) -> None:
+    """IP rate limit for deletion requests, ahead of the password check.
+
+    Fails closed: deleting an account is never urgent, and a password-bearing
+    endpoint must not become an uncounted oracle while Redis is down.
+    """
+    try:
+        result = await rate_limit.check_ip_rate_limit(
+            redis,
+            rate_limit.ip_rate_key(DELETION_REQUEST_ACTION, client_ip),
+            limit=settings.auth_rate_deletion_request_ip_limit,
+            window_seconds=settings.auth_rate_deletion_request_ip_window_seconds,
+        )
+        if not result.allowed:
+            raise _too_many_requests(result.retry_after_seconds, RATE_LIMITED_MESSAGE)
+    except AppError:
+        raise
+    except Exception:
+        logger.warning("Redis unavailable during deletion request IP guard; failing closed")
+        raise _too_many_requests(
+            settings.auth_email_verification_cooldown_seconds, RATE_LIMITED_MESSAGE
+        ) from None
+
+
+def verify_sudo_password(*, user: User, password: str) -> None:
+    """Re-prove identity for a sensitive action: logged-in is not enough."""
+    if not verify_password(password, user.password_hash):
+        raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_CURRENT_PASSWORD_MESSAGE)
+
+
+async def acquire_deletion_cooldowns(
+    redis: Redis, *, user: User, settings: Settings
+) -> list[str]:
+    """User + email send cooldowns for deletion confirmation emails.
+
+    Fails closed (mirrors resend). Returns the acquired keys so the caller can
+    release them if the surrounding transaction rolls back.
+    """
+    acquired_keys: list[str] = []
+    try:
+        cooldown_keys = [
+            rate_limit.cooldown_user_key(PURPOSE_ACCOUNT_DELETION, user.id),
+            rate_limit.cooldown_email_key(PURPOSE_ACCOUNT_DELETION, user.email),
+        ]
+        for cooldown_key in cooldown_keys:
+            acquired = await rate_limit.try_cooldown(
+                redis, cooldown_key, settings.auth_email_verification_cooldown_seconds
+            )
+            if not acquired:
+                raise _too_many_requests(
+                    settings.auth_email_verification_cooldown_seconds, COOLDOWN_MESSAGE
+                )
+            acquired_keys.append(cooldown_key)
+        return acquired_keys
+    except AppError:
+        for cooldown_key in acquired_keys:
+            await rate_limit.release_cooldown(redis, cooldown_key)
+        raise
+    except Exception:
+        for cooldown_key in acquired_keys:
+            await rate_limit.release_cooldown(redis, cooldown_key)
+        logger.warning("Redis unavailable during deletion cooldown; failing closed")
+        raise _too_many_requests(
+            settings.auth_email_verification_cooldown_seconds, RATE_LIMITED_MESSAGE
+        ) from None
+
+
+async def create_account_deletion_email(
+    session: AsyncSession, *, user: User, settings: Settings, now: datetime | None = None
+) -> int:
+    """Issue an account_deletion token and enqueue an outbox row. Returns outbox id."""
+    moment = now or datetime.now(UTC)
+    ttl = settings.auth_account_deletion_token_ttl_seconds
+    raw_token = await issue_auth_token(
+        session, user=user, purpose=PURPOSE_ACCOUNT_DELETION, ttl_seconds=ttl, now=moment
+    )
+    deletion_url = (
+        f"{settings.frontend_app_url.rstrip('/')}/confirm-account-deletion?token={raw_token}"
+    )
+    outbox = EmailOutbox(
+        kind=PURPOSE_ACCOUNT_DELETION,
+        recipient_email=user.email,
+        subject=ACCOUNT_DELETION_SUBJECT,
+        template=ACCOUNT_DELETION_TEMPLATE,
+        payload={
+            "deletion_url": deletion_url,
             "username": user.username,
             "expires_in_minutes": ttl // 60,
         },

@@ -16,6 +16,7 @@ from app.schemas.auth import (
     LogoutRequest,
     RefreshTokenRequest,
     RegisterRequest,
+    RequestAccountDeletionRequest,
     RequestPasswordResetRequest,
     ResetPasswordRequest,
     VerifyEmailRequest,
@@ -234,6 +235,30 @@ async def change_password(
         user=user,
         current_password=body.current_password,
         new_password=body.new_password,
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
+    return SuccessResponse(data=CommandStatusResponse())
+
+
+@router.post(
+    "/request-account-deletion",
+    response_model=SuccessResponse[CommandStatusResponse],
+    response_model_exclude_none=True,
+)
+async def request_account_deletion(
+    request: Request,
+    body: RequestAccountDeletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(get_current_user)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
+) -> SuccessResponse[CommandStatusResponse]:
+    await orchestration.request_account_deletion(
+        session,
+        redis,
+        user=user,
+        password=body.password,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
     )
