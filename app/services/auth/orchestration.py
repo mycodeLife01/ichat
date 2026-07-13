@@ -1,4 +1,10 @@
-"""Application use cases for email-verification auth flows."""
+"""Application use cases for auth email and account lifecycle flows.
+
+Email verification (register / resend / verify) plus password reset, password
+change, and account deletion. Each use case combines the domain operations in
+verification.py / account.py with Redis anti-abuse guards and a single
+commit/rollback boundary (cooldown keys are released on rollback).
+"""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

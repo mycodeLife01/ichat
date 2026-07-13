@@ -169,6 +169,22 @@ async def token_consume_ip_guard(
         logger.warning("Redis unavailable during {action} IP guard; failing open", action=action)
 
 
+async def _revoke_credentials_after_password_change(
+    session: AsyncSession, *, user_id: int, now: datetime
+) -> None:
+    """Cross-invalidation matrix for a successful password change or reset:
+    every refresh token (all devices) plus pending password_reset /
+    account_deletion tokens.
+    """
+    await revoke_all_refresh_tokens(session, user_id=user_id, now=now)
+    await revoke_active_tokens(
+        session, user_id=user_id, purpose=PURPOSE_PASSWORD_RESET, now=now
+    )
+    await revoke_active_tokens(
+        session, user_id=user_id, purpose=PURPOSE_ACCOUNT_DELETION, now=now
+    )
+
+
 async def reset_password(
     session: AsyncSession, *, raw_token: str, new_password: str, now: datetime | None = None
 ) -> None:
@@ -193,13 +209,7 @@ async def reset_password(
     user.password_hash = hash_password(new_password)
     if sent_to_email == user.email:
         user.email_verified = True
-    await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
-    await revoke_active_tokens(
-        session, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET, now=moment
-    )
-    await revoke_active_tokens(
-        session, user_id=user.id, purpose=PURPOSE_ACCOUNT_DELETION, now=moment
-    )
+    await _revoke_credentials_after_password_change(session, user_id=user.id, now=moment)
     await session.flush()
 
 
@@ -209,7 +219,7 @@ async def change_password_guard(
     """Anti-brute-force for change-password. Fails closed on Redis outage.
 
     Two dimensions: an IP sliding window plus a per-user failed-attempt budget
-    (only wrong-password attempts consume it, via ``record_password_change_failure``).
+    (only wrong-password attempts consume it, recorded inside ``change_password``).
     """
     try:
         ip_result = await rate_limit.check_ip_rate_limit(
@@ -265,13 +275,7 @@ async def change_password(
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_CURRENT_PASSWORD_MESSAGE)
 
     user.password_hash = hash_password(new_password)
-    await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
-    await revoke_active_tokens(
-        session, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET, now=moment
-    )
-    await revoke_active_tokens(
-        session, user_id=user.id, purpose=PURPOSE_ACCOUNT_DELETION, now=moment
-    )
+    await _revoke_credentials_after_password_change(session, user_id=user.id, now=moment)
     await session.flush()
 
 
@@ -301,6 +305,7 @@ async def create_password_reset_email(
     session.add(outbox)
     await session.flush()
     return outbox.id
+
 
 async def deletion_request_ip_guard(
     redis: Redis, *, client_ip: str, settings: Settings
@@ -399,6 +404,7 @@ async def create_account_deletion_email(
     session.add(outbox)
     await session.flush()
     return outbox.id
+
 
 async def confirm_account_deletion(
     session: AsyncSession, *, raw_token: str, now: datetime | None = None
