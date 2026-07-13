@@ -22,7 +22,7 @@ from app.models.auth_token import AuthToken
 from app.models.email_outbox import EmailOutbox
 from app.models.user import User
 from app.services.auth import verification
-from app.services.auth.token_service import issue_email_verification_token
+from app.services.auth.token_service import PURPOSE_EMAIL_VERIFICATION, issue_auth_token
 
 TEST_DATABASE_URL = os.environ.get(
     "VERIFICATION_TEST_DATABASE_URL",
@@ -166,7 +166,9 @@ async def test_create_for_user_skips_already_verified(session: AsyncSession) -> 
 
 async def test_verify_email_happy_path(session: AsyncSession) -> None:
     user = await make_user(session)
-    raw = await issue_email_verification_token(session, user=user, ttl_seconds=86400)
+    raw = await issue_auth_token(
+        session, user=user, purpose=PURPOSE_EMAIL_VERIFICATION, ttl_seconds=86400
+    )
 
     await verification.verify_email(session, raw_token=raw)
 
@@ -183,7 +185,9 @@ async def test_verify_email_invalid_token_raises(session: AsyncSession) -> None:
 
 async def test_verify_email_idempotent_when_already_verified(session: AsyncSession) -> None:
     user = await make_user(session, email_verified=True)
-    raw = await issue_email_verification_token(session, user=user, ttl_seconds=86400)
+    raw = await issue_auth_token(
+        session, user=user, purpose=PURPOSE_EMAIL_VERIFICATION, ttl_seconds=86400
+    )
 
     await verification.verify_email(session, raw_token=raw)  # no raise
 
@@ -192,7 +196,9 @@ async def test_verify_email_idempotent_when_already_verified(session: AsyncSessi
 
 async def test_expired_token_does_not_reset_verified_user(session: AsyncSession) -> None:
     user = await make_user(session, email_verified=True)
-    raw = await issue_email_verification_token(session, user=user, ttl_seconds=86400)
+    raw = await issue_auth_token(
+        session, user=user, purpose=PURPOSE_EMAIL_VERIFICATION, ttl_seconds=86400
+    )
     token = await session.scalar(select(AuthToken).where(AuthToken.user_id == user.id))
     assert token is not None
     token.expires_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -233,7 +239,9 @@ async def test_register_ip_guard_limit(redis: aioredis.FakeRedis) -> None:
 async def test_register_cooldown_degrades_when_redis_down(session: AsyncSession) -> None:
     user = await make_user(session)
     # A recent token exists for this email -> DB cooldown should block.
-    await issue_email_verification_token(session, user=user, ttl_seconds=86400)
+    await issue_auth_token(
+        session, user=user, purpose=PURPOSE_EMAIL_VERIFICATION, ttl_seconds=86400
+    )
 
     with pytest.raises(AppError) as exc:
         await verification.acquire_register_email_cooldown(

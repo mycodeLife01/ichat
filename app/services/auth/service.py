@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -137,6 +137,18 @@ async def logout(session: AsyncSession, *, refresh_token: str) -> CommandStatusR
         token.revoked_at = datetime.now(UTC)
         await session.flush()
     return CommandStatusResponse()
+
+
+async def revoke_all_refresh_tokens(
+    session: AsyncSession, *, user_id: int, now: datetime | None = None
+) -> None:
+    """Force-logout every session of a user (all devices)."""
+    moment = now or datetime.now(UTC)
+    await session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=moment)
+    )
 
 
 async def issue_tokens(

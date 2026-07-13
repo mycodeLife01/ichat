@@ -22,8 +22,8 @@ from app.models.user import User
 from app.services.auth import rate_limit
 from app.services.auth.token_service import (
     PURPOSE_EMAIL_VERIFICATION,
-    consume_email_verification_token,
-    issue_email_verification_token,
+    consume_auth_token,
+    issue_auth_token,
     latest_token_created_at,
 )
 from app.services.email.renderer import EMAIL_VERIFICATION_SUBJECT, EMAIL_VERIFICATION_TEMPLATE
@@ -47,8 +47,8 @@ async def create_verification_email(
     """Issue a verification token and enqueue an outbox row. Returns outbox id."""
     moment = now or datetime.now(UTC)
     ttl = settings.auth_email_verification_token_ttl_seconds
-    raw_token = await issue_email_verification_token(
-        session, user=user, ttl_seconds=ttl, now=moment
+    raw_token = await issue_auth_token(
+        session, user=user, purpose=PURPOSE_EMAIL_VERIFICATION, ttl_seconds=ttl, now=moment
     )
     verification_url = (
         f"{settings.frontend_app_url.rstrip('/')}/verify-email?token={raw_token}"
@@ -76,7 +76,9 @@ async def verify_email(
 ) -> None:
     """Consume the token and flip email_verified. Generic failure on any problem."""
     moment = now or datetime.now(UTC)
-    consumed = await consume_email_verification_token(session, raw_token=raw_token, now=moment)
+    consumed = await consume_auth_token(
+        session, raw_token=raw_token, purpose=PURPOSE_EMAIL_VERIFICATION, now=moment
+    )
     if consumed is None:
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_VERIFICATION_MESSAGE)
     user_id, sent_to_email = consumed
