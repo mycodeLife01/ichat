@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -32,7 +32,10 @@ describe("App auth gate", () => {
 
     renderWithApp(<App />, createFakeServices());
 
-    await user.click(await screen.findByRole("button", { name: "退出登录" }));
+    await user.click(await screen.findByRole("button", { name: "打开个人中心" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+    const dialog = screen.getByRole("dialog", { name: "你确定要退出登录吗？" });
+    await user.click(within(dialog).getByRole("button", { name: "退出登录" }));
 
     expect(await screen.findByRole("tab", { name: "登录" })).toBeInTheDocument();
     expect(tokenStore.read()).toBeNull();

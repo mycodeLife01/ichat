@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -140,11 +140,78 @@ describe("Sidebar", () => {
     expect(props.onLoadMore).toHaveBeenCalled();
   });
 
-  it("logs out", async () => {
+  it("opens the user menu with non-interactive profile details", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+
+    const menu = screen.getByRole("menu", { name: "个人中心" });
+    expect(within(menu).getByText("alice")).toBeInTheDocument();
+    expect(within(menu).getByText("a@b.com")).toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("button", { name: /alice.*a@b\.com/i }),
+    ).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("closes the user menu when pressing outside it", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    expect(screen.getByRole("menu", { name: "个人中心" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("menu", { name: "个人中心" })).toBeNull();
+  });
+
+  it("closes the user menu when pressing Escape", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    expect(screen.getByRole("menu", { name: "个人中心" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("menu", { name: "个人中心" })).toBeNull();
+  });
+
+  it("opens logout confirmation and cancels without logging out", async () => {
     const props = baseProps();
     const user = userEvent.setup();
     render(<Sidebar {...props} />);
-    await user.click(screen.getByRole("button", { name: "退出登录" }));
-    expect(props.onLogout).toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    const dialog = screen.getByRole("dialog", { name: "你确定要退出登录吗？" });
+    expect(within(dialog).getByText("alice")).toBeInTheDocument();
+    expect(within(dialog).getByText("a@b.com")).toBeInTheDocument();
+    expect(props.onLogout).not.toHaveBeenCalled();
+
+    const cancelButton = within(dialog).getByRole("button", { name: "取消" });
+    expect(cancelButton).toHaveFocus();
+    await user.click(cancelButton);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "打开个人中心" })).toHaveFocus();
+    expect(props.onLogout).not.toHaveBeenCalled();
+  });
+
+  it("closes the logout confirmation when pressing Escape", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+    expect(screen.getByRole("dialog", { name: "你确定要退出登录吗？" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "打开个人中心" })).toHaveFocus();
   });
 });
