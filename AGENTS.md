@@ -27,6 +27,10 @@ When entering the implementation phase, develop directly on the current branch b
 
 Use a worktree only when the user explicitly asks for one. If a generic workflow or external skill recommends using a worktree, this project rule takes precedence.
 
+## Planning
+
+Do not proactively enter plan mode. Work directly in the normal implementation flow unless the user explicitly asks to enter plan mode or requests a plan for approval before implementation. When lightweight planning is useful, state the approach briefly in the conversation and continue without invoking plan mode.
+
 ## Git
 
 Branch names must start with a change type/scope segment such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`. Prefer this project style over author or agent prefixes such as `codex/`. Examples: `fix/share-toast-loading-icon`, `feat/conversation-sharing`, `docs/git-workflow-rules`.
