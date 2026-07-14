@@ -247,9 +247,9 @@ export function AccountCard({
                     <div className="text-[12.5px] font-medium text-fg">个人头像</div>
                     <div className="mt-0.5 text-[10.5px] text-fg-subtle">仅本地预览，暂不会上传</div>
                   </div>
-                  <button type="button" className={secondaryClass} onClick={chooseAvatar}>
+                  {/* <button type="button" className={secondaryClass} onClick={chooseAvatar}>
                     选择图片
-                  </button>
+                  </button> */}
                   <input
                     ref={inputRef}
                     className="sr-only"
