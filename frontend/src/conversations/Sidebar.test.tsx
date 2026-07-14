@@ -25,7 +25,12 @@ function baseProps() {
   return {
     items: [makeConversation("1", "今天的对话", today)],
     selectedId: "1",
-    user: { email: "a@b.com", name: "alice", emailVerified: true },
+    user: {
+      email: "a@b.com",
+      username: "alice-login",
+      name: "alice",
+      emailVerified: true,
+    },
     isMobile: false,
     collapsed: false,
     mobileOpen: false,
@@ -147,15 +152,22 @@ describe("Sidebar", () => {
     expect(props.onLoadMore).toHaveBeenCalled();
   });
 
-  it("opens the user menu with non-interactive profile details", async () => {
+  it("keeps username out of the user menu", async () => {
     const user = userEvent.setup();
     render(<Sidebar {...baseProps()} />);
 
-    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    const trigger = screen.getByRole("button", { name: "打开个人中心" });
+    expect(within(trigger).getByText("alice")).toBeInTheDocument();
+    expect(within(trigger).getByText("Pro")).toBeInTheDocument();
+    expect(within(trigger).queryByText("alice-login")).toBeNull();
+
+    await user.click(trigger);
 
     const menu = screen.getByRole("menu", { name: "个人中心" });
     expect(within(menu).getByText("alice")).toBeInTheDocument();
     expect(within(menu).getByText("a@b.com")).toBeInTheDocument();
+    expect(within(menu).queryByText("用户名")).toBeNull();
+    expect(within(menu).queryByText("alice-login")).toBeNull();
     expect(
       within(menu).queryByRole("button", { name: /alice.*a@b\.com/i }),
     ).toBeNull();

@@ -6,6 +6,7 @@ import { ApiError } from "../api/errors";
 import { AccountCard } from "./AccountCard";
 
 const verifiedUser = {
+  username: "alice-login",
   name: "alice",
   email: "alice@example.com",
   emailVerified: true,
@@ -50,6 +51,20 @@ describe("AccountCard", () => {
 
     expect(screen.getByText("已认证")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "认证邮箱" })).toBeNull();
+  });
+
+  it("shows username as a read-only field before the account email", () => {
+    render(<AccountCard user={verifiedUser} {...actions()} />);
+
+    const username = screen.getByText("alice-login");
+    const email = screen.getByText("alice@example.com");
+    expect(screen.getByText("用户名 · 不可修改")).toBeInTheDocument();
+    expect(
+      username.compareDocumentPosition(email) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "用户名" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /复制|保存用户名|修改用户名/ })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "昵称" })).toBeInTheDocument();
   });
 
   it("opens the same file chooser from the avatar and choose button", async () => {
@@ -97,7 +112,9 @@ describe("AccountCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "认证邮箱" }));
+    const verificationButton = screen.getByRole("button", { name: "认证邮箱" });
+    expect(verificationButton).toHaveClass("bg-accent", "text-accent-fg");
+    await user.click(verificationButton);
     expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送");
 
     rerender(

@@ -8,7 +8,12 @@ import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
 import { UserMenu } from "./UserMenu";
 
-export type SidebarUser = { email: string; name: string; emailVerified: boolean };
+export type SidebarUser = {
+  email: string;
+  username: string;
+  name: string;
+  emailVerified: boolean;
+};
 
 type SidebarProps = {
   items: ConversationResponse[];

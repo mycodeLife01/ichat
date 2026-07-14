@@ -8,7 +8,7 @@ import { MySharesCard } from "./MySharesCard";
 import type { UserShareResponse } from "../api/types";
 
 type UserMenuProps = {
-  user: { email: string; name: string; emailVerified: boolean } | null;
+  user: { email: string; username: string; name: string; emailVerified: boolean } | null;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;

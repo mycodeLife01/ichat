@@ -8,13 +8,14 @@ import {
   Mail,
   MailWarning,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 
 import { ApiError } from "../api/errors";
 
 type AccountCardProps = {
-  user: { email: string; name: string; emailVerified: boolean };
+  user: { email: string; username: string; name: string; emailVerified: boolean };
   onClose: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
@@ -288,6 +289,15 @@ export function AccountCard({
               <div className="divide-y divide-border border-y border-border">
                 <div className="flex items-center gap-3 px-1 py-3.5">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-fg-muted">
+                    <UserRound size={14} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] font-medium text-fg">{user.username}</div>
+                    <div className="text-[10.5px] text-fg-subtle">用户名 · 不可修改</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 px-1 py-3.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-fg-muted">
                     <Mail size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -303,7 +313,12 @@ export function AccountCard({
                     {user.emailVerified ? "已认证" : "未认证"}
                   </span>
                   {!user.emailVerified && (
-                    <button type="button" className={secondaryClass} disabled={sending} onClick={() => void resend()}>
+                    <button
+                      type="button"
+                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-accent px-3 text-[12px] font-medium text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-60"
+                      disabled={sending}
+                      onClick={() => void resend()}
+                    >
                       {sending ? "发送中…" : "认证邮箱"}
                     </button>
                   )}

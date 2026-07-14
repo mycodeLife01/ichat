@@ -274,6 +274,7 @@ export function AppShell() {
           user
             ? {
                 email: user.email,
+                username: user.username,
                 name: user.nickname,
                 emailVerified: user.email_verified,
               }
