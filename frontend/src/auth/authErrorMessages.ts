@@ -3,7 +3,7 @@ import { toApiError } from "../api/errors";
 export type AuthMode = "login" | "register";
 
 export type AuthFieldErrors = Partial<
-  Record<"username" | "email" | "identifier" | "password", string>
+  Record<"username" | "nickname" | "email" | "identifier" | "password", string>
 >;
 
 export type AuthErrorView = {

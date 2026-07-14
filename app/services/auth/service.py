@@ -28,6 +28,7 @@ async def register_user(
     session: AsyncSession,
     *,
     username: str,
+    nickname: str | None = None,
     email: str,
     password: str,
     jwt_secret: str,
@@ -35,6 +36,7 @@ async def register_user(
     refresh_token_ttl_seconds: int,
 ) -> AuthTokenResponse:
     normalized_username = username.strip()
+    normalized_nickname = nickname.strip() if nickname is not None else normalized_username
     normalized_email = email.strip().lower()
 
     existing_username = await session.scalar(
@@ -51,7 +53,7 @@ async def register_user(
 
     user = User(
         username=normalized_username,
-        nickname=normalized_username,
+        nickname=normalized_nickname,
         email=normalized_email,
         password_hash=hash_password(password),
         email_verified=False,

@@ -30,9 +30,6 @@ const fieldClass =
   "h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] text-fg outline-none transition-colors focus:border-fg-muted";
 const primaryClass =
   "inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-accent px-4 text-[12.5px] font-medium text-accent-fg disabled:opacity-60";
-const secondaryClass =
-  "inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border-strong bg-bg-raised px-3 text-[12px] font-medium text-fg hover:border-fg-muted disabled:opacity-60";
-
 function AccountActionRow({
   icon,
   title,
@@ -247,9 +244,6 @@ export function AccountCard({
                     <div className="text-[12.5px] font-medium text-fg">个人头像</div>
                     <div className="mt-0.5 text-[10.5px] text-fg-subtle">仅本地预览，暂不会上传</div>
                   </div>
-                  {/* <button type="button" className={secondaryClass} onClick={chooseAvatar}>
-                    选择图片
-                  </button> */}
                   <input
                     ref={inputRef}
                     className="sr-only"

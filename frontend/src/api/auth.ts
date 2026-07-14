@@ -7,6 +7,7 @@ import type {
 
 export type RegisterRequest = {
   username: string;
+  nickname: string;
   email: string;
   password: string;
 };

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 
 import { AuthBackground } from "./AuthBackground";
 import { mapAuthError, type AuthFieldErrors, type AuthMode } from "./authErrorMessages";
@@ -10,12 +10,6 @@ const authTab =
   "relative mr-6 cursor-pointer border-none bg-transparent py-2.5 text-sm font-medium";
 const authTabActive =
   " text-fg after:absolute after:right-0 after:-bottom-px after:left-0 after:h-[1.5px] after:bg-fg after:content-['']";
-
-// Collapsible wrapper for the mode-specific fields so the card height
-// transitions smoothly when switching tabs. Uses the grid-template-rows
-// trick (0fr -> 1fr) which is animatable, unlike `height: auto`.
-const authCollapse =
-  "grid [transition:grid-template-rows_320ms_cubic-bezier(0.4,0,0.2,1),opacity_220ms_ease]";
 
 const field = "mb-3.5 flex flex-col gap-1.5";
 const fieldLabel = "text-[12.5px] font-medium text-fg-muted";
@@ -36,13 +30,43 @@ export function AuthScreen() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
+  const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
   const [formMessage, setFormMessage] = useState<string | undefined>(undefined);
+  const cardRef = useRef<HTMLElement>(null);
+  const animationStartHeightRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const fromHeight = animationStartHeightRef.current;
+    animationStartHeightRef.current = null;
+
+    if (!card || fromHeight === null) return;
+
+    const reduceMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion || typeof card.animate !== "function") return;
+
+    const toHeight = card.getBoundingClientRect().height;
+    if (Math.abs(fromHeight - toHeight) < 1) return;
+
+    const animation = card.animate(
+      [{ height: `${fromHeight}px` }, { height: `${toHeight}px` }],
+      {
+        duration: 320,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
+    );
+
+    return () => animation.cancel();
+  }, [mode]);
 
   function switchMode(next: AuthMode) {
     if (next === mode) return;
+    animationStartHeightRef.current = cardRef.current?.getBoundingClientRect().height ?? null;
     setMode(next);
     setFieldErrors({});
     setFormMessage(undefined);
@@ -54,6 +78,9 @@ export function AuthScreen() {
       const name = username.trim();
       if (name.length < 1 || name.length > 50) {
         errors.username = "请输入 1–50 个字符的用户名";
+      }
+      if (nickname.trim().length > 50) {
+        errors.nickname = "昵称长度不能超过 50 个字符";
       }
       if (!EMAIL_PATTERN.test(email.trim())) {
         errors.email = "请输入有效的邮箱地址";
@@ -83,7 +110,13 @@ export function AuthScreen() {
 
     try {
       if (mode === "register") {
-        await register({ username: username.trim(), email: email.trim(), password });
+        const normalizedUsername = username.trim();
+        await register({
+          username: normalizedUsername,
+          nickname: nickname.trim() || normalizedUsername,
+          email: email.trim(),
+          password,
+        });
       } else {
         await login({ identifier: identifier.trim(), password });
       }
@@ -106,7 +139,10 @@ export function AuthScreen() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-sans text-fg">
       <AuthBackground />
 
-      <section className="relative z-[1] w-full max-w-[420px] rounded-[18px] border border-border bg-bg-raised px-9 pt-9 pb-7 shadow-[0_1px_0_rgb(255_255_255/90%)_inset,0_2px_6px_rgb(20_20_19/4%),0_24px_64px_rgb(20_20_19/8%)] max-[480px]:rounded-2xl max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]">
+      <section
+        ref={cardRef}
+        className="relative z-[1] w-full max-w-[420px] overflow-hidden rounded-[18px] border border-border bg-bg-raised px-9 pt-9 pb-7 shadow-[0_1px_0_rgb(255_255_255/90%)_inset,0_2px_6px_rgb(20_20_19/4%),0_24px_64px_rgb(20_20_19/8%)] max-[480px]:rounded-2xl max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]"
+      >
         <div className="mb-[26px] flex flex-col items-start">
           <span className="font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
             iChat
@@ -138,17 +174,8 @@ export function AuthScreen() {
         </div>
 
         <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
-          {/* Register-only fields. Kept mounted and collapsed (not unmounted) so
-              the card height animates when switching tabs. */}
-          <div
-            className={`${authCollapse} ${
-              mode === "register"
-                ? "[grid-template-rows:1fr] opacity-100"
-                : "[grid-template-rows:0fr] opacity-0"
-            }`}
-            aria-hidden={mode !== "register"}
-          >
-            <div className="min-h-0 overflow-hidden">
+          {mode === "register" ? (
+            <>
               <div className={field}>
                 <label className={fieldLabel} htmlFor="auth-username">
                   用户名
@@ -158,12 +185,28 @@ export function AuthScreen() {
                   className={fieldInput}
                   name="username"
                   autoComplete="username"
-                  tabIndex={mode === "register" ? 0 : -1}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                 />
                 {fieldErrors.username ? (
                   <div className={fieldErr}>{fieldErrors.username}</div>
+                ) : null}
+              </div>
+              <div className={field}>
+                <label className={fieldLabel} htmlFor="auth-nickname">
+                  昵称（可选）
+                </label>
+                <input
+                  id="auth-nickname"
+                  className={fieldInput}
+                  name="nickname"
+                  autoComplete="nickname"
+                  placeholder="默认与用户名相同"
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                />
+                {fieldErrors.nickname ? (
+                  <div className={fieldErr}>{fieldErrors.nickname}</div>
                 ) : null}
               </div>
               <div className={field}>
@@ -178,44 +221,30 @@ export function AuthScreen() {
                   inputMode="email"
                   autoComplete="email"
                   placeholder="you@example.com"
-                  tabIndex={mode === "register" ? 0 : -1}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                 />
                 {fieldErrors.email ? <div className={fieldErr}>{fieldErrors.email}</div> : null}
               </div>
+            </>
+          ) : (
+            <div className={field}>
+              <label className={fieldLabel} htmlFor="auth-identifier">
+                用户名或邮箱
+              </label>
+              <input
+                id="auth-identifier"
+                className={fieldInput}
+                name="identifier"
+                autoComplete="username"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
+              />
+              {fieldErrors.identifier ? (
+                <div className={fieldErr}>{fieldErrors.identifier}</div>
+              ) : null}
             </div>
-          </div>
-
-          {/* Login-only field. */}
-          <div
-            className={`${authCollapse} ${
-              mode === "login"
-                ? "[grid-template-rows:1fr] opacity-100"
-                : "[grid-template-rows:0fr] opacity-0"
-            }`}
-            aria-hidden={mode !== "login"}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="auth-identifier">
-                  用户名或邮箱
-                </label>
-                <input
-                  id="auth-identifier"
-                  className={fieldInput}
-                  name="identifier"
-                  autoComplete="username"
-                  tabIndex={mode === "login" ? 0 : -1}
-                  value={identifier}
-                  onChange={(event) => setIdentifier(event.target.value)}
-                />
-                {fieldErrors.identifier ? (
-                  <div className={fieldErr}>{fieldErrors.identifier}</div>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          )}
 
           <div className={field}>
             <label className={fieldLabel} htmlFor="auth-password">

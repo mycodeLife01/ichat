@@ -9,22 +9,72 @@ import { AuthScreen } from "./AuthScreen";
 
 describe("AuthScreen", () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
 
-  it("activates login fields by default and register fields after switching", async () => {
+  it("renders only the fields for the active mode", async () => {
     const user = userEvent.setup();
     renderWithApp(<AuthScreen />, createFakeServices());
 
-    // Mode-specific fields stay mounted (to animate the card height); the
-    // inactive set is collapsed and removed from the tab order.
-    expect(screen.getByLabelText("用户名或邮箱")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByLabelText("邮箱")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("用户名或邮箱")).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("昵称（可选）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "注册" }));
 
-    expect(screen.getByLabelText("用户名")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByLabelText("邮箱")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByLabelText("用户名或邮箱")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+    expect(screen.getByLabelText("昵称（可选）")).toBeInTheDocument();
+    expect(screen.getByLabelText("邮箱")).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名或邮箱")).not.toBeInTheDocument();
+  });
+
+  it("animates only the outer card height when switching modes", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithApp(<AuthScreen />, createFakeServices());
+    const card = container.querySelector("section");
+    expect(card).not.toBeNull();
+    if (!card) return;
+
+    vi.spyOn(card, "getBoundingClientRect")
+      .mockReturnValueOnce({ height: 420 } as DOMRect)
+      .mockReturnValueOnce({ height: 620 } as DOMRect);
+    const cancel = vi.fn();
+    const animate = vi.fn(() => ({ cancel }) as unknown as Animation);
+    Object.defineProperty(card, "animate", { configurable: true, value: animate });
+
+    await user.click(screen.getByRole("tab", { name: "注册" }));
+
+    expect(animate).toHaveBeenCalledWith(
+      [{ height: "420px" }, { height: "620px" }],
+      {
+        duration: 320,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
+    );
+  });
+
+  it("skips the card animation when reduced motion is preferred", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true }) as MediaQueryList),
+    );
+    const { container } = renderWithApp(<AuthScreen />, createFakeServices());
+    const card = container.querySelector("section");
+    expect(card).not.toBeNull();
+    if (!card) return;
+
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({ height: 420 } as DOMRect);
+    const animate = vi.fn();
+    Object.defineProperty(card, "animate", { configurable: true, value: animate });
+
+    await user.click(screen.getByRole("tab", { name: "注册" }));
+
+    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+    expect(animate).not.toHaveBeenCalled();
   });
 
   it("shows field errors when submitting an empty login form", async () => {
@@ -50,6 +100,40 @@ describe("AuthScreen", () => {
     await user.click(screen.getByRole("button", { name: "注册" }));
 
     expect(screen.getByText("请输入有效的邮箱地址")).toBeInTheDocument();
+  });
+
+  it("submits a valid registration with a trimmed nickname", async () => {
+    const user = userEvent.setup();
+    const register = vi.fn(async () => authTokenResponse);
+    renderWithApp(<AuthScreen />, createFakeServices({ register }));
+
+    await user.click(screen.getByRole("tab", { name: "注册" }));
+    await user.type(screen.getByLabelText("用户名"), "  alice  ");
+    await user.type(screen.getByLabelText("昵称（可选）"), "  Alice Cooper  ");
+    await user.type(screen.getByLabelText("邮箱"), "  alice@example.com  ");
+    await user.type(screen.getByLabelText("密码"), "password123");
+    await user.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(register).toHaveBeenCalledWith({
+      username: "alice",
+      nickname: "Alice Cooper",
+      email: "alice@example.com",
+      password: "password123",
+    });
+  });
+
+  it("uses the username as nickname when registration nickname is blank", async () => {
+    const user = userEvent.setup();
+    const register = vi.fn(async () => authTokenResponse);
+    renderWithApp(<AuthScreen />, createFakeServices({ register }));
+
+    await user.click(screen.getByRole("tab", { name: "注册" }));
+    await user.type(screen.getByLabelText("用户名"), "alice");
+    await user.type(screen.getByLabelText("邮箱"), "alice@example.com");
+    await user.type(screen.getByLabelText("密码"), "password123");
+    await user.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ nickname: "alice" }));
   });
 
   it("submits a valid login with trimmed values", async () => {

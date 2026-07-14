@@ -54,6 +54,7 @@ async def register(
         session,
         redis,
         username=body.username,
+        nickname=body.nickname,
         email=str(body.email),
         password=body.password,
         client_ip=rate_limit.client_ip_from_request(request),

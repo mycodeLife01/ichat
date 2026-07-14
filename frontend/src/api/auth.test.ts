@@ -18,6 +18,7 @@ describe("authApi", () => {
 
     await authApi.register({
       username: "alice",
+      nickname: "Alice",
       email: "alice@example.com",
       password: "password123",
     });
@@ -26,6 +27,7 @@ describe("authApi", () => {
       method: "POST",
       body: {
         username: "alice",
+        nickname: "Alice",
         email: "alice@example.com",
         password: "password123",
       },

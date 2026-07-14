@@ -61,6 +61,7 @@ async def register_with_verification(
     redis: Redis,
     *,
     username: str,
+    nickname: str | None = None,
     email: str,
     password: str,
     client_ip: str,
@@ -73,6 +74,7 @@ async def register_with_verification(
         token_response = await register_user(
             session,
             username=username,
+            nickname=nickname,
             email=email,
             password=password,
             jwt_secret=settings.jwt_secret,

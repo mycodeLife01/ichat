@@ -47,6 +47,7 @@ def registration() -> dict[str, str]:
     suffix = uuid4().hex
     return {
         "username": f"orchestration-{suffix}",
+        "nickname": f"Orchestration {suffix}",
         "email": f"orchestration-{suffix}@{TEST_DOMAIN}",
         "password": "correct-password",
     }
@@ -78,6 +79,8 @@ async def test_register_commits_user_and_outbox_before_dispatch(
 
     assert user is not None
     assert response.user.id == user.id
+    assert response.user.nickname == details["nickname"]
+    assert user.nickname == details["nickname"]
     assert outbox is not None
     assert dispatched == [outbox.id]
 

@@ -19,8 +19,8 @@ class User(Base):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        # Keep programmatic user construction aligned with the registration
-        # invariant: a nickname starts as the immutable login username.
+        # Keep programmatic construction aligned with registration's fallback:
+        # nickname defaults to the immutable login username when omitted.
         if "nickname" not in kwargs and "username" in kwargs:
             kwargs["nickname"] = kwargs["username"]
         super().__init__(**kwargs)

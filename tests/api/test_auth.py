@@ -68,12 +68,16 @@ async def register_user(
     client: AsyncClient,
     *,
     username: str = "alice",
+    nickname: str | None = None,
     email: str = f"alice@{TEST_EMAIL_DOMAIN}",
     password: str = "correct-password",
 ) -> dict[str, object]:
+    payload = {"username": username, "email": email, "password": password}
+    if nickname is not None:
+        payload["nickname"] = nickname
     response = await client.post(
         "/api/v1/auth/register",
-        json={"username": username, "email": email, "password": password},
+        json=payload,
     )
     assert response.status_code == status.HTTP_201_CREATED
     return cast(dict[str, object], response.json()["data"])
@@ -83,7 +87,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
     auth_client: AsyncClient,
     auth_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    data = await register_user(auth_client)
+    data = await register_user(auth_client, nickname="  Alice Cooper  ")
 
     assert set(data) == {"user", "access_token", "refresh_token", "token_type", "expires_in"}
     assert data["token_type"] == "bearer"
@@ -95,7 +99,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
     assert isinstance(user_data, dict)
     assert isinstance(user_data["id"], int)
     assert user_data["username"] == "alice"
-    assert user_data["nickname"] == "alice"
+    assert user_data["nickname"] == "Alice Cooper"
     assert user_data["email"] == f"alice@{TEST_EMAIL_DOMAIN}"
     assert user_data["email_verified"] is False
 
@@ -103,6 +107,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
         user = await session.scalar(select(User).where(User.username == "alice"))
         assert user is not None
         assert user.email == f"alice@{TEST_EMAIL_DOMAIN}"
+        assert user.nickname == "Alice Cooper"
         assert user.password_hash != "correct-password"
         assert user.email_verified is False
         token = await session.scalar(select(RefreshToken).where(RefreshToken.user_id == user.id))

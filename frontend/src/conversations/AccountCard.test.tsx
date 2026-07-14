@@ -67,7 +67,7 @@ describe("AccountCard", () => {
     expect(screen.getByRole("textbox", { name: "昵称" })).toBeInTheDocument();
   });
 
-  it("opens the same file chooser from the avatar and choose button", async () => {
+  it("opens the file chooser from the avatar button", async () => {
     const user = userEvent.setup();
     const click = vi.spyOn(HTMLInputElement.prototype, "click");
     render(
@@ -78,9 +78,8 @@ describe("AccountCard", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "选择头像" }));
-    await user.click(screen.getByRole("button", { name: "选择图片" }));
 
-    expect(click).toHaveBeenCalledTimes(2);
+    expect(click).toHaveBeenCalledTimes(1);
     click.mockRestore();
   });
 
