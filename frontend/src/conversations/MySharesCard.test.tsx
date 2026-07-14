@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,30 @@ const share = {
 };
 
 describe("MySharesCard", () => {
+  it("stays open when a drag starts inside the card and ends on the backdrop", async () => {
+    const onClose = vi.fn();
+    render(
+      <MySharesCard
+        onClose={onClose}
+        onLoad={async () => []}
+        onRevoke={vi.fn()}
+        onToast={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "我的分享" });
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.pointerDown(dialog);
+    fireEvent.pointerUp(backdrop!);
+    fireEvent.click(backdrop!);
+
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(backdrop!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("loads shares, copies a link, and removes a revoked share", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,10 +18,28 @@ function actions() {
     onUpdateNickname: vi.fn(async () => ({ status: "ok" })),
     onChangePassword: vi.fn(async () => ({ status: "ok" })),
     onRequestDeletion: vi.fn(async () => ({ status: "ok" })),
+    onToast: vi.fn(),
   };
 }
 
 describe("AccountCard", () => {
+  it("stays open when a drag starts inside the card and ends on the backdrop", () => {
+    const props = actions();
+    render(<AccountCard user={verifiedUser} {...props} />);
+    const dialog = screen.getByRole("dialog", { name: "账号" });
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.pointerDown(dialog);
+    fireEvent.pointerUp(backdrop!);
+    fireEvent.click(backdrop!);
+
+    expect(props.onClose).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(backdrop!);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("shows verified account details without a resend action", () => {
     render(
       <AccountCard
@@ -64,32 +82,33 @@ describe("AccountCard", () => {
     );
   });
 
-  it("resends verification and explains cooldown failures", async () => {
+  it("reports verification success and cooldown failures through the global toast", async () => {
     const user = userEvent.setup();
     const resend = vi
       .fn<() => Promise<unknown>>()
       .mockResolvedValueOnce({ status: "ok" })
       .mockRejectedValueOnce(new ApiError({ status: 429 }));
+    const props = actions();
     const { rerender } = render(
       <AccountCard
         user={{ ...verifiedUser, emailVerified: false }}
-        {...actions()}
+        {...props}
         onResendVerification={resend}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: "认证邮箱" }));
-    expect(await screen.findByText("验证邮件已发送，请检查收件箱。")).toBeInTheDocument();
+    expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送");
 
     rerender(
       <AccountCard
         user={{ ...verifiedUser, emailVerified: false }}
-        {...actions()}
+        {...props}
         onResendVerification={resend}
       />,
     );
     await user.click(screen.getByRole("button", { name: "认证邮箱" }));
-    expect(await screen.findByText("发送过于频繁，请稍后再试。")).toBeInTheDocument();
+    expect(props.onToast).toHaveBeenCalledWith("发送过于频繁，请稍后再试。");
   });
 
   it("updates the nickname directly from the account overview", async () => {
@@ -103,7 +122,21 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(props.onUpdateNickname).toHaveBeenCalledWith("Alice Cooper");
-    expect(await screen.findByText("昵称已更新。")).toBeInTheDocument();
+    expect(props.onToast).toHaveBeenCalledWith("昵称已更新");
+  });
+
+  it("does not request a nickname update when the trimmed value is unchanged", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    render(<AccountCard user={verifiedUser} {...props} />);
+    const input = screen.getByLabelText("昵称");
+
+    await user.clear(input);
+    await user.type(input, "  alice  ");
+
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(props.onUpdateNickname).not.toHaveBeenCalled();
   });
 
   it("validates and submits a password change", async () => {

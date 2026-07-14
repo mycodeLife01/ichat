@@ -20,6 +20,7 @@ type AccountCardProps = {
   onUpdateNickname: (nickname: string) => Promise<unknown>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
+  onToast: (message: string) => void;
 };
 
 type AccountView = "overview" | "password" | "deletion";
@@ -76,18 +77,19 @@ export function AccountCard({
   onUpdateNickname,
   onChangePassword,
   onRequestDeletion,
+  onToast,
 }: AccountCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [view, setView] = useState<AccountView>("overview");
   const [nickname, setNickname] = useState(user.name);
+  const [savedNickname, setSavedNickname] = useState(user.name);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [deletionPassword, setDeletionPassword] = useState("");
   const [sending, setSending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const chooseAvatar = () => inputRef.current?.click();
@@ -110,14 +112,16 @@ export function AccountCard({
       setFormError("昵称长度需为 1–50 个字符。");
       return;
     }
+    if (normalized === savedNickname) return;
     setSubmitting(true);
     setFormError(null);
     try {
       await onUpdateNickname(normalized);
       setNickname(normalized);
-      setNotice("昵称已更新。");
+      setSavedNickname(normalized);
+      onToast("昵称已更新");
     } catch {
-      setFormError("昵称保存失败，请重试。");
+      onToast("昵称保存失败，请重试");
     } finally {
       setSubmitting(false);
     }
@@ -126,12 +130,11 @@ export function AccountCard({
   const resend = async () => {
     if (sending) return;
     setSending(true);
-    setEmailFeedback(null);
     try {
       await onResendVerification();
-      setEmailFeedback("验证邮件已发送，请检查收件箱。");
+      onToast("验证邮件已发送");
     } catch (error) {
-      setEmailFeedback(
+      onToast(
         error instanceof ApiError && error.status === 429
           ? "发送过于频繁，请稍后再试。"
           : "验证邮件发送失败，请重试。",
@@ -186,14 +189,15 @@ export function AccountCard({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.36)] p-6 backdrop-blur-[1px] max-[760px]:p-2"
-      onClick={onClose}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <section
         className="w-full max-w-[680px] overflow-hidden rounded-xl border border-border-strong bg-bg-raised shadow-[0_24px_80px_rgba(20,20,19,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-card-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
           <div>
@@ -270,7 +274,11 @@ export function AccountCard({
                     aria-label="昵称"
                     onChange={(event) => setNickname(event.target.value)}
                   />
-                  <button type="submit" className={primaryClass} disabled={submitting}>
+                  <button
+                    type="submit"
+                    className={primaryClass}
+                    disabled={submitting || nickname.trim() === savedNickname}
+                  >
                     {submitting ? "保存中…" : "保存"}
                   </button>
                 </form>
@@ -300,7 +308,6 @@ export function AccountCard({
                     </button>
                   )}
                 </div>
-                {emailFeedback && <p className="px-1 py-2 text-[12px] text-fg-muted" role="status">{emailFeedback}</p>}
                 <AccountActionRow
                   icon={<KeyRound size={14} />}
                   title="修改密码"

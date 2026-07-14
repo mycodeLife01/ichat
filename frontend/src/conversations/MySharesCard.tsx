@@ -63,14 +63,15 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.36)] p-6 backdrop-blur-[1px] max-[760px]:p-2"
-      onClick={onClose}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <section
         className="flex max-h-[calc(100vh-24px)] w-full max-w-[720px] flex-col overflow-hidden rounded-xl border border-border-strong bg-bg-raised shadow-[0_24px_80px_rgba(20,20,19,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="my-shares-card-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
           <div>

@@ -101,11 +101,11 @@ export function UserMenu({
       >
         <UserAvatar name={name} size="sm" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium leading-[1.35] text-fg">
+          <span className="block truncate text-[14px] font-medium leading-[1.35] text-fg">
             {name}
           </span>
-          <span className="block truncate text-[10.5px] leading-[1.4] text-fg-subtle">
-            免费账户
+          <span className="block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle">
+            Pro
           </span>
         </span>
       </button>
@@ -119,7 +119,7 @@ export function UserMenu({
           <div className="mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2.5">
             <UserAvatar name={name} size="sm" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium text-fg">{name}</span>
+              <span className="block truncate text-[14px] font-medium text-fg">{name}</span>
               <span className="block truncate text-[10.5px] text-fg-subtle">{email}</span>
             </span>
           </div>
@@ -179,6 +179,7 @@ export function UserMenu({
             onUpdateNickname={onUpdateNickname}
             onChangePassword={onChangePassword}
             onRequestDeletion={onRequestDeletion}
+            onToast={onToast}
           />,
           document.body,
         )}
@@ -201,14 +202,15 @@ export function UserMenu({
         createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.32)] p-4"
-            onClick={closeLogout}
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) closeLogout();
+            }}
           >
             <div
               className="w-full max-w-[420px] rounded-xl border border-border-strong bg-bg-raised px-10 py-9 text-center shadow-[0_18px_60px_rgba(20,20,19,0.18)] max-[760px]:px-6 max-[760px]:py-7"
               role="dialog"
               aria-modal="true"
               aria-labelledby="logout-dialog-title"
-              onClick={(event) => event.stopPropagation()}
             >
               <h2
                 id="logout-dialog-title"
