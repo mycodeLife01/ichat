@@ -24,6 +24,7 @@
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
+| Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-07-14-r2-avatar-upload.md` |
 
 ## Directory guide
 
@@ -65,6 +66,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-18-conversation-sharing.md` — conversation sharing (Phase 2): `share_links` table (bigint, token-keyed), created-time JSONB snapshot, anonymous `GET /api/v1/share/{token}` read + owner-only create/list/revoke management, at-most-one-active-link-per-conversation (409 on conflict; revoked/expired kept for audit, hidden from listing), public `/share/:token` read-only page, share dialog, CF Pages `_redirects` SPA fallback.
 - `2026-06-26-email-verification.md` — email verification + auth-email infra: `auth_tokens`/`email_outbox` tables, Redis cooldown + IP sliding-window rate limiting, Postmark/console/fake providers, Celery worker/beat outbox delivery (claim/lease/retry/dead/sweep), `GET /auth/me` + `POST /auth/verify-email` + `POST /auth/resend-verification-email`, nginx Cloudflare realip + firewall ops checklist.
 - `2026-07-13-password-reset-account-deletion.md` — password reset / change-password / account deletion (five new auth endpoints), purpose-generalized token service, cross-invalidation matrix, anti-enumeration constant responses, per-endpoint rate-limit & Redis failure modes, soft-deactivation semantics + ops recovery notes.
+- `2026-07-14-r2-avatar-upload.md` — browser-cropped avatar direct upload to private R2, media queue validation/transcoding, public CDN URL, replacement/deletion compensation, account-deletion exception, Cloudflare setup/smoke/rollback.
 
 ### `docs/handover/frontend/`
 
