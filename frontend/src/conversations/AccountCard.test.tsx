@@ -92,12 +92,11 @@ describe("AccountCard", () => {
     expect(await screen.findByText("发送过于频繁，请稍后再试。")).toBeInTheDocument();
   });
 
-  it("updates the nickname from a child view", async () => {
+  it("updates the nickname directly from the account overview", async () => {
     const user = userEvent.setup();
     const props = actions();
     render(<AccountCard user={verifiedUser} {...props} />);
 
-    await user.click(screen.getByRole("button", { name: "修改昵称" }));
     const input = screen.getByLabelText("昵称");
     await user.clear(input);
     await user.type(input, "Alice Cooper");

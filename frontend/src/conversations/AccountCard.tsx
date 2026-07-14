@@ -1,13 +1,13 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
+  ArrowLeft,
   BadgeCheck,
-  ChevronLeft,
+  Camera,
   ChevronRight,
   KeyRound,
+  Mail,
   MailWarning,
-  Pencil,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -22,7 +22,52 @@ type AccountCardProps = {
   onRequestDeletion: (password: string) => Promise<unknown>;
 };
 
-type AccountView = "overview" | "nickname" | "password" | "deletion";
+type AccountView = "overview" | "password" | "deletion";
+
+const fieldClass =
+  "h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] text-fg outline-none transition-colors focus:border-fg-muted";
+const primaryClass =
+  "inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-accent px-4 text-[12.5px] font-medium text-accent-fg disabled:opacity-60";
+const secondaryClass =
+  "inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border-strong bg-bg-raised px-3 text-[12px] font-medium text-fg hover:border-fg-muted disabled:opacity-60";
+
+function AccountActionRow({
+  icon,
+  title,
+  description,
+  danger = false,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      className={`flex w-full items-center gap-3 px-1 py-3.5 text-left ${
+        danger ? "text-danger" : "text-fg"
+      }`}
+      onClick={onClick}
+    >
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+          danger ? "bg-danger-soft" : "bg-bg-sunken text-fg-muted"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-medium">{title}</span>
+        <span className="mt-0.5 block text-[10.5px] text-fg-subtle">{description}</span>
+      </span>
+      <ChevronRight size={14} className="text-fg-faint" />
+    </button>
+  );
+}
 
 export function AccountCard({
   user,
@@ -34,15 +79,15 @@ export function AccountCard({
 }: AccountCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [view, setView] = useState<AccountView>("overview");
   const [nickname, setNickname] = useState(user.name);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [deletionPassword, setDeletionPassword] = useState("");
+  const [sending, setSending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const chooseAvatar = () => inputRef.current?.click();
@@ -52,24 +97,6 @@ export function AccountCard({
     const reader = new FileReader();
     reader.onload = () => setAvatarUrl(typeof reader.result === "string" ? reader.result : null);
     reader.readAsDataURL(file);
-  };
-
-  const resend = async () => {
-    if (sending) return;
-    setSending(true);
-    setEmailFeedback(null);
-    try {
-      await onResendVerification();
-      setEmailFeedback("验证邮件已发送，请检查收件箱。");
-    } catch (error) {
-      setEmailFeedback(
-        error instanceof ApiError && error.status === 429
-          ? "发送过于频繁，请稍后再试。"
-          : "验证邮件发送失败，请重试。",
-      );
-    } finally {
-      setSending(false);
-    }
   };
 
   const back = () => {
@@ -88,12 +115,29 @@ export function AccountCard({
     try {
       await onUpdateNickname(normalized);
       setNickname(normalized);
-      setFeedback("昵称已更新。");
-      setView("overview");
+      setNotice("昵称已更新。");
     } catch {
       setFormError("昵称保存失败，请重试。");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const resend = async () => {
+    if (sending) return;
+    setSending(true);
+    setEmailFeedback(null);
+    try {
+      await onResendVerification();
+      setEmailFeedback("验证邮件已发送，请检查收件箱。");
+    } catch (error) {
+      setEmailFeedback(
+        error instanceof ApiError && error.status === 429
+          ? "发送过于频繁，请稍后再试。"
+          : "验证邮件发送失败，请重试。",
+      );
+    } finally {
+      setSending(false);
     }
   };
 
@@ -124,7 +168,7 @@ export function AccountCard({
     try {
       await onRequestDeletion(deletionPassword);
       setDeletionPassword("");
-      setFeedback("注销确认邮件已发送，请检查当前邮箱。账号尚未注销。");
+      setNotice("注销确认邮件已发送，请检查当前邮箱。账号尚未注销。");
       setView("overview");
     } catch (error) {
       setFormError(
@@ -141,200 +185,195 @@ export function AccountCard({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.32)] p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.36)] p-6 backdrop-blur-[1px] max-[760px]:p-2"
       onClick={onClose}
     >
       <section
-        className="max-h-[calc(100vh-32px)] w-full max-w-[520px] overflow-y-auto rounded-xl border border-border-strong bg-bg-raised p-6 shadow-[0_18px_60px_rgba(20,20,19,0.18)] max-[760px]:p-5"
+        className="w-full max-w-[680px] overflow-hidden rounded-xl border border-border-strong bg-bg-raised shadow-[0_24px_80px_rgba(20,20,19,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-card-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {view !== "overview" && (
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center text-fg-muted hover:text-fg"
-                aria-label="返回账号"
-                onClick={back}
-              >
-                <ChevronLeft size={17} />
-              </button>
-            )}
-            <h2 id="account-card-title" className="text-lg font-semibold text-fg">
-              {view === "overview"
-                ? "账号"
-                : view === "nickname"
-                  ? "修改昵称"
-                  : view === "password"
-                    ? "修改密码"
-                    : "注销账号"}
+        <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
+          <div>
+            <h2 id="account-card-title" className="text-[16px] font-semibold text-fg">
+              账号
             </h2>
+            <p className="mt-1 text-[11px] text-fg-subtle">管理公开资料、邮箱与账号安全。</p>
           </div>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:text-fg"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-bg-hover hover:text-fg"
             aria-label="关闭账号"
             onClick={onClose}
           >
-            <X size={17} />
+            <X size={16} />
           </button>
         </header>
 
-        {view === "overview" && <>
-        <div className="mt-5 flex items-center gap-4 border-b border-border pb-5">
-          <button
-            type="button"
-            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-semibold text-accent-fg"
-            aria-label="选择头像"
-            onClick={chooseAvatar}
-          >
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="头像预览" className="h-full w-full object-cover" />
-            ) : (
-              (user.name || "U").slice(0, 1).toUpperCase()
-            )}
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-medium text-fg">{nickname}</div>
-            <div className="mt-1 truncate text-[12px] text-fg-muted">{user.email}</div>
-            <button
-              type="button"
-              className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium text-fg-muted hover:text-fg"
-              onClick={chooseAvatar}
-            >
-              <Upload size={13} />
-              选择图片
-            </button>
-            <input
-              ref={inputRef}
-              className="sr-only"
-              type="file"
-              accept="image/*"
-              aria-label="上传头像图片"
-              onChange={onFileChange}
-            />
-          </div>
-        </div>
-
-        <dl className="divide-y divide-border">
-          <div className="flex items-center justify-between gap-4 py-4">
-            <dt className="text-[13px] text-fg-muted">展示名称</dt>
-            <dd className="truncate text-[13px] font-medium text-fg">{nickname}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-4 py-4">
-            <dt className="text-[13px] text-fg-muted">邮箱</dt>
-            <dd className="min-w-0 text-right">
-              <div className="truncate text-[13px] font-medium text-fg">{user.email}</div>
-              <div
-                className={`mt-1 inline-flex items-center gap-1 text-[11.5px] ${
-                  user.emailVerified ? "text-success" : "text-warning"
-                }`}
-              >
-                {user.emailVerified ? <BadgeCheck size={13} /> : <MailWarning size={13} />}
-                <span>{user.emailVerified ? "已认证" : "未认证"}</span>
-              </div>
-            </dd>
-          </div>
-        </dl>
-
-        {!user.emailVerified && (
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[12px] text-fg-muted">发送验证链接到当前邮箱。</p>
-              <button
-                type="button"
-                className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-[12px] font-medium text-fg hover:border-fg-muted disabled:opacity-60"
-                disabled={sending}
-                onClick={() => void resend()}
-              >
-                {sending ? "发送中…" : "认证邮箱"}
-              </button>
+        <div className="max-h-[calc(100vh-128px)] overflow-y-auto px-6 py-5 max-[760px]:px-4">
+          {notice && (
+            <div className="mb-4 flex items-center rounded-md border border-[#cce5d2] bg-[#f0f8f2] px-3 py-2 text-[11.5px] text-[#39734a]" role="status">
+              {notice}
             </div>
-            {emailFeedback && <p className="mt-2 text-[12px] text-fg-muted" role="status">{emailFeedback}</p>}
-          </div>
-        )}
-        <div className="mt-2 border-t border-border pt-2">
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 py-3 text-left text-[13px] text-fg"
-            onClick={() => setView("nickname")}
-          >
-            <Pencil size={15} className="text-fg-muted" />
-            <span className="flex-1">修改昵称</span>
-            <ChevronRight size={15} className="text-fg-subtle" />
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 py-3 text-left text-[13px] text-fg"
-            onClick={() => setView("password")}
-          >
-            <KeyRound size={15} className="text-fg-muted" />
-            <span className="flex-1">修改密码</span>
-            <ChevronRight size={15} className="text-fg-subtle" />
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 py-3 text-left text-[13px] text-danger"
-            onClick={() => setView("deletion")}
-          >
-            <Trash2 size={15} />
-            <span className="flex-1">注销账号</span>
-            <ChevronRight size={15} />
-          </button>
+          )}
+
+          {view === "overview" && (
+            <>
+              <section className="pb-5">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-visible rounded-full bg-accent text-lg font-semibold text-accent-fg"
+                    aria-label="选择头像"
+                    onClick={chooseAvatar}
+                  >
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="头像预览" className="h-full w-full rounded-full object-cover" />
+                    ) : (
+                      (nickname || "U").slice(0, 1).toUpperCase()
+                    )}
+                    <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-bg-raised bg-accent text-accent-fg">
+                      <Camera size={10} />
+                    </span>
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12.5px] font-medium text-fg">个人头像</div>
+                    <div className="mt-0.5 text-[10.5px] text-fg-subtle">仅本地预览，暂不会上传</div>
+                  </div>
+                  <button type="button" className={secondaryClass} onClick={chooseAvatar}>
+                    选择图片
+                  </button>
+                  <input
+                    ref={inputRef}
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    aria-label="上传头像图片"
+                    onChange={onFileChange}
+                  />
+                </div>
+
+                <form
+                  className="mt-4 flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveNickname();
+                  }}
+                >
+                  <input
+                    className={fieldClass}
+                    value={nickname}
+                    maxLength={50}
+                    autoComplete="nickname"
+                    aria-label="昵称"
+                    onChange={(event) => setNickname(event.target.value)}
+                  />
+                  <button type="submit" className={primaryClass} disabled={submitting}>
+                    {submitting ? "保存中…" : "保存"}
+                  </button>
+                </form>
+                {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+              </section>
+
+              <div className="divide-y divide-border border-y border-border">
+                <div className="flex items-center gap-3 px-1 py-3.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-fg-muted">
+                    <Mail size={14} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] font-medium text-fg">{user.email}</div>
+                    <div className="text-[10.5px] text-fg-subtle">账号邮箱</div>
+                  </div>
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 text-[11.5px] ${
+                      user.emailVerified ? "text-success" : "text-warning"
+                    }`}
+                  >
+                    {user.emailVerified ? <BadgeCheck size={13} /> : <MailWarning size={13} />}
+                    {user.emailVerified ? "已认证" : "未认证"}
+                  </span>
+                  {!user.emailVerified && (
+                    <button type="button" className={secondaryClass} disabled={sending} onClick={() => void resend()}>
+                      {sending ? "发送中…" : "认证邮箱"}
+                    </button>
+                  )}
+                </div>
+                {emailFeedback && <p className="px-1 py-2 text-[12px] text-fg-muted" role="status">{emailFeedback}</p>}
+                <AccountActionRow
+                  icon={<KeyRound size={14} />}
+                  title="修改密码"
+                  description="更新登录密码"
+                  onClick={() => {
+                    setFormError(null);
+                    setView("password");
+                  }}
+                />
+                <AccountActionRow
+                  icon={<Trash2 size={14} />}
+                  title="注销账号"
+                  description="停用账号并退出所有设备"
+                  danger
+                  onClick={() => {
+                    setFormError(null);
+                    setView("deletion");
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {view === "password" && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void changePassword();
+              }}
+            >
+              <button type="button" className="mb-4 inline-flex items-center gap-1.5 text-[11.5px] text-fg-muted hover:text-fg" onClick={back}>
+                <ArrowLeft size={13} />账号
+              </button>
+              <h3 className="text-[15px] font-semibold text-fg">修改密码</h3>
+              <p className="mt-1 text-[10.5px] text-fg-subtle">更新后所有设备会退出登录。</p>
+              <div className="mt-5 grid grid-cols-2 gap-2 max-[760px]:grid-cols-1">
+                <label className="sr-only" htmlFor="account-current-password">当前密码</label>
+                <input id="account-current-password" className={fieldClass} type="password" autoComplete="current-password" placeholder="当前密码" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+                <label className="sr-only" htmlFor="account-new-password">新密码</label>
+                <input id="account-new-password" className={fieldClass} type="password" autoComplete="new-password" placeholder="新密码（8–128 位）" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              </div>
+              {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+              <div className="mt-4 flex justify-end">
+                <button type="submit" className={primaryClass} disabled={submitting}>
+                  {submitting ? "修改中…" : "修改密码"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {view === "deletion" && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void requestDeletion();
+              }}
+            >
+              <button type="button" className="mb-4 inline-flex items-center gap-1.5 text-[11.5px] text-fg-muted hover:text-fg" onClick={back}>
+                <ArrowLeft size={13} />账号
+              </button>
+              <h3 className="text-[15px] font-semibold text-danger">注销账号</h3>
+              <p className="mt-1 text-[10.5px] text-fg-muted">确认链接将发送至 {user.email}。点击邮件链接前，账号不会停用。</p>
+              <label className="sr-only" htmlFor="account-deletion-password">当前密码</label>
+              <input id="account-deletion-password" className={`${fieldClass} mt-5`} type="password" autoComplete="current-password" placeholder="输入当前密码确认" value={deletionPassword} onChange={(event) => setDeletionPassword(event.target.value)} />
+              {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+              <div className="mt-4 flex justify-end">
+                <button type="submit" className="inline-flex h-9 items-center justify-center rounded-full bg-danger px-4 text-[12.5px] font-medium text-white disabled:opacity-60" disabled={submitting || deletionPassword.length < 8}>
+                  {submitting ? "发送中…" : "发送注销确认邮件"}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
-        {feedback && (
-          <p className="mt-3 text-[12px] text-fg-muted" role="status">{feedback}</p>
-        )}
-        </>}
-
-        {view === "nickname" && (
-          <form className="mt-6" onSubmit={(event) => { event.preventDefault(); void saveNickname(); }}>
-            <label className="block text-[12px] font-medium text-fg" htmlFor="account-nickname">昵称</label>
-            <input
-              id="account-nickname"
-              className="mt-2 h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] text-fg outline-none focus:border-fg-muted"
-              value={nickname}
-              maxLength={50}
-              autoComplete="nickname"
-              onChange={(event) => setNickname(event.target.value)}
-            />
-            {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
-            <button className="mt-5 h-10 w-full rounded-full bg-accent text-[13px] font-medium text-accent-fg disabled:opacity-60" disabled={submitting}>
-              {submitting ? "保存中…" : "保存"}
-            </button>
-          </form>
-        )}
-
-        {view === "password" && (
-          <form className="mt-6 space-y-4" onSubmit={(event) => { event.preventDefault(); void changePassword(); }}>
-            <label className="block text-[12px] font-medium text-fg">当前密码
-              <input className="mt-2 h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] outline-none focus:border-fg-muted" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-            </label>
-            <label className="block text-[12px] font-medium text-fg">新密码
-              <input className="mt-2 h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] outline-none focus:border-fg-muted" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-            </label>
-            {formError && <p className="text-[12px] text-danger" role="alert">{formError}</p>}
-            <button className="h-10 w-full rounded-full bg-accent text-[13px] font-medium text-accent-fg disabled:opacity-60" disabled={submitting}>
-              {submitting ? "修改中…" : "修改密码"}
-            </button>
-          </form>
-        )}
-
-        {view === "deletion" && (
-          <form className="mt-6" onSubmit={(event) => { event.preventDefault(); void requestDeletion(); }}>
-            <p className="text-[13px] leading-6 text-fg-muted">输入当前密码后，我们会向你的邮箱发送注销确认链接。点击邮件链接前，账号不会停用。</p>
-            <label className="mt-5 block text-[12px] font-medium text-fg">当前密码
-              <input className="mt-2 h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] outline-none focus:border-danger" type="password" autoComplete="current-password" value={deletionPassword} onChange={(event) => setDeletionPassword(event.target.value)} />
-            </label>
-            {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
-            <button className="mt-5 h-10 w-full rounded-full bg-danger text-[13px] font-medium text-white disabled:opacity-60" disabled={submitting || deletionPassword.length < 8}>
-              {submitting ? "发送中…" : "发送注销确认邮件"}
-            </button>
-          </form>
-        )}
       </section>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Info, Link2, UserRound } from "lucide-react";
+import { Info, Share2, UserRound } from "lucide-react";
 
 import { Icons } from "../ui/icons";
 import { AccountCard } from "./AccountCard";
@@ -146,7 +146,7 @@ export function UserMenu({
             }}
           >
             <span className="flex h-5 w-5 items-center justify-center">
-              <Link2 size={15} />
+              <Share2 size={15} />
             </span>
             <span>我的分享</span>
           </button>
