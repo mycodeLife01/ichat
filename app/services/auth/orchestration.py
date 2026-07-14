@@ -250,4 +250,6 @@ async def confirm_account_deletion(
         redis, action="confirm_account_deletion", client_ip=client_ip, settings=settings
     )
     async with _email_transaction(session, redis):
-        await account.confirm_account_deletion(session, raw_token=raw_token)
+        await account.confirm_account_deletion(
+            session, raw_token=raw_token, settings=settings
+        )

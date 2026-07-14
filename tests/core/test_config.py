@@ -129,6 +129,25 @@ def test_ci_workflow_provides_required_settings_env() -> None:
         assert f"{key}:" in workflow
 
 
+def test_avatar_storage_requires_all_external_credentials_when_enabled() -> None:
+    values = get_settings().model_dump()
+    values.update(
+        avatar_storage_enabled=True,
+        avatar_r2_endpoint_url="https://account.r2.cloudflarestorage.com",
+        avatar_upload_bucket="uploads",
+        avatar_public_bucket="avatars",
+        avatar_api_access_key_id="api-key",
+        avatar_api_secret_access_key="api-secret",
+        avatar_worker_access_key_id="worker-key",
+        avatar_worker_secret_access_key="worker-secret",
+        avatar_public_base_url="https://assets.example.com",
+        cloudflare_zone_id="zone",
+        cloudflare_purge_token="",
+    )
+    with pytest.raises(ValidationError, match="cloudflare_purge_token"):
+        Settings.model_validate(values)
+
+
 def test_settings_can_be_constructed_directly() -> None:
     settings = Settings(
         database_url="postgresql+asyncpg://user:pass@localhost:5432/db",

@@ -29,6 +29,7 @@ from app.services.auth.token_service import (
     revoke_active_tokens,
     revoke_all_active_tokens,
 )
+from app.services.avatars.lifecycle import deactivate_user_avatar
 from app.services.email.renderer import (
     ACCOUNT_DELETION_SUBJECT,
     ACCOUNT_DELETION_TEMPLATE,
@@ -407,7 +408,11 @@ async def create_account_deletion_email(
 
 
 async def confirm_account_deletion(
-    session: AsyncSession, *, raw_token: str, now: datetime | None = None
+    session: AsyncSession,
+    *,
+    raw_token: str,
+    settings: Settings,
+    now: datetime | None = None,
 ) -> None:
     """Consume an account_deletion token and soft-delete the account.
 
@@ -429,6 +434,7 @@ async def confirm_account_deletion(
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_DELETION_MESSAGE)
 
     user.is_active = False
+    await deactivate_user_avatar(session, user=user, settings=settings, now=moment)
     await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
     await revoke_all_active_tokens(session, user_id=user.id, now=moment)
     await session.flush()

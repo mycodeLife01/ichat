@@ -80,6 +80,7 @@ class AuthUserResponse(BaseModel):
     nickname: str
     email: str
     email_verified: bool
+    avatar_url: str | None = None
 
 
 class AuthTokenResponse(BaseModel):

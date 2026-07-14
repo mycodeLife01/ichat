@@ -4,11 +4,13 @@ from fastapi import status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.models.user import RefreshToken, User
 from app.schemas.auth import AuthTokenResponse, AuthUserResponse, CommandStatusResponse
 from app.services.auth.passwords import hash_password, verify_password
 from app.services.auth.tokens import create_access_token, create_refresh_token, hash_refresh_token
+from app.services.avatars.storage import public_avatar_url
 
 INVALID_LOGIN_MESSAGE = "Invalid username, email, or password"
 INVALID_REFRESH_TOKEN_MESSAGE = "Invalid refresh token"
@@ -21,6 +23,7 @@ def user_response(user: User) -> AuthUserResponse:
         nickname=user.nickname,
         email=user.email,
         email_verified=user.email_verified,
+        avatar_url=public_avatar_url(get_settings(), user.avatar_object_key),
     )
 
 

@@ -11,6 +11,8 @@ _PUBLIC_ID_TABLES = ("conversations", "runs", "messages")
 def test_core_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
         "auth_tokens",
+        "avatar_deletions",
+        "avatar_uploads",
         "conversations",
         "email_outbox",
         "messages",

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.avatars import router as avatars_router
 from app.api.v1.capabilities import router as capabilities_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.runs import router as runs_router
@@ -49,6 +50,7 @@ def create_app(
     app = FastAPI(title="iChat API", lifespan=lifespan)
     app.include_router(capabilities_router)
     app.include_router(auth_router)
+    app.include_router(avatars_router)
     app.include_router(conversations_router)
     app.include_router(runs_router)
     app.include_router(share_router)

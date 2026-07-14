@@ -84,9 +84,21 @@ services:
       redis:
         condition: service_healthy
 
+  media-worker:
+    image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=media", "--concurrency=2"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   celery-beat:
     image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
-    # Schedules the periodic outbox sweep ONLY. MUST stay a single instance
+    # Schedules email and avatar maintenance. MUST stay a single instance
     # (multiple beats double-schedule); restart + monitor this single point.
     restart: unless-stopped
     env_file:
