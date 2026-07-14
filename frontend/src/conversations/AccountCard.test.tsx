@@ -83,17 +83,18 @@ describe("AccountCard", () => {
     click.mockRestore();
   });
 
-  it("previews a selected avatar locally", async () => {
+  it("opens the cropper after selecting a supported image", async () => {
     const user = userEvent.setup();
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 512, height: 512, close: vi.fn() })));
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:avatar") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     render(<AccountCard user={verifiedUser} {...actions()} />);
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
 
     await user.upload(screen.getByLabelText("上传头像图片"), file);
 
-    expect(await screen.findByRole("img", { name: "头像预览" })).toHaveAttribute(
-      "src",
-      expect.stringMatching(/^data:image\/png;base64,/),
-    );
+    expect(await screen.findByRole("dialog", { name: "裁剪头像" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "缩放" })).toBeInTheDocument();
   });
 
   it("reports verification success and cooldown failures through the global toast", async () => {

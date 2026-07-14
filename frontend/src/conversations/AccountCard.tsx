@@ -13,12 +13,15 @@ import {
 } from "lucide-react";
 
 import { ApiError } from "../api/errors";
+import { Avatar } from "../ui/Avatar";
+import { AvatarCropper } from "./AvatarCropper";
 
 type AccountCardProps = {
-  user: { email: string; username: string; name: string; emailVerified: boolean };
+  user: { email: string; username: string; name: string; emailVerified: boolean; avatarUrl?: string | null };
   onClose: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
+  onUploadAvatar?: (blob: Blob) => Promise<string>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
   onToast: (message: string) => void;
@@ -73,12 +76,15 @@ export function AccountCard({
   onClose,
   onResendVerification,
   onUpdateNickname,
+  onUploadAvatar,
   onChangePassword,
   onRequestDeletion,
   onToast,
 }: AccountCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl ?? null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [avatarStatus, setAvatarStatus] = useState<string | null>(null);
   const [view, setView] = useState<AccountView>("overview");
   const [nickname, setNickname] = useState(user.name);
   const [savedNickname, setSavedNickname] = useState(user.name);
@@ -90,13 +96,50 @@ export function AccountCard({
   const [notice, setNotice] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const chooseAvatar = () => inputRef.current?.click();
-  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const chooseAvatar = () => {
+    if (!user.emailVerified) {
+      onToast("请先完成邮箱认证后再上传头像");
+      return;
+    }
+    inputRef.current?.click();
+  };
+  const onFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setAvatarUrl(typeof reader.result === "string" ? reader.result : null);
-    reader.readAsDataURL(file);
+    setFormError(null);
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setFormError("仅支持 JPEG、PNG 和静态 WebP 图片。");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setFormError("原图不能超过 10 MiB。");
+      return;
+    }
+    if (file.type === "image/webp") {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const signature = new TextDecoder("latin1").decode(bytes);
+      if (signature.includes("ANIM") || signature.includes("ANMF")) {
+        setFormError("头像不支持动画 WebP，请选择静态图片。");
+        return;
+      }
+    }
+    try {
+      if (typeof createImageBitmap !== "function") {
+        setCropFile(file);
+        return;
+      }
+      const bitmap = await createImageBitmap(file);
+      const { width, height } = bitmap;
+      bitmap.close();
+      if (width < 128 || height < 128) throw new Error("图片至少需要 128×128 像素。");
+      if (width > 8192 || height > 8192 || width * height > 20_000_000) {
+        throw new Error("图片像素过大，请选择最长边不超过 8192 且总像素不超过 2000 万的图片。");
+      }
+      setCropFile(file);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "图片无法解码，请选择其他图片。");
+    }
   };
 
   const back = () => {
@@ -231,24 +274,27 @@ export function AccountCard({
                     aria-label="选择头像"
                     onClick={chooseAvatar}
                   >
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="头像预览" className="h-full w-full rounded-full object-cover" />
-                    ) : (
-                      (nickname || "U").slice(0, 1).toUpperCase()
-                    )}
+                    <Avatar
+                      name={nickname}
+                      url={avatarUrl}
+                      className="h-full w-full text-lg"
+                      imageAlt="头像预览"
+                    />
                     <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-bg-raised bg-accent text-accent-fg">
                       <Camera size={10} />
                     </span>
                   </button>
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-medium text-fg">个人头像</div>
-                    <div className="mt-0.5 text-[10.5px] text-fg-subtle">仅本地预览，暂不会上传</div>
+                    <div className="mt-0.5 text-[10.5px] text-fg-subtle">
+                      {avatarStatus ?? (user.emailVerified ? "支持 JPEG、PNG 和静态 WebP" : "完成邮箱认证后可上传")}
+                    </div>
                   </div>
                   <input
                     ref={inputRef}
                     className="sr-only"
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     aria-label="上传头像图片"
                     onChange={onFileChange}
                   />
@@ -391,6 +437,21 @@ export function AccountCard({
           )}
         </div>
       </section>
+      {cropFile && (
+        <AvatarCropper
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={async (blob) => {
+            if (!onUploadAvatar) throw new Error("头像上传服务暂不可用。");
+            setAvatarStatus("正在处理头像…");
+            const url = await onUploadAvatar(blob);
+            setAvatarUrl(url);
+            setAvatarStatus("头像已更新");
+            setCropFile(null);
+            onToast("头像已更新");
+          }}
+        />
+      )}
     </div>
   );
 }

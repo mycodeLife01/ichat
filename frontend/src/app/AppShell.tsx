@@ -277,6 +277,7 @@ export function AppShell() {
                 username: user.username,
                 name: user.nickname,
                 emailVerified: user.email_verified,
+                avatarUrl: user.avatar_url,
               }
             : null
         }
@@ -305,6 +306,14 @@ export function AppShell() {
           const updated = await services.authApi.updateProfile(nickname);
           tokenStore.updateUser(updated);
           dispatch({ type: "auth/userUpdated", user: updated });
+        }}
+        onUploadAvatar={async (blob) => {
+          if (!services.authApi.uploadAvatar || !user) throw new Error("Avatar upload is unavailable");
+          const avatarUrl = await services.authApi.uploadAvatar(blob);
+          const updated = { ...user, avatar_url: avatarUrl };
+          tokenStore.updateUser(updated);
+          dispatch({ type: "auth/userUpdated", user: updated });
+          return avatarUrl;
         }}
         onChangePassword={async (currentPassword, newPassword) => {
           await services.authApi.changePassword(currentPassword, newPassword);

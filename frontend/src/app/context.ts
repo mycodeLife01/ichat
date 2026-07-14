@@ -20,6 +20,7 @@ export type AuthApi = {
   changePassword(currentPassword: string, newPassword: string): Promise<CommandStatusResponse>;
   requestAccountDeletion(password: string): Promise<CommandStatusResponse>;
   confirmAccountDeletion(token: string): Promise<CommandStatusResponse>;
+  uploadAvatar?(blob: Blob): Promise<string>;
 };
 
 export type Services = {

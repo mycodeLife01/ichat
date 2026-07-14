@@ -2,16 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info, Share2, UserRound } from "lucide-react";
 
+import { Avatar } from "../ui/Avatar";
 import { Icons } from "../ui/icons";
 import { AccountCard } from "./AccountCard";
 import { MySharesCard } from "./MySharesCard";
 import type { UserShareResponse } from "../api/types";
 
 type UserMenuProps = {
-  user: { email: string; username: string; name: string; emailVerified: boolean } | null;
+  user: { email: string; username: string; name: string; emailVerified: boolean; avatarUrl?: string | null } | null;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
+  onUploadAvatar?: (blob: Blob) => Promise<string>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
   onLoadShares: () => Promise<UserShareResponse[]>;
@@ -19,15 +21,13 @@ type UserMenuProps = {
   onToast: (message: string) => void;
 };
 
-function UserAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
-  const sizeClass = size === "sm" ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm";
+function UserAvatar({ name, url, size = "md" }: { name: string; url?: string | null; size?: "sm" | "md" }) {
   return (
-    <span
-      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-accent font-semibold text-accent-fg`}
-      aria-hidden="true"
-    >
-      {(name || "U").slice(0, 1).toUpperCase()}
-    </span>
+    <Avatar
+      name={name}
+      url={url}
+      className={size === "sm" ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm"}
+    />
   );
 }
 
@@ -36,6 +36,7 @@ export function UserMenu({
   onLogout,
   onResendVerification,
   onUpdateNickname,
+  onUploadAvatar,
   onChangePassword,
   onRequestDeletion,
   onLoadShares,
@@ -99,7 +100,7 @@ export function UserMenu({
         aria-label="打开个人中心"
         onClick={() => setOpen((value) => !value)}
       >
-        <UserAvatar name={name} size="sm" />
+        <UserAvatar name={name} url={user?.avatarUrl} size="sm" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-medium leading-[1.35] text-fg">
             {name}
@@ -117,7 +118,7 @@ export function UserMenu({
           aria-label="个人中心"
         >
           <div className="mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2.5">
-            <UserAvatar name={name} size="sm" />
+            <UserAvatar name={name} url={user?.avatarUrl} size="sm" />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[14px] font-medium text-fg">{name}</span>
               <span className="block truncate text-[10.5px] text-fg-subtle">{email}</span>
@@ -177,6 +178,7 @@ export function UserMenu({
             }}
             onResendVerification={onResendVerification}
             onUpdateNickname={onUpdateNickname}
+            onUploadAvatar={onUploadAvatar}
             onChangePassword={onChangePassword}
             onRequestDeletion={onRequestDeletion}
             onToast={onToast}
@@ -219,7 +221,7 @@ export function UserMenu({
                 你确定要退出登录吗？
               </h2>
               <div className="mt-6 flex items-center gap-3 rounded-xl border border-border-strong px-4 py-3.5 text-left">
-                <UserAvatar name={name} />
+                <UserAvatar name={name} url={user?.avatarUrl} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-medium text-fg">{name}</div>
                   <div className="mt-0.5 truncate text-[11.5px] text-fg-muted">{email}</div>

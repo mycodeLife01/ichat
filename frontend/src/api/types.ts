@@ -9,6 +9,7 @@ export type AuthUserResponse = {
   nickname: string;
   email: string;
   email_verified: boolean;
+  avatar_url?: string | null;
 };
 
 export type AuthTokenResponse = {

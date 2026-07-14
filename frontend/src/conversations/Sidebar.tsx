@@ -13,6 +13,7 @@ export type SidebarUser = {
   username: string;
   name: string;
   emailVerified: boolean;
+  avatarUrl?: string | null;
 };
 
 type SidebarProps = {
@@ -34,6 +35,7 @@ type SidebarProps = {
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
+  onUploadAvatar?: (blob: Blob) => Promise<string>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
   onLoadShares: () => Promise<UserShareResponse[]>;
@@ -86,6 +88,7 @@ export function Sidebar({
   onLogout,
   onResendVerification,
   onUpdateNickname,
+  onUploadAvatar,
   onChangePassword,
   onRequestDeletion,
   onLoadShares,
@@ -321,6 +324,7 @@ export function Sidebar({
             onLogout={onLogout}
             onResendVerification={onResendVerification}
             onUpdateNickname={onUpdateNickname}
+            onUploadAvatar={onUploadAvatar}
             onChangePassword={onChangePassword}
             onRequestDeletion={onRequestDeletion}
             onLoadShares={onLoadShares}

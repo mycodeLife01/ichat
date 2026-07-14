@@ -1,3 +1,4 @@
+import { uploadAvatar } from "./avatars";
 import { getDefaultApiClient, type ApiClient } from "./client";
 import type {
   AuthTokenResponse,
@@ -103,6 +104,9 @@ export function createAuthApi(client?: Pick<ApiClient, "request">) {
           retryOnUnauthorized: false,
         },
       );
+    },
+    uploadAvatar(blob: Blob): Promise<string> {
+      return uploadAvatar(resolveClient() as ApiClient, blob);
     },
   };
 }
