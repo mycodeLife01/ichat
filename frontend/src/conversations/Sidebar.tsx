@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type UIEvent } from "react";
 
-import type { ConversationResponse } from "../api/types";
+import type { ConversationResponse, UserShareResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
 import { newChatHotkeyLabel } from "../ui/hotkeys";
 import { Icons } from "../ui/icons";
@@ -8,7 +8,7 @@ import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
 import { UserMenu } from "./UserMenu";
 
-export type SidebarUser = { email: string; name: string };
+export type SidebarUser = { email: string; name: string; emailVerified: boolean };
 
 type SidebarProps = {
   items: ConversationResponse[];
@@ -27,6 +27,13 @@ type SidebarProps = {
   onRequestShare: (id: string) => void;
   onRequestDelete: (id: string) => void;
   onLogout: () => void;
+  onResendVerification: () => Promise<unknown>;
+  onUpdateNickname: (nickname: string) => Promise<unknown>;
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
+  onRequestDeletion: (password: string) => Promise<unknown>;
+  onLoadShares: () => Promise<UserShareResponse[]>;
+  onRevokeShare: (conversationId: string, token: string) => Promise<unknown>;
+  onToast: (message: string) => void;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 };
@@ -72,6 +79,13 @@ export function Sidebar({
   onRequestShare,
   onRequestDelete,
   onLogout,
+  onResendVerification,
+  onUpdateNickname,
+  onChangePassword,
+  onRequestDeletion,
+  onLoadShares,
+  onRevokeShare,
+  onToast,
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
@@ -297,7 +311,17 @@ export function Sidebar({
             )}
           </div>
 
-          <UserMenu user={user} onLogout={onLogout} />
+          <UserMenu
+            user={user}
+            onLogout={onLogout}
+            onResendVerification={onResendVerification}
+            onUpdateNickname={onUpdateNickname}
+            onChangePassword={onChangePassword}
+            onRequestDeletion={onRequestDeletion}
+            onLoadShares={onLoadShares}
+            onRevokeShare={onRevokeShare}
+            onToast={onToast}
+          />
         </div>
       </aside>
       {isMobile && (

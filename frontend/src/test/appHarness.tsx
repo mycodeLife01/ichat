@@ -27,6 +27,10 @@ export function createFakeAuthApi(overrides: Partial<AuthApi> = {}): AuthApi {
     me: async () => authTokenResponse.user,
     verifyEmail: async () => ({ status: "ok" }),
     resendVerificationEmail: async () => ({ status: "ok" }),
+    updateProfile: async (nickname) => ({ ...authTokenResponse.user, nickname }),
+    changePassword: async () => ({ status: "ok" }),
+    requestAccountDeletion: async () => ({ status: "ok" }),
+    confirmAccountDeletion: async () => ({ status: "ok" }),
     ...overrides,
   };
 }
@@ -77,6 +81,7 @@ export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi 
   return {
     create: async () => shareLinkResponse,
     list: async () => [shareLinkResponse],
+    listMine: async () => [],
     revoke: async () => ({ status: "ok" }),
     getPublic: async () => ({
       title: conversationResponse.title,

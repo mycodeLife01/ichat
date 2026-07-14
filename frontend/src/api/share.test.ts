@@ -61,4 +61,14 @@ describe("shareApi", () => {
       retryOnUnauthorized: false,
     });
   });
+
+  it("lists the current user's active shares across conversations", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValueOnce([]);
+    const api = createShareApi(client);
+
+    await api.listMine();
+
+    expect(client.request).toHaveBeenCalledWith("/shares");
+  });
 });

@@ -14,6 +14,7 @@ export const authTokenResponse: AuthTokenResponse = {
   user: {
     id: 1,
     username: "alice",
+    nickname: "alice",
     email: "alice@example.com",
     email_verified: false,
   },

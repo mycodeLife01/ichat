@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -54,3 +55,10 @@ class ShareLinkResponse(BaseModel):
     expires_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
+
+
+class UserShareResponse(ShareLinkResponse):
+    """Active share enriched for the current-user aggregate management view."""
+
+    conversation_id: UUID
+    conversation_title: str | None

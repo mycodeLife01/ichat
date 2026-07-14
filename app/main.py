@@ -11,6 +11,7 @@ from app.api.v1.capabilities import router as capabilities_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.runs import router as runs_router
 from app.api.v1.share import router as share_router
+from app.api.v1.shares import router as shares_router
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
@@ -51,6 +52,7 @@ def create_app(
     app.include_router(conversations_router)
     app.include_router(runs_router)
     app.include_router(share_router)
+    app.include_router(shares_router)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

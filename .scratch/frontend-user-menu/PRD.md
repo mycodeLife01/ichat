@@ -1,7 +1,7 @@
 # 前端个人中心与 UserMenu
 
 Type: feature
-Status: ready-for-agent
+Status: completed
 Blocked by: None
 
 日期：2026-07-14
@@ -53,14 +53,14 @@ Blocked by: None
 | ID | Ticket | Status | Blocked by |
 |---|---|---|---|
 | 01 | 生产化方案 A UserMenu 与退出登录 | `completed` | None |
-| 02 | 账号概览与邮箱验证 | `ready-for-agent` | 01 |
-| 03 | 持久化修改昵称 | `ready-for-agent` | 02 |
-| 04 | 已登录改密 | `ready-for-agent` | 02 |
-| 05 | 发起并确认注销 | `ready-for-agent` | 02 |
-| 06 | 我的分享聚合管理 | `ready-for-agent` | 01 |
+| 02 | 账号概览与邮箱验证 | `completed` | 01 |
+| 03 | 持久化修改昵称 | `completed` | 02 |
+| 04 | 已登录改密 | `completed` | 02 |
+| 05 | 发起并确认注销 | `completed` | 02 |
+| 06 | 我的分享聚合管理 | `completed` | 01 |
 
 ## Frontier
 
-当前 frontier：02 与 06；完成 02 后，03、04、05 可并行。
+当前 frontier：全部完成。
 
 完成或阻塞 ticket 时，同时更新本索引和对应 issue 文件的状态。

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -11,13 +12,22 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("username <> ''", name="username_not_empty"),
+        CheckConstraint("nickname <> ''", name="nickname_not_empty"),
         CheckConstraint("email <> ''", name="email_not_empty"),
         Index("ux_users_username_lower", text("lower(username)"), unique=True),
         Index("ux_users_email_lower", text("lower(email)"), unique=True),
     )
 
+    def __init__(self, **kwargs: Any) -> None:
+        # Keep programmatic user construction aligned with the registration
+        # invariant: a nickname starts as the immutable login username.
+        if "nickname" not in kwargs and "username" in kwargs:
+            kwargs["nickname"] = kwargs["username"]
+        super().__init__(**kwargs)
+
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(50), nullable=False)
+    nickname: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(254), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     email_verified: Mapped[bool] = mapped_column(

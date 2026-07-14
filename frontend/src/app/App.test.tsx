@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authTokenResponse } from "../test/apiFixtures";
 import { createFakeServices, renderWithApp } from "../test/appHarness";
@@ -62,5 +62,37 @@ describe("App auth gate", () => {
 
     expect(await screen.findByText("shared question")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "登录" })).toBeNull();
+  });
+
+  it("confirms account deletion publicly and clears a local session", async () => {
+    const confirmAccountDeletion = vi.fn(async () => ({ status: "ok" }));
+    tokenStore.save(createAuthSession(authTokenResponse));
+
+    renderWithApp(
+      <App />,
+      createFakeServices({ confirmAccountDeletion }),
+      undefined,
+      ["/confirm-account-deletion?token=delete-token"],
+    );
+
+    expect(await screen.findByRole("heading", { name: "账号已停用" })).toBeInTheDocument();
+    expect(confirmAccountDeletion).toHaveBeenCalledWith("delete-token");
+    expect(tokenStore.read()).toBeNull();
+  });
+
+  it("shows an error for an invalid account deletion token", async () => {
+    renderWithApp(
+      <App />,
+      createFakeServices({
+        confirmAccountDeletion: async () => {
+          throw new Error("invalid token");
+        },
+      }),
+      undefined,
+      ["/confirm-account-deletion?token=invalid-token"],
+    );
+
+    expect(await screen.findByRole("heading", { name: "注销链接不可用" })).toBeInTheDocument();
+    expect(screen.getByText("链接可能已过期、已使用或无效，账号状态未发生变化。")).toBeInTheDocument();
   });
 });

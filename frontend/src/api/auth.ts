@@ -71,6 +71,38 @@ export function createAuthApi(client?: Pick<ApiClient, "request">) {
         { method: "POST" },
       );
     },
+    updateProfile(nickname: string): Promise<AuthUserResponse> {
+      return resolveClient().request<AuthUserResponse>("/auth/me", {
+        method: "PATCH",
+        body: { nickname },
+      });
+    },
+    changePassword(
+      currentPassword: string,
+      newPassword: string,
+    ): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>("/auth/change-password", {
+        method: "POST",
+        body: { current_password: currentPassword, new_password: newPassword },
+      });
+    },
+    requestAccountDeletion(password: string): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>(
+        "/auth/request-account-deletion",
+        { method: "POST", body: { password } },
+      );
+    },
+    confirmAccountDeletion(token: string): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>(
+        "/auth/confirm-account-deletion",
+        {
+          method: "POST",
+          body: { token },
+          auth: false,
+          retryOnUnauthorized: false,
+        },
+      );
+    },
   };
 }
 

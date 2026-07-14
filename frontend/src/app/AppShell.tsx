@@ -16,6 +16,7 @@ import { useRunStream } from "../runs/useRunStream";
 import { thinkingLevelStore, type ThinkingLevel } from "../runs/thinkingLevel";
 import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { useAuthSession } from "../auth/useAuthSession";
+import { tokenStore } from "../auth/tokenStore";
 import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ShareDialog } from "../ui/ShareDialog";
@@ -269,7 +270,15 @@ export function AppShell() {
       <Sidebar
         items={items}
         selectedId={selectedId}
-        user={user ? { email: user.email, name: user.username } : null}
+        user={
+          user
+            ? {
+                email: user.email,
+                name: user.nickname,
+                emailVerified: user.email_verified,
+              }
+            : null
+        }
         isMobile={isMobile}
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
@@ -290,6 +299,20 @@ export function AppShell() {
           })
         }
         onLogout={() => void logout()}
+        onResendVerification={() => services.authApi.resendVerificationEmail()}
+        onUpdateNickname={async (nickname) => {
+          const updated = await services.authApi.updateProfile(nickname);
+          tokenStore.updateUser(updated);
+          dispatch({ type: "auth/userUpdated", user: updated });
+        }}
+        onChangePassword={async (currentPassword, newPassword) => {
+          await services.authApi.changePassword(currentPassword, newPassword);
+          await logout();
+        }}
+        onRequestDeletion={(password) => services.authApi.requestAccountDeletion(password)}
+        onLoadShares={services.shareApi.listMine}
+        onRevokeShare={services.shareApi.revoke}
+        onToast={(message) => dispatch({ type: "ui/showToast", message })}
         onToggleCollapsed={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
         onCloseMobile={() => dispatch({ type: "ui/setMobileSidebar", open: false })}
       />

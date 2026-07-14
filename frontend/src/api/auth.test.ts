@@ -63,4 +63,36 @@ describe("authApi", () => {
       retryOnUnauthorized: false,
     });
   });
+
+  it("updates the profile and invokes account lifecycle commands", async () => {
+    const client = mockClient();
+    vi.mocked(client.request)
+      .mockResolvedValueOnce(authTokenResponse.user)
+      .mockResolvedValue({ status: "ok" });
+    const authApi = createAuthApi(client);
+
+    await authApi.updateProfile("Alice");
+    await authApi.changePassword("old-password", "new-password");
+    await authApi.requestAccountDeletion("old-password");
+    await authApi.confirmAccountDeletion("token");
+
+    expect(client.request).toHaveBeenNthCalledWith(1, "/auth/me", {
+      method: "PATCH",
+      body: { nickname: "Alice" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, "/auth/change-password", {
+      method: "POST",
+      body: { current_password: "old-password", new_password: "new-password" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(3, "/auth/request-account-deletion", {
+      method: "POST",
+      body: { password: "old-password" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(4, "/auth/confirm-account-deletion", {
+      method: "POST",
+      body: { token: "token" },
+      auth: false,
+      retryOnUnauthorized: false,
+    });
+  });
 });

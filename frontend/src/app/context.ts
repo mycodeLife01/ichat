@@ -16,6 +16,10 @@ export type AuthApi = {
   me(): Promise<AuthUserResponse>;
   verifyEmail(token: string): Promise<CommandStatusResponse>;
   resendVerificationEmail(): Promise<CommandStatusResponse>;
+  updateProfile(nickname: string): Promise<AuthUserResponse>;
+  changePassword(currentPassword: string, newPassword: string): Promise<CommandStatusResponse>;
+  requestAccountDeletion(password: string): Promise<CommandStatusResponse>;
+  confirmAccountDeletion(token: string): Promise<CommandStatusResponse>;
 };
 
 export type Services = {

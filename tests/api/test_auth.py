@@ -95,6 +95,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
     assert isinstance(user_data, dict)
     assert isinstance(user_data["id"], int)
     assert user_data["username"] == "alice"
+    assert user_data["nickname"] == "alice"
     assert user_data["email"] == f"alice@{TEST_EMAIL_DOMAIN}"
     assert user_data["email_verified"] is False
 
@@ -108,6 +109,30 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
         assert token is not None
         assert token.token_hash != data["refresh_token"]
         assert token.revoked_at is None
+
+
+async def test_update_current_user_nickname_persists_without_changing_login(
+    auth_client: AsyncClient,
+) -> None:
+    registered = await register_user(auth_client)
+    headers = {"Authorization": f"Bearer {registered['access_token']}"}
+
+    updated = await auth_client.patch(
+        "/api/v1/auth/me",
+        json={"nickname": "  Alice Cooper  "},
+        headers=headers,
+    )
+    current = await auth_client.get("/api/v1/auth/me", headers=headers)
+    login = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "alice", "password": "correct-password"},
+    )
+
+    assert updated.status_code == status.HTTP_200_OK
+    assert updated.json()["data"]["nickname"] == "Alice Cooper"
+    assert current.json()["data"]["nickname"] == "Alice Cooper"
+    assert login.status_code == status.HTTP_200_OK
+    assert login.json()["data"]["user"]["username"] == "alice"
 
 
 async def test_register_rejects_duplicate_username_case_insensitively(

@@ -18,6 +18,7 @@ def user_response(user: User) -> AuthUserResponse:
     return AuthUserResponse(
         id=user.id,
         username=user.username,
+        nickname=user.nickname,
         email=user.email,
         email_verified=user.email_verified,
     )
@@ -50,6 +51,7 @@ async def register_user(
 
     user = User(
         username=normalized_username,
+        nickname=normalized_username,
         email=normalized_email,
         password_hash=hash_password(password),
         email_verified=False,
@@ -65,6 +67,17 @@ async def register_user(
         access_token_ttl_seconds=access_token_ttl_seconds,
         refresh_token_ttl_seconds=refresh_token_ttl_seconds,
     )
+
+
+async def update_profile(
+    session: AsyncSession,
+    *,
+    user: User,
+    nickname: str,
+) -> AuthUserResponse:
+    user.nickname = nickname.strip()
+    await session.flush()
+    return user_response(user)
 
 
 async def login_user(

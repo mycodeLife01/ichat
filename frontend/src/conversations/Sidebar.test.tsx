@@ -25,7 +25,7 @@ function baseProps() {
   return {
     items: [makeConversation("1", "今天的对话", today)],
     selectedId: "1",
-    user: { email: "a@b.com", name: "alice" },
+    user: { email: "a@b.com", name: "alice", emailVerified: true },
     isMobile: false,
     collapsed: false,
     mobileOpen: false,
@@ -39,6 +39,13 @@ function baseProps() {
     onRequestShare: vi.fn(),
     onRequestDelete: vi.fn(),
     onLogout: vi.fn(),
+    onResendVerification: vi.fn(async () => ({ status: "ok" })),
+    onUpdateNickname: vi.fn(async () => ({ status: "ok" })),
+    onChangePassword: vi.fn(async () => ({ status: "ok" })),
+    onRequestDeletion: vi.fn(async () => ({ status: "ok" })),
+    onLoadShares: vi.fn(async () => []),
+    onRevokeShare: vi.fn(async () => ({ status: "ok" })),
+    onToast: vi.fn(),
     onToggleCollapsed: vi.fn(),
     onCloseMobile: vi.fn(),
   };
@@ -152,6 +159,8 @@ describe("Sidebar", () => {
     expect(
       within(menu).queryByRole("button", { name: /alice.*a@b\.com/i }),
     ).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "账号" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "我的分享" })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
@@ -165,6 +174,21 @@ describe("Sidebar", () => {
     fireEvent.pointerDown(document.body);
 
     expect(screen.queryByRole("menu", { name: "个人中心" })).toBeNull();
+  });
+
+  it("opens the account and my-shares cards from their menu items", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    await user.click(screen.getByRole("menuitem", { name: "账号" }));
+    expect(screen.getByRole("dialog", { name: "账号" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭账号" }));
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+    await user.click(screen.getByRole("menuitem", { name: "我的分享" }));
+    expect(screen.getByRole("dialog", { name: "我的分享" })).toBeInTheDocument();
+    expect(await screen.findByText("还没有有效的会话分享")).toBeInTheDocument();
   });
 
   it("closes the user menu when pressing Escape", async () => {
