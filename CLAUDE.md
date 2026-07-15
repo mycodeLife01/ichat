@@ -136,7 +136,7 @@ docker compose up -d                  # Start all services
 docker compose exec api alembic upgrade head  # Run DB migrations
 uv sync --all-groups                  # Install all dependencies (incl. dev)
 pytest                                # Run tests
-ruff check app tests                  # Lint
+ruff check .                          # Lint (same scope as CI, includes alembic/)
 mypy app                             # Type check
 ```
 
