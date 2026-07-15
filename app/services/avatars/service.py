@@ -20,6 +20,7 @@ from app.schemas.avatars import (
 )
 from app.services.auth import rate_limit
 from app.services.avatars.storage import (
+    ALLOWED_UPLOAD_CONTENT_TYPES,
     AVATAR_CONTENT_TYPE,
     AvatarStorage,
     AvatarTaskPublisher,
@@ -35,7 +36,7 @@ UPLOAD_EXPIRED_MESSAGE = "Avatar upload session has expired"
 
 _ERROR_MESSAGES = {
     "invalid_image": "The uploaded image is invalid. Please choose another image.",
-    "invalid_dimensions": "The avatar must be a 1024 by 1024 WebP image.",
+    "invalid_dimensions": "The avatar must be a 1024 by 1024 image.",
     "animated_image": "Animated images are not supported.",
     "processing_failed": "Avatar processing failed. Please try again.",
     "upload_expired": UPLOAD_EXPIRED_MESSAGE,
@@ -88,6 +89,7 @@ async def create_upload(
     size_bytes: int,
     client_ip: str,
     settings: Settings,
+    content_type: str = AVATAR_CONTENT_TYPE,
     now: datetime | None = None,
 ) -> CreateAvatarUploadResponse:
     if not settings.avatar_storage_enabled:
@@ -127,7 +129,7 @@ async def create_upload(
         )
         .values(is_current=False, error_code="superseded")
     )
-    object_key = temporary_object_key()
+    object_key = temporary_object_key(content_type)
     upload = AvatarUpload(
         upload_id=str(uuid4()),
         user_id=user.id,
@@ -143,6 +145,7 @@ async def create_upload(
         object_key,
         size_bytes=size_bytes,
         ttl_seconds=settings.avatar_presign_ttl_seconds,
+        content_type=content_type,
     )
     await session.commit()
     return CreateAvatarUploadResponse(
@@ -190,7 +193,8 @@ async def confirm_upload(
     if (
         metadata.size_bytes != upload.declared_size_bytes
         or metadata.declared_size_bytes not in (None, upload.declared_size_bytes)
-        or metadata.content_type.split(";", 1)[0].strip().lower() != AVATAR_CONTENT_TYPE
+        or metadata.content_type.split(";", 1)[0].strip().lower()
+        not in ALLOWED_UPLOAD_CONTENT_TYPES
         or metadata.etag.strip().strip('"') != normalized_etag
     ):
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_UPLOAD_MESSAGE)

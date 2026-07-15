@@ -25,7 +25,7 @@ def render_avatar(content: bytes, *, max_bytes: int) -> bytes:
         raise PermanentAvatarError("invalid_image")
     try:
         with Image.open(BytesIO(content)) as image:
-            if image.format != "WEBP":
+            if image.format not in {"WEBP", "PNG", "JPEG"}:
                 raise PermanentAvatarError("invalid_image")
             if getattr(image, "n_frames", 1) != 1:
                 raise PermanentAvatarError("animated_image")

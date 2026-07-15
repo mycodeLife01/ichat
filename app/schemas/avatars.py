@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -7,6 +8,7 @@ from app.models.avatar import AvatarUploadStatus
 
 class CreateAvatarUploadRequest(BaseModel):
     size_bytes: int = Field(gt=0, le=2 * 1024 * 1024)
+    content_type: Literal["image/webp", "image/png", "image/jpeg"] = "image/webp"
 
 
 class CreateAvatarUploadResponse(BaseModel):

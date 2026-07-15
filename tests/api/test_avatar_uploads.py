@@ -209,6 +209,36 @@ async def test_create_confirm_query_and_idempotency(
     assert queried.json()["data"]["status"] == "queued"
 
 
+async def test_create_presigns_declared_content_type(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "avatar-png")
+    await verify_user(session_factory, data)
+
+    created = await client.post(
+        "/api/v1/auth/me/avatar-uploads",
+        headers=auth_header(data),
+        json={"size_bytes": 7, "content_type": "image/png"},
+    )
+    assert created.status_code == status.HTTP_201_CREATED, created.text
+    payload = created.json()["data"]
+    assert payload["upload_headers"]["Content-Type"] == "image/png"
+    async with session_factory() as session:
+        upload = await session.scalar(
+            select(AvatarUpload).where(AvatarUpload.upload_id == payload["upload_id"])
+        )
+        assert upload is not None
+        assert upload.temporary_object_key.endswith(".png")
+
+    rejected = await client.post(
+        "/api/v1/auth/me/avatar-uploads",
+        headers=auth_header(data),
+        json={"size_bytes": 7, "content_type": "image/gif"},
+    )
+    assert rejected.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 async def test_new_upload_supersedes_previous_session(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],

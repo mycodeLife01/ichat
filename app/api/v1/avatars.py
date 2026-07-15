@@ -46,6 +46,7 @@ async def create_avatar_upload(
         size_bytes=body.size_bytes,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
+        content_type=body.content_type,
     )
     return SuccessResponse(data=result)
 

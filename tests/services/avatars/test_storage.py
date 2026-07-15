@@ -9,6 +9,8 @@ def test_avatar_object_keys_are_random_and_identity_free() -> None:
     public = public_object_key()
 
     assert re.fullmatch(r"avatar-uploads/[0-9a-f-]{36}\.webp", temporary)
+    assert re.fullmatch(r"avatar-uploads/[0-9a-f-]{36}\.png", temporary_object_key("image/png"))
+    assert re.fullmatch(r"avatar-uploads/[0-9a-f-]{36}\.jpg", temporary_object_key("image/jpeg"))
     assert re.fullmatch(r"avatars/[0-9a-f-]{36}\.webp", public)
     for identity in ("42", "alice", "alice@example.com", "photo.png"):
         assert identity not in temporary

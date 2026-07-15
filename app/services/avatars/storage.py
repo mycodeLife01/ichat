@@ -15,6 +15,11 @@ from app.core.config import Settings
 AVATAR_CONTENT_TYPE = "image/webp"
 AVATAR_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
+# Browsers without canvas WebP encoding (Safari) upload PNG/JPEG sources;
+# the worker always re-encodes the published avatar as WebP.
+ALLOWED_UPLOAD_CONTENT_TYPES = frozenset({"image/webp", "image/png", "image/jpeg"})
+_UPLOAD_EXTENSIONS = {"image/webp": "webp", "image/png": "png", "image/jpeg": "jpg"}
+
 
 @dataclass(frozen=True)
 class PresignedUpload:
@@ -32,7 +37,7 @@ class ObjectMetadata:
 
 class AvatarStorage(Protocol):
     def presign_upload(
-        self, object_key: str, *, size_bytes: int, ttl_seconds: int
+        self, object_key: str, *, size_bytes: int, ttl_seconds: int, content_type: str
     ) -> PresignedUpload: ...
 
     def head_temporary(self, object_key: str) -> ObjectMetadata: ...
@@ -54,8 +59,8 @@ class CdnPurger(Protocol):
     def purge(self, url: str) -> None: ...
 
 
-def temporary_object_key() -> str:
-    return f"avatar-uploads/{uuid4()}.webp"
+def temporary_object_key(content_type: str = AVATAR_CONTENT_TYPE) -> str:
+    return f"avatar-uploads/{uuid4()}.{_UPLOAD_EXTENSIONS[content_type]}"
 
 
 def public_object_key() -> str:
@@ -94,12 +99,12 @@ class R2AvatarStorage:
         self._client = _s3_client(settings, worker=worker)
 
     def presign_upload(
-        self, object_key: str, *, size_bytes: int, ttl_seconds: int
+        self, object_key: str, *, size_bytes: int, ttl_seconds: int, content_type: str
     ) -> PresignedUpload:
         params = {
             "Bucket": self._settings.avatar_upload_bucket,
             "Key": object_key,
-            "ContentType": AVATAR_CONTENT_TYPE,
+            "ContentType": content_type,
             "Metadata": {"declared-size": str(size_bytes)},
         }
         url = self._client.generate_presigned_url(  # type: ignore[attr-defined]
@@ -108,7 +113,7 @@ class R2AvatarStorage:
         return PresignedUpload(
             url=url,
             headers={
-                "Content-Type": AVATAR_CONTENT_TYPE,
+                "Content-Type": content_type,
                 "x-amz-meta-declared-size": str(size_bytes),
             },
         )
@@ -178,12 +183,12 @@ class FakeAvatarStorage:
         self.public: dict[str, bytes] = {}
 
     def presign_upload(
-        self, object_key: str, *, size_bytes: int, ttl_seconds: int
+        self, object_key: str, *, size_bytes: int, ttl_seconds: int, content_type: str
     ) -> PresignedUpload:
         return PresignedUpload(
             url=f"https://upload.invalid/{object_key}?ttl={ttl_seconds}",
             headers={
-                "Content-Type": AVATAR_CONTENT_TYPE,
+                "Content-Type": content_type,
                 "x-amz-meta-declared-size": str(size_bytes),
             },
         )
