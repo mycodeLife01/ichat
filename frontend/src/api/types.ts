@@ -6,8 +6,10 @@ export type SuccessEnvelope<T> = {
 export type AuthUserResponse = {
   id: number;
   username: string;
+  nickname: string;
   email: string;
   email_verified: boolean;
+  avatar_url?: string | null;
 };
 
 export type AuthTokenResponse = {
@@ -149,6 +151,11 @@ export type ShareLinkResponse = {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+};
+
+export type UserShareResponse = ShareLinkResponse & {
+  conversation_id: string;
+  conversation_title: string | null;
 };
 
 // A source kept in a snapshot. Mirrors MessageSource.

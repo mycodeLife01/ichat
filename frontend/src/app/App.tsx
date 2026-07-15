@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { AuthScreen } from "../auth/AuthScreen";
 import { useAuthSession } from "../auth/useAuthSession";
 import { VerifyEmailPage } from "../auth/VerifyEmailPage";
+import { ConfirmAccountDeletionPage } from "../auth/ConfirmAccountDeletionPage";
 import { SharePage } from "../messages/SharePage";
 import { AppShell } from "./AppShell";
 
@@ -14,6 +15,7 @@ export function App() {
       <Route path="/share/:token" element={<SharePage />} />
       {/* Public email verification: the link must work logged-out too. */}
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/confirm-account-deletion" element={<ConfirmAccountDeletionPage />} />
       <Route path="*" element={<AuthGate />} />
     </Routes>
   );

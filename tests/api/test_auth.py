@@ -68,12 +68,16 @@ async def register_user(
     client: AsyncClient,
     *,
     username: str = "alice",
+    nickname: str | None = None,
     email: str = f"alice@{TEST_EMAIL_DOMAIN}",
     password: str = "correct-password",
 ) -> dict[str, object]:
+    payload = {"username": username, "email": email, "password": password}
+    if nickname is not None:
+        payload["nickname"] = nickname
     response = await client.post(
         "/api/v1/auth/register",
-        json={"username": username, "email": email, "password": password},
+        json=payload,
     )
     assert response.status_code == status.HTTP_201_CREATED
     return cast(dict[str, object], response.json()["data"])
@@ -83,7 +87,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
     auth_client: AsyncClient,
     auth_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    data = await register_user(auth_client)
+    data = await register_user(auth_client, nickname="  Alice Cooper  ")
 
     assert set(data) == {"user", "access_token", "refresh_token", "token_type", "expires_in"}
     assert data["token_type"] == "bearer"
@@ -95,6 +99,7 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
     assert isinstance(user_data, dict)
     assert isinstance(user_data["id"], int)
     assert user_data["username"] == "alice"
+    assert user_data["nickname"] == "Alice Cooper"
     assert user_data["email"] == f"alice@{TEST_EMAIL_DOMAIN}"
     assert user_data["email_verified"] is False
 
@@ -102,12 +107,37 @@ async def test_register_returns_enveloped_tokens_and_persists_user(
         user = await session.scalar(select(User).where(User.username == "alice"))
         assert user is not None
         assert user.email == f"alice@{TEST_EMAIL_DOMAIN}"
+        assert user.nickname == "Alice Cooper"
         assert user.password_hash != "correct-password"
         assert user.email_verified is False
         token = await session.scalar(select(RefreshToken).where(RefreshToken.user_id == user.id))
         assert token is not None
         assert token.token_hash != data["refresh_token"]
         assert token.revoked_at is None
+
+
+async def test_update_current_user_nickname_persists_without_changing_login(
+    auth_client: AsyncClient,
+) -> None:
+    registered = await register_user(auth_client)
+    headers = {"Authorization": f"Bearer {registered['access_token']}"}
+
+    updated = await auth_client.patch(
+        "/api/v1/auth/me",
+        json={"nickname": "  Alice Cooper  "},
+        headers=headers,
+    )
+    current = await auth_client.get("/api/v1/auth/me", headers=headers)
+    login = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "alice", "password": "correct-password"},
+    )
+
+    assert updated.status_code == status.HTTP_200_OK
+    assert updated.json()["data"]["nickname"] == "Alice Cooper"
+    assert current.json()["data"]["nickname"] == "Alice Cooper"
+    assert login.status_code == status.HTTP_200_OK
+    assert login.json()["data"]["user"]["username"] == "alice"
 
 
 async def test_register_rejects_duplicate_username_case_insensitively(

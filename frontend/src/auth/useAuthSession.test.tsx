@@ -56,6 +56,7 @@ describe("useAuthSession", () => {
     await act(async () => {
       await result.current.register({
         username: "alice",
+        nickname: "Alice",
         email: "alice@example.com",
         password: "password123",
       });

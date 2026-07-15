@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # --- Email / verification ---
     frontend_app_url: str = "http://localhost:5173"
-    # postmark | console | fake. console/fake skip Postmark credential checks.
+    # postmark | resend | console | fake. console/fake skip credential checks.
     email_provider: str = "console"
     email_from: str = "iChat <no-reply@mail.feslia.com>"
     email_reply_to: str = ""
@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     postmark_message_stream: str = "outbound"
     postmark_base_url: str = "https://api.postmarkapp.com"
     postmark_timeout_seconds: float = 10.0
+    resend_api_key: str = ""
+    resend_base_url: str = "https://api.resend.com"
+    resend_timeout_seconds: float = 10.0
 
     auth_email_verification_token_ttl_seconds: int = 86_400
     auth_email_verification_cooldown_seconds: int = 60
@@ -93,6 +96,32 @@ class Settings(BaseSettings):
     email_outbox_lease_seconds: int = 120
     email_outbox_sweep_interval_seconds: int = 60
 
+    # --- Avatar uploads / Cloudflare R2 ---
+    avatar_storage_enabled: bool = False
+    avatar_r2_endpoint_url: str = ""
+    avatar_r2_region: str = "auto"
+    avatar_upload_bucket: str = ""
+    avatar_public_bucket: str = ""
+    avatar_api_access_key_id: str = ""
+    avatar_api_secret_access_key: str = ""
+    avatar_worker_access_key_id: str = ""
+    avatar_worker_secret_access_key: str = ""
+    avatar_public_base_url: str = ""
+    cloudflare_zone_id: str = ""
+    cloudflare_purge_token: str = ""
+    avatar_presign_ttl_seconds: int = 600
+    avatar_session_ttl_seconds: int = 1_800
+    avatar_upload_max_bytes: int = 2 * 1024 * 1024
+    avatar_rate_user_limit: int = 10
+    avatar_rate_ip_limit: int = 30
+    avatar_rate_window_seconds: int = 3_600
+    avatar_processing_lease_seconds: int = 300
+    avatar_processing_max_attempts: int = 3
+    avatar_maintenance_interval_seconds: int = 3_600
+    avatar_maintenance_batch_size: int = 100
+    avatar_history_retention_seconds: int = 7 * 86_400
+    avatar_cleanup_safety_seconds: int = 300
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -119,17 +148,15 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_email_provider(cls, value: str) -> str:
         normalized = value.strip().lower()
-        allowed = {"postmark", "console", "fake"}
+        allowed = {"postmark", "resend", "console", "fake"}
         if normalized not in allowed:
-            raise ValueError(
-                f"email_provider must be one of {sorted(allowed)}, got {value!r}"
-            )
+            raise ValueError(f"email_provider must be one of {sorted(allowed)}, got {value!r}")
         return normalized
 
     @model_validator(mode="after")
-    def validate_postmark_config(self) -> Self:
-        # Only enforce Postmark credentials when it is the active provider, so
-        # console/fake can boot in dev/CI without secrets.
+    def validate_external_services(self) -> Self:
+        # Only enforce provider credentials when the integration is active, so
+        # fake/disabled integrations can boot in dev and CI without secrets.
         if self.email_provider == "postmark":
             missing = [
                 name
@@ -143,15 +170,42 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"email_provider=postmark requires non-empty: {', '.join(missing)}"
                 )
+        if self.email_provider == "resend":
+            missing = [
+                name
+                for name, value in (
+                    ("resend_api_key", self.resend_api_key),
+                    ("email_from", self.email_from),
+                )
+                if not value.strip()
+            ]
+            if missing:
+                raise ValueError(
+                    f"email_provider=resend requires non-empty: {', '.join(missing)}"
+                )
+        if self.avatar_storage_enabled:
+            required = (
+                ("avatar_r2_endpoint_url", self.avatar_r2_endpoint_url),
+                ("avatar_upload_bucket", self.avatar_upload_bucket),
+                ("avatar_public_bucket", self.avatar_public_bucket),
+                ("avatar_api_access_key_id", self.avatar_api_access_key_id),
+                ("avatar_api_secret_access_key", self.avatar_api_secret_access_key),
+                ("avatar_worker_access_key_id", self.avatar_worker_access_key_id),
+                ("avatar_worker_secret_access_key", self.avatar_worker_secret_access_key),
+                ("avatar_public_base_url", self.avatar_public_base_url),
+                ("cloudflare_zone_id", self.cloudflare_zone_id),
+                ("cloudflare_purge_token", self.cloudflare_purge_token),
+            )
+            missing = [name for name, value in required if not value.strip()]
+            if missing:
+                raise ValueError(
+                    f"avatar_storage_enabled=true requires non-empty: {', '.join(missing)}"
+                )
         return self
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        return [
-            origin.strip()
-            for origin in self.cors_allowed_origins.split(",")
-            if origin.strip()
-        ]
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     @property
     def web_search_available(self) -> bool:

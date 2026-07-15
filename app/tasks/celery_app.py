@@ -13,7 +13,7 @@ _settings = get_settings()
 celery_app = Celery(
     "ichat",
     broker=_settings.celery_broker_url,
-    include=["app.tasks.email_tasks"],
+    include=["app.tasks.email_tasks", "app.tasks.media_tasks"],
 )
 
 celery_app.conf.update(
@@ -28,5 +28,13 @@ celery_app.conf.update(
             "task": "app.tasks.email_tasks.sweep_email_outbox",
             "schedule": float(_settings.email_outbox_sweep_interval_seconds),
         },
+        "maintain-avatars": {
+            "task": "app.tasks.media_tasks.maintain_avatars",
+            "schedule": float(_settings.avatar_maintenance_interval_seconds),
+            "options": {"queue": "media"},
+        },
+    },
+    task_routes={
+        "app.tasks.media_tasks.*": {"queue": "media"},
     },
 )

@@ -14,6 +14,27 @@ def test_register_request_strips_username_before_validation() -> None:
     assert request.username == "alice"
 
 
+def test_register_request_strips_optional_nickname_before_validation() -> None:
+    request = RegisterRequest(
+        username="alice",
+        nickname=" Alice Cooper ",
+        email="alice@example.com",
+        password="correct-password",
+    )
+
+    assert request.nickname == "Alice Cooper"
+
+
+def test_register_request_rejects_blank_nickname_after_stripping() -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequest(
+            username="alice",
+            nickname="   ",
+            email="alice@example.com",
+            password="correct-password",
+        )
+
+
 def test_register_request_rejects_blank_username_after_stripping() -> None:
     with pytest.raises(ValidationError):
         RegisterRequest(

@@ -61,6 +61,7 @@ async def register_with_verification(
     redis: Redis,
     *,
     username: str,
+    nickname: str | None = None,
     email: str,
     password: str,
     client_ip: str,
@@ -73,6 +74,7 @@ async def register_with_verification(
         token_response = await register_user(
             session,
             username=username,
+            nickname=nickname,
             email=email,
             password=password,
             jwt_secret=settings.jwt_secret,
@@ -248,4 +250,6 @@ async def confirm_account_deletion(
         redis, action="confirm_account_deletion", client_ip=client_ip, settings=settings
     )
     async with _email_transaction(session, redis):
-        await account.confirm_account_deletion(session, raw_token=raw_token)
+        await account.confirm_account_deletion(
+            session, raw_token=raw_token, settings=settings
+        )

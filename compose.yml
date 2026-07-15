@@ -92,14 +92,30 @@ services:
       redis:
         condition: service_healthy
 
+  media-worker:
+    build:
+      context: .
+    image: ichat-worker:local
+    env_file:
+      - .env
+    # CPU-bound avatar validation and transcoding stays off the email queue.
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=media", "--concurrency=2"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
   celery-beat:
     build:
       context: .
     image: ichat-worker:local
     env_file:
       - .env
-    # Schedules the periodic outbox sweep ONLY. Must be a single instance
-    # (multiple beats double-schedule). Execution happens on celery-worker.
+    # Schedules email and avatar maintenance. Must be a single instance
+    # (multiple beats double-schedule). Execution happens on queue workers.
     command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
     depends_on:
       redis:

@@ -20,6 +20,7 @@ from app.schemas.auth import (
     RequestAccountDeletionRequest,
     RequestPasswordResetRequest,
     ResetPasswordRequest,
+    UpdateProfileRequest,
     VerifyEmailRequest,
 )
 from app.schemas.responses import SuccessResponse
@@ -29,6 +30,7 @@ from app.services.auth.service import (
     login_user,
     logout,
     refresh_tokens,
+    update_profile,
     user_response,
 )
 
@@ -52,6 +54,7 @@ async def register(
         session,
         redis,
         username=body.username,
+        nickname=body.nickname,
         email=str(body.email),
         password=body.password,
         client_ip=rate_limit.client_ip_from_request(request),
@@ -126,6 +129,21 @@ async def me(
     user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[AuthUserResponse]:
     return SuccessResponse(data=user_response(user))
+
+
+@router.patch(
+    "/me",
+    response_model=SuccessResponse[AuthUserResponse],
+    response_model_exclude_none=True,
+)
+async def update_me(
+    body: UpdateProfileRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[AuthUserResponse]:
+    response = await update_profile(session, user=user, nickname=body.nickname)
+    await session.commit()
+    return SuccessResponse(data=response)
 
 
 @router.post(

@@ -11,6 +11,7 @@
                                             → Worker (LLM run)
                                             → Redis (Celery broker + 限流)
                                             → Celery Worker / Beat (发送验证邮件)
+                                            → Media Worker → Cloudflare R2 / CDN purge (头像)
 ```
 
 部署分两条线：
@@ -114,6 +115,8 @@ LOG_LEVEL=INFO
 ```
 
 完整变量列表（含 Worker 并发、DB 连接池、SSE、Web Search 超时和证据压缩等调优项）见 `.env.example`。
+
+头像 R2 的 bucket、精确 CORS、API/media worker/purge 三类最小权限凭证、真实 smoke、运维下架和回滚步骤见 `docs/handover/2026-07-14-r2-avatar-upload.md`。生产资源配置完成前保持 `AVATAR_STORAGE_ENABLED=false`；启用或修改头像环境变量后须 force-recreate `api media-worker celery-beat`。
 
 > **注意**：修改 `.env` 中的 `CORS_ALLOWED_ORIGINS` 后，必须 `docker compose -f compose.prod.yml up -d --force-recreate api` 才会生效——`restart` 不会重新加载 env。
 

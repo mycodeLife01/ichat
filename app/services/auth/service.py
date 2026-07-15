@@ -4,11 +4,13 @@ from fastapi import status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.models.user import RefreshToken, User
 from app.schemas.auth import AuthTokenResponse, AuthUserResponse, CommandStatusResponse
 from app.services.auth.passwords import hash_password, verify_password
 from app.services.auth.tokens import create_access_token, create_refresh_token, hash_refresh_token
+from app.services.avatars.storage import public_avatar_url
 
 INVALID_LOGIN_MESSAGE = "Invalid username, email, or password"
 INVALID_REFRESH_TOKEN_MESSAGE = "Invalid refresh token"
@@ -18,8 +20,10 @@ def user_response(user: User) -> AuthUserResponse:
     return AuthUserResponse(
         id=user.id,
         username=user.username,
+        nickname=user.nickname,
         email=user.email,
         email_verified=user.email_verified,
+        avatar_url=public_avatar_url(get_settings(), user.avatar_object_key),
     )
 
 
@@ -27,6 +31,7 @@ async def register_user(
     session: AsyncSession,
     *,
     username: str,
+    nickname: str | None = None,
     email: str,
     password: str,
     jwt_secret: str,
@@ -34,6 +39,7 @@ async def register_user(
     refresh_token_ttl_seconds: int,
 ) -> AuthTokenResponse:
     normalized_username = username.strip()
+    normalized_nickname = nickname.strip() if nickname is not None else normalized_username
     normalized_email = email.strip().lower()
 
     existing_username = await session.scalar(
@@ -50,6 +56,7 @@ async def register_user(
 
     user = User(
         username=normalized_username,
+        nickname=normalized_nickname,
         email=normalized_email,
         password_hash=hash_password(password),
         email_verified=False,
@@ -65,6 +72,17 @@ async def register_user(
         access_token_ttl_seconds=access_token_ttl_seconds,
         refresh_token_ttl_seconds=refresh_token_ttl_seconds,
     )
+
+
+async def update_profile(
+    session: AsyncSession,
+    *,
+    user: User,
+    nickname: str,
+) -> AuthUserResponse:
+    user.nickname = nickname.strip()
+    await session.flush()
+    return user_response(user)
 
 
 async def login_user(

@@ -240,6 +240,37 @@ async def test_list_shares_returns_only_the_active_link(
     assert [item["token"] for item in data] == [created["token"]]
 
 
+async def test_list_user_shares_aggregates_owned_conversations_newest_first(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-share-aggregate",
+        email=f"alice-aggregate@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    first = await seed_completed_turn(
+        session_factory, user_email=f"alice-aggregate@{TEST_EMAIL_DOMAIN}"
+    )
+    second = await seed_completed_turn(
+        session_factory, user_email=f"alice-aggregate@{TEST_EMAIL_DOMAIN}"
+    )
+    first_share = await _create_share(client, first["conversation_id"], headers)
+    second_share = await _create_share(client, second["conversation_id"], headers)
+
+    response = await client.get("/api/v1/shares", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()["data"]
+    assert [item["token"] for item in data] == [second_share["token"], first_share["token"]]
+    assert all(item["conversation_title"] == "seeded" for item in data)
+    assert {item["conversation_id"] for item in data} == {
+        first["conversation_id"],
+        second["conversation_id"],
+    }
+
+
 async def test_create_second_share_conflicts_while_one_is_active(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],

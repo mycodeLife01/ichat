@@ -44,6 +44,10 @@
 
 负责 conversation 和 message 的业务规则，包括创建对话、重命名、软删除、发送 user message、物化 assistant message、读取可见消息。
 
+## `app/services/avatars`
+
+负责头像专用领域：上传会话状态机、R2/CDN/任务发布协议、图片验证与转码编排、替换原子切换、删除补偿、注销失效和周期维护。不抽象为通用 files/assets 模块。API 只创建/确认/查询会话，不接收图片字节；媒体 Celery worker 调用该 service 处理私有临时对象。
+
 ## `app/services/runs`
 
 负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义。SSE 读取持久化事件，不直接调用 provider。

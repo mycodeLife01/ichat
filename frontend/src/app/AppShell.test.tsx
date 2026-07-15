@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError } from "../api/errors";
 import type {
+  AuthUserResponse,
   ConversationDetailResponse,
   ConversationResponse,
   MessageResponse,
@@ -12,6 +13,7 @@ import type {
   SendMessageResponse,
 } from "../api/types";
 import {
+  authTokenResponse,
   conversationDetailResponse,
   conversationResponse,
   reasoningDeltaEvent,
@@ -20,6 +22,7 @@ import {
   textDeltaEvent,
 } from "../test/apiFixtures";
 import { selectionStore } from "../conversations/selectionStore";
+import { createAuthSession, tokenStore } from "../auth/tokenStore";
 import { createFakeServices, fakeStream, renderWithApp } from "../test/appHarness";
 import { AppShell } from "./AppShell";
 
@@ -47,6 +50,43 @@ describe("AppShell", () => {
 
     expect(await screen.findByText(conversationResponse.title as string)).toBeInTheDocument();
     expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
+  });
+
+  it("passes username to the account card without showing it in the user menu", async () => {
+    const accountUser: AuthUserResponse = {
+      ...authTokenResponse.user,
+      username: "alice-login",
+      nickname: "Alice Cooper",
+      email_verified: true,
+    };
+    tokenStore.save(
+      createAuthSession({
+        ...authTokenResponse,
+        user: accountUser,
+      }),
+    );
+    const services = createFakeServices(
+      { me: async () => accountUser },
+      { list: async () => [] },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    const trigger = await screen.findByRole("button", { name: "打开个人中心" });
+    expect(within(trigger).getByText("Alice Cooper")).toBeInTheDocument();
+    expect(within(trigger).getByText("Pro")).toBeInTheDocument();
+    expect(within(trigger).queryByText("alice-login")).toBeNull();
+
+    await user.click(trigger);
+    const menu = screen.getByRole("menu", { name: "个人中心" });
+    expect(within(menu).queryByText("用户名")).toBeNull();
+    expect(within(menu).queryByText("alice-login")).toBeNull();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "账号" }));
+    const dialog = screen.getByRole("dialog", { name: "账号" });
+    expect(within(dialog).getByText("alice-login")).toBeInTheDocument();
+    expect(within(dialog).getByText("用户名 · 不可修改")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox", { name: "用户名" })).toBeNull();
   });
 
   it("loads detail when a conversation is selected", async () => {

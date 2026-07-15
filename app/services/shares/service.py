@@ -16,6 +16,7 @@ from app.schemas.shares import (
     PublicShareResponse,
     SharedMessage,
     ShareLinkResponse,
+    UserShareResponse,
 )
 from app.services.conversations.service import (
     get_database_now,
@@ -149,6 +150,36 @@ async def list_shares(
         )
     ).all()
     return [share_link_response(share) for share in shares]
+
+
+async def list_user_shares(
+    session: AsyncSession,
+    *,
+    user: User,
+) -> list[UserShareResponse]:
+    """List every active share created by the current user across conversations."""
+    now = await get_database_now(session)
+    rows = (
+        await session.execute(
+            select(ShareLink, Conversation)
+            .join(Conversation, Conversation.id == ShareLink.conversation_id)
+            .where(
+                ShareLink.created_by == user.id,
+                Conversation.user_id == user.id,
+                Conversation.deleted_at.is_(None),
+                _active_share_filter(now),
+            )
+            .order_by(ShareLink.created_at.desc(), ShareLink.id.desc())
+        )
+    ).all()
+    return [
+        UserShareResponse(
+            **share_link_response(share).model_dump(),
+            conversation_id=conversation.public_id,
+            conversation_title=conversation.title,
+        )
+        for share, conversation in rows
+    ]
 
 
 async def revoke_share(

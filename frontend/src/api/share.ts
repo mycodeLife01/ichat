@@ -3,6 +3,7 @@ import type {
   CommandStatusResponse,
   PublicShareResponse,
   ShareLinkResponse,
+  UserShareResponse,
 } from "./types";
 
 export function createShareApi(client?: Pick<ApiClient, "request">) {
@@ -22,6 +23,9 @@ export function createShareApi(client?: Pick<ApiClient, "request">) {
       return resolveClient().request<ShareLinkResponse[]>(
         `/conversations/${conversationId}/shares`,
       );
+    },
+    listMine(): Promise<UserShareResponse[]> {
+      return resolveClient().request<UserShareResponse[]>("/shares");
     },
     revoke(conversationId: string, token: string): Promise<CommandStatusResponse> {
       return resolveClient().request<CommandStatusResponse>(

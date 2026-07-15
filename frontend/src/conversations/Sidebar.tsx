@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useState, type CSSProperties, type UIEvent } from "react";
 
-import type { ConversationResponse } from "../api/types";
+import type { ConversationResponse, UserShareResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
 import { newChatHotkeyLabel } from "../ui/hotkeys";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
+import { UserMenu } from "./UserMenu";
 
-export type SidebarUser = { email: string; name: string };
+export type SidebarUser = {
+  email: string;
+  username: string;
+  name: string;
+  emailVerified: boolean;
+  avatarUrl?: string | null;
+};
 
 type SidebarProps = {
   items: ConversationResponse[];
@@ -26,6 +33,14 @@ type SidebarProps = {
   onRequestShare: (id: string) => void;
   onRequestDelete: (id: string) => void;
   onLogout: () => void;
+  onResendVerification: () => Promise<unknown>;
+  onUpdateNickname: (nickname: string) => Promise<unknown>;
+  onUploadAvatar?: (blob: Blob) => Promise<string>;
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
+  onRequestDeletion: (password: string) => Promise<unknown>;
+  onLoadShares: () => Promise<UserShareResponse[]>;
+  onRevokeShare: (conversationId: string, token: string) => Promise<unknown>;
+  onToast: (message: string) => void;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 };
@@ -71,6 +86,14 @@ export function Sidebar({
   onRequestShare,
   onRequestDelete,
   onLogout,
+  onResendVerification,
+  onUpdateNickname,
+  onUploadAvatar,
+  onChangePassword,
+  onRequestDeletion,
+  onLoadShares,
+  onRevokeShare,
+  onToast,
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
@@ -296,17 +319,18 @@ export function Sidebar({
             )}
           </div>
 
-          <div className="mt-2 flex items-center gap-2.5 border-t border-border px-2 pt-3 pb-1">
-            <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg max-[760px]:h-7 max-[760px]:w-7 max-[760px]:text-[13px]">
-              {(user?.name || "U").slice(0, 1).toUpperCase()}
-            </div>
-            <div className="flex-1 truncate text-[13px] text-fg max-[760px]:text-[14px]">
-              {user?.email || "you@example.com"}
-            </div>
-            <button className={iconBtn} aria-label="退出登录" onClick={onLogout}>
-              <Icons.LogOut size={14} />
-            </button>
-          </div>
+          <UserMenu
+            user={user}
+            onLogout={onLogout}
+            onResendVerification={onResendVerification}
+            onUpdateNickname={onUpdateNickname}
+            onUploadAvatar={onUploadAvatar}
+            onChangePassword={onChangePassword}
+            onRequestDeletion={onRequestDeletion}
+            onLoadShares={onLoadShares}
+            onRevokeShare={onRevokeShare}
+            onToast={onToast}
+          />
         </div>
       </aside>
       {isMobile && (

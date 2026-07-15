@@ -34,6 +34,7 @@ export function getDefaultErrorMessage(status: number): string {
   if (status === 404) return "资源不存在或已被删除";
   if (status === 409) return "当前操作与现有状态冲突，请稍后重试";
   if (status === 422) return "提交内容不符合要求，请检查后重试";
+  if (status === 429) return "操作过于频繁，请稍后再试";
   if (status >= 500) return "服务暂时不可用，请稍后重试";
   return "请求失败，请稍后重试";
 }

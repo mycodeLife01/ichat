@@ -4,9 +4,9 @@ from pathlib import Path
 def test_compose_uses_explicit_env_file() -> None:
     compose = Path("compose.yml").read_text()
 
-    # postgres + migrate + api + worker + celery-worker + celery-beat
-    assert compose.count("env_file:") == 6
-    assert compose.count("- .env") == 6
+    # postgres + migrate + api + worker + email worker + media worker + beat
+    assert compose.count("env_file:") == 7
+    assert compose.count("- .env") == 7
 
 
 def test_compose_requires_referenced_environment_variables() -> None:

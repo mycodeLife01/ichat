@@ -12,7 +12,7 @@ from loguru import logger
 from app.core.config import get_settings
 from app.db.sync_session import get_sync_session_factory
 from app.services.email.outbox import process_outbox, sweep_outbox
-from app.services.email.postmark import get_email_provider
+from app.services.email.providers import get_email_provider
 from app.tasks.celery_app import celery_app
 
 
