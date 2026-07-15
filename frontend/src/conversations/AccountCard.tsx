@@ -287,7 +287,7 @@ export function AccountCard({
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-medium text-fg">个人头像</div>
                     <div className="mt-0.5 text-[10.5px] text-fg-subtle">
-                      {avatarStatus ?? (user.emailVerified ? "支持 JPEG、PNG 和静态 WebP" : "完成邮箱认证后可上传")}
+                      {avatarStatus ?? (user.emailVerified ? "支持 JPEG、PNG 和 WebP" : "完成邮箱认证后可上传")}
                     </div>
                   </div>
                   <input

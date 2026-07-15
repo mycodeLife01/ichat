@@ -30,16 +30,22 @@ const wait = (milliseconds: number) =>
 export async function uploadAvatar(client: ApiClient, blob: Blob): Promise<string> {
   const session = await client.request<CreateAvatarUploadResponse>(
     "/auth/me/avatar-uploads",
-    { method: "POST", body: { size_bytes: blob.size } },
+    { method: "POST", body: { size_bytes: blob.size, content_type: blob.type } },
   );
-  const uploadResponse = await fetch(session.upload_url, {
-    method: "PUT",
-    headers: session.upload_headers,
-    body: blob,
-  });
-  if (!uploadResponse.ok) throw new Error("Avatar upload failed");
+  let uploadResponse: Response;
+  try {
+    uploadResponse = await fetch(session.upload_url, {
+      method: "PUT",
+      headers: session.upload_headers,
+      body: blob,
+    });
+  } catch (error) {
+    // Direct-to-R2 PUT failed before a response arrived (network / bucket CORS).
+    throw new Error("头像上传失败，请检查网络连接后重试。", { cause: error });
+  }
+  if (!uploadResponse.ok) throw new Error("头像上传失败，请稍后重试。");
   const etag = uploadResponse.headers.get("ETag");
-  if (!etag) throw new Error("Avatar upload response did not expose ETag");
+  if (!etag) throw new Error("头像上传失败，请稍后重试。");
 
   let state = await client.request<AvatarUploadResponse>(
     `/auth/me/avatar-uploads/${session.upload_id}/confirm`,
@@ -47,14 +53,14 @@ export async function uploadAvatar(client: ApiClient, blob: Blob): Promise<strin
   );
   const deadline = Date.now() + 120_000;
   while (state.status === "pending" || state.status === "queued" || state.status === "processing") {
-    if (Date.now() >= deadline) throw new Error("Avatar processing timed out");
+    if (Date.now() >= deadline) throw new Error("头像处理超时，请稍后重试。");
     await wait(1_000);
     state = await client.request<AvatarUploadResponse>(
       `/auth/me/avatar-uploads/${session.upload_id}`,
     );
   }
   if (state.status !== "succeeded" || !state.avatar_url) {
-    throw new Error(state.message || "Avatar processing failed");
+    throw new Error(state.message || "头像处理失败，请重试。");
   }
   return state.avatar_url;
 }

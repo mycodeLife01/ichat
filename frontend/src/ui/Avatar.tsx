@@ -19,7 +19,7 @@ export function Avatar({ name, url, className, imageAlt = "用户头像" }: Avat
         <img
           src={url ?? undefined}
           alt={imageAlt}
-          className="h-full w-full object-cover"
+          className="h-full w-full bg-white object-cover"
           onError={() => setFailedUrl(url ?? null)}
         />
       ) : (
