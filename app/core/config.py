@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # --- Email / verification ---
     frontend_app_url: str = "http://localhost:5173"
-    # postmark | console | fake. console/fake skip Postmark credential checks.
+    # postmark | resend | console | fake. console/fake skip credential checks.
     email_provider: str = "console"
     email_from: str = "iChat <no-reply@mail.feslia.com>"
     email_reply_to: str = ""
@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     postmark_message_stream: str = "outbound"
     postmark_base_url: str = "https://api.postmarkapp.com"
     postmark_timeout_seconds: float = 10.0
+    resend_api_key: str = ""
+    resend_base_url: str = "https://api.resend.com"
+    resend_timeout_seconds: float = 10.0
 
     auth_email_verification_token_ttl_seconds: int = 86_400
     auth_email_verification_cooldown_seconds: int = 60
@@ -145,7 +148,7 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_email_provider(cls, value: str) -> str:
         normalized = value.strip().lower()
-        allowed = {"postmark", "console", "fake"}
+        allowed = {"postmark", "resend", "console", "fake"}
         if normalized not in allowed:
             raise ValueError(f"email_provider must be one of {sorted(allowed)}, got {value!r}")
         return normalized
@@ -166,6 +169,19 @@ class Settings(BaseSettings):
             if missing:
                 raise ValueError(
                     f"email_provider=postmark requires non-empty: {', '.join(missing)}"
+                )
+        if self.email_provider == "resend":
+            missing = [
+                name
+                for name, value in (
+                    ("resend_api_key", self.resend_api_key),
+                    ("email_from", self.email_from),
+                )
+                if not value.strip()
+            ]
+            if missing:
+                raise ValueError(
+                    f"email_provider=resend requires non-empty: {', '.join(missing)}"
                 )
         if self.avatar_storage_enabled:
             required = (

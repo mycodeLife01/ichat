@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from app.services.email.postmark import (
+from app.services.email.providers import (
     CONSOLE_PROVIDER,
     FAKE_PROVIDER,
     ConsoleProvider,
@@ -41,7 +41,7 @@ def _postmark_settings() -> SimpleNamespace:
 def test_postmark_success_returns_message_id() -> None:
     response = MagicMock(status_code=200)
     response.json.return_value = {"MessageID": "mid-123"}
-    with patch("app.services.email.postmark.httpx.post", return_value=response):
+    with patch("app.services.email.providers.httpx.post", return_value=response):
         result = PostmarkProvider(_postmark_settings()).send(_message())
 
     assert result.provider == "postmark"
@@ -50,7 +50,7 @@ def test_postmark_success_returns_message_id() -> None:
 
 def test_postmark_5xx_is_retryable() -> None:
     response = MagicMock(status_code=500, text="server error")
-    with patch("app.services.email.postmark.httpx.post", return_value=response):
+    with patch("app.services.email.providers.httpx.post", return_value=response):
         with pytest.raises(EmailSendError) as exc:
             PostmarkProvider(_postmark_settings()).send(_message())
     assert exc.value.retryable is True
@@ -58,7 +58,7 @@ def test_postmark_5xx_is_retryable() -> None:
 
 def test_postmark_422_is_not_retryable() -> None:
     response = MagicMock(status_code=422, text="sender not confirmed")
-    with patch("app.services.email.postmark.httpx.post", return_value=response):
+    with patch("app.services.email.providers.httpx.post", return_value=response):
         with pytest.raises(EmailSendError) as exc:
             PostmarkProvider(_postmark_settings()).send(_message())
     assert exc.value.retryable is False
@@ -66,7 +66,7 @@ def test_postmark_422_is_not_retryable() -> None:
 
 def test_postmark_timeout_is_retryable() -> None:
     with patch(
-        "app.services.email.postmark.httpx.post",
+        "app.services.email.providers.httpx.post",
         side_effect=httpx.TimeoutException("timed out"),
     ):
         with pytest.raises(EmailSendError) as exc:

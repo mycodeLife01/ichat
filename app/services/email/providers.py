@@ -1,8 +1,9 @@
 """Email provider adapters.
 
-``postmark`` uses the Postmark HTTP API for transactional email. ``console``
-logs the message (local dev). ``fake`` collects messages in memory (tests).
-Synchronous on purpose — these run inside the Celery worker process.
+``postmark`` uses the Postmark HTTP API for transactional email. ``resend``
+uses the Resend HTTP API. ``console`` logs the message (local dev). ``fake``
+collects messages in memory (tests). Synchronous on purpose — these run inside
+the Celery worker process.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from loguru import logger
 from app.core.config import Settings
 
 POSTMARK_PROVIDER = "postmark"
+RESEND_PROVIDER = "resend"
 CONSOLE_PROVIDER = "console"
 FAKE_PROVIDER = "fake"
 
@@ -102,6 +104,61 @@ class PostmarkProvider:
         )
 
 
+class ResendProvider:
+    def __init__(self, settings: Settings) -> None:
+        self._api_key = settings.resend_api_key
+        self._from = settings.email_from
+        self._reply_to = settings.email_reply_to
+        self._base_url = settings.resend_base_url.rstrip("/")
+        self._timeout = settings.resend_timeout_seconds
+
+    def send(self, message: EmailMessage) -> SendResult:
+        body: dict[str, object] = {
+            "from": self._from,
+            "to": [message.to],
+            "subject": message.subject,
+            "html": message.html,
+            "text": message.text,
+        }
+        if self._reply_to:
+            body["reply_to"] = self._reply_to
+        # Resend has no free-form metadata field; tags carry both the template
+        # tag and metadata (values restricted to ASCII [A-Za-z0-9_-]).
+        tags = []
+        if message.tag:
+            tags.append({"name": "tag", "value": message.tag})
+        if message.metadata:
+            tags.extend({"name": key, "value": value} for key, value in message.metadata.items())
+        if tags:
+            body["tags"] = tags
+
+        try:
+            response = httpx.post(
+                f"{self._base_url}/emails",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+                timeout=self._timeout,
+            )
+        except httpx.HTTPError as exc:
+            # Network/timeout: transient.
+            raise EmailSendError(f"Resend request failed: {exc}", retryable=True) from exc
+
+        if response.status_code == 200:
+            message_id = response.json().get("id")
+            return SendResult(provider=RESEND_PROVIDER, provider_message_id=message_id)
+
+        # 429 (rate limit) and 5xx are transient; other 4xx (validation, auth,
+        # unverified domain) will never succeed on retry.
+        retryable = response.status_code >= 500 or response.status_code == 429
+        raise EmailSendError(
+            f"Resend returned {response.status_code}: {response.text[:500]}",
+            retryable=retryable,
+        )
+
+
 class ConsoleProvider:
     def send(self, message: EmailMessage) -> SendResult:
         logger.info(
@@ -135,6 +192,8 @@ fake_provider = FakeProvider()
 def get_email_provider(settings: Settings) -> EmailProvider:
     if settings.email_provider == POSTMARK_PROVIDER:
         return PostmarkProvider(settings)
+    if settings.email_provider == RESEND_PROVIDER:
+        return ResendProvider(settings)
     if settings.email_provider == FAKE_PROVIDER:
         return fake_provider
     return ConsoleProvider()

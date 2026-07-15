@@ -22,7 +22,7 @@ from app.services.email.outbox import (
     process_outbox,
     sweep_outbox,
 )
-from app.services.email.postmark import (
+from app.services.email.providers import (
     EmailMessage,
     EmailSendError,
     FakeProvider,

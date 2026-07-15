@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
 from app.models.email_outbox import EmailOutbox, OutboxStatus
-from app.services.email.postmark import EmailMessage, EmailProvider, EmailSendError
+from app.services.email.providers import EmailMessage, EmailProvider, EmailSendError
 from app.services.email.renderer import render
 
 # Exponential backoff between send attempts (seconds): 1m, 5m, 15m, 1h, 6h.
