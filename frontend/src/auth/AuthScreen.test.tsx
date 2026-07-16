@@ -202,7 +202,9 @@ describe("AuthScreen", () => {
     await user.click(screen.getByRole("button", { name: "发送重置链接" }));
 
     expect(requestPasswordReset).toHaveBeenCalledWith("alice@example.com");
-    expect(await screen.findByRole("status")).toHaveTextContent("如果该邮箱已注册");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "我们已发送一封包含重置链接的邮件",
+    );
   });
 
   it("rejects an invalid email before requesting a reset", async () => {
