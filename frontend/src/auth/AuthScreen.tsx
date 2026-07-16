@@ -1,8 +1,14 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 
+import { toApiError } from "../api/errors";
+import { useAppActions } from "../app/context";
 import { AuthBackground } from "./AuthBackground";
 import { mapAuthError, type AuthFieldErrors, type AuthMode } from "./authErrorMessages";
 import { useAuthSession } from "./useAuthSession";
+
+// "forgot" is the password-reset request sub-view; it sits alongside the
+// login/register tabs but hides them and drives its own submit.
+type ScreenMode = AuthMode | "forgot";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,12 +33,16 @@ const authFootBtn =
 
 export function AuthScreen() {
   const { login, register, isSubmitting } = useAuthSession();
-  const [mode, setMode] = useState<AuthMode>("login");
+  const { services } = useAppActions();
+  const [mode, setMode] = useState<ScreenMode>("login");
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
   const [formMessage, setFormMessage] = useState<string | undefined>(undefined);
   const cardRef = useRef<HTMLElement>(null);
@@ -64,12 +74,13 @@ export function AuthScreen() {
     return () => animation.cancel();
   }, [mode]);
 
-  function switchMode(next: AuthMode) {
+  function switchMode(next: ScreenMode) {
     if (next === mode) return;
     animationStartHeightRef.current = cardRef.current?.getBoundingClientRect().height ?? null;
     setMode(next);
     setFieldErrors({});
     setFormMessage(undefined);
+    setResetSent(false);
   }
 
   function validate(): AuthFieldErrors {
@@ -121,9 +132,36 @@ export function AuthScreen() {
         await login({ identifier: identifier.trim(), password });
       }
     } catch (error) {
-      const view = mapAuthError(error, mode);
+      // handleSubmit only runs for the login/register form; forgot has its own.
+      const view = mapAuthError(error, mode === "register" ? "register" : "login");
       setFieldErrors(view.fieldErrors ?? {});
       setFormMessage(view.formMessage);
+    }
+  }
+
+  async function handleResetRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (resetSubmitting) return;
+
+    const normalizedEmail = resetEmail.trim();
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setFieldErrors({ email: "请输入有效的邮箱地址" });
+      setFormMessage(undefined);
+      return;
+    }
+
+    setFieldErrors({});
+    setFormMessage(undefined);
+    setResetSubmitting(true);
+    try {
+      // Anti-enumeration: the endpoint returns success for any address, so a
+      // valid and an unknown email both land here and show the same notice.
+      await services.authApi.requestPasswordReset(normalizedEmail);
+      setResetSent(true);
+    } catch (error) {
+      setFormMessage(toApiError(error).message);
+    } finally {
+      setResetSubmitting(false);
     }
   }
 
@@ -148,32 +186,88 @@ export function AuthScreen() {
             iChat
           </span>
           <p className="mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
-            {mode === "login" ? "欢迎回来。" : "创建你的账号，开始安静地思考。"}
+            {mode === "login"
+              ? "欢迎回来。"
+              : mode === "register"
+                ? "创建你的账号，开始安静地思考。"
+                : "输入你的注册邮箱，我们会发送重置链接。"}
           </p>
         </div>
 
-        <div className="mb-[22px] flex gap-0.5 border-b border-border" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "login"}
-            className={`${authTab}${mode === "login" ? authTabActive : " text-fg-subtle"}`}
-            onClick={() => switchMode("login")}
-          >
-            登录
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "register"}
-            className={`${authTab}${mode === "register" ? authTabActive : " text-fg-subtle"}`}
-            onClick={() => switchMode("register")}
-          >
-            注册
-          </button>
-        </div>
+        {mode === "forgot" ? null : (
+          <div className="mb-[22px] flex gap-0.5 border-b border-border" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "login"}
+              className={`${authTab}${mode === "login" ? authTabActive : " text-fg-subtle"}`}
+              onClick={() => switchMode("login")}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "register"}
+              className={`${authTab}${mode === "register" ? authTabActive : " text-fg-subtle"}`}
+              onClick={() => switchMode("register")}
+            >
+              注册
+            </button>
+          </div>
+        )}
 
-        <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
+        {mode === "forgot" ? (
+          resetSent ? (
+            <div className="flex flex-col">
+              <p
+                className="mt-0.5 mb-0 rounded-lg bg-bg px-3 py-[9px] text-[12.5px] leading-[1.55] text-fg-muted"
+                role="status"
+              >
+                我们已发送一封包含重置链接的邮件。请查收邮箱（含垃圾邮件文件夹），并在
+                30 分钟内使用该链接。
+              </p>
+            </div>
+          ) : (
+            <form className="flex flex-col" onSubmit={handleResetRequest} noValidate>
+              <div className={field}>
+                <label className={fieldLabel} htmlFor="auth-reset-email">
+                  邮箱
+                </label>
+                <input
+                  id="auth-reset-email"
+                  className={fieldInput}
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                />
+                {fieldErrors.email ? <div className={fieldErr}>{fieldErrors.email}</div> : null}
+              </div>
+
+              {formMessage ? (
+                <p
+                  className="mt-0.5 mb-0 rounded-lg bg-danger-soft px-3 py-[9px] text-[12.5px] text-danger"
+                  role="alert"
+                >
+                  {formMessage}
+                </p>
+              ) : null}
+
+              <button
+                type="submit"
+                className="mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={resetSubmitting}
+              >
+                {resetSubmitting ? "发送中…" : "发送重置链接"}
+              </button>
+            </form>
+          )
+        ) : (
+          <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
           {mode === "register" ? (
             <>
               <div className={field}>
@@ -279,7 +373,8 @@ export function AuthScreen() {
           >
             {submitLabel}
           </button>
-        </form>
+          </form>
+        )}
 
         <div className="mt-[18px] mb-4 flex items-center gap-2.5 font-mono text-[11px] tracking-[0.12em] text-fg-subtle uppercase before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">
           或
@@ -291,6 +386,22 @@ export function AuthScreen() {
               还没有账号？
               <button type="button" className={authFootBtn} onClick={() => switchMode("register")}>
                 立即注册
+              </button>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  className={authFootBtn}
+                  onClick={() => switchMode("forgot")}
+                >
+                  忘记密码？
+                </button>
+              </div>
+            </>
+          ) : mode === "forgot" ? (
+            <>
+
+              <button type="button" className={authFootBtn} onClick={() => switchMode("login")}>
+                返回登录
               </button>
             </>
           ) : (
