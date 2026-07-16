@@ -16,6 +16,8 @@ export type AuthApi = {
   me(): Promise<AuthUserResponse>;
   verifyEmail(token: string): Promise<CommandStatusResponse>;
   resendVerificationEmail(): Promise<CommandStatusResponse>;
+  requestPasswordReset(email: string): Promise<CommandStatusResponse>;
+  resetPassword(token: string, newPassword: string): Promise<CommandStatusResponse>;
   updateProfile(nickname: string): Promise<AuthUserResponse>;
   changePassword(currentPassword: string, newPassword: string): Promise<CommandStatusResponse>;
   requestAccountDeletion(password: string): Promise<CommandStatusResponse>;

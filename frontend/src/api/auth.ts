@@ -73,6 +73,20 @@ export function createAuthApi(client?: Pick<ApiClient, "request">) {
         { method: "POST" },
       );
     },
+    requestPasswordReset(email: string): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>(
+        "/auth/request-password-reset",
+        { method: "POST", body: { email }, auth: false, retryOnUnauthorized: false },
+      );
+    },
+    resetPassword(token: string, newPassword: string): Promise<CommandStatusResponse> {
+      return resolveClient().request<CommandStatusResponse>("/auth/reset-password", {
+        method: "POST",
+        body: { token, new_password: newPassword },
+        auth: false,
+        retryOnUnauthorized: false,
+      });
+    },
     updateProfile(nickname: string): Promise<AuthUserResponse> {
       return resolveClient().request<AuthUserResponse>("/auth/me", {
         method: "PATCH",

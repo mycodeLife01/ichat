@@ -188,4 +188,47 @@ describe("AuthScreen", () => {
     await user.click(screen.getByRole("tab", { name: "注册" }));
     expect(screen.queryByText("请输入用户名或邮箱")).not.toBeInTheDocument();
   });
+
+  it("sends a password reset request and shows the anti-enumeration notice", async () => {
+    const user = userEvent.setup();
+    const requestPasswordReset = vi.fn(async () => ({ status: "ok" }));
+    renderWithApp(<AuthScreen />, createFakeServices({ requestPasswordReset }));
+
+    await user.click(screen.getByRole("button", { name: "忘记密码？" }));
+    // The login/register tabs are hidden in the forgot view.
+    expect(screen.queryByRole("tab", { name: "登录" })).toBeNull();
+
+    await user.type(screen.getByLabelText("邮箱"), "  alice@example.com  ");
+    await user.click(screen.getByRole("button", { name: "发送重置链接" }));
+
+    expect(requestPasswordReset).toHaveBeenCalledWith("alice@example.com");
+    expect(await screen.findByRole("status")).toHaveTextContent("如果该邮箱已注册");
+  });
+
+  it("rejects an invalid email before requesting a reset", async () => {
+    const user = userEvent.setup();
+    const requestPasswordReset = vi.fn(async () => ({ status: "ok" }));
+    renderWithApp(<AuthScreen />, createFakeServices({ requestPasswordReset }));
+
+    await user.click(screen.getByRole("button", { name: "忘记密码？" }));
+    await user.type(screen.getByLabelText("邮箱"), "not-an-email");
+    await user.click(screen.getByRole("button", { name: "发送重置链接" }));
+
+    expect(screen.getByText("请输入有效的邮箱地址")).toBeInTheDocument();
+    expect(requestPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a rate-limit error when the reset request is throttled", async () => {
+    const user = userEvent.setup();
+    const requestPasswordReset = vi.fn(async () => {
+      throw new ApiError({ status: 429 });
+    });
+    renderWithApp(<AuthScreen />, createFakeServices({ requestPasswordReset }));
+
+    await user.click(screen.getByRole("button", { name: "忘记密码？" }));
+    await user.type(screen.getByLabelText("邮箱"), "alice@example.com");
+    await user.click(screen.getByRole("button", { name: "发送重置链接" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("操作过于频繁，请稍后再试");
+  });
 });
