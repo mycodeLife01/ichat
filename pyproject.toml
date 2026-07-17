@@ -22,6 +22,7 @@ dependencies = [
     "redis",
     "sqlalchemy[asyncio]",
     "uvicorn[standard]",
+    "openai>=2.46.0",
 ]
 
 [dependency-groups]
