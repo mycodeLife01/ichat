@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: None
 
 # agent 内核类型层与 DeepSeek 适配器重写
@@ -42,3 +42,5 @@ openai SDK 重写并收编全部 provider 怪癖。命名严格遵守 PRD 术语
 - dev 环境手工验证一条真实对话（web search 开/关各一次）端到端跑通。
 
 ## Comments
+
+- 2026-07-17 完成（commit `5505bc8`）。采用并存/expand 策略：`app/agent/` 内核与旧 `app/providers|context|prompts|tools` 并存，worker 仍跑旧路径，存量测试零改动；旧模块删除归 ticket 04。三处经所有者评审的偏离/裁决：(1) 内核 `build_context` 为纯函数（DB 读取下沉 `app/services/runs/history.py`，依据 User Story 8）；(2) `ToolResult` 收敛为 `content + is_error + metadata`，不设工具特例字段，`ToolContext` 不引入；(3) 上下文接口用扁平 `list[Message]`，turn 边界为裁剪内部实现。已对真实 DeepSeek+Tavily 做 web search 开/关端到端验证。交接详情见 `docs/handover/2026-07-17-agent-runtime-refactor-issue01-02.md`。

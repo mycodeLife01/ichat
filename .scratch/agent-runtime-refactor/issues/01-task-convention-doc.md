@@ -1,5 +1,5 @@
 Type: docs
-Status: ready-for-agent
+Status: completed
 Blocked by: None
 
 # 后台任务约定明文化
@@ -26,3 +26,5 @@ Blocked by: None
 - 内容与 PRD「架构要点/邮件栈先例对齐」一节一致。
 
 ## Comments
+
+- 2026-07-17 完成（commit `06f1784`）。文档落在 `docs/architecture/background-tasks.md`，已挂入 `docs/README.md` 索引与 `CLAUDE.md` 架构小节。

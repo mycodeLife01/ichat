@@ -29,3 +29,21 @@ _Avoid_: 删号、销户
 **停用（Deactivated）**:
 账户不可登录、不可访问任何接口的状态。停用不等于数据删除。
 _Avoid_: 封禁（封禁是运营处罚，停用是账户生命周期状态）
+
+### 会话与运行
+
+**Run（运行）**:
+一次由用户消息触发的后台生成任务：worker 认领（claim）后调用 LLM provider 流式产出回复，全生命周期为 queued → started → streaming → succeeded/failed/cancelled（含 cancelling 过渡态）。Run 行本身也是 PG 任务队列中的状态行。
+_Avoid_: 任务、请求（与 HTTP 请求混淆）
+
+**转写（Transcript）**:
+一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。代码域一律使用 transcript 词根（如 `load_transcript`、`RunResult.transcript`）。
+_Avoid_: provider message（代码词汇层已废弃）、聊天记录（那是面向用户的 messages）
+
+**agent 内核（Agent Kernel）**:
+`app/agent/` 包——provider 中立、不读数据库、不碰传输层的编排核心，统一 Message / Provider / Tool / Runtime 词汇。业务侧（DB 加载、事件持久化、SSE）在内核之外与其对接。
+_Avoid_: agent 框架（明确不做图编排/chain/多 agent）
+
+**内容块（Content Block）**:
+中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
+_Avoid_: 直接以 DeepSeek/OpenAI wire 字段（如 `reasoning_content`、`tool_calls` 数组）描述业务内部消息

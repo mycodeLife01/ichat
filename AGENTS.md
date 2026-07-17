@@ -77,18 +77,26 @@ Key mechanisms:
 - Worker lease + heartbeat for fault tolerance; orphaned runs auto-recovered on lease expiry
 - Provider abstraction layer (`app/providers/`) decouples LLM calls
 
-See [module boundaries](docs/architecture/module-boundaries.md) for details.
+See [module boundaries](docs/architecture/module-boundaries.md) for details. For
+where a new background task belongs (async runtime vs Celery) and the shared
+transactional-state-row + wakeup-signal + idempotent-claim pattern, see
+[background tasks](docs/architecture/background-tasks.md).
 
 ## Source Layout
 
 ```
 app/
-├── api/v1/        # Routes: auth/, conversations/, runs/
-├── services/      # Business logic: auth/, conversations/, runs/
-├── models/        # ORM models: user, conversation, message, run, run_event
+├── api/v1/        # Routes: auth, conversations, runs, avatars, share(s), capabilities
+├── services/      # Business logic: auth/, conversations/, runs/, avatars/, email/, shares/, run_events/
+├── models/        # ORM models: user, conversation, run, auth_token, avatar, email_outbox
 ├── schemas/       # Pydantic request/response models
-├── providers/     # LLM provider interface and DeepSeek adapter
-├── context/       # Context assembly (system prompt + message history truncation)
+├── agent/         # Agent kernel (new): block messages, Provider protocol, openai-SDK DeepSeek adapter, tools, context/prompts — worker still runs the legacy modules until refactor ticket 04
+├── providers/     # (legacy) LLM provider interface and DeepSeek adapter
+├── context/       # (legacy) Context assembly (system prompt + history truncation)
+├── prompts/       # (legacy) Base system prompt + assembly
+├── tools/         # (legacy) Worker tool runtime (web_search)
+├── search/        # Search infrastructure: SearchClient protocol, Tavily adapter, evidence postprocess
+├── tasks/         # Celery app + email/media tasks
 ├── worker/        # Background worker process
 ├── core/          # Config (config.py), logging, error definitions
 ├── db/            # Database connection and session management
@@ -118,7 +126,7 @@ deploy/            # Nginx config, SSL certificates
 | DB models | `app/models/user.py`, `conversation.py`, `run.py` |
 | Run state machine | `app/services/runs/lifecycle.py` |
 | Worker main loop | `app/worker/main.py` |
-| DeepSeek adapter | `app/providers/deepseek.py` |
+| DeepSeek adapter | `app/agent/providers/deepseek.py` (kernel, openai SDK); legacy `app/providers/deepseek.py` still drives the worker |
 | Production deploy | `compose.prod.yml` + `deploy/nginx.conf` |
 | CI/CD | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml` |
 | MVP design spec | `docs/superpowers/specs/2026-05-16-ai-chat-backend-mvp-design.md` |
@@ -136,7 +144,7 @@ docker compose up -d                  # Start all services
 docker compose exec api alembic upgrade head  # Run DB migrations
 uv sync --all-groups                  # Install all dependencies (incl. dev)
 pytest                                # Run tests
-ruff check app tests                  # Lint
+ruff check .                          # Lint (same scope as CI, includes alembic/)
 mypy app                             # Type check
 ```
 

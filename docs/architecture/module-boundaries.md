@@ -50,23 +50,31 @@
 
 ## `app/services/runs`
 
-负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义。SSE 读取持久化事件，不直接调用 provider。
+负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义，以及把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息（`history.py`，供 worker 喂给 `app/agent` 的纯 context 组装器）。SSE 读取持久化事件，不直接调用 provider。
 
 ## `app/services/run_events`
 
 负责进程级 `run_events` 频道的 LISTEN/NOTIFY 订阅管理：用单条共享连接把通知 fan-out 给每个 run 的 `asyncio.Event`，供 SSE handler 唤醒，避免每个 SSE 请求各开一条 LISTEN 连接耗尽 Postgres 连接。
 
-## `app/providers`
+## `app/agent`
+
+agent 内核包（agent-runtime 重构交付一引入，见 `.scratch/agent-runtime-refactor/PRD.md`）。以 provider 中立的 content-blocks 消息模型统一 Message / Provider / Tool / Context 词汇：`messages`（块模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，openai SDK）、`tools/`（Tool 协议 + ToolRegistry + web_search）、`context`/`prompts`（纯组装）。
+
+边界铁律：**内核不读数据库、不碰传输层**——`context` 只接收扁平 `list[Message]` 并按预算裁剪（DB 历史加载归 `app/services/runs`）；provider 怪癖（如 DeepSeek 无法回放 tool 历史）以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+
+过渡期状态：worker 目前仍运行下方四个 legacy 模块；ticket 04（AgentRunner 抽取）完成后 worker 切换到本包，legacy 模块删除。
+
+## `app/providers`（legacy，ticket 04 移除）
 
 负责 provider interface 和具体 provider adapter（首个为 DeepSeek，使用 `httpx` 直连 OpenAI-compatible streaming API），含流式分片解析与 provider registry。
 
 不放在 `services` 下的理由：provider 协议是被 worker 复用的能力构件；且 provider 层只做协议收发，不读取数据库。
 
-## `app/context`
+## `app/context`（legacy，ticket 04 移除）
 
 负责把 system prompt 与可见 conversation history 组装成 provider messages，按 token 预算执行截断，并以 succeeded run 的 provider transcript 作为历史 block 原子 replay。system prompt 由调用方（worker）传入，token 计数器由 provider 注入，因此 context 本身不调用 provider。
 
-## `app/prompts`
+## `app/prompts`（legacy，ticket 04 移除）
 
 负责生产级 system prompt 的版本化管理与按 run 注入：`base_system_prompt.md` 为基础 prompt，`build_system_prompt()` 是唯一组装入口——基础 prompt 取 `DEFAULT_SYSTEM_PROMPT` 覆盖或内置文件，并在本 run 启用联网搜索时追加当日日期与 web_search 指引段落。纯组装，不读数据库、不调用 provider。
 
@@ -74,7 +82,7 @@
 
 负责 provider-agnostic 搜索能力抽象：统一 `types`、`SearchClient` 协议（`client`）、`registry`（按名解析 client）、Tavily adapter（`tavily`）、结果去重/编号/证据压缩（`postprocess`）。调用外部搜索 API，不读取数据库。
 
-## `app/tools`
+## `app/tools`（legacy，ticket 04 移除）
 
 负责 worker 内的工具运行时：工具类型、`web_search` 工具 schema、模型工具调用的参数解析与执行、工具结果构造。编排 `app/search` 完成搜索，工具产物由 worker 持久化为 run_events 与 provider transcript。
 
@@ -88,6 +96,7 @@
 
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
 - `app/worker` 可以调用 `app/context`、`app/prompts`、`app/providers`、`app/search`、`app/tools`、`app/services/...` 和 `app/db`。
+- `app/agent` 不读取数据库、不 import ORM/`app/services`；它可以依赖 `app/core` 与 `app/search`。
 - `app/providers` 不读取数据库。
 - `app/context` 不调用 provider（token 计数器由调用方注入）。
 - `app/prompts` 不读取数据库、不调用 provider。
