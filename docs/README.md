@@ -14,6 +14,7 @@
 |-----------|-----------------|
 | Understanding overall runtime architecture, data flow, service topology | `docs/architecture/overview.md` |
 | Refactoring, crossing module boundaries, or reviewing structural changes | `docs/architecture/module-boundaries.md` |
+| Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | The newest matching `docs/handover/frontend/*.md` + `docs/superpowers/specs/2026-05-24-frontend-react-rebuild-design.md` |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
@@ -34,6 +35,7 @@ Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
 - `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, the top-level capability modules (`app/providers`, `app/context`, `app/prompts`, `app/search`, `app/tools`), `app/worker`, and forbidden cross-module dependencies.
+- `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, why streaming runs stay out of Celery, and the three questions every task table must answer.
 
 ### `docs/adr/`
 
