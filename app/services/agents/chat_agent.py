@@ -31,7 +31,8 @@ from app.agent.primitives import ModelCallResult, execute_tool, stream_model_cal
 from app.agent.provider import Provider, ReasoningConfig
 from app.agent.tools import ToolRegistry, ToolResult, WebSearchConfig, WebSearchTool
 from app.core.config import Settings
-from app.search import SourceRegistry, resolve_search_client
+from app.search import SourceRegistry
+from app.search.registry import resolve_search_client
 from app.services.agents.context import build_context
 from app.services.agents.prompts import build_system_prompt
 from app.services.agents.registry import resolve_provider as default_resolve_provider
