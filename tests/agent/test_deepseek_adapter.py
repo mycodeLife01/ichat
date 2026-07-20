@@ -25,7 +25,7 @@ from app.agent.provider import (
     TextDelta,
     ToolCallDone,
 )
-from app.agent.providers.deepseek import DeepSeekProvider
+from app.agent.providers.deepseek import DeepSeekProvider, message_from_wire
 from app.agent.tools.base import ToolSpec
 from app.core.config import Settings, get_settings
 
@@ -253,6 +253,45 @@ async def test_stream_per_request_reasoning_overrides_settings() -> None:
 
     assert captured["thinking"] == {"type": "enabled"}
     assert captured["reasoning_effort"] == "max"
+
+
+def test_message_from_wire_converts_legacy_tool_history_to_blocks() -> None:
+    assistant = message_from_wire(
+        {
+            "role": "assistant",
+            "content": None,
+            "reasoning_content": "need current docs",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "arguments": '{"query":"docs"}',
+                    },
+                }
+            ],
+        }
+    )
+    tool_result = message_from_wire(
+        {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": "Evidence [1]",
+        }
+    )
+
+    assert assistant == Message(
+        role="assistant",
+        blocks=[
+            ReasoningBlock("need current docs"),
+            ToolCallBlock("call_1", "web_search", {"query": "docs"}),
+        ],
+    )
+    assert tool_result == Message(
+        role="user",
+        blocks=[ToolResultBlock("call_1", "Evidence [1]")],
+    )
 
 
 def _history_with_tools() -> list[Message]:

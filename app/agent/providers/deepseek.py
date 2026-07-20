@@ -15,7 +15,7 @@ per-call ``httpx.AsyncClient`` construction.
 
 import json
 import math
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from functools import lru_cache
 from typing import Any, cast
 
@@ -29,6 +29,7 @@ from openai import (
 )
 
 from app.agent.messages import (
+    ContentBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -265,6 +266,61 @@ def _should_strip_tool_history(tools: list[ToolSpec] | None) -> bool:
     return not tools and not _CAPABILITIES.supports_tool_history
 
 
+def message_from_wire(wire: Mapping[str, Any]) -> Message:
+    """Convert one legacy DeepSeek/OpenAI wire message to neutral blocks.
+
+    This is intentionally owned by the adapter: persisted rows created before the
+    blocks migration contain DeepSeek's wire fields, and the transcript service
+    must not learn how to interpret them.
+    """
+    role = wire.get("role")
+    content = wire.get("content")
+    if role == "tool":
+        return Message(
+            role="user",
+            blocks=[
+                ToolResultBlock(
+                    tool_call_id=str(wire.get("tool_call_id") or ""),
+                    content=content if isinstance(content, str) else "",
+                )
+            ],
+        )
+    if role == "assistant":
+        blocks: list[ContentBlock] = []
+        reasoning = wire.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            blocks.append(ReasoningBlock(text=reasoning))
+        if isinstance(content, str) and content:
+            blocks.append(TextBlock(text=content))
+        tool_calls = wire.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for item in tool_calls:
+                if not isinstance(item, Mapping):
+                    continue
+                function = item.get("function")
+                if not isinstance(function, Mapping):
+                    continue
+                blocks.append(
+                    ToolCallBlock(
+                        id=str(item.get("id") or ""),
+                        name=str(function.get("name") or ""),
+                        arguments=_decode_arguments(function.get("arguments")),
+                    )
+                )
+        return Message(role="assistant", blocks=blocks)
+    if role == "user":
+        return Message(
+            role="user",
+            blocks=[TextBlock(text=content if isinstance(content, str) else "")],
+        )
+    if role == "system":
+        return Message(
+            role="system",
+            blocks=[TextBlock(text=content if isinstance(content, str) else "")],
+        )
+    raise ValueError(f"Unsupported DeepSeek message role: {role!r}")
+
+
 def _messages_to_wire(
     messages: list[Message], *, strip_tool_history: bool
 ) -> list[dict[str, Any]]:
@@ -347,8 +403,10 @@ def _tool_spec_to_wire(tool: ToolSpec) -> dict[str, Any]:
     }
 
 
-def _decode_arguments(raw: str) -> dict[str, Any]:
-    if not raw:
+def _decode_arguments(raw: object) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw:
         return {}
     try:
         data = json.loads(raw)

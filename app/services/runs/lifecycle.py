@@ -148,9 +148,12 @@ async def renew_lease(
     *,
     run_id: int,
     lease_seconds: int,
+    worker_id: str | None = None,
 ) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status not in RENEWABLE_STATUSES or run.lease_owner is None:
+        return False
+    if worker_id is not None and run.lease_owner != worker_id:
         return False
     now = datetime.now(UTC)
     run.lease_expires_at = now + timedelta(seconds=lease_seconds)

@@ -6,24 +6,15 @@ replays succeeded runs' transcripts, yielding a flat ``list[Message]`` in
 conversation order. The worker feeds this to ``app.agent.build_context``.
 """
 
-import json
 from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.messages import (
-    ContentBlock,
-    Message,
-    ReasoningBlock,
-    Role,
-    TextBlock,
-    ToolCallBlock,
-    ToolResultBlock,
-    user_text,
-)
+from app.agent.messages import Message, Role, TextBlock, user_text
 from app.models.conversation import Message as MessageRow
-from app.models.run import Run, RunProviderMessage
+from app.models.run import Run
+from app.services.runs.transcript import load_transcript
 
 
 async def load_conversation_history(
@@ -104,53 +95,7 @@ async def _load_succeeded_run_transcript(
     run = await session.get(Run, run_id)
     if run is None or run.status != "succeeded":
         return []
-    rows = (
-        await session.scalars(
-            select(RunProviderMessage)
-            .where(RunProviderMessage.run_id == run_id)
-            .order_by(RunProviderMessage.seq.asc())
-        )
-    ).all()
-    return [_transcript_row_to_message(row) for row in rows]
-
-
-def _transcript_row_to_message(row: RunProviderMessage) -> Message:
-    if row.role == "tool":
-        return Message(
-            role="user",
-            blocks=[
-                ToolResultBlock(tool_call_id=row.tool_call_id or "", content=row.content or "")
-            ],
-        )
-    if row.role == "assistant":
-        blocks: list[ContentBlock] = []
-        if row.reasoning_content:
-            blocks.append(ReasoningBlock(text=row.reasoning_content))
-        if row.content:
-            blocks.append(TextBlock(text=row.content))
-        for call in row.tool_calls or []:
-            if not isinstance(call, dict):
-                continue
-            function = call.get("function") or {}
-            blocks.append(
-                ToolCallBlock(
-                    id=str(call.get("id", "")),
-                    name=str(function.get("name", "")),
-                    arguments=_decode_arguments(function.get("arguments")),
-                )
-            )
-        return Message(role="assistant", blocks=blocks)
-    return Message(role="user", blocks=[TextBlock(row.content or "")])
-
-
-def _decode_arguments(raw: object) -> dict[str, object]:
-    if not isinstance(raw, str) or not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return await load_transcript(session, run_id=run_id)
 
 
 def _normalize_role(role: str) -> Role:

@@ -120,13 +120,13 @@ async def test_web_search_tool_reports_unavailable_when_not_configured() -> None
 
 
 async def test_web_search_tool_wraps_client_errors() -> None:
-    from app.agent.provider import ProviderError
+    from app.search import SearchError
 
     class BoomClient:
         name = "tavily"
 
         async def search(self, request: SearchRequest) -> list[SearchResult]:
-            raise ProviderError(code="tavily_error", message="upstream boom")
+            raise SearchError(code="tavily_error", message="upstream boom")
 
         async def extract(self, request: ExtractRequest) -> list[object]:
             return []

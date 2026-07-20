@@ -107,15 +107,18 @@ async def append_run_event(
     run_id: int,
     event_type: RunEventType,
     payload: dict[str, Any],
+    seq: int | None = None,
 ) -> RunEventResponse:
     run = await session.scalar(select(Run).where(Run.id == run_id).with_for_update())
     if run is None:
         raise AppError(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_MESSAGE)
 
-    next_seq = await get_next_run_event_seq(session, run_id=run.id)
+    event_seq = seq
+    if event_seq is None:
+        event_seq = await get_next_run_event_seq(session, run_id=run.id)
     event = RunEvent(
         run_id=run.id,
-        seq=next_seq,
+        seq=event_seq,
         type=event_type,
         payload=payload,
     )

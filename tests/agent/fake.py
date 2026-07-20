@@ -43,11 +43,15 @@ class FakeProvider(Provider):
         self,
         *,
         script: Sequence[ScriptItem] = (),
+        scripts: Sequence[Sequence[ScriptItem]] | None = None,
         name: str = "fake",
         capabilities: ProviderCapabilities | None = None,
         generate_result: str | ProviderError = "Fake Title",
     ) -> None:
+        if script and scripts is not None:
+            raise ValueError("Pass either script or scripts, not both")
         self._script = list(script)
+        self._scripts = [list(items) for items in scripts] if scripts is not None else None
         self._name = name
         self._capabilities = capabilities or ProviderCapabilities(
             supports_tool_history=True, supports_reasoning=True
@@ -56,6 +60,7 @@ class FakeProvider(Provider):
         self.last_reasoning: ReasoningConfig | None = None
         self.last_tools: list[ToolSpec] | None = None
         self.last_messages: list[Message] | None = None
+        self.calls: list[list[Message]] = []
 
     @property
     def name(self) -> str:
@@ -76,7 +81,18 @@ class FakeProvider(Provider):
         self.last_reasoning = reasoning
         self.last_tools = tools
         self.last_messages = messages
-        for item in self._script:
+        self.calls.append(list(messages))
+        call_index = len(self.calls) - 1
+        if self._scripts is not None:
+            if call_index >= len(self._scripts):
+                raise ProviderError(
+                    code="fake_script_exhausted",
+                    message="No fake provider script remains for this call",
+                )
+            script = self._scripts[call_index]
+        else:
+            script = self._script
+        for item in script:
             if isinstance(item, RaiseError):
                 raise ProviderError(code=item.code, message=item.message)
             if isinstance(item, Sleep):

@@ -8,27 +8,30 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agent import (
+    Message as AgentMessage,
+)
+from app.agent import (
+    Provider,
+    ProviderCapabilities,
+    ProviderError,
+    ReasoningConfig,
+    ReasoningDelta,
+    StreamDone,
+    StreamEvent,
+    TextDelta,
+    ToolCallDone,
+    ToolResultBlock,
+    ToolSpec,
+)
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent, RunProviderMessage
 from app.models.user import User
-from app.providers import (
-    Finish,
-    Provider,
-    ProviderChunk,
-    ProviderError,
-    ProviderMessage,
-    ProviderToolCall,
-    ReasoningDelta,
-    TextDelta,
-    ThinkingOptions,
-    ToolCallTurn,
-    ToolSpec,
-)
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
-from tests.providers.fake import FakeProvider, RaiseError, Sleep
+from tests.agent.fake import FakeProvider, RaiseError, Sleep
 
 TEST_DATABASE_URL = os.environ.get(
     "WORKER_TEST_DATABASE_URL",
@@ -37,13 +40,18 @@ TEST_DATABASE_URL = os.environ.get(
 TEST_EMAIL_DOMAIN = "worker-test.example.com"
 
 
-class SummarizeMixin:
-    async def summarize(
+class GenerateMixin:
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(supports_tool_history=True, supports_reasoning=True)
+
+    def generate(
         self,
         *,
         model: str,
-        messages: list[ProviderMessage],
+        messages: list[AgentMessage],
         max_output_tokens: int,
+        reasoning: ReasoningConfig | None = None,
     ) -> str:
         return "Fake Title"
 
@@ -153,7 +161,7 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         script=[
             TextDelta(text="Hello"),
             TextDelta(text=" world"),
-            Finish(
+            StreamDone(
                 finish_reason="stop",
                 usage={"prompt_tokens": 4, "completion_tokens": 2},
                 provider_request_id="req-1",
@@ -228,7 +236,7 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
 
     call_count = {"n": 0}
 
-    class FlakyProvider(SummarizeMixin, Provider):
+    class FlakyProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -237,15 +245,15 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise ProviderError(code="transient", message="first attempt")
             yield TextDelta(text="Recovered")
-            yield Finish(finish_reason="stop")
+            yield StreamDone(finish_reason="stop")
 
     provider = FlakyProvider()
 
@@ -355,7 +363,7 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
 
     call_count = {"n": 0}
 
-    class AlwaysFailProvider(SummarizeMixin, Provider):
+    class AlwaysFailProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -364,10 +372,10 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             call_count["n"] += 1
             raise ProviderError(code="dead", message=f"attempt {call_count['n']}")
             yield  # pragma: no cover
@@ -406,7 +414,7 @@ async def test_execute_run_marks_cancelled_when_context_build_fails_after_db_can
         )
         await session.commit()
 
-    async def fail_after_cancellation(*args: object, **kwargs: object) -> list[ProviderMessage]:
+    async def fail_after_cancellation(*args: object, **kwargs: object) -> list[AgentMessage]:
         async with session_factory() as session:
             run = await session.get(Run, run_id)
             assert run is not None
@@ -414,7 +422,10 @@ async def test_execute_run_marks_cancelled_when_context_build_fails_after_db_can
             await session.commit()
         raise RuntimeError("context exploded after cancel")
 
-    monkeypatch.setattr("app.worker.executor.build_context", fail_after_cancellation)
+    monkeypatch.setattr(
+        "app.worker.executor.load_conversation_history",
+        fail_after_cancellation,
+    )
 
     await execute_run(
         session_factory=session_factory,
@@ -464,7 +475,7 @@ async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
             Sleep(seconds=0.5),
             TextDelta(text="part two"),
             Sleep(seconds=0.5),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
 
@@ -531,7 +542,7 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
         )
         await session.commit()
 
-    class BlockingProvider(SummarizeMixin, Provider):
+    class BlockingProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -540,13 +551,13 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             yield TextDelta(text="partial")
             await asyncio.Event().wait()
-            yield Finish(finish_reason="stop")  # pragma: no cover
+            yield StreamDone(finish_reason="stop")  # pragma: no cover
 
     async def flip_to_cancelling_after_delta() -> None:
         for _ in range(50):
@@ -626,7 +637,7 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
 
     release_error = asyncio.Event()
 
-    class ErrorAfterCancellationProvider(SummarizeMixin, Provider):
+    class ErrorAfterCancellationProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -635,10 +646,10 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             yield TextDelta(text="partial")
             await release_error.wait()
             raise ProviderError(code="upstream_5xx", message="boom after cancel")
@@ -728,7 +739,7 @@ async def test_execute_run_renews_lease_during_long_stream(
         script=[
             TextDelta(text="hi"),
             Sleep(seconds=0.3),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     fast_settings = settings.model_copy(update={"worker_heartbeat_interval_seconds": 0.05})
@@ -768,7 +779,7 @@ async def test_execute_run_materializes_reasoning_on_success(
             ReasoningDelta(text="Because "),
             ReasoningDelta(text="reasons"),
             TextDelta(text="Hello"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     await execute_run(
@@ -811,7 +822,7 @@ async def test_execute_run_passes_run_provider_options_to_provider(
         )
         await session.commit()
 
-    fake = FakeProvider(script=[TextDelta(text="hi"), Finish(finish_reason="stop")])
+    fake = FakeProvider(script=[TextDelta(text="hi"), StreamDone(finish_reason="stop")])
     await execute_run(
         session_factory=session_factory,
         run_id=run_id,
@@ -820,7 +831,7 @@ async def test_execute_run_passes_run_provider_options_to_provider(
         resolve_provider=make_resolver(fake),
     )
 
-    assert fake.last_thinking == ThinkingOptions(enabled=True, reasoning_effort="max")
+    assert fake.last_reasoning == ReasoningConfig(enabled=True, effort="max")
 
 
 async def test_execute_run_falls_back_to_settings_when_provider_options_null(
@@ -837,7 +848,7 @@ async def test_execute_run_falls_back_to_settings_when_provider_options_null(
         )
         await session.commit()
 
-    fake = FakeProvider(script=[TextDelta(text="hi"), Finish(finish_reason="stop")])
+    fake = FakeProvider(script=[TextDelta(text="hi"), StreamDone(finish_reason="stop")])
     await execute_run(
         session_factory=session_factory,
         run_id=run_id,
@@ -846,9 +857,9 @@ async def test_execute_run_falls_back_to_settings_when_provider_options_null(
         resolve_provider=make_resolver(fake),
     )
 
-    assert fake.last_thinking == ThinkingOptions(
+    assert fake.last_reasoning == ReasoningConfig(
         enabled=settings.deepseek_thinking_enabled,
-        reasoning_effort=settings.deepseek_reasoning_effort,
+        effort=settings.deepseek_reasoning_effort,
     )
 
 
@@ -899,7 +910,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         lambda name, *, settings: FakeSearchClient(),
     )
 
-    class ToolThenAnswerProvider(SummarizeMixin, Provider):
+    class ToolThenAnswerProvider(GenerateMixin, Provider):
         def __init__(self) -> None:
             self.calls = 0
 
@@ -911,26 +922,26 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             self.calls += 1
             if self.calls == 1:
-                yield ToolCallTurn(
-                    reasoning_content="Need live info",
-                    tool_calls=[
-                        ProviderToolCall(
-                            id="call_1",
-                            name="web_search",
-                            arguments='{"query":"latest iChat release","max_results":3}',
-                        )
-                    ],
+                yield ReasoningDelta(text="Need live info")
+                yield ToolCallDone(
+                    id="call_1",
+                    name="web_search",
+                    arguments={"query": "latest iChat release", "max_results": 3},
                 )
+                yield StreamDone(finish_reason="tool_calls")
                 return
-            assert any(message.role == "tool" for message in messages)
+            assert any(
+                any(isinstance(block, ToolResultBlock) for block in message.blocks)
+                for message in messages
+            )
             yield TextDelta(text="Here is the latest summary.")
-            yield Finish(finish_reason="stop")
+            yield StreamDone(finish_reason="stop")
 
     provider = ToolThenAnswerProvider()
     search_settings = settings.model_copy(
@@ -956,23 +967,24 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         ).all()
         assert [event.type for event in events] == [
             "run_started",
+            "reasoning_delta",
             "tool_call_started",
             "tool_call_succeeded",
             "text_delta",
             "run_succeeded",
         ]
-        assert events[2].payload["sources"] == [
+        assert events[3].payload["sources"] == [
             {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
         ]
         # Sources surface only via message metadata (rendered as chips by the
         # frontend); the answer text is never amended with a sources block.
-        assert events[3].payload["text"] == "Here is the latest summary."
+        assert events[4].payload["text"] == "Here is the latest summary."
 
         assistant = await session.scalar(
             select(Message).where(Message.run_id == run_id, Message.role == "assistant")
         )
         assert assistant is not None
-        assert assistant.content == events[3].payload["text"]
+        assert assistant.content == events[4].payload["text"]
         assert assistant.metadata_ == {
             "sources": [
                 {
@@ -992,10 +1004,32 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
                 .order_by(RunProviderMessage.seq.asc())
             )
         ).all()
-        assert [row.role for row in transcript] == ["assistant", "tool", "assistant"]
-        assert transcript[0].reasoning_content == "Need live info"
-        assert transcript[1].tool_call_id == "call_1"
+        assert [row.role for row in transcript] == ["assistant", "user", "assistant"]
+        assert transcript[0].blocks == [
+            {"type": "reasoning", "text": "Need live info"},
+            {
+                "type": "tool_call",
+                "id": "call_1",
+                "name": "web_search",
+                "arguments": {"query": "latest iChat release", "max_results": 3},
+            },
+        ]
+        assert transcript[1].blocks is not None
+        assert transcript[1].blocks[0]["type"] == "tool_result"
+        assert transcript[1].blocks[0]["tool_call_id"] == "call_1"
+        assert transcript[2].blocks == [
+            {"type": "text", "text": "Here is the latest summary."}
+        ]
         assert transcript[2].message_id == assistant.id
+        assert all(
+            row.content is None
+            and row.reasoning_content is None
+            and row.tool_call_id is None
+            and row.tool_name is None
+            and row.tool_calls is None
+            and row.payload is None
+            for row in transcript
+        )
 
 
 async def test_web_search_final_answer_streams_incremental_deltas(
@@ -1028,7 +1062,7 @@ async def test_web_search_final_answer_streams_incremental_deltas(
             TextDelta(text="first"),
             Sleep(seconds=0.2),  # > batch window forces a flush of "first"
             TextDelta(text="second"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     search_settings = settings.model_copy(

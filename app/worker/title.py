@@ -1,14 +1,15 @@
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.agent import Provider, ProviderError, system_text, user_text
 from app.core.config import Settings
 from app.core.logging import logger
 from app.models.conversation import Conversation, Message
 from app.models.run import Run
-from app.providers import Provider, ProviderError, ProviderMessage
 
 TITLE_SYSTEM_PROMPT = (
     "你是 iChat 的对话标题生成器。请根据用户首条消息和助手首条回复，"
@@ -57,18 +58,16 @@ async def maybe_generate_title(
             return
         conversation_id = inputs.conversation_id
         provider = resolve_provider(settings.summary_provider_name, settings=settings)
-        raw_title = await provider.summarize(
+        raw_title = await asyncio.to_thread(
+            provider.generate,
             model=settings.summary_model,
             messages=[
-                ProviderMessage(role="system", content=TITLE_SYSTEM_PROMPT),
-                ProviderMessage(
-                    role="user",
-                    content=(
-                        "用户首条消息：\n"
-                        f"{inputs.user_content}\n\n"
-                        "助手首条回复：\n"
-                        f"{inputs.assistant_content}"
-                    ),
+                system_text(TITLE_SYSTEM_PROMPT),
+                user_text(
+                    "用户首条消息：\n"
+                    f"{inputs.user_content}\n\n"
+                    "助手首条回复：\n"
+                    f"{inputs.assistant_content}"
                 ),
             ],
             max_output_tokens=settings.auto_title_max_output_tokens,

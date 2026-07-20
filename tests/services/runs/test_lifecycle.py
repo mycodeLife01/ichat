@@ -371,6 +371,33 @@ async def test_renew_lease_extends_expiry_and_heartbeat(
         assert updated.lease_expires_at > original_expiry
 
 
+async def test_renew_lease_rejects_different_worker(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session, status_value="streaming")
+        run.lease_owner = "worker-a"
+        run.lease_expires_at = datetime.now(UTC) + timedelta(seconds=5)
+        run_id = run.id
+        original_expiry = run.lease_expires_at
+        await session.commit()
+
+    async with session_factory() as session:
+        changed = await renew_lease(
+            session,
+            run_id=run_id,
+            lease_seconds=120,
+            worker_id="worker-b",
+        )
+        await session.commit()
+
+    assert changed is False
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.lease_expires_at == original_expiry
+
+
 async def test_is_cancelling_reflects_status(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

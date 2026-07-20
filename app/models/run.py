@@ -154,6 +154,7 @@ class RunProviderMessage(Base):
         nullable=True,
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
+    blocks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

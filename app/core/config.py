@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     deepseek_thinking_enabled: bool
     deepseek_reasoning_effort: str = "high"
     # Optional override for the assistant's base system prompt. Empty (default)
-    # means use the bundled production prompt in app/prompts/.
+    # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
     context_budget_tokens: int = 64_000
     run_lease_seconds: int

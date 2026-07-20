@@ -3,8 +3,7 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
-from app.providers import ProviderError
-from app.search.client import SearchClient
+from app.search.client import SearchClient, SearchError
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
 
 _RECENCY_TO_TIME_RANGE = {
@@ -142,14 +141,14 @@ class TavilySearchClient(SearchClient):
             try:
                 response = await client.post(path, json=payload, headers=headers)
             except httpx.TimeoutException as exc:
-                raise ProviderError(
+                raise SearchError(
                     code="timeout",
                     message="Web search timed out. Continuing without live results.",
                 ) from exc
             except httpx.HTTPError as exc:
-                raise ProviderError(code=error_code, message=str(exc)) from exc
+                raise SearchError(code=error_code, message=str(exc)) from exc
         if response.status_code >= 400:
-            raise ProviderError(
+            raise SearchError(
                 code=error_code,
                 message=(
                     f"Tavily returned {response.status_code}: "
@@ -159,10 +158,10 @@ class TavilySearchClient(SearchClient):
         try:
             data = response.json()
         except ValueError as exc:
-            raise ProviderError(
+            raise SearchError(
                 code=error_code,
                 message="Tavily returned invalid JSON.",
             ) from exc
         if not isinstance(data, dict):
-            raise ProviderError(code=error_code, message="Tavily returned invalid JSON.")
+            raise SearchError(code=error_code, message="Tavily returned invalid JSON.")
         return data

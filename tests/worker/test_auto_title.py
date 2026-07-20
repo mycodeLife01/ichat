@@ -7,14 +7,14 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agent import Provider, ProviderError
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.providers import Provider, ProviderError
 from app.worker.executor import ProviderResolver
 from app.worker.title import maybe_generate_title, normalize_generated_title
-from tests.providers.fake import FakeProvider
+from tests.agent.fake import FakeProvider
 
 TEST_DATABASE_URL = os.environ.get(
     "AUTO_TITLE_TEST_DATABASE_URL",
@@ -154,7 +154,7 @@ async def test_maybe_generate_title_writes_first_success_title(
         run_id = await seed_succeeded_turn(session, title=None)
         await session.commit()
 
-    provider = FakeProvider(script=[], summarize_result=' "标题：  Travel\nPlan  " ')
+    provider = FakeProvider(script=[], generate_result=' "标题：  Travel\nPlan  " ')
     await maybe_generate_title(
         session_factory=session_factory,
         run_id=run_id,
@@ -178,7 +178,7 @@ async def test_maybe_generate_title_does_not_overwrite_manual_title(
         run_id = await seed_succeeded_turn(session, title="Manual title")
         await session.commit()
 
-    provider = FakeProvider(script=[], summarize_result="Generated title")
+    provider = FakeProvider(script=[], generate_result="Generated title")
     await maybe_generate_title(
         session_factory=session_factory,
         run_id=run_id,
@@ -202,7 +202,7 @@ async def test_maybe_generate_title_skips_when_succeeded_count_is_not_one(
         run_id = await seed_succeeded_turn(session, title=None, succeeded_runs=2)
         await session.commit()
 
-    provider = FakeProvider(script=[], summarize_result="Generated title")
+    provider = FakeProvider(script=[], generate_result="Generated title")
     await maybe_generate_title(
         session_factory=session_factory,
         run_id=run_id,
@@ -228,7 +228,7 @@ async def test_maybe_generate_title_swallows_provider_error(
 
     provider = FakeProvider(
         script=[],
-        summarize_result=ProviderError(code="summary_failed", message="boom"),
+        generate_result=ProviderError(code="summary_failed", message="boom"),
     )
     await maybe_generate_title(
         session_factory=session_factory,

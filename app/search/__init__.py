@@ -1,4 +1,4 @@
-from app.search.client import SearchClient
+from app.search.client import SearchClient, SearchError
 from app.search.postprocess import SourceRecord, SourceRegistry, build_evidence
 from app.search.registry import UnknownSearchProviderError, resolve_search_client
 from app.search.types import (
@@ -12,6 +12,7 @@ __all__ = [
     "ExtractRequest",
     "ExtractResult",
     "SearchClient",
+    "SearchError",
     "SearchRequest",
     "SearchResult",
     "SourceRecord",

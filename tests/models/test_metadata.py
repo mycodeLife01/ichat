@@ -125,6 +125,8 @@ def test_run_events_are_sequenced_jsonb_events() -> None:
 
 def test_run_provider_messages_store_protocol_transcript() -> None:
     transcript = Base.metadata.tables["run_provider_messages"]
+    assert isinstance(transcript.c.blocks.type, JSONB)
+    assert transcript.c.blocks.nullable is True
     assert isinstance(transcript.c.tool_calls.type, JSONB)
     assert isinstance(transcript.c.payload.type, JSONB)
     assert any(

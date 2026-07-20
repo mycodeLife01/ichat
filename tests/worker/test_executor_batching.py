@@ -5,23 +5,26 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import Settings, get_settings
-from app.models.run import Run, RunEvent
-from app.providers import (
-    Finish,
+from app.agent import (
+    Message as AgentMessage,
+)
+from app.agent import (
     Provider,
-    ProviderChunk,
-    ProviderMessage,
+    ProviderError,
+    ReasoningConfig,
     ReasoningDelta,
+    StreamDone,
+    StreamEvent,
     TextDelta,
-    ThinkingOptions,
     ToolSpec,
 )
+from app.core.config import Settings, get_settings
+from app.models.run import Run, RunEvent
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import execute_run
-from tests.providers.fake import FakeProvider, Sleep
+from tests.agent.fake import FakeProvider, Sleep
 from tests.worker.test_executor import (
-    SummarizeMixin,
+    GenerateMixin,
     clean_test_data,
     make_resolver,
     queue_run,
@@ -94,7 +97,7 @@ async def test_back_to_back_small_deltas_merge_into_single_event(
             TextDelta(text="b"),
             TextDelta(text="c"),
             TextDelta(text="d"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     await execute_run(
@@ -121,7 +124,7 @@ async def test_char_threshold_flush_splits_long_run(
             TextDelta(text=chunk_text),
             TextDelta(text=chunk_text),  # accumulated 300 chars triggers flush
             TextDelta(text="tail"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     run_id = await _setup_claimed_run(session_factory, settings)
@@ -149,7 +152,7 @@ async def test_time_window_flushes_idle_pending_text(
             TextDelta(text="first"),
             Sleep(seconds=0.2),  # > 50ms window forces flush of 'first'
             TextDelta(text="second"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     run_id = await _setup_claimed_run(session_factory, settings)
@@ -172,7 +175,7 @@ async def test_provider_error_flushes_pending_before_failing(
     """A ProviderError mid-stream still persists buffered text before recording failure."""
     call_count = {"n": 0}
 
-    class FailingAfterDelta(SummarizeMixin, Provider):
+    class FailingAfterDelta(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -181,13 +184,11 @@ async def test_provider_error_flushes_pending_before_failing(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             call_count["n"] += 1
-            from app.providers import ProviderError
-
             yield TextDelta(text="buffered")
             raise ProviderError(code="upstream_5xx", message="boom")
 
@@ -234,7 +235,7 @@ async def test_reasoning_then_text_persist_as_separate_ordered_events(
             ReasoningDelta(text="ink"),
             TextDelta(text="ans"),
             TextDelta(text="wer"),
-            Finish(finish_reason="stop"),
+            StreamDone(finish_reason="stop"),
         ]
     )
     await execute_run(
@@ -261,7 +262,7 @@ async def test_reasoning_only_then_error_does_not_retry(
     """Once reasoning has flushed (run is streaming), a failure must not retry."""
     call_count = {"n": 0}
 
-    class ReasoningThenError(SummarizeMixin, Provider):
+    class ReasoningThenError(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -270,12 +271,10 @@ async def test_reasoning_only_then_error_does_not_retry(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
-            from app.providers import ProviderError
-
+        ) -> AsyncIterator[StreamEvent]:
             call_count["n"] += 1
             yield ReasoningDelta(text="thinking hard")
             raise ProviderError(code="upstream_5xx", message="boom")

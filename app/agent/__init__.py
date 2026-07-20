@@ -7,11 +7,11 @@ A provider-neutral, DB-agnostic, transport-agnostic core for agent orchestration
 - ``providers`` — concrete adapters (DeepSeek on the openai SDK)
 - ``tools`` — Tool protocol, registry, and the web_search tool
 - ``context`` / ``prompts`` — history assembly and system-prompt building
-
-The runtime (``AgentRunner``) and event transport land in later tickets.
+- ``runtime`` / ``events`` — the pure orchestration loop and event sink boundary
 """
 
 from app.agent.context import build_context
+from app.agent.events import EventSink, RunEvent, RunEventType
 from app.agent.messages import (
     ContentBlock,
     Message,
@@ -37,6 +37,13 @@ from app.agent.provider import (
     ToolCallDone,
 )
 from app.agent.registry import UnknownProviderError, resolve_provider
+from app.agent.runtime import (
+    AgentRunner,
+    CancellationToken,
+    RunConfig,
+    RunResult,
+    RunStatus,
+)
 from app.agent.tools import (
     WEB_SEARCH_TOOL_SPEC,
     Tool,
@@ -48,7 +55,10 @@ from app.agent.tools import (
 
 __all__ = [
     "WEB_SEARCH_TOOL_SPEC",
+    "AgentRunner",
+    "CancellationToken",
     "ContentBlock",
+    "EventSink",
     "Message",
     "Provider",
     "ProviderCapabilities",
@@ -57,6 +67,11 @@ __all__ = [
     "ReasoningConfig",
     "ReasoningDelta",
     "Role",
+    "RunConfig",
+    "RunEvent",
+    "RunEventType",
+    "RunResult",
+    "RunStatus",
     "StreamDone",
     "StreamEvent",
     "TextBlock",

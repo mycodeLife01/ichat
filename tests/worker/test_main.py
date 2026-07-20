@@ -8,13 +8,13 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agent import Provider, StreamDone, TextDelta
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.providers import Finish, Provider, TextDelta
 from app.worker.main import run_worker_loop
-from tests.providers.fake import FakeProvider
+from tests.agent.fake import FakeProvider
 
 TEST_DATABASE_URL = os.environ.get(
     "WORKER_MAIN_TEST_DATABASE_URL",
@@ -141,7 +141,7 @@ async def test_run_worker_loop_processes_queued_runs_with_fake_provider(
         return FakeProvider(
             script=[
                 TextDelta(text="Hi"),
-                Finish(finish_reason="stop"),
+                StreamDone(finish_reason="stop"),
             ]
         )
 
@@ -196,7 +196,7 @@ async def test_run_worker_loop_recovers_lease_expired_runs(
     )
 
     def resolve(name: str, *, settings: Settings) -> Provider:
-        return FakeProvider(script=[Finish(finish_reason="stop")])
+        return FakeProvider(script=[StreamDone(finish_reason="stop")])
 
     stop_event = asyncio.Event()
 
