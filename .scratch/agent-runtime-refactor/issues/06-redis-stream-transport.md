@@ -1,6 +1,6 @@
 Type: feat
 Status: ready-for-agent
-Blocked by: 04
+Blocked by: 04b
 
 # Redis Stream 流式传输与降级
 
@@ -45,3 +45,8 @@ XADD Redis Stream + SSE 每连接 XREAD BLOCK」；PG 以 run_drafts checkpoint 
 - `pytest` / `ruff` / `mypy` 全绿；前端零改动、零部署配合。
 
 ## Comments
+
+- 2026-07-20：Blocked by 改挂 04b（sink 接口将由 04b 的 worker 消费循环固化后再
+  实施，避免两次返工）。设计与文档采用 LangGraph durability 三档词汇描述持久化
+  时机：`exit`（终态才写）/ `async`（异步伴写）/ `sync`（写完才继续）——
+  run_drafts checkpoint 属 async 档，语义事件属 sync 档。

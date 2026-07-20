@@ -41,8 +41,12 @@ _Avoid_: 任务、请求（与 HTTP 请求混淆）
 _Avoid_: provider message（代码词汇层已废弃）、聊天记录（那是面向用户的 messages）
 
 **agent 内核（Agent Kernel）**:
-`app/agent/` 包——provider 中立、不读数据库、不碰传输层的编排核心，统一 Message / Provider / Tool / Runtime 词汇。业务侧（DB 加载、事件持久化、SSE）在内核之外与其对接。
-_Avoid_: agent 框架（明确不做图编排/chain/多 agent）
+`app/agent/` 包——provider 中立、不读数据库、不碰传输层、不含业务组装的 agent building blocks：Message/内容块词汇、Provider 协议与适配器、Tool 协议与注册表、单次模型调用与工具执行原语、AgentEvent 事件词汇。agent 循环与业务装配归编排层（`app/services/agents`），工程化（seq、发布、持久化、重试执行、取消）归 worker。
+_Avoid_: agent 框架（明确不做图编排/chain/多 agent）、编排核心（编排在内核之外）
+
+**模型调用（Model Call）**:
+agent 循环内对 LLM provider 的一次流式请求-响应。一个 run 可含多次模型调用（工具循环）。与「轮（Turn）」区分：turn 专指用户↔助手的一轮对话交换（历史裁剪的计量单位），不用于指代单次 provider 调用。
+_Avoid_: turn（指 provider 调用时）、请求（与 HTTP 请求混淆）
 
 **内容块（Content Block）**:
 中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。

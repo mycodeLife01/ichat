@@ -50,7 +50,7 @@
 
 ## `app/services/runs`
 
-负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义，以及把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息（`history.py`，供 worker 喂给 `app/agent` 的纯 context 组装器）。SSE 读取持久化事件，不直接调用 provider。
+负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义，`RunEvent`/`RunEventType` 词汇（`events.py`，run 状态机与 run_events 表的规范词汇），以及把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息（`history.py`，供 worker 喂给编排层）。SSE 读取持久化事件，不直接调用 provider。
 
 ## `app/services/run_events`
 
@@ -58,9 +58,15 @@
 
 ## `app/agent`
 
-agent 内核包（agent-runtime 重构交付一引入，见 `.scratch/agent-runtime-refactor/PRD.md`）。以 provider 中立的 content-blocks 消息模型统一 Message / Provider / Tool / Runtime 词汇：`messages`（块模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，openai SDK）、`tools/`（Tool 协议 + ToolRegistry + web_search）、`context`/`prompts`（纯组装）、`runtime`/`events`（AgentRunner、CancellationToken、RunEvent、EventSink）。
+agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
 
-边界铁律：**内核不读数据库、不碰传输层**——`context` 只接收扁平 `list[Message]` 并按预算裁剪（DB 历史加载归 `app/services/runs`）；`AgentRunner` 只依赖 Provider、ToolRegistry、EventSink 与 CancellationToken；provider 怪癖（如 DeepSeek 无法回放 tool 历史）以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+
+## `app/services/agents`
+
+agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChain 的 harness 层（`create_agent`）。负责：`resolve_provider` 注册表（Settings→适配器窄参的展开发生在这里）、system prompt 组装、context 预算裁剪（`Turn` 词汇归此）、工具装配、`max_tool_calls` 与声明式 `RetryPolicy`；`build_chat_agent(...) -> ChatAgent`，`ChatAgent.stream()` 内执行 model call 调度与工具分发循环，向上 yield AgentEvent。未来的 middleware、HITL、条件工具路由在此层生长。
+
+**生成器即边界**：编排层只 yield 事件宣告，不知道 seq/sink/发布/持久化；与取消无关（仅需取消安全）。`SourceRegistry` 等单一工具的私有产物以闭包内化，通过 `assistant_metadata` 中性钩子交给 worker，web_search/sources/tavily 词汇不出包。不读数据库——历史加载归 `app/services/runs`。
 
 ## `app/search`
 
@@ -68,15 +74,16 @@ agent 内核包（agent-runtime 重构交付一引入，见 `.scratch/agent-runt
 
 ## `app/worker`
 
-负责独立 worker 进程的 polling、claim、heartbeat 与 lease recovery，并作为薄适配器加载历史、组装 `RunConfig`、提供 `PostgresEventSink`、调用 `AgentRunner`，最后执行终态状态机转换、一次性转写落库和 assistant message 物化。provider/tool 编排循环不在 worker 内。
+负责独立 worker 进程的 polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()` 事件流（seq 分配、AgentEvent→RunEvent 映射、`EventSink` 协议及其实现、delta 批窗口）、按编排层给的 `RetryPolicy` 执行重试（整体重启生成器）、取消（select 循环 + 精确 cancel）、终态状态机转换、转写落库和 assistant message 物化。业务组装决策不在 worker 内（例外：标题生成的组装暂留 `title.py`，issue 05 迁出）。
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 
 ## 跨模块规则
 
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
-- `app/worker` 可以调用 `app/agent`、`app/search`、`app/services/...` 和 `app/db`，但不实现 provider/tool 编排循环。
-- `app/agent` 不读取数据库、不 import ORM/`app/services`；它可以依赖 `app/core` 与 `app/search`。
+- `app/worker` 可以调用 `app/agent`、`app/search`、`app/services/...` 和 `app/db`，但不做业务组装决策，不实现 agent 循环。
+- `app/services/agents` 依赖 `app/agent`、`app/core`、`app/search`；不读数据库、不 import 传输/发布设施。
+- `app/agent` 不 import `app.core.config`、不读取数据库、不 import ORM/`app/services`；可以依赖 `app/search`。
 - `app/search` 不读取数据库。
 - `app/services/runs` 不拼装 prompt。
 - `app/services/conversations` 不直接调用 provider。
