@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: 02, 03
 
 # AgentRunner 抽取与 worker 薄适配器化
@@ -34,3 +34,5 @@ Blocked by: 02, 03
 - dev 环境手工验证：正常对话、web search 对话、流中取消，SSE 行为与重构前一致。
 
 ## Comments
+
+- 2026-07-19：实现并验证完成。AgentRunner/EventSink/CancellationToken 已落入纯内核，worker 改为 PG/生命周期薄适配器，转写终态一次性落库，旧 providers/context/prompts/tools 包已删除；438 项全量测试与本地隔离 HTTP/SSE 端到端验证通过。

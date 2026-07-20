@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: 02
 
 # 转写持久化 blocks 化（expand-contract）
@@ -28,3 +28,5 @@ provider 中立的 blocks 格式，采用 expand-contract：新行只写新列�
 - 含存量对话的 dev 库上，历史会话继续追问（触发转写回放）行为正确。
 
 ## Comments
+
+- 2026-07-19：实现并验证完成。新增 nullable `blocks` JSONB，写路径只写 blocks，旧 wire 行由 DeepSeek 适配器读取时转换；新旧格式往返、worker 持久化与 Alembic 升级均已验证。

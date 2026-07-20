@@ -4,7 +4,7 @@
 
 ## 顶层结构
 
-源码根目录使用 `app/`。领域业务逻辑集中在 `app/services/...`；与具体能力相关、主要被 worker 复用的构件（provider 协议、context 组装、prompt 组装、搜索、工具运行时）作为顶层能力模块放在 `services` 外；基础设施（`core`、`db`）与 API 契约（`models`、`schemas`）同样放在 `services` 外。
+源码根目录使用 `app/`。领域业务逻辑集中在 `app/services/...`；provider 中立的 agent 内核集中在 `app/agent`，搜索基础设施集中在 `app/search`；基础设施（`core`、`db`）与 API 契约（`models`、`schemas`）同样放在 `services` 外。
 
 ## `app/api`
 
@@ -58,48 +58,25 @@
 
 ## `app/agent`
 
-agent 内核包（agent-runtime 重构交付一引入，见 `.scratch/agent-runtime-refactor/PRD.md`）。以 provider 中立的 content-blocks 消息模型统一 Message / Provider / Tool / Context 词汇：`messages`（块模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，openai SDK）、`tools/`（Tool 协议 + ToolRegistry + web_search）、`context`/`prompts`（纯组装）。
+agent 内核包（agent-runtime 重构交付一引入，见 `.scratch/agent-runtime-refactor/PRD.md`）。以 provider 中立的 content-blocks 消息模型统一 Message / Provider / Tool / Runtime 词汇：`messages`（块模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，openai SDK）、`tools/`（Tool 协议 + ToolRegistry + web_search）、`context`/`prompts`（纯组装）、`runtime`/`events`（AgentRunner、CancellationToken、RunEvent、EventSink）。
 
-边界铁律：**内核不读数据库、不碰传输层**——`context` 只接收扁平 `list[Message]` 并按预算裁剪（DB 历史加载归 `app/services/runs`）；provider 怪癖（如 DeepSeek 无法回放 tool 历史）以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
-
-过渡期状态：worker 目前仍运行下方四个 legacy 模块；ticket 04（AgentRunner 抽取）完成后 worker 切换到本包，legacy 模块删除。
-
-## `app/providers`（legacy，ticket 04 移除）
-
-负责 provider interface 和具体 provider adapter（首个为 DeepSeek，使用 `httpx` 直连 OpenAI-compatible streaming API），含流式分片解析与 provider registry。
-
-不放在 `services` 下的理由：provider 协议是被 worker 复用的能力构件；且 provider 层只做协议收发，不读取数据库。
-
-## `app/context`（legacy，ticket 04 移除）
-
-负责把 system prompt 与可见 conversation history 组装成 provider messages，按 token 预算执行截断，并以 succeeded run 的 provider transcript 作为历史 block 原子 replay。system prompt 由调用方（worker）传入，token 计数器由 provider 注入，因此 context 本身不调用 provider。
-
-## `app/prompts`（legacy，ticket 04 移除）
-
-负责生产级 system prompt 的版本化管理与按 run 注入：`base_system_prompt.md` 为基础 prompt，`build_system_prompt()` 是唯一组装入口——基础 prompt 取 `DEFAULT_SYSTEM_PROMPT` 覆盖或内置文件，并在本 run 启用联网搜索时追加当日日期与 web_search 指引段落。纯组装，不读数据库、不调用 provider。
+边界铁律：**内核不读数据库、不碰传输层**——`context` 只接收扁平 `list[Message]` 并按预算裁剪（DB 历史加载归 `app/services/runs`）；`AgentRunner` 只依赖 Provider、ToolRegistry、EventSink 与 CancellationToken；provider 怪癖（如 DeepSeek 无法回放 tool 历史）以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
 
 ## `app/search`
 
 负责 provider-agnostic 搜索能力抽象：统一 `types`、`SearchClient` 协议（`client`）、`registry`（按名解析 client）、Tavily adapter（`tavily`）、结果去重/编号/证据压缩（`postprocess`）。调用外部搜索 API，不读取数据库。
 
-## `app/tools`（legacy，ticket 04 移除）
-
-负责 worker 内的工具运行时：工具类型、`web_search` 工具 schema、模型工具调用的参数解析与执行、工具结果构造。编排 `app/search` 完成搜索，工具产物由 worker 持久化为 run_events 与 provider transcript。
-
 ## `app/worker`
 
-负责独立 worker 进程的 polling、claim run、heartbeat、构建 context、组装 system prompt、推进 provider/agent loop（含模型驱动的 web_search 工具调用）、写入 run_events 与 provider transcript、物化最终 assistant message、处理取消和 lease recovery。
+负责独立 worker 进程的 polling、claim、heartbeat 与 lease recovery，并作为薄适配器加载历史、组装 `RunConfig`、提供 `PostgresEventSink`、调用 `AgentRunner`，最后执行终态状态机转换、一次性转写落库和 assistant message 物化。provider/tool 编排循环不在 worker 内。
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 
 ## 跨模块规则
 
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
-- `app/worker` 可以调用 `app/context`、`app/prompts`、`app/providers`、`app/search`、`app/tools`、`app/services/...` 和 `app/db`。
+- `app/worker` 可以调用 `app/agent`、`app/search`、`app/services/...` 和 `app/db`，但不实现 provider/tool 编排循环。
 - `app/agent` 不读取数据库、不 import ORM/`app/services`；它可以依赖 `app/core` 与 `app/search`。
-- `app/providers` 不读取数据库。
-- `app/context` 不调用 provider（token 计数器由调用方注入）。
-- `app/prompts` 不读取数据库、不调用 provider。
 - `app/search` 不读取数据库。
 - `app/services/runs` 不拼装 prompt。
 - `app/services/conversations` 不直接调用 provider。

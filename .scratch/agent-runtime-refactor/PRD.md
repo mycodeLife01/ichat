@@ -198,8 +198,8 @@ provider 适配器测试沿用 mock transport 注入模式（openai SDK 接受�
 |---|--------|------|--------|------------|
 | 01 | 后台任务约定明文化 | docs | completed（2026-07-17，`docs/architecture/background-tasks.md`） | None |
 | 02 | agent 内核类型层与 DeepSeek 适配器重写 | refactor | completed（2026-07-17，`app/agent/` 与旧模块并存至 04） | None |
-| 03 | 转写持久化 blocks 化（expand-contract） | refactor | ready-for-agent | 02 |
-| 04 | AgentRunner 抽取与 worker 薄适配器化 | refactor | ready-for-agent | 02, 03 |
+| 03 | 转写持久化 blocks 化（expand-contract） | refactor | completed（2026-07-19） | 02 |
+| 04 | AgentRunner 抽取与 worker 薄适配器化 | refactor | completed（2026-07-19） | 02, 03 |
 | 05 | 标题生成迁移 Celery | refactor | ready-for-agent | 02 |
 | 06 | Redis Stream 流式传输与降级 | feat | ready-for-agent | 04 |
 | 07 | 存量 delta 清理与配置删除 | chore | ready-for-human（所有者定时机） | 06 |
