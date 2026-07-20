@@ -37,7 +37,7 @@ _Avoid_: 封禁（封禁是运营处罚，停用是账户生命周期状态）
 _Avoid_: 任务、请求（与 HTTP 请求混淆）
 
 **转写（Transcript）**:
-一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。代码域一律使用 transcript 词根（如 `load_transcript`、`RunResult.transcript`）。
+一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。代码域一律使用 transcript 词根（如 `load_transcript`、`append_transcript_message`）。
 _Avoid_: provider message（代码词汇层已废弃）、聊天记录（那是面向用户的 messages）
 
 **agent 内核（Agent Kernel）**:

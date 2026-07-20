@@ -31,6 +31,10 @@ Use a worktree only when the user explicitly asks for one. If a generic workflow
 
 Do not proactively enter plan mode. Work directly in the normal implementation flow unless the user explicitly asks to enter plan mode or requests a plan for approval before implementation. When lightweight planning is useful, state the approach briefly in the conversation and continue without invoking plan mode.
 
+## Handoff
+
+The `handoff` skill must write its document to `docs/handover/` in this repository, not the OS temporary directory the skill defaults to. Follow the existing convention: a dated filename (`YYYY-MM-DD-topic.md`) and Chinese content (per the Language table, `docs/` is Chinese). This project rule takes precedence over the skill's default output location.
+
 ## Git
 
 Branch names must start with a change type/scope segment such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`. Prefer this project style over author or agent prefixes such as `codex/`. Examples: `fix/share-toast-loading-icon`, `feat/conversation-sharing`, `docs/git-workflow-rules`.
@@ -40,9 +44,9 @@ Commit messages must follow the Conventional Commits specification, for example 
 ## Subagent Model Policy
 
 When using subagent, choose models by task role:
-- Orchestrator and reviewer subagents must use `claude-fable-5` with `high` thinking effort level.
-- Executor and worker subagents must use `claude-fable-5` with `low` thinking effort level.
-- Read-only and explore subagents must use `claude-haiku-4-5-20251001` with `medium` thinking effort level.
+- Orchestrator and reviewer subagents must use `gpt-5.6-sol` with `high` thinking effort level.
+- Executor and worker subagents must use `gpt-5.6-luna` with `max` thinking effort level.
+- Read-only and explore subagents must use `gpt-5.6-luna` with `medium` thinking effort level.
 
 ## Development Guidelines
 
@@ -75,7 +79,7 @@ The frontend is a **separate SPA** (`frontend/`), no longer served by FastAPI. I
 Key mechanisms:
 - SSE event stream supports `after_seq` cursor replay; clients can reconnect without data loss
 - Worker lease + heartbeat for fault tolerance; orphaned runs auto-recovered on lease expiry
-- Provider-neutral agent kernel (`app/agent/`) owns orchestration, tools, and LLM adapters
+- Provider-neutral agent kernel (`app/agent/`) holds building blocks (message model, Provider/Tool protocols, adapters, single-call primitives); the agent loop lives in the orchestration layer (`app/services/agents/`)
 
 See [module boundaries](docs/architecture/module-boundaries.md) for details. For
 where a new background task belongs (async runtime vs Celery) and the shared
@@ -87,10 +91,10 @@ transactional-state-row + wakeup-signal + idempotent-claim pattern, see
 ```
 app/
 ├── api/v1/        # Routes: auth, conversations, runs, avatars, share(s), capabilities
-├── services/      # Business logic: auth/, conversations/, runs/, avatars/, email/, shares/, run_events/
+├── services/      # Business logic: auth/, conversations/, runs/, avatars/, email/, shares/, run_events/, agents/ (agent orchestration loop)
 ├── models/        # ORM models: user, conversation, run, auth_token, avatar, email_outbox
 ├── schemas/       # Pydantic request/response models
-├── agent/         # Agent kernel: blocks, Provider/Tool protocols, AgentRunner, DeepSeek adapter, context/prompts
+├── agent/         # Agent kernel (building blocks): content blocks, Provider/Tool protocols, DeepSeek adapter, stream_model_call/execute_tool primitives, AgentEvent vocabulary
 ├── search/        # Search infrastructure: SearchClient protocol, Tavily adapter, evidence postprocess
 ├── tasks/         # Celery app + email/media tasks
 ├── worker/        # Background worker process
@@ -122,7 +126,9 @@ deploy/            # Nginx config, SSL certificates
 | DB models | `app/models/user.py`, `conversation.py`, `run.py` |
 | Run state machine | `app/services/runs/lifecycle.py` |
 | Worker main loop | `app/worker/main.py` |
-| Agent runtime | `app/agent/runtime.py` + `app/worker/executor.py` |
+| Agent orchestration loop | `app/services/agents/chat_agent.py` (`ChatAgent.stream()`, `build_chat_agent`) |
+| Agent kernel primitives | `app/agent/primitives.py` (`stream_model_call`, `execute_tool`) |
+| Worker run executor | `app/worker/executor.py` (consumes `agent.stream()`: seq, sink, retry, cancel) |
 | DeepSeek adapter | `app/agent/providers/deepseek.py` (openai SDK) |
 | Production deploy | `compose.prod.yml` + `deploy/nginx.conf` |
 | CI/CD | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml` |

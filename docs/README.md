@@ -34,7 +34,7 @@
 Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
-- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*`, the top-level capability modules (`app/agent` and the legacy `app/providers`, `app/context`, `app/prompts`, `app/tools`, plus `app/search`), `app/worker`, and forbidden cross-module dependencies.
+- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
 - `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, why streaming runs stay out of Celery, and the three questions every task table must answer.
 
 ### `docs/adr/`
@@ -63,7 +63,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
 - `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
 - `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata). Note: the rule-based query planner / pre-search was removed 2026-06-17 — tool calls are now model-driven.
-- `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time
+- `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time. Note: the prompt module moved to `app/services/agents/prompts.py` in the 2026-07-20 agent-runtime re-layering (issue 04b); `app/prompts/` no longer exists.
 - `2026-06-18-public-id-hardening.md` — opaque `public_id` (UUID) replaces sequential ids on the API surface for conversations/messages/runs (bigint PK kept internally); React Router added with `/c/:publicId` deep linking. Phase 1 of the public_id + sharing design.
 - `2026-06-18-conversation-sharing.md` — conversation sharing (Phase 2): `share_links` table (bigint, token-keyed), created-time JSONB snapshot, anonymous `GET /api/v1/share/{token}` read + owner-only create/list/revoke management, at-most-one-active-link-per-conversation (409 on conflict; revoked/expired kept for audit, hidden from listing), public `/share/:token` read-only page, share dialog, CF Pages `_redirects` SPA fallback.
 - `2026-06-26-email-verification.md` — email verification + auth-email infra: `auth_tokens`/`email_outbox` tables, Redis cooldown + IP sliding-window rate limiting, Postmark/console/fake providers, Celery worker/beat outbox delivery (claim/lease/retry/dead/sweep), `GET /auth/me` + `POST /auth/verify-email` + `POST /auth/resend-verification-email`, nginx Cloudflare realip + firewall ops checklist.

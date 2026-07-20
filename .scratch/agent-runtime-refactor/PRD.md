@@ -3,6 +3,22 @@
 > 本 PRD 由 2026-07-16 的架构评审与逐项拷问（14 个设计决策 + 术语裁决）汇总而成。
 > Ticket 索引见文末；实施顺序与阻塞关系以各 ticket 的 `Blocked by` 为准。
 
+> ⚠️ **2026-07-20 修订（issue 04b）**：本 PRD 的「运行时」分层与命名是 2026-07-16
+> 的初版设计，交付一（issue 04）落地后经评审判定分层不符预期，由
+> **issue 04b** 再分层并已实施。以下内容**已被 04b 取代**，阅读时以 04b 与
+> `docs/architecture/module-boundaries.md` 为准：
+> - `AgentRunner` / `RunConfig` / `RunResult` / `CancellationToken`（Q10、术语表
+>   「运行时」、架构要点、User Story 8、Testing Decisions 第 1 缝）已删除；改为
+>   内核原语 `stream_model_call` / `execute_tool` + 编排层 `ChatAgent.stream()` +
+>   数据化 `RetryPolicy`；取消改为 worker 侧裸 `asyncio.Event`（内核零取消词汇）。
+> - Q8「context/prompts/tools 收口进 `app/agent/`」已部分反转：`context.py` /
+>   `prompts.py` / `registry.py` 迁至编排层 `app/services/agents`，内核只留
+>   building blocks（含 web_search，其 `Settings` 依赖收窄为 `WebSearchConfig`）。
+> - `EventSink` 迁至 `app/worker`；`RunEvent` / `RunEventType` 迁至
+>   `app/services/runs/events.py`。
+> 决策脉络见 `docs/handover/2026-07-20-agent-runtime-refactor-04b-decisions.md`，
+> 实施交接见 `docs/handover/2026-07-20-agent-runtime-refactor-04b-implementation.md`。
+
 ## Problem Statement
 
 作为 iChat 的维护者，我在扩展 agent 能力（新工具、新 provider、新编排行为）时必须钻进
@@ -98,6 +114,11 @@ reasoning、tools、限额）；出参 `RunResult(status, transcript, usage, err
 （`is_cancelled` + `wait()`）；`build_context`、`build_system_prompt` 名称保留、
 迁入 agent 包。
 
+> ⚠️ 本「运行时」命名块**已被 issue 04b 取代**（见文首修订说明）：`AgentRunner` /
+> `RunConfig` / `RunResult` / `CancellationToken` 均已删除，改为 `stream_model_call`
+> / `execute_tool` / `ChatAgent.stream()` / `RetryPolicy` / 裸 `asyncio.Event`；
+> `build_context` / `build_system_prompt` 迁入编排层 `app/services/agents` 而非内核。
+
 **事件与传输**：内存态事件 `RunEvent(seq, type, payload)`（与 ORM 同名，靠模块路径
 区分，事件类型字符串沿用冻结契约）；发射接口 `EventSink`（protocol：`emit(event)`）；
 实现 `RedisStreamSink`、`PostgresEventSink`、`FanoutSink`；Redis key
@@ -179,9 +200,9 @@ provider 适配器测试沿用 mock transport 注入模式（openai SDK 接受�
 ## Further Notes
 
 - **依赖链**：`01(约定文档) 独立`；`02(内核类型+provider) → 03(转写 blocks) →
-  04(AgentRunner 抽取)` 构成交付一；`05(标题 Celery)` 依赖 02；`06(Redis Stream)`
-  依赖 04，独立交付；`08(唤醒迁 Redis)` 依赖 06；`07(delta 清理)` 依赖 06，
-  **执行时机由所有者决定，不阻碍本批次完成判定**。
+  04(AgentRunner 抽取) → 04b(再分层)` 构成交付一；`05(标题 Celery)` 依赖 02；
+  `06(Redis Stream)` 依赖 04b，独立交付；`08(唤醒迁 Redis)` 依赖 06；
+  `07(delta 清理)` 依赖 06，**执行时机由所有者决定，不阻碍本批次完成判定**。
 - **单 provider 风险**：抽象正确性在接入第二个 provider 前无法完全检验；缓解手段是
   按 Anthropic/OpenAI/Gemini 三家 API 对照建模 + FakeProvider 测试，不能消除。
 - **词汇表维护**：实施时把 Run/转写（transcript）/草稿（draft）/agent 内核等新词
@@ -199,8 +220,10 @@ provider 适配器测试沿用 mock transport 注入模式（openai SDK 接受�
 | 01 | 后台任务约定明文化 | docs | completed（2026-07-17，`docs/architecture/background-tasks.md`） | None |
 | 02 | agent 内核类型层与 DeepSeek 适配器重写 | refactor | completed（2026-07-17，`app/agent/` 与旧模块并存至 04） | None |
 | 03 | 转写持久化 blocks 化（expand-contract） | refactor | completed（2026-07-19） | 02 |
-| 04 | AgentRunner 抽取与 worker 薄适配器化 | refactor | completed（2026-07-19） | 02, 03 |
+| 04 | AgentRunner 抽取与 worker 薄适配器化 | refactor | completed（2026-07-19，后由 04b 再分层取代） | 02, 03 |
+| 04b | agent 运行时再分层（kernel/编排层/worker） | refactor | completed（2026-07-20，commits 6766b05+e975c77，未推送） | 04 |
 | 05 | 标题生成迁移 Celery | refactor | ready-for-agent | 02 |
-| 06 | Redis Stream 流式传输与降级 | feat | ready-for-agent | 04 |
+| 06 | Redis Stream 流式传输与降级 | feat | ready-for-agent | 04b |
 | 07 | 存量 delta 清理与配置删除 | chore | ready-for-human（所有者定时机） | 06 |
 | 08 | runs_queued 唤醒信号迁移 Redis | refactor | ready-for-agent | 06 |
+| 09 | 多 model call run 的 usage 少计 | bug | backlog（04b 收尾补建的既有限制） | None |

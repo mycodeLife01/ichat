@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: 04
 
 # Agent 运行时再分层：kernel 收敛为 building blocks，编排层独立，worker 纯工程化
@@ -140,3 +140,9 @@ langchain-core / harness / runtime / Agent Server）：
 - 2026-07-20：由 issue 03/04 交付评审引出，经 grilling 逐项裁决（MessageDone 命
   名、重试重启等价性、select 取消、AgentSpec→ChatAgent 修正、循环归编排层、
   provider 解析迁移、events 拆迁、title 暂留、usage 口径）后定稿。
+- 2026-07-20：**已实施完成**。commits `6766b05`（主体）+ `e975c77`（search 包根
+  纯化，消除内核对 config 的传递性依赖 + 清理空 legacy 目录），分支
+  `refactor/agent-worker`（未推送）。验证 `pytest` 445 passed、`ruff`、`mypy` 全绿，
+  含新增内核纯度**传递性**边界测试。实施交接见
+  `docs/handover/2026-07-20-agent-runtime-refactor-04b-implementation.md`；连带补建
+  issue 09（多 model call usage 少计）。

@@ -2,6 +2,10 @@
 
 > 本文是 iChat 后端**运行时**架构的总结。模块/目录职责见 [`module-boundaries.md`](module-boundaries.md)；本文聚焦各服务如何协同、数据如何流动、并发与失败如何处理。状态截至 2026-06-11。
 
+> ⚠️ **部分内容已过期（未逐节重写，仅标注）**：
+> - **agent 运行时内部**：本文「端到端数据流」第 2 步描述的 `execute_run` 内部（producer/consumer 队列、`build_context` 内联、批窗口 flush 循环）是 2026-06-11 快照。经 issue 03/04/**04b** 再分层后，worker 改为消费编排层 `ChatAgent.stream()` 的 AgentEvent 流（seq/映射/sink/重试/取消在 worker，循环在 `app/services/agents`）。以 [`module-boundaries.md`](module-boundaries.md) 与 `docs/handover/2026-07-20-agent-runtime-refactor-04b-implementation.md` 为准。**服务拓扑、Run 状态机、持久化模型、LISTEN/NOTIFY、并发与故障恢复等对外行为不变，仍准确。**
+> - **「无 Redis / Celery」**（服务拓扑、已知边界）：仅对 LLM worker 成立。2026-06 邮件验证栈已引入 Redis（Celery broker + 冷却/限流）与 celery-worker/beat（见 `docs/handover/2026-06-26-email-verification.md`）；LLM 流式仍是纯 PG。issue 06 将为流式引入 Redis Stream（尚未实施）。
+
 ## 服务拓扑
 
 前端是独立 React SPA（`frontend/`，Vite + TypeScript + Tailwind v4），部署于 Cloudflare Pages（`chat.feslia.com`），经 CORS 跨域调用后端 API（`https://feslia.com/api/v1`）——后端不托管任何静态文件。前端实现细节见 `docs/handover/frontend/` 系列交接文档。
