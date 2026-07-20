@@ -40,9 +40,9 @@ Commit messages must follow the Conventional Commits specification, for example 
 ## Subagent Model Policy
 
 When using subagent, choose models by task role:
-- Orchestrator and reviewer subagents must use `gpt-sol` with `xhigh` thinking effort level.
-- Executor and worker subagents must use `gpt-luna` with `max` thinking effort level.
-- Read-only and explore subagents must use `gpt-luna` with `medium` thinking effort level.
+- Orchestrator and reviewer subagents must use `claude-fable-5` with `high` thinking effort level.
+- Executor and worker subagents must use `claude-fable-5` with `low` thinking effort level.
+- Read-only and explore subagents must use `claude-haiku-4-5-20251001` with `medium` thinking effort level.
 
 ## Development Guidelines
 
