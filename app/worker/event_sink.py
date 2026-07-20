@@ -1,16 +1,23 @@
 import asyncio
 import contextlib
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agent.events import EventSink, RunEvent, RunEventType
-from app.agent.runtime import CancellationToken
+from app.services.runs.events import RunEvent, RunEventType
 from app.services.runs.lifecycle import mark_run_streaming
 from app.services.runs.service import append_run_event
 
 _DELTA_TYPES = ("text_delta", "reasoning_delta")
+
+
+class EventSink(Protocol):
+    """Sink the worker emits assembled run events into. The worker is its only
+    caller; ``PostgresEventSink`` its only implementation (a Redis Stream sink
+    lands in issue 06)."""
+
+    async def emit(self, event: RunEvent) -> None: ...
 
 
 class PostgresEventSink(EventSink):
@@ -19,10 +26,10 @@ class PostgresEventSink(EventSink):
         *,
         session_factory: async_sessionmaker[AsyncSession],
         run_id: int,
-        cancel: CancellationToken,
+        cancel: asyncio.Event,
         batch_window_seconds: float,
         batch_max_chars: int,
-        tool_provider_names: Mapping[str, str] | None = None,
+        tool_backend_names: Mapping[str, str] | None = None,
     ) -> None:
         if batch_window_seconds < 0:
             raise ValueError("batch_window_seconds must be non-negative")
@@ -33,7 +40,7 @@ class PostgresEventSink(EventSink):
         self._cancel = cancel
         self._batch_window_seconds = batch_window_seconds
         self._batch_max_chars = batch_max_chars
-        self._tool_provider_names = dict(tool_provider_names or {})
+        self._tool_backend_names = dict(tool_backend_names or {})
         self._lock = asyncio.Lock()
         self._streaming_started = False
         self._pending_type: RunEventType | None = None
@@ -98,7 +105,7 @@ class PostgresEventSink(EventSink):
             return
         except Exception as exc:
             self._background_error = exc
-            self._cancel.cancel()
+            self._cancel.set()
 
     def _cancel_timer(self) -> None:
         task = self._timer_task
@@ -127,7 +134,7 @@ class PostgresEventSink(EventSink):
                 changed = await mark_run_streaming(session, run_id=self._run_id)
                 if not changed:
                     await session.commit()
-                    self._cancel.cancel()
+                    self._cancel.set()
                     return
             await append_run_event(
                 session,
@@ -153,7 +160,7 @@ class PostgresEventSink(EventSink):
                 query = arguments.get("query")
                 if isinstance(query, str):
                     payload["query"] = query
-            provider = self._tool_provider_names.get(payload["tool_name"])
+            provider = self._tool_backend_names.get(payload["tool_name"])
             if provider is not None:
                 payload["provider"] = provider
             return payload

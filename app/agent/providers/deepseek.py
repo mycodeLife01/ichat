@@ -48,7 +48,6 @@ from app.agent.provider import (
     ToolCallDone,
 )
 from app.agent.tools.base import ToolSpec
-from app.core.config import Settings
 
 _CAPABILITIES = ProviderCapabilities(supports_tool_history=False, supports_reasoning=True)
 
@@ -70,11 +69,17 @@ class DeepSeekProvider(Provider):
     def __init__(
         self,
         *,
-        settings: Settings,
+        api_key: str,
+        base_url: str,
+        default_thinking_enabled: bool,
+        default_reasoning_effort: str,
         async_client: AsyncOpenAI | None = None,
         sync_client: OpenAI | None = None,
     ) -> None:
-        self._settings = settings
+        self._api_key = api_key
+        self._base_url = base_url
+        self._default_thinking_enabled = default_thinking_enabled
+        self._default_reasoning_effort = default_reasoning_effort
         self._async_client = async_client
         self._sync_client = sync_client
 
@@ -95,18 +100,12 @@ class DeepSeekProvider(Provider):
     def _async(self) -> AsyncOpenAI:
         if self._async_client is not None:
             return self._async_client
-        return _shared_async_client(
-            base_url=self._settings.deepseek_base_url,
-            api_key=self._settings.deepseek_api_key,
-        )
+        return _shared_async_client(base_url=self._base_url, api_key=self._api_key)
 
     def _sync(self) -> OpenAI:
         if self._sync_client is not None:
             return self._sync_client
-        return _shared_sync_client(
-            base_url=self._settings.deepseek_base_url,
-            api_key=self._settings.deepseek_api_key,
-        )
+        return _shared_sync_client(base_url=self._base_url, api_key=self._api_key)
 
     async def stream(
         self,
@@ -118,8 +117,8 @@ class DeepSeekProvider(Provider):
     ) -> AsyncIterator[StreamEvent]:
         if reasoning is None:
             reasoning = ReasoningConfig(
-                enabled=self._settings.deepseek_thinking_enabled,
-                effort=self._settings.deepseek_reasoning_effort,
+                enabled=self._default_thinking_enabled,
+                effort=self._default_reasoning_effort,
             )
         wire_messages = _messages_to_wire(
             messages, strip_tool_history=_should_strip_tool_history(tools)

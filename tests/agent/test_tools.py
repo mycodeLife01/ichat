@@ -5,24 +5,33 @@ from app.agent.tools import (
     ToolRegistry,
     ToolResult,
     ToolSpec,
+    WebSearchConfig,
     WebSearchTool,
 )
 from app.agent.tools.web_search import WEB_SEARCH_TOOL_SPEC
-from app.core.config import Settings, get_settings
 from app.search.types import ExtractRequest, SearchRequest, SearchResult
 
 
-def search_settings() -> Settings:
-    return get_settings().model_copy(
-        update={
-            "web_search_enabled": True,
-            "tavily_api_key": "test-key",
-            "web_search_default_max_results": 5,
-            "web_search_max_extract_results": 2,
-            "web_search_max_evidence_chars": 2_000,
-            "web_search_max_source_chars": 400,
-        }
+def search_config(*, available: bool = True) -> WebSearchConfig:
+    return WebSearchConfig(
+        provider="tavily",
+        available=available,
+        default_max_results=5,
+        max_extract_results=2,
+        extract_timeout_seconds=8.0,
+        max_source_chars=400,
+        max_evidence_chars=2_000,
     )
+
+
+class _NullClient:
+    name = "tavily"
+
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        return []
+
+    async def extract(self, request: ExtractRequest) -> list[object]:
+        return []
 
 
 class _StubTool:
@@ -67,7 +76,7 @@ def test_tool_result_is_tool_agnostic() -> None:
 
 
 def test_web_search_tool_satisfies_protocol() -> None:
-    tool = WebSearchTool(settings=search_settings())
+    tool = WebSearchTool(config=search_config(), client=_NullClient())
     assert isinstance(tool, Tool)
     assert tool.name == "web_search"
     assert tool.spec is WEB_SEARCH_TOOL_SPEC
@@ -90,7 +99,7 @@ async def test_web_search_tool_executes_and_returns_sources_in_metadata() -> Non
         async def extract(self, request: ExtractRequest) -> list[object]:
             return []
 
-    tool = WebSearchTool(settings=search_settings(), client=FakeSearchClient())
+    tool = WebSearchTool(config=search_config(), client=FakeSearchClient())
 
     result = await tool.execute({"query": "current API docs"})
 
@@ -101,7 +110,7 @@ async def test_web_search_tool_executes_and_returns_sources_in_metadata() -> Non
 
 
 async def test_web_search_tool_rejects_invalid_arguments() -> None:
-    tool = WebSearchTool(settings=search_settings())
+    tool = WebSearchTool(config=search_config(), client=_NullClient())
 
     result = await tool.execute({"query": ""})
 
@@ -110,8 +119,7 @@ async def test_web_search_tool_rejects_invalid_arguments() -> None:
 
 
 async def test_web_search_tool_reports_unavailable_when_not_configured() -> None:
-    disabled = get_settings().model_copy(update={"web_search_enabled": False})
-    tool = WebSearchTool(settings=disabled)
+    tool = WebSearchTool(config=search_config(available=False), client=_NullClient())
 
     result = await tool.execute({"query": "anything"})
 
@@ -131,7 +139,7 @@ async def test_web_search_tool_wraps_client_errors() -> None:
         async def extract(self, request: ExtractRequest) -> list[object]:
             return []
 
-    tool = WebSearchTool(settings=search_settings(), client=BoomClient())
+    tool = WebSearchTool(config=search_config(), client=BoomClient())
 
     result = await tool.execute({"query": "current API docs"})
 
@@ -160,7 +168,7 @@ async def test_web_search_tool_accumulates_sources_across_calls() -> None:
         async def extract(self, request: ExtractRequest) -> list[object]:
             return []
 
-    tool = WebSearchTool(settings=search_settings(), client=FakeSearchClient())
+    tool = WebSearchTool(config=search_config(), client=FakeSearchClient())
     await tool.execute({"query": "first"})
     await tool.execute({"query": "second"})
 

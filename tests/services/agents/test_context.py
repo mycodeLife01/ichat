@@ -1,6 +1,5 @@
 """Pure, in-memory tests for the DB-free kernel context assembler."""
 
-from app.agent.context import build_context
 from app.agent.messages import (
     Message,
     ReasoningBlock,
@@ -10,6 +9,7 @@ from app.agent.messages import (
     assistant_text,
     user_text,
 )
+from app.services.agents.context import build_context
 
 
 def test_build_context_prepends_system() -> None:

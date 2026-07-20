@@ -4,8 +4,10 @@ Reuses ``app/search`` (kept in place as search infrastructure, per the design)
 and returns the kernel's tool-agnostic ``ToolResult``: the model-facing evidence
 in ``content`` and everything web-search-specific (sources, provider, query,
 result count, error code) in ``metadata``. Per-run dependencies — search client,
-source registry, settings — are injected at construction, so the tool is
-self-contained and the kernel's ``Tool`` protocol stays free of tool specifics.
+source registry, and a narrow ``WebSearchConfig`` — are injected at
+construction, so the tool is self-contained and the kernel imports no
+application ``Settings`` (the orchestration layer expands ``Settings`` into
+``WebSearchConfig``).
 """
 
 import re
@@ -14,12 +16,10 @@ from typing import Any, cast
 from urllib.parse import urlparse
 
 from app.agent.tools.base import ToolResult, ToolSpec
-from app.core.config import Settings
 from app.search import (
     SearchClient,
     SourceRegistry,
     build_evidence,
-    resolve_search_client,
 )
 from app.search.postprocess import SourceRecord
 from app.search.types import (
@@ -32,6 +32,24 @@ from app.search.types import (
 )
 
 _DOMAIN_RE = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)+$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class WebSearchConfig:
+    """Narrow, provider-neutral web_search settings.
+
+    The kernel never sees the application ``Settings`` object; the orchestration
+    layer expands the relevant fields into this value at tool assembly time.
+    """
+
+    provider: str
+    available: bool
+    default_max_results: int
+    max_extract_results: int
+    extract_timeout_seconds: float
+    max_source_chars: int
+    max_evidence_chars: int
+
 
 WEB_SEARCH_TOOL_SPEC = ToolSpec(
     name="web_search",
@@ -103,11 +121,11 @@ class WebSearchTool:
     def __init__(
         self,
         *,
-        settings: Settings,
-        client: SearchClient | None = None,
+        config: WebSearchConfig,
+        client: SearchClient,
         sources: SourceRegistry | None = None,
     ) -> None:
-        self._settings = settings
+        self._config = config
         self._client = client
         self._sources = sources or SourceRegistry()
 
@@ -124,27 +142,24 @@ class WebSearchTool:
         return self._sources
 
     async def execute(self, arguments: dict[str, Any]) -> ToolResult:
-        settings = self._settings
+        config = self._config
         try:
-            args = parse_web_search_args(arguments, settings=settings)
+            args = parse_web_search_args(arguments, config=config)
         except ValueError as exc:
-            return _error("validation_error", str(exc), provider=settings.web_search_provider)
-        if not settings.web_search_available:
+            return _error("validation_error", str(exc), provider=config.provider)
+        if not config.available:
             return _error(
                 "web_search_unavailable",
                 "Web search is not configured. Continuing without live results.",
-                provider=settings.web_search_provider,
+                provider=config.provider,
                 query=args.query,
             )
-        client = self._client or resolve_search_client(
-            settings.web_search_provider, settings=settings
-        )
         return await run_web_search(
-            args=args, client=client, registry=self._sources, settings=settings
+            args=args, client=self._client, registry=self._sources, config=config
         )
 
 
-def parse_web_search_args(data: dict[str, Any], *, settings: Settings) -> WebSearchArgs:
+def parse_web_search_args(data: dict[str, Any], *, config: WebSearchConfig) -> WebSearchArgs:
     if not isinstance(data, dict):
         raise ValueError("Tool arguments must be a JSON object.")
     allowed = {
@@ -165,12 +180,12 @@ def parse_web_search_args(data: dict[str, Any], *, settings: Settings) -> WebSea
     query = query.strip()
     if len(query) > 500:
         raise ValueError("web_search.query is too long.")
-    max_results = data.get("max_results", settings.web_search_default_max_results)
+    max_results = data.get("max_results", config.default_max_results)
     if not isinstance(max_results, int) or isinstance(max_results, bool):
         raise ValueError("web_search.max_results must be an integer.")
     if max_results < 1:
         raise ValueError("web_search.max_results must be at least 1.")
-    max_results = min(max_results, settings.web_search_default_max_results)
+    max_results = min(max_results, config.default_max_results)
     recency = data.get("recency", "none")
     if recency not in {"day", "week", "month", "year", "none"}:
         raise ValueError("web_search.recency is invalid.")
@@ -199,7 +214,7 @@ async def run_web_search(
     args: WebSearchArgs,
     client: SearchClient,
     registry: SourceRegistry,
-    settings: Settings,
+    config: WebSearchConfig,
 ) -> ToolResult:
     try:
         direct_extract_failed = False
@@ -207,10 +222,10 @@ async def run_web_search(
             extracted, direct_extract_failed = await _extract_or_empty(
                 client,
                 ExtractRequest(
-                    urls=args.direct_urls[: settings.web_search_max_extract_results],
+                    urls=args.direct_urls[: config.max_extract_results],
                     query=args.query,
                     depth="advanced" if args.search_depth == "advanced" else "basic",
-                    timeout_seconds=settings.web_search_extract_timeout_seconds,
+                    timeout_seconds=config.extract_timeout_seconds,
                 ),
             )
             if extracted:
@@ -226,9 +241,9 @@ async def run_web_search(
                 records = registry.register(
                     synthetic_results,
                     extracted,
-                    max_source_chars=settings.web_search_max_source_chars,
+                    max_source_chars=config.max_source_chars,
                 )
-                return _succeeded(records, args=args, provider=client.name, settings=settings)
+                return _succeeded(records, args=args, provider=client.name, config=config)
 
         results = await client.search(
             SearchRequest(
@@ -245,18 +260,18 @@ async def run_web_search(
             extracts, _ = await _extract_or_empty(
                 client,
                 ExtractRequest(
-                    urls=[item.url for item in results[: settings.web_search_max_extract_results]],
+                    urls=[item.url for item in results[: config.max_extract_results]],
                     query=args.query,
                     depth=cast(SearchDepth, args.search_depth),
-                    timeout_seconds=settings.web_search_extract_timeout_seconds,
+                    timeout_seconds=config.extract_timeout_seconds,
                 ),
             )
         records = registry.register(
             results,
             extracts,
-            max_source_chars=settings.web_search_max_source_chars,
+            max_source_chars=config.max_source_chars,
         )
-        return _succeeded(records, args=args, provider=client.name, settings=settings)
+        return _succeeded(records, args=args, provider=client.name, config=config)
     except Exception as exc:
         code = getattr(exc, "code", None) or "search_error"
         message = getattr(exc, "message", None) or (
@@ -270,10 +285,10 @@ def _succeeded(
     *,
     args: WebSearchArgs,
     provider: str,
-    settings: Settings,
+    config: WebSearchConfig,
 ) -> ToolResult:
     evidence = build_evidence(
-        records, query=args.query, max_chars=settings.web_search_max_evidence_chars
+        records, query=args.query, max_chars=config.max_evidence_chars
     )
     return ToolResult(
         content=evidence,
@@ -343,6 +358,7 @@ def _extract_urls(text: str) -> list[str] | None:
 __all__ = [
     "WEB_SEARCH_TOOL_SPEC",
     "WebSearchArgs",
+    "WebSearchConfig",
     "WebSearchTool",
     "parse_web_search_args",
     "run_web_search",

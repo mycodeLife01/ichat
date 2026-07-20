@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from app.agent.prompts import build_system_prompt, bundled_base_prompt
 from app.core.config import Settings, get_settings
+from app.services.agents.prompts import build_system_prompt, bundled_base_prompt
 
 _NOW = datetime(2026, 6, 17, tzinfo=UTC)
 

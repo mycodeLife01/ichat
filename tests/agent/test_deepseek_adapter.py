@@ -34,6 +34,16 @@ def make_settings() -> Settings:
     return get_settings()
 
 
+def _deepseek(settings: Settings, **clients: Any) -> DeepSeekProvider:
+    return DeepSeekProvider(
+        api_key=settings.deepseek_api_key,
+        base_url=settings.deepseek_base_url,
+        default_thinking_enabled=settings.deepseek_thinking_enabled,
+        default_reasoning_effort=settings.deepseek_reasoning_effort,
+        **clients,
+    )
+
+
 def sse_body(chunks: list[dict[str, Any]]) -> bytes:
     lines = [f"data: {json.dumps(chunk)}\n\n" for chunk in chunks]
     lines.append("data: [DONE]\n\n")
@@ -71,7 +81,7 @@ def streaming_provider(handler, *, settings: Settings | None = None) -> DeepSeek
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
-    return DeepSeekProvider(settings=settings or make_settings(), async_client=client)
+    return _deepseek(settings or make_settings(), async_client=client)
 
 
 def sync_provider(handler, *, settings: Settings | None = None) -> DeepSeekProvider:
@@ -81,7 +91,7 @@ def sync_provider(handler, *, settings: Settings | None = None) -> DeepSeekProvi
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
-    return DeepSeekProvider(settings=settings or make_settings(), sync_client=client)
+    return _deepseek(settings or make_settings(), sync_client=client)
 
 
 def stream_response(
@@ -351,7 +361,7 @@ async def test_stream_strips_tool_history_when_no_tools_registered() -> None:
 
 
 def test_count_tokens_uses_deepseek_ratios() -> None:
-    provider = DeepSeekProvider(settings=make_settings())
+    provider = _deepseek(make_settings())
     assert provider.count_tokens("a" * 10) == 3
     assert provider.count_tokens("中" * 10) == 6
     assert provider.count_tokens("abcd中文") == 3
@@ -359,7 +369,7 @@ def test_count_tokens_uses_deepseek_ratios() -> None:
 
 
 def test_capabilities() -> None:
-    provider = DeepSeekProvider(settings=make_settings())
+    provider = _deepseek(make_settings())
     assert provider.capabilities.supports_tool_history is False
     assert provider.capabilities.supports_reasoning is True
 

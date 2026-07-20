@@ -6,10 +6,10 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agent import resolve_provider as default_resolve_provider
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, logger
 from app.db.session import get_session_factory
+from app.services.agents import resolve_provider as default_resolve_provider
 from app.services.runs.lifecycle import (
     claim_next_queued_run,
     recover_expired_runs,

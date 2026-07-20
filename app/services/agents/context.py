@@ -1,10 +1,10 @@
-"""Context assembly for the agent kernel — the agent's working "memory".
+"""Context assembly for the orchestration layer — the agent's working "memory".
 
 Given a system prompt and the conversation history as a flat ``list[Message]``,
-organize it into a single budgeted message list to hand the runtime. Pure:
-operates only on kernel types, injects a token counter, and never touches a
-database, ORM, or provider. Loading history *from* a store is a business concern
-and lives in ``app/services/runs`` — not here.
+organize it into a single budgeted message list for the agent loop. Pure:
+operates only on kernel message types, injects a token counter, and never touches
+a database, ORM, or provider. Loading history *from* a store is a business
+concern and lives in ``app/services/runs`` — not here.
 
 Trimming keeps the newest messages within budget and never leaves a dangling
 tool exchange: it only cuts at a *turn boundary* (a genuine user message), so an

@@ -906,7 +906,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             return []
 
     monkeypatch.setattr(
-        "app.worker.executor.resolve_search_client",
+        "app.services.agents.chat_agent.resolve_search_client",
         lambda name, *, settings: FakeSearchClient(),
     )
 

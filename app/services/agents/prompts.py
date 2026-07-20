@@ -1,4 +1,4 @@
-"""Version-controlled system prompt assembly for the agent kernel.
+"""Version-controlled system prompt assembly for the orchestration layer.
 
 ``base_system_prompt.md`` is the bundled production prompt; ``build_system_prompt``
 is the single assembly entry point. When a run registers web search, a dynamic
