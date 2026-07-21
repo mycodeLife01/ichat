@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal, cast
 
 from fastapi import status
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -50,6 +50,17 @@ def message_response(
         position=message.position,
         created_at=message.created_at,
     )
+
+
+async def get_internal_run_id(
+    session: AsyncSession,
+    *,
+    run_public_id: uuid.UUID,
+) -> int:
+    run_id = await session.scalar(select(Run.id).where(Run.public_id == run_public_id))
+    if run_id is None:
+        raise LookupError(f"Run {run_public_id} not found")
+    return run_id
 
 
 def run_response(
@@ -227,13 +238,6 @@ async def submit_user_message(
     conversation.updated_at = await get_database_now(session)
     await session.flush()
 
-    # Notify worker(s) that a new run is queued. NOTIFY is delivered on COMMIT,
-    # so it's safe to enqueue here — the API handler commits the transaction.
-    await session.execute(
-        text("SELECT pg_notify('runs_queued', :payload)"),
-        {"payload": str(run.id)},
-    )
-
     return SendMessageResponse(
         message=message_response(
             message,
@@ -305,11 +309,6 @@ async def edit_user_message_and_regenerate(
     new_message.run_id = run.id
     conversation.updated_at = await get_database_now(session)
     await session.flush()
-
-    await session.execute(
-        text("SELECT pg_notify('runs_queued', :payload)"),
-        {"payload": str(run.id)},
-    )
 
     return SendMessageResponse(
         message=message_response(
@@ -384,11 +383,6 @@ async def regenerate_from_message(
 
     conversation.updated_at = await get_database_now(session)
     await session.flush()
-
-    await session.execute(
-        text("SELECT pg_notify('runs_queued', :payload)"),
-        {"payload": str(run.id)},
-    )
 
     anchor_run_public_id: uuid.UUID | None = None
     if anchor.run_id is not None:

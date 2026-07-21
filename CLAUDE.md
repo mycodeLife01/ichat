@@ -31,6 +31,10 @@ Use a worktree only when the user explicitly asks for one. If a generic workflow
 
 Do not proactively enter plan mode. Work directly in the normal implementation flow unless the user explicitly asks to enter plan mode or requests a plan for approval before implementation. When lightweight planning is useful, state the approach briefly in the conversation and continue without invoking plan mode.
 
+## Handoff
+
+The `handoff` skill must write its document to `docs/handover/` in this repository, not the OS temporary directory the skill defaults to. Follow the existing convention: a dated filename (`YYYY-MM-DD-topic.md`) and Chinese content (per the Language table, `docs/` is Chinese). This project rule takes precedence over the skill's default output location.
+
 ## Git
 
 Branch names must start with a change type/scope segment such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`. Prefer this project style over author or agent prefixes such as `codex/`. Examples: `fix/share-toast-loading-icon`, `feat/conversation-sharing`, `docs/git-workflow-rules`.
@@ -40,9 +44,9 @@ Commit messages must follow the Conventional Commits specification, for example 
 ## Subagent Model Policy
 
 When using subagent, choose models by task role:
-- Orchestrator and reviewer subagents must use `gpt-sol` with `high` thinking effort level.
-- Executor and worker subagents must use `gpt-luna` with `max` thinking effort level.
-- Read-only and explore subagents must use `gpt-luna` with `medium` thinking effort level.
+- Orchestrator and reviewer subagents must use `gpt-5.6-sol` with `xhigh` thinking effort level.
+- Executor and worker subagents must use `gpt-5.6-luna` with `max` thinking effort level.
+- Read-only and explore subagents must use `gpt-5.6-luna` with `medium` thinking effort level.
 
 ## Development Guidelines
 
@@ -59,13 +63,13 @@ When using subagent, choose models by task role:
 Backend is a three-service architecture orchestrated via Docker Compose:
 
 - **API** (FastAPI + Uvicorn) — thin routing layer, receives requests, writes messages and Runs to database
-- **Worker** (standalone process) — polls PostgreSQL queue, claims Runs, calls DeepSeek streaming API, persists events
-- **PostgreSQL** — sole state store, also serves as task queue (`FOR UPDATE SKIP LOCKED`)
+- **Worker** (standalone process) — Redis-woken PostgreSQL claim loop; calls DeepSeek streaming API, XADDs live events, and checkpoints drafts
+- **PostgreSQL** — sole business state store and Run ownership arbiter (`FOR UPDATE SKIP LOCKED`)
+- **Redis** — Run Streams + `runs_queued` pub/sub + Celery broker + short-TTL auth keys; never owns business state
 
-Email verification (added 2026-06) adds an independent async email stack alongside the above; the LLM worker is unaffected:
+The Celery stack handles finite, retryable background work alongside the LLM worker:
 
-- **Redis** — Celery broker + short-TTL auth cooldown / IP rate-limit keys (never holds business state)
-- **celery-worker** — sends queued emails from the `email_outbox` table (claim/lease/retry/dead), uses an independent sync (psycopg) engine
+- **celery-worker** — sends email outbox rows and generates conversation titles using the sync psycopg engine/provider path
 - **celery-beat** — single-instance scheduler for the periodic `email_outbox` sweep only
 
 See [the email verification handover](docs/handover/2026-06-26-email-verification.md) for details.
@@ -73,22 +77,28 @@ See [the email verification handover](docs/handover/2026-06-26-email-verificatio
 The frontend is a **separate SPA** (`frontend/`), no longer served by FastAPI. It is deployed on Cloudflare Pages (`https://chat.feslia.com`) and calls the API cross-origin (`https://feslia.com/api/v1`); allowed origins are controlled by the `CORS_ALLOWED_ORIGINS` env var. Local dev runs on the Vite dev server (`:5173`).
 
 Key mechanisms:
-- SSE event stream supports `after_seq` cursor replay; clients can reconnect without data loss
+- SSE uses per-Run Redis Streams with `after_seq` replay; PG `run_drafts` provides coarse fallback when Redis is unavailable
 - Worker lease + heartbeat for fault tolerance; orphaned runs auto-recovered on lease expiry
-- Provider abstraction layer (`app/providers/`) decouples LLM calls
+- Run queue wakeups use commit-after Redis pub/sub, while PostgreSQL polling remains the correctness fallback
+- Run cancellation uses the same commit-after Redis pub/sub to interrupt a live run promptly; the PG `cancelling` status + heartbeat poll remain the authoritative fallback
+- Provider-neutral agent kernel (`app/agent/`) holds building blocks (message model, Provider/Tool protocols, adapters, single-call primitives); the agent loop lives in the orchestration layer (`app/services/agents/`)
 
-See [module boundaries](docs/architecture/module-boundaries.md) for details.
+See [module boundaries](docs/architecture/module-boundaries.md) for details. For
+where a new background task belongs (async runtime vs Celery) and the shared
+transactional-state-row + wakeup-signal + idempotent-claim pattern, see
+[background tasks](docs/architecture/background-tasks.md).
 
 ## Source Layout
 
 ```
 app/
-├── api/v1/        # Routes: auth/, conversations/, runs/
-├── services/      # Business logic: auth/, conversations/, runs/
-├── models/        # ORM models: user, conversation, message, run, run_event
+├── api/v1/        # Routes: auth, conversations, runs, avatars, share(s), capabilities
+├── services/      # Business logic: auth/, conversations/, runs/, avatars/, email/, shares/, run_events/, agents/ (agent orchestration loop)
+├── models/        # ORM models: user, conversation, run, auth_token, avatar, email_outbox
 ├── schemas/       # Pydantic request/response models
-├── providers/     # LLM provider interface and DeepSeek adapter
-├── context/       # Context assembly (system prompt + message history truncation)
+├── agent/         # Agent kernel (building blocks): content blocks, Provider/Tool protocols, DeepSeek adapter, stream_model_call/execute_tool primitives, AgentEvent vocabulary
+├── search/        # Search infrastructure: SearchClient protocol, Tavily adapter, evidence postprocess
+├── tasks/         # Celery app + email/media/finite LLM tasks
 ├── worker/        # Background worker process
 ├── core/          # Config (config.py), logging, error definitions
 ├── db/            # Database connection and session management
@@ -118,7 +128,13 @@ deploy/            # Nginx config, SSL certificates
 | DB models | `app/models/user.py`, `conversation.py`, `run.py` |
 | Run state machine | `app/services/runs/lifecycle.py` |
 | Worker main loop | `app/worker/main.py` |
-| DeepSeek adapter | `app/providers/deepseek.py` |
+| Agent orchestration loop | `app/services/agents/chat_agent.py` (`ChatAgent.stream()`, `build_chat_agent`) |
+| Agent kernel primitives | `app/agent/primitives.py` (`stream_model_call`, `execute_tool`) |
+| Worker run executor | `app/worker/executor.py` (consumes `agent.stream()`: seq, sink, retry, cancel) |
+| Redis Run Stream transport | `app/services/run_events/stream.py` + `app/worker/event_sink.py` |
+| Draft checkpoints | `app/services/runs/drafts.py`, ORM in `app/models/run.py` |
+| Title Celery task | `app/tasks/llm_tasks.py`, assembly in `app/services/agents/title_agent.py` |
+| DeepSeek adapter | `app/agent/providers/deepseek.py` (openai SDK) |
 | Production deploy | `compose.prod.yml` + `deploy/nginx.conf` |
 | CI/CD | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml` |
 | MVP design spec | `docs/superpowers/specs/2026-05-16-ai-chat-backend-mvp-design.md` |

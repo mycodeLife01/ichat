@@ -4,7 +4,7 @@
 
 ## 顶层结构
 
-源码根目录使用 `app/`。领域业务逻辑集中在 `app/services/...`；与具体能力相关、主要被 worker 复用的构件（provider 协议、context 组装、prompt 组装、搜索、工具运行时）作为顶层能力模块放在 `services` 外；基础设施（`core`、`db`）与 API 契约（`models`、`schemas`）同样放在 `services` 外。
+源码根目录使用 `app/`。领域业务逻辑集中在 `app/services/...`；provider 中立的 agent 内核集中在 `app/agent`，搜索基础设施集中在 `app/search`；基础设施（`core`、`db`）与 API 契约（`models`、`schemas`）同样放在 `services` 外。
 
 ## `app/api`
 
@@ -50,47 +50,40 @@
 
 ## `app/services/runs`
 
-负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义。SSE 读取持久化事件，不直接调用 provider。
+负责 run 状态机、queue claiming、取消、lease/recovery、语义 `run_events`、`run_drafts` checkpoint、provider transcript 持久化和 replay/state 拼装语义；`events.py` 定义 worker 使用的 `RunEvent`/`RunEventType`，`drafts.py` 提供快照 upsert/read/delete，`history.py` 把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息。Redis 只是传输加速器，Run 所有权与终态事实仍归本模块和 PG。
 
 ## `app/services/run_events`
 
-负责进程级 `run_events` 频道的 LISTEN/NOTIFY 订阅管理：用单条共享连接把通知 fan-out 给每个 run 的 `asyncio.Event`，供 SSE handler 唤醒，避免每个 SSE 请求各开一条 LISTEN 连接耗尽 Postgres 连接。
+负责 Redis Run Stream 传输适配：`RedisRunEventStream` 统一 XADD/MAXLEN/双重 TTL、XRANGE replay、每连接 XREAD BLOCK、entry 编解码与短超时。该模块不决定 Run 状态，不持有业务事实；调用方必须能在 Redis 失败时退回 `services/runs` 的 PG 语义事件与 draft checkpoint。
 
-## `app/providers`
+## `app/agent`
 
-负责 provider interface 和具体 provider adapter（首个为 DeepSeek，使用 `httpx` 直连 OpenAI-compatible streaming API），含流式分片解析与 provider registry。
+agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
 
-不放在 `services` 下的理由：provider 协议是被 worker 复用的能力构件；且 provider 层只做协议收发，不读取数据库。
+边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
 
-## `app/context`
+## `app/services/agents`
 
-负责把 system prompt 与可见 conversation history 组装成 provider messages，按 token 预算执行截断，并以 succeeded run 的 provider transcript 作为历史 block 原子 replay。system prompt 由调用方（worker）传入，token 计数器由 provider 注入，因此 context 本身不调用 provider。
+agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChain 的 harness 层（`create_agent`）。负责：`resolve_provider` 注册表（Settings→适配器窄参的展开发生在这里）、system prompt 组装、context 预算裁剪（`Turn` 词汇归此）、工具装配、`max_tool_calls` 与声明式 `RetryPolicy`；`build_chat_agent(...) -> ChatAgent`，`ChatAgent.stream()` 内执行 model call 调度与工具分发循环，向上 yield AgentEvent。未来的 middleware、HITL、条件工具路由在此层生长。
 
-## `app/prompts`
-
-负责生产级 system prompt 的版本化管理与按 run 注入：`base_system_prompt.md` 为基础 prompt，`build_system_prompt()` 是唯一组装入口——基础 prompt 取 `DEFAULT_SYSTEM_PROMPT` 覆盖或内置文件，并在本 run 启用联网搜索时追加当日日期与 web_search 指引段落。纯组装，不读数据库、不调用 provider。
+**生成器即边界**：编排层只 yield 事件宣告，不知道 seq/sink/发布/持久化；与取消无关（仅需取消安全）。`SourceRegistry` 等单一工具的私有产物以闭包内化，通过 `assistant_metadata` 中性钩子交给 worker，web_search/sources/tavily 词汇不出包。不读数据库——历史加载归 `app/services/runs`。
 
 ## `app/search`
 
 负责 provider-agnostic 搜索能力抽象：统一 `types`、`SearchClient` 协议（`client`）、`registry`（按名解析 client）、Tavily adapter（`tavily`）、结果去重/编号/证据压缩（`postprocess`）。调用外部搜索 API，不读取数据库。
 
-## `app/tools`
-
-负责 worker 内的工具运行时：工具类型、`web_search` 工具 schema、模型工具调用的参数解析与执行、工具结果构造。编排 `app/search` 完成搜索，工具产物由 worker 持久化为 run_events 与 provider transcript。
-
 ## `app/worker`
 
-负责独立 worker 进程的 polling、claim run、heartbeat、构建 context、组装 system prompt、推进 provider/agent loop（含模型驱动的 web_search 工具调用）、写入 run_events 与 provider transcript、物化最终 assistant message、处理取消和 lease recovery。
+负责独立 worker 进程的 Redis 唤醒 + PG polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()`（seq 分配、AgentEvent→外部 RunEvent 映射、重试执行、取消）、通过 `RedisStreamSink` / `PostgresEventSink` / `DraftCheckpointSink` / `FanoutSink` 发布与持久化、终态状态机转换、转写落库和 assistant message 物化。标题 prompt/模型选择/清洗归 `services/agents/title_agent.py`，标题执行归 Celery `tasks/llm_tasks.py`；worker 不含标题业务组装。
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 
 ## 跨模块规则
 
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
-- `app/worker` 可以调用 `app/context`、`app/prompts`、`app/providers`、`app/search`、`app/tools`、`app/services/...` 和 `app/db`。
-- `app/providers` 不读取数据库。
-- `app/context` 不调用 provider（token 计数器由调用方注入）。
-- `app/prompts` 不读取数据库、不调用 provider。
+- `app/worker` 可以调用 `app/agent`、`app/search`、`app/services/...` 和 `app/db`，但不做业务组装决策，不实现 agent 循环。
+- `app/services/agents` 依赖 `app/agent`、`app/core`、`app/search`；不读数据库、不 import 传输/发布设施。
+- `app/agent` 不 import `app.core.config`、不读取数据库、不 import ORM/`app/services`；可以依赖 `app/search`。
 - `app/search` 不读取数据库。
 - `app/services/runs` 不拼装 prompt。
 - `app/services/conversations` 不直接调用 provider。

@@ -17,7 +17,8 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
 from app.db.session import check_database_ready
-from app.services.run_events.subscription import RunEventSubscriptionManager
+from app.services.run_events.stream import RedisRunEventStream
+from app.services.runs.wakeup import RedisRunCancelPublisher, RedisRunQueuedPublisher
 
 DatabaseReadyCheck = Callable[[], Awaitable[bool]]
 
@@ -31,21 +32,21 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        manager = RunEventSubscriptionManager(app_settings.database_url)
-        try:
-            await manager.start()
-            app.state.run_event_subscriptions = manager
-        except Exception:
-            logger.exception(
-                "RunEventSubscriptionManager failed to start; SSE will use polling fallback"
-            )
-            app.state.run_event_subscriptions = None
+        event_stream = RedisRunEventStream.from_settings(
+            app_settings,
+            socket_timeout=3.5,
+        )
+        run_queued_publisher = RedisRunQueuedPublisher.from_settings(app_settings)
+        run_cancel_publisher = RedisRunCancelPublisher.from_settings(app_settings)
+        app.state.run_event_stream = event_stream
+        app.state.run_queued_publisher = run_queued_publisher
+        app.state.run_cancel_publisher = run_cancel_publisher
         try:
             yield
         finally:
-            existing = getattr(app.state, "run_event_subscriptions", None)
-            if existing is not None:
-                await existing.stop()
+            await event_stream.close()
+            await run_queued_publisher.close()
+            await run_cancel_publisher.close()
 
     app = FastAPI(title="iChat API", lifespan=lifespan)
     app.include_router(capabilities_router)

@@ -5,17 +5,20 @@ from collections.abc import AsyncIterator
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import Settings, get_settings
-from app.models.run import Run
-from app.providers import (
-    Finish,
+from app.agent import (
+    Message as AgentMessage,
+)
+from app.agent import (
     Provider,
-    ProviderChunk,
-    ProviderMessage,
+    ProviderCapabilities,
+    ReasoningConfig,
+    StreamDone,
+    StreamEvent,
     TextDelta,
-    ThinkingOptions,
     ToolSpec,
 )
+from app.core.config import Settings, get_settings
+from app.models.run import Run
 from app.worker.main import run_worker_loop
 from tests.worker.test_main import clean_test_data, make_queued_run
 
@@ -25,13 +28,18 @@ TEST_DATABASE_URL = os.environ.get(
 )
 
 
-class SummarizeMixin:
-    async def summarize(
+class GenerateMixin:
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(supports_tool_history=True, supports_reasoning=True)
+
+    def generate(
         self,
         *,
         model: str,
-        messages: list[ProviderMessage],
+        messages: list[AgentMessage],
         max_output_tokens: int,
+        reasoning: ReasoningConfig | None = None,
     ) -> str:
         return "Fake Title"
 
@@ -65,10 +73,11 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
             "worker_max_inflight_runs": 8,
+            "auto_title_enabled": False,
         }
     )
 
-    class SlowProvider(SummarizeMixin, Provider):
+    class SlowProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -77,13 +86,13 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.5)
-            yield Finish(finish_reason="stop")
+            yield StreamDone(finish_reason="stop")
 
     def resolve(name: str, *, settings: Settings) -> Provider:
         return SlowProvider()
@@ -146,10 +155,11 @@ async def test_worker_loop_respects_max_inflight_cap(
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
             "worker_max_inflight_runs": 1,
+            "auto_title_enabled": False,
         }
     )
 
-    class SlowProvider(SummarizeMixin, Provider):
+    class SlowProvider(GenerateMixin, Provider):
         @property
         def name(self) -> str:
             return "fake"
@@ -158,13 +168,13 @@ async def test_worker_loop_respects_max_inflight_cap(
             self,
             *,
             model: str,
-            messages: list[ProviderMessage],
-            thinking: ThinkingOptions | None = None,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
             tools: list[ToolSpec] | None = None,
-        ) -> AsyncIterator[ProviderChunk]:
+        ) -> AsyncIterator[StreamEvent]:
             yield TextDelta(text="working")
             await asyncio.sleep(0.3)
-            yield Finish(finish_reason="stop")
+            yield StreamDone(finish_reason="stop")
 
     def resolve(name: str, *, settings: Settings) -> Provider:
         return SlowProvider()

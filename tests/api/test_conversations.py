@@ -56,8 +56,31 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     await engine.dispose()
 
 
+class RecordingRunQueuedPublisher:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+        self.published: list[int] = []
+
+    async def publish(self, run_id: int) -> None:
+        async with self._session_factory() as session:
+            run = await session.get(Run, run_id)
+            assert run is not None
+            assert run.status == "queued"
+        self.published.append(run_id)
+
+
 @pytest.fixture()
-async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[FastAPI]:
+def run_queued_publisher(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> RecordingRunQueuedPublisher:
+    return RecordingRunQueuedPublisher(session_factory)
+
+
+@pytest.fixture()
+async def app(
+    session_factory: async_sessionmaker[AsyncSession],
+    run_queued_publisher: RecordingRunQueuedPublisher,
+) -> AsyncIterator[FastAPI]:
     get_settings.cache_clear()
     app = create_app(database_ready_check=ready)
 
@@ -66,6 +89,7 @@ async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    app.state.run_queued_publisher = run_queued_publisher
     yield app
     app.dependency_overrides.clear()
     get_settings.cache_clear()
@@ -216,6 +240,7 @@ async def test_list_conversations_accepts_limit_and_skip(
 async def test_send_message_creates_user_message_and_queued_run(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],
+    run_queued_publisher: RecordingRunQueuedPublisher,
 ) -> None:
     alice = await register_user(
         client,
@@ -268,6 +293,7 @@ async def test_send_message_creates_user_message_and_queued_run(
         # time (it depends on the final web-search decision and date), so a
         # freshly queued run has none yet.
         assert run.system_prompt_snapshot is None
+        assert run_queued_publisher.published == [run.id]
 
 
 async def test_send_message_with_thinking_override_persists_provider_options(

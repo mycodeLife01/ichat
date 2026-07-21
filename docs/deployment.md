@@ -9,8 +9,8 @@
                 ▼
 用户 → Nginx (80/8443) → FastAPI API (8000) → PostgreSQL (5432)
                                             → Worker (LLM run)
-                                            → Redis (Celery broker + 限流)
-                                            → Celery Worker / Beat (发送验证邮件)
+                                            → Redis (Run Stream / 唤醒 / Celery / 限流)
+                                            → Celery Worker / Beat (邮件、标题、维护任务)
                                             → Media Worker → Cloudflare R2 / CDN purge (头像)
 ```
 
@@ -96,9 +96,14 @@ SUMMARY_MODEL=deepseek-chat
 # CORS —— 前端域名，逗号分隔精确 origin；空 = 全部拒绝
 CORS_ALLOWED_ORIGINS=https://chat.feslia.com
 
-# 邮箱验证 / 认证邮件（详见 docs/handover/2026-06-26-email-verification.md）
+# Redis：Run Stream / runs_queued 唤醒 / Celery / 认证限流
 REDIS_URL=redis://redis:6379/0
 CELERY_BROKER_URL=redis://redis:6379/0
+RUN_STREAM_MAXLEN=2048
+RUN_STREAM_TTL_SECONDS=600
+RUN_STREAM_ORPHAN_TTL_SECONDS=86400
+DRAFT_CHECKPOINT_INTERVAL_SECONDS=3.0
+DRAFT_CHECKPOINT_MAX_PENDING_CHARS=4096
 FRONTEND_APP_URL=https://chat.feslia.com
 EMAIL_PROVIDER=postmark            # 生产用 postmark；dev/CI 用 console/fake
 EMAIL_FROM=iChat <no-reply@mail.feslia.com>
@@ -114,7 +119,7 @@ WORKER_HEARTBEAT_INTERVAL_SECONDS=10
 LOG_LEVEL=INFO
 ```
 
-完整变量列表（含 Worker 并发、DB 连接池、SSE、Web Search 超时和证据压缩等调优项）见 `.env.example`。
+完整变量列表（含 Worker 并发、DB 连接池、Run Stream/checkpoint、Web Search 超时和证据压缩等调优项）见 `.env.example`。
 
 头像 R2 的 bucket、精确 CORS、API/media worker/purge 三类最小权限凭证、真实 smoke、运维下架和回滚步骤见 `docs/handover/2026-07-14-r2-avatar-upload.md`。生产资源配置完成前保持 `AVATAR_STORAGE_ENABLED=false`；启用或修改头像环境变量后须 force-recreate `api media-worker celery-beat`。
 
@@ -122,7 +127,7 @@ LOG_LEVEL=INFO
 
 > **Web Search**：后端通过 `GET /api/v1/capabilities` 对前端公开联网搜索是否可用；只有 `WEB_SEARCH_ENABLED=true` 且 `TAVILY_API_KEY` 非空时返回 enabled。修改 `WEB_SEARCH_ENABLED`、`TAVILY_API_KEY` 或相关超时/额度配置后，需至少 force-recreate `api` 和 `worker` 容器，让 capabilities 与 worker runtime 同步加载新 env。
 
-> **邮箱验证 / Celery**：新增 `redis`、`celery-worker`、`celery-beat` 三服务（已在 `compose.prod.yml`）。`celery-beat` 必须**单实例**。修改邮件相关 env 后须 force-recreate `api celery-worker celery-beat`。Postmark DNS/DKIM/SPF 配置、dead outbox 排查、以及 nginx Cloudflare realip + 源站防火墙锁 CF 段的运维清单详见 `docs/handover/2026-06-26-email-verification.md`。`deploy/nginx.conf` 已含 CF `set_real_ip_from` 段，CF IP 段变更时需按该清单同步。
+> **Redis / Celery**：`compose.prod.yml` 显式使用 `maxmemory-policy noeviction`；不得改为会驱逐 key 的策略，否则 Celery broker 与 Run Stream 都可能丢数据。`celery-beat` 必须**单实例**。修改 Run Stream/checkpoint env 后须 force-recreate `api worker`；修改标题 provider/model 或邮件 env 后须 force-recreate `celery-worker`（邮件调度还涉及 `celery-beat`）。Postmark DNS/DKIM/SPF、dead outbox、以及 nginx Cloudflare realip + 源站防火墙清单详见 `docs/handover/2026-06-26-email-verification.md`。
 
 ### 5. 创建证书目录（可选，HTTPS 用）
 

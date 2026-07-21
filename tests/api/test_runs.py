@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
@@ -16,7 +17,9 @@ from app.main import create_app
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.services.run_events.subscription import RunEventSubscriptionManager
+from app.services.run_events.stream import RedisRunEventStream
+from app.services.runs.drafts import upsert_run_draft
+from app.services.runs.events import RunEvent as StreamRunEvent
 from app.services.runs.service import append_run_event
 
 TEST_DATABASE_URL = os.environ.get(
@@ -66,7 +69,20 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 
 @pytest.fixture()
-async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[FastAPI]:
+def run_event_stream() -> RedisRunEventStream:
+    return RedisRunEventStream(
+        redis=FakeRedis(decode_responses=True),
+        maxlen=2048,
+        ttl_seconds=600,
+        orphan_ttl_seconds=86_400,
+    )
+
+
+@pytest.fixture()
+async def app(
+    session_factory: async_sessionmaker[AsyncSession],
+    run_event_stream: RedisRunEventStream,
+) -> AsyncIterator[FastAPI]:
     app = create_app(database_ready_check=ready)
 
     async def override_get_session() -> AsyncIterator[AsyncSession]:
@@ -74,17 +90,11 @@ async def app(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
-
-    # ASGITransport does not run FastAPI lifespan, so start the SSE
-    # subscription manager manually so SSE handlers receive pg_notify wakeups.
-    manager = RunEventSubscriptionManager(TEST_DATABASE_URL)
-    await manager.start()
-    app.state.run_event_subscriptions = manager
+    app.state.run_event_stream = run_event_stream
 
     try:
         yield app
     finally:
-        await manager.stop()
         app.dependency_overrides.clear()
 
 
@@ -196,6 +206,55 @@ async def test_get_run_state_returns_current_draft(
     }
 
 
+async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    run_event_stream: RedisRunEventStream,
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-state-stream-api",
+        email=f"alice-state-stream@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await upsert_run_draft(
+            session,
+            run_id=run.id,
+            seq=2,
+            text="Hel",
+            reasoning="Think",
+        )
+        run_public_id = str(run.public_id)
+        run_db_id = run.id
+        await session.commit()
+
+    await run_event_stream.append(
+        run_db_id,
+        StreamRunEvent(seq=3, type="text_delta", payload={"text": "lo"}),
+    )
+
+    response = await client.get(f"/api/v1/runs/{run_public_id}/state", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == {
+        "run_id": run_public_id,
+        "status": "streaming",
+        "latest_seq": 3,
+        "draft_text": "Hello",
+        "draft_reasoning": "Think",
+        "tool_state": None,
+        "terminal_event": None,
+    }
+
+
 async def test_run_state_requires_authentication(client: AsyncClient) -> None:
     response = await client.get(f"/api/v1/runs/{MISSING_RUN_ID}/state")
 
@@ -272,6 +331,52 @@ async def test_run_events_replay_starts_after_seq_and_stops_at_terminal(
     assert '"payload":{"text":"Hello"}' in body
     assert "id: 3" in body
     assert "event: run_succeeded" in body
+
+
+async def test_run_events_merge_redis_deltas_with_postgres_terminal(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    run_event_stream: RedisRunEventStream,
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-events-stream-api",
+        email=f"alice-events-stream@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="succeeded",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="run_succeeded",
+            payload={},
+            seq=3,
+        )
+        run_public_id = str(run.public_id)
+        run_db_id = run.id
+        await session.commit()
+
+    await run_event_stream.append(
+        run_db_id,
+        StreamRunEvent(seq=2, type="text_delta", payload={"text": "Redis hello"}),
+    )
+
+    response = await client.get(
+        f"/api/v1/runs/{run_public_id}/events?after_seq=1",
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "id: 2\nevent: text_delta" in response.text
+    assert '"payload":{"text":"Redis hello"}' in response.text
+    assert "id: 3\nevent: run_succeeded" in response.text
 
 
 async def test_run_events_returns_empty_stream_when_after_seq_passed_terminal(
@@ -411,6 +516,76 @@ async def test_run_events_tails_new_persisted_events_until_terminal(
     assert body.index("event: text_delta") < body.index("event: run_succeeded")
 
 
+async def test_run_events_fall_back_to_checkpoint_when_redis_is_unavailable(
+    app: FastAPI,
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    class FailingStream:
+        async def list_after(self, run_id: int, *, after_seq: int) -> list[object]:
+            raise TimeoutError("redis unavailable")
+
+        async def read_after(
+            self,
+            run_id: int,
+            *,
+            after_seq: int,
+            block_milliseconds: int,
+        ) -> list[object]:
+            raise TimeoutError("redis unavailable")
+
+    app.state.run_event_stream = FailingStream()
+    alice = await register_user(
+        client,
+        username="alice-checkpoint-fallback-api",
+        email=f"alice-checkpoint-fallback@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await upsert_run_draft(
+            session,
+            run_id=run.id,
+            seq=2,
+            text="Checkpoint text",
+            reasoning="",
+        )
+        run_db_id = run.id
+        run_public_id = str(run.public_id)
+        await session.commit()
+
+    response_task = asyncio.create_task(
+        client.get(f"/api/v1/runs/{run_public_id}/events", headers=headers, timeout=3.0)
+    )
+    try:
+        await asyncio.sleep(0.2)
+        async with session_factory() as session:
+            await append_run_event(
+                session,
+                run_id=run_db_id,
+                event_type="run_succeeded",
+                payload={},
+                seq=3,
+            )
+            await session.commit()
+        response = await asyncio.wait_for(response_task, timeout=3.0)
+    finally:
+        if not response_task.done():
+            response_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await response_task
+
+    assert "id: 2\nevent: text_delta" in response.text
+    assert '"payload":{"text":"Checkpoint text"}' in response.text
+    assert "id: 3\nevent: run_succeeded" in response.text
+
+
 async def test_cancel_run_requires_authentication(client: AsyncClient) -> None:
     response = await client.post(f"/api/v1/runs/{MISSING_RUN_ID}/cancel")
 
@@ -421,6 +596,7 @@ async def test_cancel_run_requires_authentication(client: AsyncClient) -> None:
 async def test_cancel_queued_run_returns_ok_and_marks_cancelled(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],
+    run_event_stream: RedisRunEventStream,
 ) -> None:
     alice = await register_user(
         client,
@@ -457,6 +633,9 @@ async def test_cancel_queued_run_returns_ok_and_marks_cancelled(
             )
         ).all()
         assert [event.type for event in events] == ["run_cancelled"]
+
+    streamed = await run_event_stream.list_after(run_db_id, after_seq=0)
+    assert [(event.seq, event.type) for event in streamed] == [(1, "run_cancelled")]
 
 
 async def test_cancel_streaming_run_returns_ok_and_marks_cancelling(

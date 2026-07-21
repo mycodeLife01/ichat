@@ -15,7 +15,7 @@
 后端：
 
 - `alembic/versions/20260611_0005_add_web_search_transcript.py`
-- `scripts/web_search_worker_smoke.py`
+- `scripts/web_search_worker_smoke.py`（已于 2026-07-21 随 agent/worker 重构删除：其依赖的 `app/providers` 旧架构不复存在）
 - `app/api/v1/capabilities.py`
 - `app/search/*`
 - `app/tools/*`

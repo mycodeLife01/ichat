@@ -8,8 +8,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunEvent
+from app.models.run import Run, RunDraft, RunEvent
 from app.models.user import User
+from app.services.runs.drafts import upsert_run_draft
 from app.services.runs.lifecycle import (
     claim_next_queued_run,
     is_cancelling,
@@ -371,6 +372,33 @@ async def test_renew_lease_extends_expiry_and_heartbeat(
         assert updated.lease_expires_at > original_expiry
 
 
+async def test_renew_lease_rejects_different_worker(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        run = await make_run(session, status_value="streaming")
+        run.lease_owner = "worker-a"
+        run.lease_expires_at = datetime.now(UTC) + timedelta(seconds=5)
+        run_id = run.id
+        original_expiry = run.lease_expires_at
+        await session.commit()
+
+    async with session_factory() as session:
+        changed = await renew_lease(
+            session,
+            run_id=run_id,
+            lease_seconds=120,
+            worker_id="worker-b",
+        )
+        await session.commit()
+
+    assert changed is False
+    async with session_factory() as session:
+        updated = await session.get(Run, run_id)
+        assert updated is not None
+        assert updated.lease_expires_at == original_expiry
+
+
 async def test_is_cancelling_reflects_status(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -451,6 +479,87 @@ async def test_recover_expired_runs_marks_lease_expired_runs_failed(
             "code": "lease_expired",
             "message": "worker lease expired",
         }
+
+
+async def test_recover_expired_runs_advances_past_latest_stream_seq(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        expired = await make_run(session, status_value="streaming")
+        expired.lease_owner = "worker-dead"
+        expired.lease_expires_at = datetime.now(UTC) - timedelta(seconds=10)
+        expired_id = expired.id
+        await upsert_run_draft(
+            session,
+            run_id=expired_id,
+            seq=5,
+            text="partial",
+            reasoning="",
+        )
+        await session.commit()
+
+    async def latest_stream_seq(run_id: int) -> int:
+        assert run_id == expired_id
+        return 7
+
+    async with session_factory() as session:
+        recovered_ids = await recover_expired_runs(
+            session,
+            latest_stream_seq=latest_stream_seq,
+        )
+        await session.commit()
+
+    assert recovered_ids == [expired_id]
+    async with session_factory() as session:
+        terminal = await session.scalar(
+            select(RunEvent).where(
+                RunEvent.run_id == expired_id,
+                RunEvent.type == "run_failed",
+            )
+        )
+        assert terminal is not None
+        assert terminal.seq == 8
+        assert await session.get(RunDraft, expired_id) is None
+
+
+async def test_recover_expired_runs_uses_safety_gap_when_stream_seq_is_unknown(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        expired = await make_run(session, status_value="streaming")
+        expired.lease_owner = "worker-dead"
+        expired.lease_expires_at = datetime.now(UTC) - timedelta(seconds=10)
+        expired_id = expired.id
+        await upsert_run_draft(
+            session,
+            run_id=expired_id,
+            seq=5,
+            text="partial",
+            reasoning="",
+        )
+        await session.commit()
+
+    async def unavailable_stream_seq(run_id: int) -> None:
+        assert run_id == expired_id
+        return None
+
+    async with session_factory() as session:
+        await recover_expired_runs(
+            session,
+            latest_stream_seq=unavailable_stream_seq,
+            uncertain_stream_seq_gap=4096,
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        terminal = await session.scalar(
+            select(RunEvent).where(
+                RunEvent.run_id == expired_id,
+                RunEvent.type == "run_failed",
+            )
+        )
+        assert terminal is not None
+        assert terminal.seq == 4102
 
 
 async def test_recover_expired_runs_skips_terminal_runs(

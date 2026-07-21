@@ -128,6 +128,75 @@ class RunEvent(Base):
     )
 
 
+class RunDraft(Base):
+    __tablename__ = "run_drafts"
+    __table_args__ = (CheckConstraint("seq > 0", name="seq_positive"),)
+
+    run_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    reasoning: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    events: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default="[]",
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ConversationTitleJob(Base):
+    __tablename__ = "conversation_title_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'dead')",
+            name="status_valid",
+        ),
+        Index("ix_conversation_title_jobs_due", "status", "next_attempt_at"),
+    )
+
+    run_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    conversation_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class RunProviderMessage(Base):
     __tablename__ = "run_provider_messages"
     __table_args__ = (
@@ -154,6 +223,7 @@ class RunProviderMessage(Base):
         nullable=True,
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
+    blocks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

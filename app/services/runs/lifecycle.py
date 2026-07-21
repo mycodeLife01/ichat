@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -5,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run import Run, RunEvent
-from app.services.runs.service import append_run_event
+from app.services.runs.drafts import delete_run_draft
+from app.services.runs.service import append_run_event, get_next_run_event_seq
 
 
 async def claim_next_queued_run(
@@ -74,6 +76,7 @@ async def mark_run_succeeded(
     run_id: int,
     usage: dict[str, Any] | None,
     provider_request_id: str | None,
+    event_seq: int | None = None,
 ) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status not in SUCCEEDED_FROM_STATUSES:
@@ -91,6 +94,7 @@ async def mark_run_succeeded(
         run_id=run_id,
         event_type="run_succeeded",
         payload={"usage": usage} if usage is not None else {},
+        seq=event_seq,
     )
     return True
 
@@ -101,6 +105,7 @@ async def mark_run_failed(
     run_id: int,
     code: str,
     message: str,
+    event_seq: int | None = None,
 ) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status not in FAILED_FROM_STATUSES:
@@ -119,11 +124,17 @@ async def mark_run_failed(
         run_id=run_id,
         event_type="run_failed",
         payload={"code": code, "message": message},
+        seq=event_seq,
     )
     return True
 
 
-async def mark_run_cancelled(session: AsyncSession, *, run_id: int) -> bool:
+async def mark_run_cancelled(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    event_seq: int | None = None,
+) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status not in CANCELLED_FROM_STATUSES:
         return False
@@ -139,6 +150,7 @@ async def mark_run_cancelled(session: AsyncSession, *, run_id: int) -> bool:
         run_id=run_id,
         event_type="run_cancelled",
         payload={},
+        seq=event_seq,
     )
     return True
 
@@ -148,9 +160,12 @@ async def renew_lease(
     *,
     run_id: int,
     lease_seconds: int,
+    worker_id: str | None = None,
 ) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status not in RENEWABLE_STATUSES or run.lease_owner is None:
+        return False
+    if worker_id is not None and run.lease_owner != worker_id:
         return False
     now = datetime.now(UTC)
     run.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -164,7 +179,12 @@ async def is_cancelling(session: AsyncSession, *, run_id: int) -> bool:
     return status == "cancelling"
 
 
-async def mark_run_cancelled_if_cancelling(session: AsyncSession, *, run_id: int) -> bool:
+async def mark_run_cancelled_if_cancelling(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    event_seq: int | None = None,
+) -> bool:
     run = await _get_run_for_update(session, run_id=run_id)
     if run.status != "cancelling":
         return False
@@ -180,6 +200,7 @@ async def mark_run_cancelled_if_cancelling(session: AsyncSession, *, run_id: int
         run_id=run_id,
         event_type="run_cancelled",
         payload={},
+        seq=event_seq,
     )
     return True
 
@@ -196,7 +217,12 @@ async def run_has_text_delta(session: AsyncSession, *, run_id: int) -> bool:
 ACTIVE_STATUSES_FOR_RECOVERY = ("started", "streaming", "cancelling")
 
 
-async def recover_expired_runs(session: AsyncSession) -> list[int]:
+async def recover_expired_runs(
+    session: AsyncSession,
+    *,
+    latest_stream_seq: Callable[[int], Awaitable[int | None]] | None = None,
+    uncertain_stream_seq_gap: int = 0,
+) -> list[int]:
     now = datetime.now(UTC)
     candidate_ids = (
         await session.scalars(
@@ -212,12 +238,21 @@ async def recover_expired_runs(session: AsyncSession) -> list[int]:
 
     recovered: list[int] = []
     for run_id in candidate_ids:
+        latest_seq = await get_next_run_event_seq(session, run_id=run_id) - 1
+        if latest_stream_seq is not None:
+            stream_seq = await latest_stream_seq(run_id)
+            if stream_seq is None:
+                latest_seq += uncertain_stream_seq_gap
+            else:
+                latest_seq = max(latest_seq, stream_seq)
         changed = await mark_run_failed(
             session,
             run_id=run_id,
             code="lease_expired",
             message="worker lease expired",
+            event_seq=latest_seq + 1,
         )
         if changed:
+            await delete_run_draft(session, run_id=run_id)
             recovered.append(run_id)
     return recovered

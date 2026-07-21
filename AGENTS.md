@@ -75,20 +75,24 @@ The frontend is a **separate SPA** (`frontend/`), no longer served by FastAPI. I
 Key mechanisms:
 - SSE event stream supports `after_seq` cursor replay; clients can reconnect without data loss
 - Worker lease + heartbeat for fault tolerance; orphaned runs auto-recovered on lease expiry
-- Provider abstraction layer (`app/providers/`) decouples LLM calls
+- Provider-neutral agent kernel (`app/agent/`) holds building blocks (message model, Provider/Tool protocols, adapters, single-call primitives); the agent loop lives in the orchestration layer (`app/services/agents/`)
 
-See [module boundaries](docs/architecture/module-boundaries.md) for details.
+See [module boundaries](docs/architecture/module-boundaries.md) for details. For
+where a new background task belongs (async runtime vs Celery) and the shared
+transactional-state-row + wakeup-signal + idempotent-claim pattern, see
+[background tasks](docs/architecture/background-tasks.md).
 
 ## Source Layout
 
 ```
 app/
-├── api/v1/        # Routes: auth/, conversations/, runs/
-├── services/      # Business logic: auth/, conversations/, runs/
-├── models/        # ORM models: user, conversation, message, run, run_event
+├── api/v1/        # Routes: auth, conversations, runs, avatars, share(s), capabilities
+├── services/      # Business logic: auth/, conversations/, runs/, avatars/, email/, shares/, run_events/, agents/ (agent orchestration loop)
+├── models/        # ORM models: user, conversation, run, auth_token, avatar, email_outbox
 ├── schemas/       # Pydantic request/response models
-├── providers/     # LLM provider interface and DeepSeek adapter
-├── context/       # Context assembly (system prompt + message history truncation)
+├── agent/         # Agent kernel (building blocks): content blocks, Provider/Tool protocols, DeepSeek adapter, stream_model_call/execute_tool primitives, AgentEvent vocabulary
+├── search/        # Search infrastructure: SearchClient protocol, Tavily adapter, evidence postprocess
+├── tasks/         # Celery app + email/media tasks
 ├── worker/        # Background worker process
 ├── core/          # Config (config.py), logging, error definitions
 ├── db/            # Database connection and session management
@@ -118,7 +122,10 @@ deploy/            # Nginx config, SSL certificates
 | DB models | `app/models/user.py`, `conversation.py`, `run.py` |
 | Run state machine | `app/services/runs/lifecycle.py` |
 | Worker main loop | `app/worker/main.py` |
-| DeepSeek adapter | `app/providers/deepseek.py` |
+| Agent orchestration loop | `app/services/agents/chat_agent.py` (`ChatAgent.stream()`, `build_chat_agent`) |
+| Agent kernel primitives | `app/agent/primitives.py` (`stream_model_call`, `execute_tool`) |
+| Worker run executor | `app/worker/executor.py` (consumes `agent.stream()`: seq, sink, retry, cancel) |
+| DeepSeek adapter | `app/agent/providers/deepseek.py` (openai SDK) |
 | Production deploy | `compose.prod.yml` + `deploy/nginx.conf` |
 | CI/CD | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml` |
 | MVP design spec | `docs/superpowers/specs/2026-05-16-ai-chat-backend-mvp-design.md` |
@@ -136,7 +143,7 @@ docker compose up -d                  # Start all services
 docker compose exec api alembic upgrade head  # Run DB migrations
 uv sync --all-groups                  # Install all dependencies (incl. dev)
 pytest                                # Run tests
-ruff check app tests                  # Lint
+ruff check .                          # Lint (same scope as CI, includes alembic/)
 mypy app                             # Type check
 ```
 

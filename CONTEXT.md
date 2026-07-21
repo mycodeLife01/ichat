@@ -29,3 +29,41 @@ _Avoid_: 删号、销户
 **停用（Deactivated）**:
 账户不可登录、不可访问任何接口的状态。停用不等于数据删除。
 _Avoid_: 封禁（封禁是运营处罚，停用是账户生命周期状态）
+
+### 会话与运行
+
+**Run（运行）**:
+一次由用户消息触发的后台生成任务：worker 认领（claim）后调用 LLM provider 流式产出回复，全生命周期为 queued → started → streaming → succeeded/failed/cancelled（含 cancelling 过渡态）。Run 行本身也是 PG 任务队列中的状态行。
+_Avoid_: 任务、请求（与 HTTP 请求混淆）
+
+**转写（Transcript）**:
+一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。代码域一律使用 transcript 词根（如 `load_transcript`、`append_transcript_message`）。
+_Avoid_: provider message（代码词汇层已废弃）、聊天记录（那是面向用户的 messages）
+
+**草稿检查点（Draft Checkpoint）**:
+`run_drafts` 中每个活跃 Run 至多一行的累计 text/reasoning 快照。它是 Redis Stream 故障时的粗粒度恢复面，不是完整事件历史；由时间窗、待写字符上限或工具边界触发 upsert，终态后删除。
+_Avoid_: draft event（它是覆盖式快照）、assistant message（成功终态才物化）
+
+**Run Stream**:
+Redis key `run:{internal_run_id}:events` 上按 Run 隔离的短期事件流，承载逐 chunk delta 和语义事件的低延迟 SSE 传输；entry 与 PG 事件共享整数 seq。Redis 不是事实源，读取失败时退回 PG 语义事件 + 草稿检查点。
+_Avoid_: 任务队列（claim 仍在 PG）、永久事件日志
+
+**唤醒信号（Wakeup Hint）**:
+业务事务 commit 成功后向 Redis `runs_queued` 发布的可丢失提示，只用于让 Worker 提前执行下一次 PG claim。重复、乱序或丢失都不影响所有权与最终执行，`worker_poll_interval_seconds` 负责兜底。
+_Avoid_: 入队消息、claim token、所有权信号
+
+**取消信号（Cancel Hint）**:
+取消请求 commit（run 置 `cancelling`）成功后向 Redis `run_cancel` 发布的可丢失提示，让正在执行该 run 的 Worker 立即中断，无需等待心跳轮询。Worker 按 run_id 路由到对应执行的 cancel event；未注册或丢失的信号由 PG `cancelling` 状态 + 心跳轮询兜底。
+_Avoid_: 终止命令（PG 状态才是事实源）、所有权信号
+
+**agent 内核（Agent Kernel）**:
+`app/agent/` 包——provider 中立、不读数据库、不碰传输层、不含业务组装的 agent building blocks：Message/内容块词汇、Provider 协议与适配器、Tool 协议与注册表、单次模型调用与工具执行原语、AgentEvent 事件词汇。agent 循环与业务装配归编排层（`app/services/agents`），工程化（seq、发布、持久化、重试执行、取消）归 worker。
+_Avoid_: agent 框架（明确不做图编排/chain/多 agent）、编排核心（编排在内核之外）
+
+**模型调用（Model Call）**:
+agent 循环内对 LLM provider 的一次流式请求-响应。一个 run 可含多次模型调用（工具循环）。与「轮（Turn）」区分：turn 专指用户↔助手的一轮对话交换（历史裁剪的计量单位），不用于指代单次 provider 调用。
+_Avoid_: turn（指 provider 调用时）、请求（与 HTTP 请求混淆）
+
+**内容块（Content Block）**:
+中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
+_Avoid_: 直接以 DeepSeek/OpenAI wire 字段（如 `reasoning_content`、`tool_calls` 数组）描述业务内部消息
