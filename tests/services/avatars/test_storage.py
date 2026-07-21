@@ -12,7 +12,11 @@ def test_avatar_object_keys_are_random_and_identity_free() -> None:
     assert re.fullmatch(r"avatar-uploads/[0-9a-f-]{36}\.png", temporary_object_key("image/png"))
     assert re.fullmatch(r"avatar-uploads/[0-9a-f-]{36}\.jpg", temporary_object_key("image/jpeg"))
     assert re.fullmatch(r"avatars/[0-9a-f-]{36}\.webp", public)
-    for identity in ("42", "alice", "alice@example.com", "photo.png"):
+    # Only identities with non-hex characters are checked: a hex UUID can
+    # coincidentally contain any digit-only identity (e.g. "42"), which made
+    # this assertion flaky. The fullmatch above already proves the key is
+    # nothing but a random UUID.
+    for identity in ("alice", "alice@example.com", "photo.png"):
         assert identity not in temporary
         assert identity not in public
 
