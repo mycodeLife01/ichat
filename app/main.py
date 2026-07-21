@@ -18,7 +18,7 @@ from app.core.errors import AppError
 from app.core.logging import configure_logging, logger
 from app.db.session import check_database_ready
 from app.services.run_events.stream import RedisRunEventStream
-from app.services.runs.wakeup import RedisRunQueuedPublisher
+from app.services.runs.wakeup import RedisRunCancelPublisher, RedisRunQueuedPublisher
 
 DatabaseReadyCheck = Callable[[], Awaitable[bool]]
 
@@ -37,13 +37,16 @@ def create_app(
             socket_timeout=3.5,
         )
         run_queued_publisher = RedisRunQueuedPublisher.from_settings(app_settings)
+        run_cancel_publisher = RedisRunCancelPublisher.from_settings(app_settings)
         app.state.run_event_stream = event_stream
         app.state.run_queued_publisher = run_queued_publisher
+        app.state.run_cancel_publisher = run_cancel_publisher
         try:
             yield
         finally:
             await event_stream.close()
             await run_queued_publisher.close()
+            await run_cancel_publisher.close()
 
     app = FastAPI(title="iChat API", lifespan=lifespan)
     app.include_router(capabilities_router)

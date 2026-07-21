@@ -32,7 +32,9 @@ from app.models.user import User
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
 from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.lifecycle import claim_next_queued_run
+from app.services.runs.wakeup import RedisRunCancelPublisher
 from app.worker.executor import ProviderResolver, execute_run
+from app.worker.run_cancel_listener import RunCancelListener
 from tests.agent.fake import FakeProvider, RaiseError, Sleep
 
 TEST_DATABASE_URL = os.environ.get(
@@ -690,6 +692,94 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
             )
         ).all()
         assert [message.role for message in messages] == ["user"]
+
+
+async def test_execute_run_cancels_promptly_on_redis_cancel_signal(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    class BlockingProvider(GenerateMixin, Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self,
+            *,
+            model: str,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
+            tools: list[ToolSpec] | None = None,
+        ) -> AsyncIterator[StreamEvent]:
+            yield TextDelta(text="partial")
+            await asyncio.Event().wait()
+            yield StreamDone(finish_reason="stop")  # pragma: no cover
+
+    redis = FakeRedis(decode_responses=True)
+    listener = RunCancelListener(redis=redis)
+    publisher = RedisRunCancelPublisher(redis=redis)
+    await listener.start()
+
+    # Heartbeat effectively disabled: only the Redis cancel signal can interrupt
+    # within the test timeout, proving the prompt path is independent of polling.
+    cancel_settings = settings.model_copy(update={"worker_heartbeat_interval_seconds": 60.0})
+
+    async def publish_cancel_after_delta() -> None:
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            async with session_factory() as session:
+                run = await session.get(Run, run_id)
+                assert run is not None
+                if run.status != "streaming":
+                    continue
+            await publisher.publish(run_id)
+            return
+        raise AssertionError("run did not enter streaming before timeout")
+
+    publish_task = asyncio.create_task(publish_cancel_after_delta())
+    try:
+        await asyncio.wait_for(
+            execute_run(
+                session_factory=session_factory,
+                run_id=run_id,
+                worker_id="worker-x",
+                settings=cancel_settings,
+                resolve_provider=make_resolver(BlockingProvider()),
+                run_cancel_listener=listener,
+            ),
+            timeout=2.0,
+        )
+    finally:
+        await publish_task
+        await listener.stop()
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "cancelled"
+        assert run.cancelled_at is not None
+
+        events = (
+            await session.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
+            )
+        ).all()
+        assert [event.type for event in events] == [
+            "run_started",
+            "run_cancelled",
+        ]
 
 
 async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelling(

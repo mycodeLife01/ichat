@@ -19,6 +19,7 @@ from app.services.runs.lifecycle import (
 )
 from app.services.runs.service import TERMINAL_EVENT_TYPES, list_run_events_after
 from app.worker.executor import ProviderResolver, execute_run
+from app.worker.run_cancel_listener import RunCancelListener
 from app.worker.run_queued_listener import RunQueuedListener
 
 DEFAULT_RECOVERY_INTERVAL_SECONDS = 15.0
@@ -37,6 +38,7 @@ async def run_worker_loop(
     stop_event: asyncio.Event,
     recovery_interval_seconds: float = DEFAULT_RECOVERY_INTERVAL_SECONDS,
     run_queued_listener: RunQueuedListener | None = None,
+    run_cancel_listener: RunCancelListener | None = None,
     run_event_stream: RedisRunEventStream | None = None,
 ) -> None:
     worker_logger = logger.bind(worker_id=worker_id)
@@ -61,6 +63,7 @@ async def run_worker_loop(
                 settings=settings,
                 resolve_provider=resolve_provider,
                 run_event_stream=run_event_stream,
+                run_cancel_listener=run_cancel_listener,
             )
         except Exception:
             worker_logger.bind(run_id=run_id).exception(
@@ -256,6 +259,17 @@ async def run_worker_from_settings() -> None:
     else:
         listener_for_loop = listener
 
+    cancel_listener = RunCancelListener(redis_url=settings.redis_url)
+    try:
+        await cancel_listener.start()
+    except Exception:
+        logger.exception(
+            "RunCancelListener failed to start; cancel falls back to heartbeat poll"
+        )
+        cancel_listener_for_loop: RunCancelListener | None = None
+    else:
+        cancel_listener_for_loop = cancel_listener
+
     try:
         await run_worker_loop(
             session_factory=factory,
@@ -264,10 +278,12 @@ async def run_worker_from_settings() -> None:
             resolve_provider=default_resolve_provider,
             stop_event=stop_event,
             run_queued_listener=listener_for_loop,
+            run_cancel_listener=cancel_listener_for_loop,
             run_event_stream=run_event_stream,
         )
     finally:
         if listener_for_loop is not None:
             await listener_for_loop.stop()
+        await cancel_listener.stop()
         await run_event_stream.close()
     logger.bind(worker_id=worker_id).info("Worker stopped")

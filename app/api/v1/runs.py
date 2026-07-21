@@ -23,12 +23,17 @@ from app.services.runs.service import (
     list_run_events_after,
 )
 from app.services.runs.streaming import iter_run_events
+from app.services.runs.wakeup import RunCancelPublisher
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
 
 
 def _get_run_event_stream(request: Request) -> RedisRunEventStream | None:
     return getattr(request.app.state, "run_event_stream", None)
+
+
+def _get_run_cancel_publisher(request: Request) -> RunCancelPublisher | None:
+    return getattr(request.app.state, "run_cancel_publisher", None)
 
 
 @router.get(
@@ -66,15 +71,28 @@ async def cancel_run_route(
         RedisRunEventStream | None,
         Depends(_get_run_event_stream),
     ],
+    cancel_publisher: Annotated[
+        RunCancelPublisher | None,
+        Depends(_get_run_cancel_publisher),
+    ],
 ) -> SuccessResponse[CommandStatusResponse]:
     result = await cancel_owned_run(session, user=current_user, run_public_id=run_id)
     await session.commit()
+
+    visible_run = await get_owned_visible_run(session, user=current_user, run_public_id=run_id)
+
+    # A live run is only interrupted once it observes the cancel: a prompt Redis
+    # hint wakes the worker immediately, while the PostgreSQL "cancelling" status
+    # + heartbeat poll remain the authoritative fallback.
+    if cancel_publisher is not None and visible_run.status == "cancelling":
+        try:
+            await cancel_publisher.publish(visible_run.id)
+        except Exception as exc:
+            logger.bind(run_id=visible_run.id, error=str(exc)).warning(
+                "Run cancel publish failed; worker heartbeat poll will observe it"
+            )
+
     if event_stream is not None:
-        visible_run = await get_owned_visible_run(
-            session,
-            user=current_user,
-            run_public_id=run_id,
-        )
         events = await list_run_events_after(session, run_id=visible_run.id, after_seq=0)
         terminal = next(
             (event for event in reversed(events) if event.type in TERMINAL_EVENT_TYPES),

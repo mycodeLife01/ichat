@@ -46,6 +46,7 @@ from app.worker.event_sink import (
     RedisStreamSink,
     external_tool_payload,
 )
+from app.worker.run_cancel_listener import RunCancelListener
 
 _RunStatus = Literal["succeeded", "failed", "cancelled"]
 
@@ -76,6 +77,7 @@ async def execute_run(
     settings: Settings,
     resolve_provider: ProviderResolver,
     run_event_stream: RedisRunEventStream | None = None,
+    run_cancel_listener: RunCancelListener | None = None,
 ) -> None:
     run_logger = logger.bind(run_id=run_id, worker_id=worker_id)
 
@@ -128,84 +130,90 @@ async def execute_run(
         )
 
     cancel = asyncio.Event()
-    draft_sink = DraftCheckpointSink(
-        session_factory=session_factory,
-        run_id=run_id,
-        cancel=cancel,
-        interval_seconds=settings.draft_checkpoint_interval_seconds,
-        max_pending_chars=settings.draft_checkpoint_max_pending_chars,
-        max_events=settings.run_stream_maxlen,
-    )
-    child_sinks: list[EventSink] = []
-    if run_event_stream is not None:
-        child_sinks.append(RedisStreamSink(stream=run_event_stream, run_id=run_id))
-    child_sinks.extend(
-        [
-            PostgresEventSink(
-                session_factory=session_factory,
-                run_id=run_id,
-                cancel=cancel,
-            ),
-            draft_sink,
-        ]
-    )
-    sink = FanoutSink(*child_sinks, initial_seq=initial_seq)
-    heartbeat_task = asyncio.create_task(
-        _heartbeat_loop(
+    if run_cancel_listener is not None:
+        run_cancel_listener.register(run_id, cancel)
+    try:
+        draft_sink = DraftCheckpointSink(
             session_factory=session_factory,
             run_id=run_id,
-            worker_id=worker_id,
-            lease_seconds=settings.run_lease_seconds,
-            interval_seconds=settings.worker_heartbeat_interval_seconds,
             cancel=cancel,
+            interval_seconds=settings.draft_checkpoint_interval_seconds,
+            max_pending_chars=settings.draft_checkpoint_max_pending_chars,
+            max_events=settings.run_stream_maxlen,
         )
-    )
+        child_sinks: list[EventSink] = []
+        if run_event_stream is not None:
+            child_sinks.append(RedisStreamSink(stream=run_event_stream, run_id=run_id))
+        child_sinks.extend(
+            [
+                PostgresEventSink(
+                    session_factory=session_factory,
+                    run_id=run_id,
+                    cancel=cancel,
+                ),
+                draft_sink,
+            ]
+        )
+        sink = FanoutSink(*child_sinks, initial_seq=initial_seq)
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_loop(
+                session_factory=session_factory,
+                run_id=run_id,
+                worker_id=worker_id,
+                lease_seconds=settings.run_lease_seconds,
+                interval_seconds=settings.worker_heartbeat_interval_seconds,
+                cancel=cancel,
+            )
+        )
 
-    try:
-        outcome = await _consume_agent(
-            agent=agent,
-            sink=sink,
-            cancel=cancel,
-            initial_seq=initial_seq,
-        )
-        await sink.flush()
-    except Exception as exc:
-        run_logger.exception("Agent runtime failed")
-        cancel.set()
-        with contextlib.suppress(Exception):
-            await sink.aclose()
-        terminal = await _mark_failed_or_cancelled_if_cancelling(
-            session_factory,
+        try:
+            outcome = await _consume_agent(
+                agent=agent,
+                sink=sink,
+                cancel=cancel,
+                initial_seq=initial_seq,
+            )
+            await sink.flush()
+        except Exception as exc:
+            run_logger.exception("Agent runtime failed")
+            cancel.set()
+            with contextlib.suppress(Exception):
+                await sink.aclose()
+            terminal = await _mark_failed_or_cancelled_if_cancelling(
+                session_factory,
+                run_id=run_id,
+                code="agent_runtime_error",
+                message=str(exc),
+                event_seq=sink.latest_seq + 1,
+            )
+            await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
+            with contextlib.suppress(Exception):
+                await draft_sink.delete()
+            return
+        finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
+
+        terminal, title_job_created = await _finalize_result(
+            session_factory=session_factory,
             run_id=run_id,
-            code="agent_runtime_error",
-            message=str(exc),
-            event_seq=sink.latest_seq + 1,
+            outcome=outcome,
+            agent=agent,
+            create_title_job_row=settings.auto_title_enabled,
         )
         await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
         with contextlib.suppress(Exception):
             await draft_sink.delete()
-        return
+
+        if title_job_created:
+            try:
+                generate_conversation_title.apply_async(args=[run_id])
+            except Exception:
+                run_logger.exception("Failed to enqueue conversation title generation")
     finally:
-        heartbeat_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await heartbeat_task
-
-    terminal, title_job_created = await _finalize_result(
-        session_factory=session_factory,
-        run_id=run_id,
-        outcome=outcome,
-        agent=agent,
-        create_title_job_row=settings.auto_title_enabled,
-    )
-    await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
-    with contextlib.suppress(Exception):
-        await draft_sink.delete()
-
-    if title_job_created:
-        try:
-            generate_conversation_title.apply_async(args=[run_id])
-        except Exception:
-            run_logger.exception("Failed to enqueue conversation title generation")
+        if run_cancel_listener is not None:
+            run_cancel_listener.unregister(run_id)
 
 
 async def _consume_agent(

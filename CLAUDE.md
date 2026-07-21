@@ -80,6 +80,7 @@ Key mechanisms:
 - SSE uses per-Run Redis Streams with `after_seq` replay; PG `run_drafts` provides coarse fallback when Redis is unavailable
 - Worker lease + heartbeat for fault tolerance; orphaned runs auto-recovered on lease expiry
 - Run queue wakeups use commit-after Redis pub/sub, while PostgreSQL polling remains the correctness fallback
+- Run cancellation uses the same commit-after Redis pub/sub to interrupt a live run promptly; the PG `cancelling` status + heartbeat poll remain the authoritative fallback
 - Provider-neutral agent kernel (`app/agent/`) holds building blocks (message model, Provider/Tool protocols, adapters, single-call primitives); the agent loop lives in the orchestration layer (`app/services/agents/`)
 
 See [module boundaries](docs/architecture/module-boundaries.md) for details. For

@@ -52,6 +52,10 @@ _Avoid_: 任务队列（claim 仍在 PG）、永久事件日志
 业务事务 commit 成功后向 Redis `runs_queued` 发布的可丢失提示，只用于让 Worker 提前执行下一次 PG claim。重复、乱序或丢失都不影响所有权与最终执行，`worker_poll_interval_seconds` 负责兜底。
 _Avoid_: 入队消息、claim token、所有权信号
 
+**取消信号（Cancel Hint）**:
+取消请求 commit（run 置 `cancelling`）成功后向 Redis `run_cancel` 发布的可丢失提示，让正在执行该 run 的 Worker 立即中断，无需等待心跳轮询。Worker 按 run_id 路由到对应执行的 cancel event；未注册或丢失的信号由 PG `cancelling` 状态 + 心跳轮询兜底。
+_Avoid_: 终止命令（PG 状态才是事实源）、所有权信号
+
 **agent 内核（Agent Kernel）**:
 `app/agent/` 包——provider 中立、不读数据库、不碰传输层、不含业务组装的 agent building blocks：Message/内容块词汇、Provider 协议与适配器、Tool 协议与注册表、单次模型调用与工具执行原语、AgentEvent 事件词汇。agent 循环与业务装配归编排层（`app/services/agents`），工程化（seq、发布、持久化、重试执行、取消）归 worker。
 _Avoid_: agent 框架（明确不做图编排/chain/多 agent）、编排核心（编排在内核之外）
