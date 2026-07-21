@@ -50,11 +50,11 @@
 
 ## `app/services/runs`
 
-负责 run 状态机、run_events、queue claiming、取消、lease 字段、provider transcript 持久化和 replay 语义，`RunEvent`/`RunEventType` 词汇（`events.py`，run 状态机与 run_events 表的规范词汇），以及把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息（`history.py`，供 worker 喂给编排层）。SSE 读取持久化事件，不直接调用 provider。
+负责 run 状态机、queue claiming、取消、lease/recovery、语义 `run_events`、`run_drafts` checkpoint、provider transcript 持久化和 replay/state 拼装语义；`events.py` 定义 worker 使用的 `RunEvent`/`RunEventType`，`drafts.py` 提供快照 upsert/read/delete，`history.py` 把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息。Redis 只是传输加速器，Run 所有权与终态事实仍归本模块和 PG。
 
 ## `app/services/run_events`
 
-负责进程级 `run_events` 频道的 LISTEN/NOTIFY 订阅管理：用单条共享连接把通知 fan-out 给每个 run 的 `asyncio.Event`，供 SSE handler 唤醒，避免每个 SSE 请求各开一条 LISTEN 连接耗尽 Postgres 连接。
+负责 Redis Run Stream 传输适配：`RedisRunEventStream` 统一 XADD/MAXLEN/双重 TTL、XRANGE replay、每连接 XREAD BLOCK、entry 编解码与短超时。该模块不决定 Run 状态，不持有业务事实；调用方必须能在 Redis 失败时退回 `services/runs` 的 PG 语义事件与 draft checkpoint。
 
 ## `app/agent`
 
@@ -74,7 +74,7 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 
 ## `app/worker`
 
-负责独立 worker 进程的 polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()` 事件流（seq 分配、AgentEvent→RunEvent 映射、`EventSink` 协议及其实现、delta 批窗口）、按编排层给的 `RetryPolicy` 执行重试（整体重启生成器）、取消（select 循环 + 精确 cancel）、终态状态机转换、转写落库和 assistant message 物化。业务组装决策不在 worker 内（例外：标题生成的组装暂留 `title.py`，issue 05 迁出）。
+负责独立 worker 进程的 Redis 唤醒 + PG polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()`（seq 分配、AgentEvent→外部 RunEvent 映射、重试执行、取消）、通过 `RedisStreamSink` / `PostgresEventSink` / `DraftCheckpointSink` / `FanoutSink` 发布与持久化、终态状态机转换、转写落库和 assistant message 物化。标题 prompt/模型选择/清洗归 `services/agents/title_agent.py`，标题执行归 Celery `tasks/llm_tasks.py`；worker 不含标题业务组装。
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 

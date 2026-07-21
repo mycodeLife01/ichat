@@ -160,17 +160,19 @@ PostgreSQL (:5432)           DeepSeek API
 | `DEEPSEEK_BASE_URL` | | `https://api.deepseek.com` | DeepSeek API 地址 |
 | `DEEPSEEK_MODEL` | | `deepseek-chat` | 使用的模型 |
 | `DEEPSEEK_THINKING_ENABLED` | | `false` | 是否启用推理模式 |
-| `DEFAULT_SYSTEM_PROMPT` | | `（空）` | 系统提示词的可选覆盖；留空则使用 `app/prompts/` 内置生产提示词 |
+| `DEFAULT_SYSTEM_PROMPT` | | `（空）` | 系统提示词的可选覆盖；留空则使用 `app/services/agents/` 内置生产提示词 |
 | `RUN_LEASE_SECONDS` | | `60` | Run 租约有效期 |
-| `WORKER_POLL_INTERVAL_SECONDS` | | `30` | Worker 兜底轮询间隔（主要靠 LISTEN/NOTIFY） |
+| `WORKER_POLL_INTERVAL_SECONDS` | | `30` | Redis 唤醒丢失时的 PG claim 兜底间隔 |
 | `WORKER_HEARTBEAT_INTERVAL_SECONDS` | | `10` | Worker 心跳间隔 |
 | `WORKER_MAX_INFLIGHT_RUNS` | | `8` | 单 Worker 进程内并发执行的 Run 上限 |
-| `WORKER_DELTA_BATCH_WINDOW_MS` | | `50` | Delta 批量化时间窗口（毫秒） |
-| `WORKER_DELTA_BATCH_MAX_CHARS` | | `256` | Delta 批量化字符阈值 |
+| `RUN_STREAM_MAXLEN` | | `2048` | 单 Run Redis Stream 近似长度上限 |
+| `RUN_STREAM_TTL_SECONDS` | | `600` | 终态 Run Stream TTL |
+| `RUN_STREAM_ORPHAN_TTL_SECONDS` | | `86400` | 未正常终态 Stream 的兜底 TTL |
+| `DRAFT_CHECKPOINT_INTERVAL_SECONDS` | | `3.0` | PG draft checkpoint 时间窗 |
+| `DRAFT_CHECKPOINT_MAX_PENDING_CHARS` | | `4096` | checkpoint 字符量防御上限 |
 | `DB_POOL_SIZE` | | `20` | SQLAlchemy 连接池大小 |
 | `DB_MAX_OVERFLOW` | | `20` | 连接池溢出上限 |
 | `DB_POOL_TIMEOUT_SECONDS` | | `30` | 获取连接超时 |
-| `SSE_FALLBACK_INTERVAL_SECONDS` | | `5.0` | SSE 端 LISTEN/NOTIFY 兜底轮询间隔 |
 | `AUTO_TITLE_ENABLED` | | `true` | 是否启用自动标题生成 |
 | `AUTO_TITLE_MAX_CHARS` | | `32` | 自动标题最大字符数 |
 | `AUTO_TITLE_MAX_OUTPUT_TOKENS` | | `40` | 自动标题模型输出 token 上限 |

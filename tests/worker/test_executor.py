@@ -5,6 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -26,9 +27,10 @@ from app.agent import (
 )
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunEvent, RunProviderMessage
+from app.models.run import ConversationTitleJob, Run, RunEvent, RunProviderMessage
 from app.models.user import User
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
+from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.lifecycle import claim_next_queued_run
 from app.worker.executor import ProviderResolver, execute_run
 from tests.agent.fake import FakeProvider, RaiseError, Sleep
@@ -85,7 +87,7 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 @pytest.fixture()
 def settings() -> Settings:
-    return get_settings()
+    return get_settings().model_copy(update={"auto_title_enabled": False})
 
 
 async def queue_run(
@@ -194,12 +196,10 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
                 select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
             )
         ).all()
-        assert [e.type for e in events] == [
-            "run_started",
-            "text_delta",
-            "run_succeeded",
+        assert [(e.seq, e.type) for e in events] == [
+            (1, "run_started"),
+            (4, "run_succeeded"),
         ]
-        assert events[1].payload == {"text": "Hello world"}
 
         messages = (
             await session.scalars(
@@ -215,7 +215,90 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         conversation = await session.get(Conversation, run.conversation_id)
         assert conversation is not None
         assert conversation.activated_at is not None
-        assert conversation.title == "Fake Title"
+        assert conversation.title is None
+
+
+async def test_execute_run_enqueues_title_generation_after_success(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session, conversation_title=None)
+        await session.commit()
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    enqueued: list[list[int]] = []
+    monkeypatch.setattr(
+        "app.worker.executor.generate_conversation_title.apply_async",
+        lambda *, args: enqueued.append(args),
+    )
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings.model_copy(update={"auto_title_enabled": True}),
+        resolve_provider=make_resolver(
+            FakeProvider(script=[TextDelta(text="Hi"), StreamDone(finish_reason="stop")])
+        ),
+    )
+
+    assert enqueued == [[run_id]]
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "succeeded"
+        job = await session.get(ConversationTitleJob, run_id)
+        assert job is not None
+        assert job.status == "pending"
+
+
+async def test_execute_run_keeps_title_job_when_broker_publish_fails(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session, conversation_title=None)
+        await session.commit()
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    def fail_publish(*, args: list[int]) -> None:
+        assert args == [run_id]
+        raise ConnectionError("broker unavailable")
+
+    monkeypatch.setattr(
+        "app.worker.executor.generate_conversation_title.apply_async",
+        fail_publish,
+    )
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings.model_copy(update={"auto_title_enabled": True}),
+        resolve_provider=make_resolver(
+            FakeProvider(script=[TextDelta(text="Hi"), StreamDone(finish_reason="stop")])
+        ),
+    )
+
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        job = await session.get(ConversationTitleJob, run_id)
+        assert run is not None and run.status == "succeeded"
+        assert job is not None and job.status == "pending"
 
 
 async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
@@ -277,10 +360,9 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
                 select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
             )
         ).all()
-        assert [e.type for e in events] == [
-            "run_started",
-            "text_delta",
-            "run_succeeded",
+        assert [(e.seq, e.type) for e in events] == [
+            (1, "run_started"),
+            (3, "run_succeeded"),
         ]
 
 
@@ -326,12 +408,10 @@ async def test_execute_run_does_not_retry_after_persisted_delta(
                 select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
             )
         ).all()
-        assert [e.type for e in events] == [
-            "run_started",
-            "text_delta",
-            "run_failed",
+        assert [(e.seq, e.type) for e in events] == [
+            (1, "run_started"),
+            (3, "run_failed"),
         ]
-        assert events[1].payload == {"text": "partial"}
 
         messages = (
             await session.scalars(
@@ -563,20 +643,14 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
         for _ in range(50):
             await asyncio.sleep(0.02)
             async with session_factory() as session:
-                event = await session.scalar(
-                    select(RunEvent.id).where(
-                        RunEvent.run_id == run_id,
-                        RunEvent.type == "text_delta",
-                    )
-                )
-                if event is None:
-                    continue
                 run = await session.get(Run, run_id)
                 assert run is not None
+                if run.status != "streaming":
+                    continue
                 run.status = "cancelling"
                 await session.commit()
                 return
-        raise AssertionError("text_delta was not persisted before timeout")
+        raise AssertionError("run did not enter streaming before timeout")
 
     cancel_settings = settings.model_copy(update={"worker_heartbeat_interval_seconds": 0.05})
     flip_task = asyncio.create_task(flip_to_cancelling_after_delta())
@@ -607,7 +681,6 @@ async def test_execute_run_cancels_blocked_provider_stream_promptly(
         ).all()
         assert [event.type for event in events] == [
             "run_started",
-            "text_delta",
             "run_cancelled",
         ]
 
@@ -658,21 +731,15 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
         for _ in range(50):
             await asyncio.sleep(0.02)
             async with session_factory() as session:
-                event = await session.scalar(
-                    select(RunEvent.id).where(
-                        RunEvent.run_id == run_id,
-                        RunEvent.type == "text_delta",
-                    )
-                )
-                if event is None:
-                    continue
                 run = await session.get(Run, run_id)
                 assert run is not None
+                if run.status != "streaming":
+                    continue
                 run.status = "cancelling"
                 await session.commit()
                 release_error.set()
                 return
-        raise AssertionError("text_delta was not persisted before timeout")
+        raise AssertionError("run did not enter streaming before timeout")
 
     slow_heartbeat_settings = settings.model_copy(
         update={"worker_heartbeat_interval_seconds": 60.0}
@@ -703,7 +770,6 @@ async def test_execute_run_marks_cancelled_when_provider_fails_after_db_cancelli
         ).all()
         assert [event.type for event in events] == [
             "run_started",
-            "text_delta",
             "run_cancelled",
         ]
 
@@ -947,6 +1013,12 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
     search_settings = settings.model_copy(
         update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
     )
+    stream = RedisRunEventStream(
+        redis=FakeRedis(decode_responses=True),
+        maxlen=2048,
+        ttl_seconds=600,
+        orphan_ttl_seconds=86_400,
+    )
 
     await execute_run(
         session_factory=session_factory,
@@ -954,7 +1026,25 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         worker_id="worker-x",
         settings=search_settings,
         resolve_provider=make_resolver(provider),
+        run_event_stream=stream,
     )
+
+    replay = await stream.list_after(run_id, after_seq=1)
+    assert [(event.seq, event.type) for event in replay] == [
+        (2, "reasoning_delta"),
+        (3, "tool_call_started"),
+        (4, "tool_call_succeeded"),
+        (5, "text_delta"),
+        (6, "run_succeeded"),
+    ]
+    assert replay[1].payload == {
+        "tool_name": "web_search",
+        "query": "latest iChat release",
+        "provider": "tavily",
+    }
+    assert replay[2].payload["sources"] == [
+        {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
+    ]
 
     async with session_factory() as session:
         run = await session.get(Run, run_id)
@@ -965,26 +1055,21 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
                 select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
             )
         ).all()
-        assert [event.type for event in events] == [
-            "run_started",
-            "reasoning_delta",
-            "tool_call_started",
-            "tool_call_succeeded",
-            "text_delta",
-            "run_succeeded",
+        assert [(event.seq, event.type) for event in events] == [
+            (1, "run_started"),
+            (3, "tool_call_started"),
+            (4, "tool_call_succeeded"),
+            (6, "run_succeeded"),
         ]
-        assert events[3].payload["sources"] == [
+        assert events[2].payload["sources"] == [
             {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
         ]
-        # Sources surface only via message metadata (rendered as chips by the
-        # frontend); the answer text is never amended with a sources block.
-        assert events[4].payload["text"] == "Here is the latest summary."
 
         assistant = await session.scalar(
             select(Message).where(Message.run_id == run_id, Message.role == "assistant")
         )
         assert assistant is not None
-        assert assistant.content == events[4].payload["text"]
+        assert assistant.content == "Here is the latest summary."
         assert assistant.metadata_ == {
             "sources": [
                 {
@@ -1060,10 +1145,16 @@ async def test_web_search_final_answer_streams_incremental_deltas(
         script=[
             ReasoningDelta(text="think"),
             TextDelta(text="first"),
-            Sleep(seconds=0.2),  # > batch window forces a flush of "first"
+            Sleep(seconds=0.2),
             TextDelta(text="second"),
             StreamDone(finish_reason="stop"),
         ]
+    )
+    stream = RedisRunEventStream(
+        redis=FakeRedis(decode_responses=True),
+        maxlen=2048,
+        ttl_seconds=600,
+        orphan_ttl_seconds=86_400,
     )
     search_settings = settings.model_copy(
         update={"web_search_enabled": True, "tavily_api_key": "tvly-test"}
@@ -1075,7 +1166,16 @@ async def test_web_search_final_answer_streams_incremental_deltas(
         worker_id="worker-x",
         settings=search_settings,
         resolve_provider=make_resolver(fake),
+        run_event_stream=stream,
     )
+
+    replay = await stream.list_after(run_id, after_seq=1)
+    assert [(event.seq, event.type, event.payload) for event in replay] == [
+        (2, "reasoning_delta", {"text": "think"}),
+        (3, "text_delta", {"text": "first"}),
+        (4, "text_delta", {"text": "second"}),
+        (5, "run_succeeded", {}),
+    ]
 
     async with session_factory() as session:
         run = await session.get(Run, run_id)
@@ -1086,15 +1186,10 @@ async def test_web_search_final_answer_streams_incremental_deltas(
                 select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq.asc())
             )
         ).all()
-        assert [event.type for event in events] == [
-            "run_started",
-            "reasoning_delta",
-            "text_delta",
-            "text_delta",
-            "run_succeeded",
+        assert [(event.seq, event.type) for event in events] == [
+            (1, "run_started"),
+            (5, "run_succeeded"),
         ]
-        assert events[1].payload["text"] == "think"
-        assert [events[2].payload["text"], events[3].payload["text"]] == ["first", "second"]
 
         assistant = await session.scalar(
             select(Message).where(Message.run_id == run_id, Message.role == "assistant")

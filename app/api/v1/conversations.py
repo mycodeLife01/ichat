@@ -1,10 +1,11 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.logging import logger
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
@@ -25,11 +26,13 @@ from app.services.conversations.service import (
     delete_conversation,
     edit_user_message_and_regenerate,
     get_conversation_detail,
+    get_internal_run_id,
     list_conversations,
     regenerate_from_message,
     rename_conversation,
     submit_user_message,
 )
+from app.services.runs.wakeup import RunQueuedPublisher
 from app.services.shares.service import (
     create_share,
     list_shares,
@@ -37,6 +40,25 @@ from app.services.shares.service import (
 )
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
+
+
+def _get_run_queued_publisher(request: Request) -> RunQueuedPublisher | None:
+    return getattr(request.app.state, "run_queued_publisher", None)
+
+
+async def _publish_run_queued(
+    publisher: RunQueuedPublisher | None,
+    *,
+    run_id: int,
+) -> None:
+    if publisher is None:
+        return
+    try:
+        await publisher.publish(run_id)
+    except Exception as exc:
+        logger.bind(run_id=run_id, error=str(exc)).warning(
+            "Run queued publish failed; worker polling fallback will claim it"
+        )
 
 
 _WEB_SEARCH_NEGATION_MARKERS = (
@@ -204,6 +226,10 @@ async def send_message_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    run_queued_publisher: Annotated[
+        RunQueuedPublisher | None,
+        Depends(_get_run_queued_publisher),
+    ],
 ) -> SuccessResponse[SendMessageResponse]:
     result = await submit_user_message(
         session,
@@ -214,7 +240,9 @@ async def send_message_route(
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
     )
+    internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
+    await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 
@@ -231,6 +259,10 @@ async def edit_and_regenerate_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    run_queued_publisher: Annotated[
+        RunQueuedPublisher | None,
+        Depends(_get_run_queued_publisher),
+    ],
 ) -> SuccessResponse[SendMessageResponse]:
     result = await edit_user_message_and_regenerate(
         session,
@@ -242,7 +274,9 @@ async def edit_and_regenerate_route(
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
     )
+    internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
+    await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 
@@ -258,6 +292,10 @@ async def regenerate_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    run_queued_publisher: Annotated[
+        RunQueuedPublisher | None,
+        Depends(_get_run_queued_publisher),
+    ],
     request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
     result = await regenerate_from_message(
@@ -269,7 +307,9 @@ async def regenerate_route(
         provider_model=settings.deepseek_model,
         provider_options=resolve_provider_options(settings, request),
     )
+    internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
+    await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 

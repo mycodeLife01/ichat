@@ -23,12 +23,14 @@ class Settings(BaseSettings):
     worker_poll_interval_seconds: float
     worker_heartbeat_interval_seconds: float
     worker_max_inflight_runs: int = 8
-    worker_delta_batch_window_ms: int = 50
-    worker_delta_batch_max_chars: int = 256
+    run_stream_maxlen: int = 2048
+    run_stream_ttl_seconds: int = 600
+    run_stream_orphan_ttl_seconds: int = 86_400
+    draft_checkpoint_interval_seconds: float = 3.0
+    draft_checkpoint_max_pending_chars: int = 4096
     db_pool_size: int = 20
     db_max_overflow: int = 20
     db_pool_timeout_seconds: float = 30.0
-    sse_fallback_interval_seconds: float = 5.0
     auto_title_enabled: bool = True
     summary_provider_name: str
     summary_model: str

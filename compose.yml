@@ -5,8 +5,8 @@ services:
     image: postgres:16-alpine
     env_file:
       - .env
-    # Match compose.prod.yml: leave headroom for multiple worker replicas and
-    # LISTEN connections (one per worker + one per API process for SSE fanout).
+    # Match compose.prod.yml: leave headroom for the API and worker
+    # SQLAlchemy pools across multiple worker replicas.
     command:
       - "postgres"
       - "-c"
@@ -23,7 +23,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    # Celery broker + auth cooldown / IP rate-limit keys. Internal only.
+    # Shared broker/cache/stream transport. Celery requires noeviction too.
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
     ports:
     - "127.0.0.1:6379:6379"
     healthcheck:
@@ -82,7 +83,7 @@ services:
     image: ichat-worker:local
     env_file:
       - .env
-    # Executes send_email_outbox / sweep_email_outbox. Safe to scale to N.
+    # Executes email and finite LLM tasks (conversation titles). Safe to scale to N.
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
     depends_on:
       postgres:

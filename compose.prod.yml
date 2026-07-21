@@ -6,8 +6,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Bumped from default 100 to cover 2 worker replicas (each ~40 pool conns),
-    # API replica (~40), and LISTEN connections (api + each worker).
+    # Bumped from default 100 to cover the API and worker SQLAlchemy pools.
     command:
       - "postgres"
       - "-c"
@@ -27,7 +26,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # Celery broker + auth cooldown / IP rate-limit keys. Internal only.
+    # Shared broker/cache/stream transport. noeviction protects Celery and streams.
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Executes send_email_outbox / sweep_email_outbox. Safe to scale to N.
+    # Executes email and finite LLM tasks (conversation titles). Safe to scale to N.
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
     depends_on:
       postgres:

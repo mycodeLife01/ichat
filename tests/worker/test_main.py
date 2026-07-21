@@ -134,6 +134,7 @@ async def test_run_worker_loop_processes_queued_runs_with_fake_provider(
             "worker_poll_interval_seconds": 0.05,
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
+            "auto_title_enabled": False,
         }
     )
 
@@ -192,6 +193,7 @@ async def test_run_worker_loop_recovers_lease_expired_runs(
             "worker_poll_interval_seconds": 0.05,
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
+            "auto_title_enabled": False,
         }
     )
 

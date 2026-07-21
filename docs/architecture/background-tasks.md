@@ -30,13 +30,13 @@
 |------|------------------------------|--------------------|
 | 状态表 | `runs`（`status`、`lease_expires_at`、`heartbeat_at`…） | `email_outbox`（`status`、`locked_until`、`attempt_count`…） |
 | 入队 | 写 user message + 建 `runs` 行，同事务提交 | 业务事务内插入 `email_outbox` 行 |
-| 唤醒信号 | PG `NOTIFY runs_queued`（`app/worker/notify_listener.py`） | Celery 任务投递（`send_task`，携带 `outbox_id`） |
+| 唤醒信号 | commit 后 Redis `PUBLISH runs_queued`（`app/services/runs/wakeup.py` + `app/worker/run_queued_listener.py`） | Celery 任务投递（`send_task`，携带 `outbox_id`） |
 | 兜底 | worker 周期 poll + 租约过期 recover | `celery-beat` 周期 `sweep_outbox` 归还过期租约、补投 due 行 |
 | 幂等 claim | `FOR UPDATE SKIP LOCKED` 抢 run + 写 lease（`app/services/runs/lifecycle.py`） | 原子 `UPDATE ... RETURNING` 抢 `pending→sending` + `locked_until`（`app/services/email/outbox.py`） |
 | 事实源 | PostgreSQL | PostgreSQL |
-| Redis/Broker 角色 | 无（唤醒走 PG NOTIFY） | 仅作 broker/加速器，不持有业务状态 |
+| Redis/Broker 角色 | pub/sub 唤醒 + Run Stream 实时传输；不参与 claim 仲裁，PG poll/checkpoint 兜底 | 仅作 broker/加速器，不持有业务状态 |
 
-两条链路都**只把 PG 当事实源**，把广播组件（PG NOTIFY / Celery broker）当加速器。
+两条链路都**只把 PG 当事实源**，把广播组件（Redis pub/sub / Stream、Celery broker）当加速器。
 唤醒信号即便全部丢失，兜底扫描仍能保证任务最终被执行——这是「Redis 只作加速器、
 PG 永远是事实源」这一项目级约定在后台任务上的落地。
 
@@ -54,6 +54,10 @@ PG 永远是事实源」这一项目级约定在后台任务上的落地。
 [ticket 05](../../.scratch/agent-runtime-refactor/issues/05-title-generation-celery.md)）；
 而一次流式对话 run 虽然也是「一个后台任务」，却因为流式 + 可取消 + 长时租约而必须
 留在自研运行时。
+
+标题任务的三问答案：最多重试 3 次；以 5 秒为基数做指数退避并封顶 60 秒；耗尽后
+Celery 将任务标为失败并记录日志，conversation `title` 保持 NULL（不污染业务事实），后续
+首个成功 Run 的重复投递仍可按 `title IS NULL` 幂等补写。
 
 ## 3. 反例：为什么流式 LLM run 不进 Celery
 

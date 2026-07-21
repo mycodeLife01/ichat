@@ -1,14 +1,15 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from fastapi import status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
+from app.core.logging import logger
 from app.models.conversation import Conversation
-from app.models.run import Run, RunEvent
+from app.models.run import Run, RunDraft, RunEvent
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.runs import (
@@ -19,6 +20,7 @@ from app.schemas.runs import (
     RunToolSourceResponse,
     RunToolStateResponse,
 )
+from app.services.runs.drafts import get_run_draft
 
 RUN_NOT_FOUND_MESSAGE = "Run not found"
 TERMINAL_EVENT_TYPES: tuple[RunEventType, ...] = (
@@ -29,6 +31,15 @@ TERMINAL_EVENT_TYPES: tuple[RunEventType, ...] = (
 CANCEL_DIRECT_STATUSES = ("queued",)
 CANCEL_REQUEST_STATUSES = ("started", "streaming")
 CANCEL_IDEMPOTENT_STATUSES = ("cancelling", "succeeded", "failed", "cancelled")
+
+
+class RunEventReader(Protocol):
+    async def list_after(
+        self,
+        run_id: int,
+        *,
+        after_seq: int,
+    ) -> list[RunEventResponse]: ...
 
 
 def run_event_response(event: RunEvent) -> RunEventResponse:
@@ -124,12 +135,6 @@ async def append_run_event(
     )
     session.add(event)
     await session.flush()
-    # Wake any SSE subscribers listening for this run. The notify is queued
-    # in the transaction and delivered on commit, matching row visibility.
-    await session.execute(
-        text("SELECT pg_notify('run_events', :payload)"),
-        {"payload": str(run.id)},
-    )
     return run_event_response(event)
 
 
@@ -168,6 +173,7 @@ async def get_owned_run_state(
     *,
     user: User,
     run_public_id: uuid.UUID,
+    event_stream: RunEventReader | None = None,
 ) -> RunStateResponse:
     run = await get_owned_visible_run(session, user=user, run_public_id=run_public_id)
     events = (
@@ -177,32 +183,59 @@ async def get_owned_run_state(
     ).all()
 
     latest_seq = 0
-    draft_parts: list[str] = []
-    reasoning_parts: list[str] = []
+    latest_persisted_delta_seq = 0
+    draft_text = ""
+    draft_reasoning = ""
     terminal_event: RunEventResponse | None = None
     tool_state: RunToolStateResponse | None = None
 
     for event in events:
-        latest_seq = event.seq
+        latest_seq = max(latest_seq, event.seq)
         if event.type == "text_delta":
             text = event.payload.get("text")
             if isinstance(text, str):
-                draft_parts.append(text)
+                draft_text += text
+                latest_persisted_delta_seq = event.seq
         if event.type == "reasoning_delta":
             text = event.payload.get("text")
             if isinstance(text, str):
-                reasoning_parts.append(text)
+                draft_reasoning += text
+                latest_persisted_delta_seq = event.seq
         if event.type in TERMINAL_EVENT_TYPES:
             terminal_event = run_event_response(event)
         if event.type in {"tool_call_started", "tool_call_succeeded", "tool_call_failed"}:
             tool_state = _tool_state_from_event(event)
 
+    draft = await get_run_draft(session, run_id=run.id)
+    stream_after_seq = latest_persisted_delta_seq
+    if draft is not None and draft.seq >= latest_persisted_delta_seq:
+        draft_text = draft.text
+        draft_reasoning = draft.reasoning
+        latest_seq = max(latest_seq, draft.seq)
+        stream_after_seq = draft.seq
+
+    if event_stream is not None:
+        try:
+            stream_events = await event_stream.list_after(run.id, after_seq=stream_after_seq)
+        except Exception as exc:
+            logger.bind(run_id=run.id, error=str(exc)).warning(
+                "Redis run state read failed; using PostgreSQL checkpoint"
+            )
+        else:
+            for stream_event in stream_events:
+                latest_seq = max(latest_seq, stream_event.seq)
+                text = stream_event.payload.get("text")
+                if stream_event.type == "text_delta" and isinstance(text, str):
+                    draft_text += text
+                elif stream_event.type == "reasoning_delta" and isinstance(text, str):
+                    draft_reasoning += text
+
     return RunStateResponse(
         run_id=run.public_id,
         status=cast(RunStatus, run.status),
         latest_seq=latest_seq,
-        draft_text="".join(draft_parts),
-        draft_reasoning="".join(reasoning_parts),
+        draft_text=draft_text,
+        draft_reasoning=draft_reasoning,
         tool_state=tool_state,
         terminal_event=terminal_event,
     )
@@ -221,10 +254,11 @@ async def run_has_terminal_event(session: AsyncSession, *, run_id: int) -> bool:
 
 
 async def get_next_run_event_seq(session: AsyncSession, *, run_id: int) -> int:
-    max_seq = await session.scalar(select(func.max(RunEvent.seq)).where(RunEvent.run_id == run_id))
-    if max_seq is None:
-        return 1
-    return max_seq + 1
+    event_max = await session.scalar(
+        select(func.max(RunEvent.seq)).where(RunEvent.run_id == run_id)
+    )
+    draft_seq = await session.scalar(select(RunDraft.seq).where(RunDraft.run_id == run_id))
+    return max(event_max or 0, draft_seq or 0) + 1
 
 
 def _tool_state_from_event(event: RunEvent) -> RunToolStateResponse:

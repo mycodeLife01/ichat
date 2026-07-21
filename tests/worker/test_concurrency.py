@@ -73,6 +73,7 @@ async def test_worker_loop_runs_multiple_runs_concurrently(
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
             "worker_max_inflight_runs": 8,
+            "auto_title_enabled": False,
         }
     )
 
@@ -154,6 +155,7 @@ async def test_worker_loop_respects_max_inflight_cap(
             "worker_heartbeat_interval_seconds": 0.05,
             "run_lease_seconds": 30,
             "worker_max_inflight_runs": 1,
+            "auto_title_enabled": False,
         }
     )
 
