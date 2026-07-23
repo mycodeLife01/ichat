@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -50,6 +50,16 @@ describe("Composer", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("does not send on Enter while an IME composition is active", () => {
+    const onSend = vi.fn();
+    renderComposer({ value: "nihao", onSend });
+    fireEvent.keyDown(screen.getByPlaceholderText("有问题，尽管问"), {
+      key: "Enter",
+      isComposing: true,
+    });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("clicking send calls onSend", async () => {
     const onSend = vi.fn();
     const user = userEvent.setup();
@@ -69,9 +79,11 @@ describe("Composer", () => {
     expect(onStop).toHaveBeenCalled();
   });
 
-  it("disables the stop button while stopping", () => {
+  it("disables the stop button and marks it busy while stopping", () => {
     renderComposer({ value: "hi", state: "stopping" });
-    expect(screen.getByRole("button", { name: "停止中" })).toBeDisabled();
+    const stopping = screen.getByRole("button", { name: "停止中" });
+    expect(stopping).toBeDisabled();
+    expect(stopping).toHaveAttribute("aria-busy", "true");
   });
 
   it("shows the current thinking level on the trigger button", () => {
@@ -84,8 +96,12 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ thinkingLevel: "high" });
 
-    await user.click(screen.getByRole("button", { name: "智能水平" }));
+    const trigger = screen.getByRole("button", { name: "智能水平" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
 
+    expect(screen.getByRole("menu", { name: "智能水平" })).toBeInTheDocument();
     const options = screen.getAllByRole("menuitemradio");
     expect(options.map((o) => o.textContent)).toEqual(["Fast", "High", "Max"]);
     expect(screen.getByRole("menuitemradio", { name: "High" })).toHaveAttribute(
@@ -135,6 +151,14 @@ describe("Composer", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "智能搜索" })).toBeDisabled();
+  });
+
+  it("exposes the web search toggle as pressed while enabled", () => {
+    renderComposer({ webSearchEnabled: true });
+    expect(screen.getByRole("button", { name: "智能搜索" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("closes the level menu when clicking outside", async () => {

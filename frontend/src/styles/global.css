@@ -79,6 +79,7 @@
   --color-focus-ring: #2563eb;
   --shadow-popover: 0 5px 18px rgba(20, 20, 19, 0.14);
   --shadow-dialog: 0 24px 80px rgba(20, 20, 19, 0.22);
+  --shadow-composer: 0 4px 16px rgba(20, 20, 19, 0.05);
 
   /* Legacy color aliases kept until the migration tickets move consumers to
      the semantic roles above. */
