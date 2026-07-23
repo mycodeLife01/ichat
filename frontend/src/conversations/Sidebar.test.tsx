@@ -113,7 +113,7 @@ describe("Sidebar", () => {
     render(<Sidebar {...props} />);
 
     await user.click(screen.getByRole("button", { name: "更多" }));
-    await user.click(screen.getByRole("button", { name: "重命名" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
     const input = screen.getByDisplayValue("今天的对话");
     await user.clear(input);
     await user.type(input, "新名字{Enter}");
@@ -126,8 +126,37 @@ describe("Sidebar", () => {
     const user = userEvent.setup();
     render(<Sidebar {...props} />);
 
+    const row = screen.getByText("今天的对话").closest(".history-row");
+    expect(row).not.toBeNull();
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 52,
+        height: 32,
+        left: 10,
+        right: 270,
+        top: 20,
+        width: 260,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+      }),
+    });
+
     await user.click(screen.getByRole("button", { name: "更多" }));
-    await user.click(screen.getByRole("button", { name: "删除对话" }));
+
+    const menu = screen.getByRole("menu", { name: "会话操作" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu).toHaveClass("fixed", "w-[156px]", "rounded-[14px]", "shadow-menu");
+    expect(menu).toHaveStyle({ left: "226px", top: "48px" });
+
+    const actions = within(menu).getAllByRole("menuitem");
+    expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
+    expect(actions[0]).toHaveClass("hover:bg-menu-hover");
+    expect(actions[2]).toHaveClass("text-menu-danger");
+    expect(actions[2]).toHaveClass("hover:bg-danger-hover");
+
+    await user.click(within(menu).getByRole("menuitem", { name: "删除" }));
 
     expect(props.onRequestDelete).toHaveBeenCalledWith("1");
   });

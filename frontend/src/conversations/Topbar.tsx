@@ -30,7 +30,7 @@ export function Topbar({
         </button>
       ) : sidebarCollapsed ? (
         <button className={iconBtn} aria-label="展开侧栏" onClick={onToggleSidebar}>
-          <Icons.PanelLeft size={15} />
+          <Icons.PanelLeft size={20} />
         </button>
       ) : null}
 
@@ -48,7 +48,7 @@ export function Topbar({
 
       {isMobile && (
         <button className={iconBtn} aria-label="新建对话" onClick={onNewMobile}>
-          <Icons.Plus size={16} />
+          <Icons.NewChat size={20} />
         </button>
       )}
     </header>

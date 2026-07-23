@@ -1,6 +1,7 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 /* Hallmark · component: sidebar · genre: modern-minimal · system: existing warm-neutral tokens */
-import { useEffect, useState, type CSSProperties, type UIEvent } from "react";
+import { useEffect, useState, type ReactNode, type UIEvent } from "react";
+import { createPortal } from "react-dom";
 
 import type { ConversationResponse, UserShareResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
@@ -49,6 +50,26 @@ type SidebarProps = {
 const sectionLabel =
   "px-2.5 pb-1.5 text-[13px] font-semibold leading-5 text-fg max-[760px]:text-[14px]";
 
+type ConversationMenu = {
+  conversationId: string;
+  left: number;
+  top: number;
+};
+
+const desktopMenuWidth = 156;
+const desktopMenuHeight = 126;
+const desktopMenuOverlap = 44;
+const viewportInset = 8;
+const desktopMenuItemBase =
+  "flex h-9 w-full items-center gap-2.5 whitespace-nowrap rounded-[10px] px-3 text-left text-[14px] font-normal leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:text-fg-faint disabled:hover:bg-transparent";
+const desktopMenuItem =
+  `${desktopMenuItemBase} text-fg hover:bg-menu-hover focus-visible:bg-menu-hover active:bg-menu-hover`;
+const desktopDangerMenuItem =
+  `${desktopMenuItemBase} text-menu-danger hover:bg-danger-hover focus-visible:bg-danger-hover active:bg-danger-hover`;
+const desktopRowActionOrder = ["share", "rename", "delete"] as const;
+const mobileRowActionOrder = ["rename", "share", "delete"] as const;
+type RowActionKey = (typeof desktopRowActionOrder)[number];
+
 export function Sidebar({
   items,
   selectedId,
@@ -78,15 +99,26 @@ export function Sidebar({
   onCloseMobile,
 }: SidebarProps) {
   const [renameId, setRenameId] = useState<string | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menu, setMenu] = useState<ConversationMenu | null>(null);
 
   useEffect(() => {
-    const handler = () => setMenuFor(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const closeMenu = () => setMenu(null);
+    const closeMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", closeMenuOnEscape);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", closeMenuOnEscape);
+      window.removeEventListener("resize", closeMenu);
+    };
   }, []);
 
   const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
+    setMenu(null);
     if (!hasMore || isLoadingMore) return;
     const element = event.currentTarget;
     const distanceToBottom =
@@ -114,53 +146,80 @@ export function Sidebar({
 
   const renderRow = (c: ConversationResponse) => {
     const isRenaming = renameId === c.id;
-    const menuOpen = menuFor === c.id;
+    const menuOpen = menu?.conversationId === c.id;
     const active = selectedId === c.id;
-    // The same two actions, rendered into a desktop dropdown or a mobile sheet.
-    const rowActions = (itemStyle?: CSSProperties) => (
-      <>
-        <button
-          className={`${sheetItem} text-fg`}
-          style={itemStyle}
-          onClick={() => {
-            setRenameId(c.id);
-            setMenuFor(null);
-          }}
-        >
-          <Icons.Pen size={13} />
-          重命名
-        </button>
-        <button
-          className={`${sheetItem} text-fg`}
-          style={itemStyle}
-          onClick={() => {
-            onRequestShare(c.id);
-            setMenuFor(null);
-          }}
-        >
-          <Icons.Share size={13} />
-          分享
-        </button>
-        <button
-          className={`${sheetItem} text-danger`}
-          style={itemStyle}
-          onClick={() => {
-            onRequestDelete(c.id);
-            setMenuFor(null);
-          }}
-        >
-          <Icons.Trash size={13} />
-          删除对话
-        </button>
-      </>
-    );
+    const rowActions: Record<
+      RowActionKey,
+      {
+        label: string;
+        mobileLabel?: string;
+        desktopIcon: ReactNode;
+        mobileIcon: ReactNode;
+        danger?: boolean;
+        run: () => void;
+      }
+    > = {
+      share: {
+        label: "分享",
+        desktopIcon: <Icons.Upload size={18} />,
+        mobileIcon: <Icons.Share size={13} />,
+        run: () => {
+          onRequestShare(c.id);
+          setMenu(null);
+        },
+      },
+      rename: {
+        label: "重命名",
+        desktopIcon: <Icons.Pen size={18} />,
+        mobileIcon: <Icons.Pen size={13} />,
+        run: () => {
+          setRenameId(c.id);
+          setMenu(null);
+        },
+      },
+      delete: {
+        label: "删除",
+        mobileLabel: "删除对话",
+        desktopIcon: <Icons.Trash size={18} />,
+        mobileIcon: <Icons.Trash size={13} />,
+        danger: true,
+        run: () => {
+          onRequestDelete(c.id);
+          setMenu(null);
+        },
+      },
+    };
+    const renderRowActions = (surface: "desktop" | "mobile") => {
+      const desktop = surface === "desktop";
+      const order = desktop ? desktopRowActionOrder : mobileRowActionOrder;
+      return order.map((key) => {
+        const action = rowActions[key];
+        return (
+          <button
+            key={key}
+            className={
+              desktop
+                ? action.danger
+                  ? desktopDangerMenuItem
+                  : desktopMenuItem
+                : `${sheetItem} ${action.danger ? "text-danger" : "text-fg"}`
+            }
+            role={desktop ? "menuitem" : undefined}
+            onClick={action.run}
+          >
+            {desktop ? action.desktopIcon : action.mobileIcon}
+            {desktop ? action.label : action.mobileLabel ?? action.label}
+          </button>
+        );
+      });
+    };
     return (
       <div
         key={c.id}
         // leading-[22px] keeps a stable line box (>= the 22px menu button) so
         // revealing the button on hover never shifts the rows below.
         className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium leading-[22px] text-fg transition-colors duration-100 hover:bg-bg-hover max-[760px]:py-2 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
-          active ? "active bg-bg-active hover:bg-bg-active" : ""
+          active || menuOpen ? "active bg-bg-active hover:bg-bg-active" : ""
         }`}
         onClick={() => {
           if (isRenaming) return;
@@ -196,35 +255,66 @@ export function Sidebar({
         {!isRenaming && (
           <button
             className={`h-[22px] w-[22px] shrink-0 items-center justify-center rounded-sm text-fg-subtle hover:text-fg ${
-              isMobile || active
+              isMobile || active || menuOpen
                 ? "inline-flex"
                 : "hidden group-hover/row:inline-flex group-focus-within/row:inline-flex"
             }`}
             aria-label="更多"
+            aria-haspopup={isMobile ? "dialog" : "menu"}
+            aria-expanded={menuOpen}
             onClick={(event) => {
               event.stopPropagation();
-              setMenuFor(menuOpen ? null : c.id);
+              if (menuOpen) {
+                setMenu(null);
+                return;
+              }
+
+              if (isMobile) {
+                setMenu({ conversationId: c.id, left: 0, top: 0 });
+                return;
+              }
+
+              const row = event.currentTarget.closest(".history-row");
+              if (!(row instanceof HTMLElement)) return;
+              const rect = row.getBoundingClientRect();
+              const left = Math.max(
+                viewportInset,
+                Math.min(
+                  rect.right - desktopMenuOverlap,
+                  window.innerWidth - desktopMenuWidth - viewportInset,
+                ),
+              );
+              const top = Math.max(
+                viewportInset,
+                Math.min(
+                  rect.bottom - 4,
+                  window.innerHeight - desktopMenuHeight - viewportInset,
+                ),
+              );
+              setMenu({ conversationId: c.id, left, top });
             }}
           >
             <Icons.More size={14} />
           </button>
         )}
-        {/* Desktop: an anchored dropdown. Mobile: a bottom sheet. */}
+        {/* Desktop escapes the sidebar's overflow boundary; mobile uses a bottom sheet. */}
         {!isRenaming && menuOpen && !isMobile && (
-          <div
-            className="history-menu absolute top-[calc(100%-4px)] right-1.5 z-10 min-w-[120px] rounded-[8px] border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {rowActions({
-              padding: "7px 10px",
-              fontSize: 13,
-              borderRadius: 6,
-            })}
-          </div>
+          createPortal(
+            <div
+              className="history-menu fixed z-40 w-[156px] rounded-[14px] border border-border-strong bg-bg-raised p-1.5 shadow-menu"
+              style={{ left: menu.left, top: menu.top }}
+              role="menu"
+              aria-label="会话操作"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {renderRowActions("desktop")}
+            </div>,
+            document.body,
+          )
         )}
         {!isRenaming && isMobile && (
-          <BottomSheet open={menuOpen} onClose={() => setMenuFor(null)}>
-            {rowActions()}
+          <BottomSheet open={menuOpen} onClose={() => setMenu(null)}>
+            {renderRowActions("mobile")}
           </BottomSheet>
         )}
       </div>
@@ -239,7 +329,7 @@ export function Sidebar({
             <Wordmark size={isMobile ? 20 : 18} />
             {!isMobile && (
               <button className={iconBtn} aria-label="收起侧栏" onClick={onToggleCollapsed}>
-                <Icons.PanelLeft size={15} />
+                <Icons.PanelLeft size={20} />
               </button>
             )}
           </div>
@@ -251,7 +341,7 @@ export function Sidebar({
               if (isMobile) onCloseMobile();
             }}
           >
-            <Icons.Plus size={16} />
+            <Icons.NewChat size={20} />
             新建对话
           </button>
 

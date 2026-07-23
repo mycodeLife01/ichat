@@ -21,6 +21,7 @@
   --color-bg-raised: #ffffff;
   --color-bg-hover: rgba(20, 20, 19, 0.04);
   --color-bg-active: rgba(20, 20, 19, 0.07);
+  --color-menu-hover: #f5f5f5;
 
   --color-fg: #1a1a19;
   --color-fg-muted: #6b6a66;
@@ -37,6 +38,10 @@
 
   --color-danger: #b54a2e;
   --color-danger-soft: rgba(181, 74, 46, 0.08);
+  --color-menu-danger: #b22f29;
+  --color-danger-hover: #fce2e0;
+
+  --shadow-menu: 0 5px 18px rgba(20, 20, 19, 0.14);
 
   /* rounded-sm / rounded-md / rounded-lg (legacy --radius-sm / --radius / --radius-lg) */
   --radius-sm: 4px;
