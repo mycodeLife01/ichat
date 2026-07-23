@@ -12,41 +12,92 @@
   --text-sm--line-height: 1.6;
   --text-2xl: 24px;
   --text-2xl--line-height: 1.6;
-  --radius-2xl: 16px;
+  /* Semantic radius hierarchy. Parent surfaces use a larger role than their
+     nested controls/items instead of selecting arbitrary radii in JSX. */
+  --radius-detail: 4px;
+  --radius-control: 8px;
+  --radius-item: 10px;
+  --radius-popover: 14px;
+  --radius-card: 16px;
+  --radius-dialog: 20px;
+  --radius-composer: 28px;
+  --radius-pill: 999px;
+
+  /* Tailwind/legacy aliases kept while business surfaces migrate. */
+  --radius-sm: var(--radius-detail);
+  --radius-md: 6px;
+  --radius-lg: var(--radius-item);
+  --radius-2xl: var(--radius-card);
   /* Legacy transitions used the CSS default curve, not Tailwind's. */
   --default-transition-timing-function: ease;
 
-  --color-bg: #fbfbfa;
-  --color-bg-sunken: #f4f3f0;
-  --color-bg-raised: #ffffff;
-  --color-bg-hover: rgba(20, 20, 19, 0.04);
-  --color-bg-active: rgba(20, 20, 19, 0.07);
-  --color-menu-hover: #f5f5f5;
-
-  --color-fg: #1a1a19;
-  --color-fg-muted: #6b6a66;
-  --color-fg-subtle: #95938e;
-  --color-fg-faint: #b8b6b0;
+  /* Neutral surfaces and text. Hover is transient; selected is persistent. */
+  --color-canvas: #fbfbfa;
+  --color-sidebar: #f4f3f0;
+  --color-surface: #ffffff;
+  --color-sunken: #f4f3f0;
+  --color-hover: rgba(20, 20, 19, 0.04);
+  --color-selected: rgba(20, 20, 19, 0.07);
+  --color-text-primary: #1a1a19;
+  --color-text-muted: #6b6a66;
+  --color-text-faint: #b8b6b0;
 
   --color-border: rgba(20, 20, 19, 0.08);
   --color-border-strong: rgba(20, 20, 19, 0.14);
-  --color-border-focus: rgba(20, 20, 19, 0.55);
 
   --color-accent: #1a1a19;
-  --color-accent-fg: #fbfbfa;
+  --color-accent-foreground: #fbfbfa;
+
+  /* Tone families expose foreground, soft surface, and border roles. */
+  --color-neutral-foreground: #6b6a66;
+  --color-neutral-soft: #f4f3f0;
+  --color-neutral-border: rgba(20, 20, 19, 0.12);
+
+  --color-success-foreground: #39734a;
+  --color-success-soft: #f0f8f2;
+  --color-success-border: #cce5d2;
+
+  --color-error-foreground: #a6402b;
+  --color-error-soft: #fbeeea;
+  --color-error-border: #e8c7bd;
+
+  --color-warning-foreground: #805b12;
+  --color-warning-soft: #fff7df;
+  --color-warning-border: #ead59b;
+
+  /* Danger is an action role in the error family. Only the final irreversible
+     action consumes the solid role. */
+  --color-danger: var(--color-error-foreground);
+  --color-danger-soft: var(--color-error-soft);
+  --color-danger-border: var(--color-error-border);
+  --color-danger-solid: #a6402b;
+  --color-danger-solid-foreground: #ffffff;
+
+  /* Layering, focus, and elevation values stay out of business components. */
+  --color-overlay: rgba(20, 20, 19, 0.45);
+  --color-focus-ring: #2563eb;
+  --shadow-popover: 0 5px 18px rgba(20, 20, 19, 0.14);
+  --shadow-dialog: 0 24px 80px rgba(20, 20, 19, 0.22);
+
+  /* Legacy color aliases kept until the migration tickets move consumers to
+     the semantic roles above. */
+  --color-bg: var(--color-canvas);
+  --color-bg-sunken: var(--color-sunken);
+  --color-bg-raised: var(--color-surface);
+  --color-bg-hover: var(--color-hover);
+  --color-bg-active: var(--color-selected);
+  --color-menu-hover: var(--color-hover);
+
+  --color-fg: var(--color-text-primary);
+  --color-fg-muted: #6b6a66;
+  --color-fg-subtle: #95938e;
+  --color-fg-faint: var(--color-text-faint);
+  --color-border-focus: var(--color-focus-ring);
+  --color-accent-fg: var(--color-accent-foreground);
   --color-accent-soft: rgba(20, 20, 19, 0.07);
-
-  --color-danger: #b54a2e;
-  --color-danger-soft: rgba(181, 74, 46, 0.08);
-  --color-menu-danger: #b22f29;
-  --color-danger-hover: #fce2e0;
-
-  --shadow-menu: 0 5px 18px rgba(20, 20, 19, 0.14);
-
-  /* rounded-sm / rounded-md / rounded-lg (legacy --radius-sm / --radius / --radius-lg) */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --color-menu-danger: var(--color-danger);
+  --color-danger-hover: var(--color-danger-soft);
+  --shadow-menu: var(--shadow-popover);
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
@@ -168,9 +219,8 @@ body {
   input:focus-visible,
   textarea:focus-visible,
   [role="button"]:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 }
 

@@ -2,6 +2,130 @@
 // Semantic class names that remain in JSX (e.g. "toast", "sheet-backdrop") are
 // test/JS hooks only and carry no styles.
 
+export const focusRing =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
+
+export const iconControl =
+  `inline-flex items-center justify-center rounded-control text-text-muted ${focusRing} ` +
+  "transition-[background,color,transform] duration-[120ms] hover:bg-hover hover:text-text-primary " +
+  "active:scale-[0.97] disabled:cursor-not-allowed disabled:text-text-faint disabled:opacity-60 " +
+  "disabled:hover:bg-transparent aria-busy:cursor-wait aria-busy:opacity-60";
+
+const buttonStateBase =
+  `inline-flex items-center justify-center rounded-control ${focusRing} ` +
+  "transition-[background,color,opacity,transform] duration-[120ms] active:scale-[0.98] " +
+  "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait aria-busy:opacity-60";
+
+export const buttonControl =
+  `${buttonStateBase} text-text-primary hover:bg-hover`;
+
+export const primaryButton =
+  `${buttonStateBase} bg-accent text-accent-foreground hover:opacity-90`;
+
+export const interactiveItem =
+  `rounded-item ${focusRing} transition-[background,color,transform] duration-[120ms] ` +
+  "hover:bg-hover focus-visible:bg-hover active:scale-[0.99] aria-selected:bg-selected " +
+  "disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent " +
+  "aria-busy:cursor-wait aria-busy:opacity-60";
+
+export const popoverSurface =
+  "rounded-popover border border-border-strong bg-surface shadow-popover";
+
+export const cardSurface =
+  "rounded-card border border-border bg-surface";
+
+export const dialogSurface =
+  "rounded-dialog border border-border-strong bg-surface shadow-dialog";
+
+export const composerSurface =
+  "rounded-composer border border-border-strong bg-surface";
+
+const menuItemBase =
+  `${interactiveItem} flex w-full items-center gap-2.5 text-left`;
+
+export const neutralMenuItem =
+  `${menuItemBase} text-text-primary`;
+
+export const dangerMenuItem =
+  `${menuItemBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft active:bg-danger-soft`;
+
+export const inputControl =
+  `rounded-item border border-border bg-canvas text-text-primary ${focusRing} ` +
+  "transition-[background,border-color] duration-[120ms] hover:border-border-strong " +
+  "disabled:cursor-not-allowed disabled:bg-sunken disabled:text-text-faint " +
+  "aria-busy:cursor-wait aria-busy:bg-sunken aria-invalid:border-error-border " +
+  "data-[state=success]:border-success-border";
+
+export const statusNotice =
+  "flex items-start gap-2 rounded-control border px-3 py-2 text-[12.5px] leading-[1.55]";
+
+export const toastSurface =
+  "flex items-center gap-2 rounded-control border px-3.5 py-2 text-[13px] shadow-popover";
+
+type InteractionState =
+  | "default"
+  | "hover"
+  | "focus-visible"
+  | "active"
+  | "disabled"
+  | "loading"
+  | "error"
+  | "success";
+
+type StateSupport = "supported" | "not-applicable";
+
+const interactiveStates = {
+  default: "supported",
+  hover: "supported",
+  "focus-visible": "supported",
+  active: "supported",
+  disabled: "supported",
+  loading: "supported",
+  error: "not-applicable",
+  success: "not-applicable",
+} as const satisfies Record<InteractionState, StateSupport>;
+
+const staticSurfaceStates = {
+  default: "supported",
+  hover: "not-applicable",
+  "focus-visible": "not-applicable",
+  active: "not-applicable",
+  disabled: "not-applicable",
+  loading: "not-applicable",
+  error: "not-applicable",
+  success: "not-applicable",
+} as const satisfies Record<InteractionState, StateSupport>;
+
+// Public contract for state coverage. Status notices use explicit tone props;
+// static surfaces intentionally have no interaction states.
+export const interactionStateContract = {
+  iconControl: interactiveStates,
+  buttonControl: interactiveStates,
+  primaryButton: interactiveStates,
+  interactiveItem: interactiveStates,
+  neutralMenuItem: interactiveStates,
+  dangerMenuItem: interactiveStates,
+  inputControl: {
+    ...interactiveStates,
+    error: "supported",
+    success: "supported",
+  },
+  popoverSurface: staticSurfaceStates,
+  cardSurface: staticSurfaceStates,
+  dialogSurface: staticSurfaceStates,
+  composerSurface: staticSurfaceStates,
+  statusNotice: {
+    ...staticSurfaceStates,
+    error: "supported",
+    success: "supported",
+  },
+  toastSurface: {
+    ...staticSurfaceStates,
+    error: "supported",
+    success: "supported",
+  },
+} as const satisfies Record<string, Record<InteractionState, StateSupport>>;
+
 export const iconBtn =
   "inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-muted " +
   "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
