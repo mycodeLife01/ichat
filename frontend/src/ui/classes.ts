@@ -23,8 +23,8 @@ export const primaryButton =
   `${buttonStateBase} bg-accent text-accent-foreground hover:opacity-90`;
 
 const interactiveItemStateBase =
-  `rounded-item ${focusRing} transition-[background,color,transform] duration-[120ms] ` +
-  "active:scale-[0.99] aria-current:bg-selected aria-selected:bg-selected data-[selected=true]:bg-selected " +
+  `rounded-item ${focusRing} transition-[background,color] duration-[120ms] ` +
+  "aria-current:bg-selected aria-selected:bg-selected data-[selected=true]:bg-selected " +
   "disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent " +
   "aria-busy:cursor-wait aria-busy:opacity-60";
 

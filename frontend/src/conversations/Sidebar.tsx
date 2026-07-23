@@ -258,12 +258,12 @@ export function Sidebar({
         )}
         {!isRenaming && (
           <button
-            className={`mr-1 shrink-0 items-center justify-center rounded-control text-text-muted hover:bg-hover hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${
+            className={`mr-1 shrink-0 items-center justify-center text-text-muted transition-[color,opacity] duration-[120ms] hover:text-text-primary focus-visible:text-text-primary focus-visible:outline-none ${
               isMobile ? "h-11 w-11" : "h-7 w-7"
             } ${
-              isMobile || active || menuOpen
+              isMobile
                 ? "inline-flex"
-                : "hidden group-hover/row:inline-flex group-focus-within/row:inline-flex"
+                : "pointer-events-none inline-flex opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
             }`}
             aria-label="更多"
             aria-haspopup={isMobile ? "dialog" : "menu"}
