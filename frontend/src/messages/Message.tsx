@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
-import { ghostBtn, primaryBtn, sheetItem } from "../ui/classes";
+import {
+  ghostBtn,
+  mobileActionItem,
+  neutralMenuItem,
+  primaryBtn,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
@@ -53,6 +58,7 @@ export function Message({
   // `overflowing` is measured from the rendered content.
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
+  const disabledReasonId = useId();
   const contentRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile user messages have no visible action button (no hover on touch);
@@ -118,11 +124,13 @@ export function Message({
     copiedTimer.current = setTimeout(() => setCopied(false), 1500);
   };
 
-  // Mobile sheet rows match the sidebar's conversation menu sheet (sheetItem).
+  // Mobile sheet rows consume the same neutral action-item primitive as the
+  // sidebar and user action sheets.
   const sheetActions = (afterAction: () => void) => (
     <>
       <button
-        className={`${sheetItem} text-fg`}
+        className={`${neutralMenuItem} ${mobileActionItem}`}
+        data-variant="neutral"
         onClick={() => {
           copy(message.content);
           afterAction();
@@ -132,9 +140,11 @@ export function Message({
         复制
       </button>
       <button
-        className={`${sheetItem} text-fg`}
+        className={`${neutralMenuItem} ${mobileActionItem}`}
+        data-variant="neutral"
         disabled={disabled}
         title={mutateDisabledReason ?? undefined}
+        aria-describedby={disabled ? disabledReasonId : undefined}
         onClick={() => {
           mutate();
           afterAction();
@@ -143,6 +153,14 @@ export function Message({
         <MutateIcon size={15} />
         {mutateLabel}
       </button>
+      {mutateDisabledReason && (
+        <p
+          id={disabledReasonId}
+          className="px-5 pt-1 pb-2 text-[13px] leading-5 text-text-muted"
+        >
+          {mutateDisabledReason}
+        </p>
+      )}
     </>
   );
 
@@ -189,7 +207,11 @@ export function Message({
   // hover exists on touch); user actions open via long-press on the bubble.
   const actionBar =
     isMobile && isUser ? (
-      <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)}>
+      <BottomSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        ariaLabel="消息操作"
+      >
         {sheetActions(() => setSheetOpen(false))}
       </BottomSheet>
     ) : (

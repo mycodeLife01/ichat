@@ -5,12 +5,12 @@ import { createPortal } from "react-dom";
 
 import type { ConversationResponse, UserShareResponse } from "../api/types";
 import {
-  iconBtn,
-  popoverDangerMenuItem,
-  popoverMenu,
-  popoverMenuItem,
-  sheetItem,
-  sidebarItemSurface,
+  dangerMenuItem,
+  iconControl,
+  interactiveItem,
+  mobileActionItem,
+  neutralMenuItem,
+  popoverSurface,
   titleSkeleton,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
@@ -69,9 +69,8 @@ const desktopMenuWidth = 156;
 const desktopMenuHeight = 126;
 const desktopMenuOverlap = 44;
 const viewportInset = 8;
-const desktopRowActionOrder = ["share", "rename", "delete"] as const;
-const mobileRowActionOrder = ["rename", "share", "delete"] as const;
-type RowActionKey = (typeof desktopRowActionOrder)[number];
+const rowActionOrder = ["share", "rename", "delete"] as const;
+type RowActionKey = (typeof rowActionOrder)[number];
 
 export function Sidebar({
   items,
@@ -136,8 +135,8 @@ export function Sidebar({
   const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg-sunken"];
   if (isMobile) {
     sidebarClasses.push(
-      "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] border-r border-border " +
-        "shadow-[0_0_30px_rgba(0,0,0,0.08)] transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+      "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] max-w-[calc(100vw-44px)] border-r border-border " +
+        "shadow-popover transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
       mobileOpen ? "open translate-x-0" : "-translate-x-full",
     );
   } else {
@@ -155,7 +154,6 @@ export function Sidebar({
       RowActionKey,
       {
         label: string;
-        mobileLabel?: string;
         desktopIcon: ReactNode;
         mobileIcon: ReactNode;
         danger?: boolean;
@@ -182,7 +180,6 @@ export function Sidebar({
       },
       delete: {
         label: "删除",
-        mobileLabel: "删除对话",
         desktopIcon: <Icons.Trash size={18} />,
         mobileIcon: <Icons.Trash size={13} />,
         danger: true,
@@ -194,24 +191,20 @@ export function Sidebar({
     };
     const renderRowActions = (surface: "desktop" | "mobile") => {
       const desktop = surface === "desktop";
-      const order = desktop ? desktopRowActionOrder : mobileRowActionOrder;
-      return order.map((key) => {
+      return rowActionOrder.map((key) => {
         const action = rowActions[key];
         return (
           <button
             key={key}
-            className={
-              desktop
-                ? action.danger
-                  ? popoverDangerMenuItem
-                  : popoverMenuItem
-                : `${sheetItem} ${action.danger ? "text-danger" : "text-fg"}`
-            }
+            className={`${action.danger ? dangerMenuItem : neutralMenuItem} ${
+              desktop ? "" : mobileActionItem
+            }`}
             role={desktop ? "menuitem" : undefined}
+            data-variant={action.danger ? "danger" : "neutral"}
             onClick={action.run}
           >
             {desktop ? action.desktopIcon : action.mobileIcon}
-            {desktop ? action.label : action.mobileLabel ?? action.label}
+            {action.label}
           </button>
         );
       });
@@ -219,16 +212,10 @@ export function Sidebar({
     return (
       <div
         key={c.id}
-        // leading-[22px] keeps a stable line box (>= the 22px menu button) so
-        // revealing the button on hover never shifts the rows below.
-        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[13.5px] font-medium leading-[22px] text-fg max-[760px]:py-2 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${sidebarItemSurface} ${
-          active || menuOpen ? "active bg-bg-active hover:bg-bg-active" : ""
-        }`}
-        onClick={() => {
-          if (isRenaming) return;
-          onSelect(c.id);
-          if (isMobile) onCloseMobile();
-        }}
+        // A fixed minimum height keeps revealing the desktop action button from
+        // shifting adjacent rows; mobile raises the whole target to 44px.
+        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[13.5px] font-medium leading-[22px] text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem}`}
+        data-selected={active || menuOpen}
       >
         {isRenaming ? (
           <input
@@ -236,7 +223,7 @@ export function Sidebar({
             ref={(el) => el?.select()}
             defaultValue={c.title ?? ""}
             // Inline rename input — looks identical to the title text.
-            className="m-0 min-w-0 flex-1 border-none bg-transparent p-0 font-[inherit] text-inherit outline-none selection:bg-[rgba(120,170,240,0.45)] selection:text-inherit focus:shadow-none focus:outline-none focus-visible:outline-none"
+            className="m-0 min-w-0 flex-1 border-none bg-transparent px-2.5 py-1.5 font-[inherit] text-inherit outline-none selection:bg-[rgba(120,170,240,0.45)] selection:text-inherit focus:shadow-none focus:outline-none"
             onClick={(event) => event.stopPropagation()}
             onBlur={(event) => {
               onRename(c.id, event.target.value);
@@ -247,17 +234,33 @@ export function Sidebar({
               if (event.key === "Escape") setRenameId(null);
             }}
           />
-        ) : pendingTitleIds.includes(c.id) ? (
-          // Auto-title is still being generated for this freshly-activated draft.
-          <span className="flex-1 truncate text-fg-subtle">
-            <span className={titleSkeleton} style={{ width: 120, verticalAlign: "middle" }} />
-          </span>
         ) : (
-          <span className="flex-1 truncate">{c.title || "新对话"}</span>
+          <button
+            className="min-w-0 flex-1 self-stretch rounded-item px-2.5 py-1.5 text-left font-[inherit] text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring max-[760px]:py-2"
+            aria-current={active ? "page" : undefined}
+            onClick={() => {
+              onSelect(c.id);
+              if (isMobile) onCloseMobile();
+            }}
+          >
+            {pendingTitleIds.includes(c.id) ? (
+              // Auto-title is still being generated for this freshly-activated draft.
+              <span className="block truncate text-text-muted">
+                <span
+                  className={titleSkeleton}
+                  style={{ width: 120, verticalAlign: "middle" }}
+                />
+              </span>
+            ) : (
+              <span className="block truncate">{c.title || "新对话"}</span>
+            )}
+          </button>
         )}
         {!isRenaming && (
           <button
-            className={`h-[22px] w-[22px] shrink-0 items-center justify-center rounded-sm text-fg-subtle hover:text-fg ${
+            className={`mr-1 shrink-0 items-center justify-center rounded-control text-text-muted hover:bg-hover hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${
+              isMobile ? "h-11 w-11" : "h-7 w-7"
+            } ${
               isMobile || active || menuOpen
                 ? "inline-flex"
                 : "hidden group-hover/row:inline-flex group-focus-within/row:inline-flex"
@@ -304,7 +307,7 @@ export function Sidebar({
         {!isRenaming && menuOpen && !isMobile && (
           createPortal(
             <div
-              className={`history-menu fixed z-40 w-[156px] ${popoverMenu}`}
+              className={`history-menu fixed z-40 w-[156px] p-1.5 ${popoverSurface}`}
               style={{ left: menu.left, top: menu.top }}
               role="menu"
               aria-label="会话操作"
@@ -316,7 +319,11 @@ export function Sidebar({
           )
         )}
         {!isRenaming && isMobile && (
-          <BottomSheet open={menuOpen} onClose={() => setMenu(null)}>
+          <BottomSheet
+            open={menuOpen}
+            onClose={() => setMenu(null)}
+            ariaLabel="会话操作"
+          >
             {renderRowActions("mobile")}
           </BottomSheet>
         )}
@@ -326,19 +333,31 @@ export function Sidebar({
 
   return (
     <>
-      <aside className={sidebarClasses.join(" ")}>
-        <div className="flex h-full w-[var(--sidebar-width)] flex-col px-2.5 pt-3 pb-2.5">
+      <aside
+        className={sidebarClasses.join(" ")}
+        aria-hidden={isMobile && !mobileOpen ? "true" : undefined}
+        inert={isMobile && !mobileOpen ? true : undefined}
+      >
+        <div
+          className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
+            isMobile ? "w-full" : "w-[var(--sidebar-width)]"
+          }`}
+        >
           <div className="flex items-center justify-between px-2 pb-3.5">
             <Wordmark size={isMobile ? 20 : 18} />
             {!isMobile && (
-              <button className={iconBtn} aria-label="收起侧栏" onClick={onToggleCollapsed}>
+              <button
+                className={`${iconControl} h-8 w-8`}
+                aria-label="收起侧栏"
+                onClick={onToggleCollapsed}
+              >
                 <Icons.PanelLeft size={20} />
               </button>
             )}
           </div>
 
           <button
-            className="flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-left text-[13.5px] font-medium text-fg transition-colors duration-[120ms] hover:bg-bg-hover max-[760px]:py-2.5 max-[760px]:text-[15px]"
+            className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
             onClick={() => {
               onNew();
               if (isMobile) onCloseMobile();
@@ -371,6 +390,7 @@ export function Sidebar({
 
           <UserMenu
             user={user}
+            isMobile={isMobile}
             onLogout={onLogout}
             onResendVerification={onResendVerification}
             onUpdateNickname={onUpdateNickname}
@@ -385,7 +405,7 @@ export function Sidebar({
       </aside>
       {isMobile && (
         <div
-          className={`scrim fixed inset-0 z-[29] bg-[rgba(20,20,19,0.32)] transition-opacity duration-200 ${
+          className={`scrim fixed inset-0 z-[29] bg-overlay transition-opacity duration-200 ${
             mobileOpen ? "show pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
           }`}
           onClick={onCloseMobile}

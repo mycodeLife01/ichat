@@ -276,7 +276,9 @@ describe("Message", () => {
     longPress(screen.getByText("你好"));
     const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
     expect(editBtn).toBeDisabled();
-    expect(editBtn).toHaveAttribute("title", reason);
+    const reasonText = screen.getByText(reason);
+    expect(reasonText).toBeVisible();
+    expect(editBtn).toHaveAccessibleDescription(reason);
     expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
   });
 

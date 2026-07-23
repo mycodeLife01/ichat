@@ -1,4 +1,4 @@
-import { iconBtn, titleSkeleton } from "../ui/classes";
+import { iconControl, titleSkeleton } from "../ui/classes";
 import { Icons } from "../ui/icons";
 
 type TopbarProps = {
@@ -25,11 +25,19 @@ export function Topbar({
   return (
     <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border bg-bg px-5 max-[760px]:px-3">
       {isMobile ? (
-        <button className={iconBtn} aria-label="打开历史" onClick={onOpenMobile}>
+        <button
+          className={`${iconControl} h-11 w-11`}
+          aria-label="打开历史"
+          onClick={onOpenMobile}
+        >
           <Icons.Menu size={16} />
         </button>
       ) : sidebarCollapsed ? (
-        <button className={iconBtn} aria-label="展开侧栏" onClick={onToggleSidebar}>
+        <button
+          className={`${iconControl} h-8 w-8`}
+          aria-label="展开侧栏"
+          onClick={onToggleSidebar}
+        >
           <Icons.PanelLeft size={20} />
         </button>
       ) : null}
@@ -47,7 +55,11 @@ export function Topbar({
       )}
 
       {isMobile && (
-        <button className={iconBtn} aria-label="新建对话" onClick={onNewMobile}>
+        <button
+          className={`${iconControl} h-11 w-11`}
+          aria-label="新建对话"
+          onClick={onNewMobile}
+        >
           <Icons.NewChat size={20} />
         </button>
       )}

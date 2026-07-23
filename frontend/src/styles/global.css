@@ -31,12 +31,13 @@
   /* Legacy transitions used the CSS default curve, not Tailwind's. */
   --default-transition-timing-function: ease;
 
-  /* Neutral surfaces and text. Hover is transient; selected is persistent. */
+  /* Neutral surfaces and text. Hover and active are transient; selected is persistent. */
   --color-canvas: #fbfbfa;
   --color-sidebar: #f4f3f0;
   --color-surface: #ffffff;
   --color-sunken: #f4f3f0;
   --color-hover: rgba(20, 20, 19, 0.04);
+  --color-active: rgba(20, 20, 19, 0.1);
   --color-selected: rgba(20, 20, 19, 0.07);
   --color-text-primary: #1a1a19;
   --color-text-muted: #6b6a66;
@@ -85,7 +86,7 @@
   --color-bg-sunken: var(--color-sunken);
   --color-bg-raised: var(--color-surface);
   --color-bg-hover: var(--color-hover);
-  --color-bg-active: var(--color-selected);
+  --color-bg-active: var(--color-active);
   --color-menu-hover: var(--color-hover);
 
   --color-fg: var(--color-text-primary);

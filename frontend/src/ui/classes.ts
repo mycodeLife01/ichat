@@ -24,12 +24,12 @@ export const primaryButton =
 
 const interactiveItemStateBase =
   `rounded-item ${focusRing} transition-[background,color,transform] duration-[120ms] ` +
-  "active:scale-[0.99] aria-selected:bg-selected " +
+  "active:scale-[0.99] aria-current:bg-selected aria-selected:bg-selected data-[selected=true]:bg-selected " +
   "disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent " +
   "aria-busy:cursor-wait aria-busy:opacity-60";
 
 export const interactiveItem =
-  `${interactiveItemStateBase} hover:bg-hover focus-visible:bg-hover`;
+  `${interactiveItemStateBase} hover:bg-hover focus-visible:bg-hover active:bg-active`;
 
 export const popoverSurface =
   "rounded-popover border border-border-strong bg-surface shadow-popover";
@@ -44,13 +44,17 @@ export const composerSurface =
   "rounded-composer border border-border-strong bg-surface";
 
 const menuItemBase =
-  `${interactiveItemStateBase} flex w-full items-center gap-2.5 text-left`;
+  `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +
+  "text-left text-[14px] font-normal leading-none";
 
 export const neutralMenuItem =
-  `${menuItemBase} text-text-primary hover:bg-hover focus-visible:bg-hover`;
+  `${menuItemBase} text-text-primary hover:bg-hover focus-visible:bg-hover active:bg-active`;
 
 export const dangerMenuItem =
   `${menuItemBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft active:bg-danger-soft`;
+
+export const mobileActionItem =
+  "min-h-11 gap-3 px-5 text-[15px]";
 
 export const inputControl =
   `rounded-item border border-border bg-canvas text-text-primary ${focusRing} ` +
@@ -137,23 +141,6 @@ export const ghostBtn =
   "rounded-md px-2.5 py-[5px] text-[13px] text-fg-muted " +
   "transition-[background,color] duration-100 hover:bg-bg-hover hover:text-fg";
 
-export const sidebarItemSurface =
-  "rounded-lg transition-colors duration-100 hover:bg-bg-hover focus-visible:bg-bg-hover active:bg-bg-hover";
-
-export const popoverMenu =
-  "rounded-[14px] border border-border-strong bg-bg-raised p-1.5 shadow-menu";
-
-const popoverMenuItemBase =
-  "flex h-9 w-full items-center gap-2.5 whitespace-nowrap rounded-[10px] px-3 text-left text-[14px] " +
-  "font-normal leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed " +
-  "disabled:text-fg-faint disabled:hover:bg-transparent";
-
-export const popoverMenuItem =
-  `${popoverMenuItemBase} text-fg hover:bg-menu-hover focus-visible:bg-menu-hover active:bg-menu-hover`;
-
-export const popoverDangerMenuItem =
-  `${popoverMenuItemBase} text-menu-danger hover:bg-danger-hover focus-visible:bg-danger-hover active:bg-danger-hover`;
-
 export const primaryBtn =
   "rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg " +
   "transition-opacity duration-[120ms] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -169,11 +156,3 @@ export const titleSkeleton =
   "title-skeleton inline-block h-[11px] animate-skel rounded-[2px] " +
   "bg-[linear-gradient(90deg,rgba(20,20,19,0.06)_0%,rgba(20,20,19,0.12)_50%,rgba(20,20,19,0.06)_100%)] " +
   "[background-size:200%_100%]";
-
-// Menu / bottom-sheet row. Carries no text color — callers append text-fg or
-// text-danger (appending after a baked-in text-fg wouldn't override it; the
-// winner is decided by order in the generated stylesheet, not the className).
-export const sheetItem =
-  "flex w-full items-center gap-3 px-[22px] py-3.5 text-left text-[15px] " +
-  "hover:bg-bg-hover active:bg-bg-hover disabled:cursor-not-allowed disabled:text-fg-faint " +
-  "disabled:hover:bg-transparent";
