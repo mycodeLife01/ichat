@@ -10,6 +10,23 @@ export const ghostBtn =
   "rounded-md px-2.5 py-[5px] text-[13px] text-fg-muted " +
   "transition-[background,color] duration-100 hover:bg-bg-hover hover:text-fg";
 
+export const sidebarItemSurface =
+  "rounded-lg transition-colors duration-100 hover:bg-bg-hover focus-visible:bg-bg-hover active:bg-bg-hover";
+
+export const popoverMenu =
+  "rounded-[14px] border border-border-strong bg-bg-raised p-1.5 shadow-menu";
+
+const popoverMenuItemBase =
+  "flex h-9 w-full items-center gap-2.5 whitespace-nowrap rounded-[10px] px-3 text-left text-[14px] " +
+  "font-normal leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed " +
+  "disabled:text-fg-faint disabled:hover:bg-transparent";
+
+export const popoverMenuItem =
+  `${popoverMenuItemBase} text-fg hover:bg-menu-hover focus-visible:bg-menu-hover active:bg-menu-hover`;
+
+export const popoverDangerMenuItem =
+  `${popoverMenuItemBase} text-menu-danger hover:bg-danger-hover focus-visible:bg-danger-hover active:bg-danger-hover`;
+
 export const primaryBtn =
   "rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg " +
   "transition-opacity duration-[120ms] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";

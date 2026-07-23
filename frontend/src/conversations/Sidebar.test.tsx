@@ -211,10 +211,12 @@ describe("Sidebar", () => {
     expect(within(trigger).getByText("alice")).toBeInTheDocument();
     expect(within(trigger).getByText("Pro")).toBeInTheDocument();
     expect(within(trigger).queryByText("alice-login")).toBeNull();
+    expect(trigger).toHaveClass("rounded-lg", "duration-100", "hover:bg-bg-hover");
 
     await user.click(trigger);
 
     const menu = screen.getByRole("menu", { name: "个人中心" });
+    expect(menu).toHaveClass("rounded-[14px]", "shadow-menu");
     expect(within(menu).getByText("alice")).toBeInTheDocument();
     expect(within(menu).getByText("a@b.com")).toBeInTheDocument();
     expect(within(menu).queryByText("用户名")).toBeNull();
@@ -222,9 +224,16 @@ describe("Sidebar", () => {
     expect(
       within(menu).queryByRole("button", { name: /alice.*a@b\.com/i }),
     ).toBeNull();
-    expect(within(menu).getByRole("menuitem", { name: "账号" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "我的分享" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+    const accountItem = within(menu).getByRole("menuitem", { name: "账号" });
+    const sharesItem = within(menu).getByRole("menuitem", { name: "我的分享" });
+    const logoutItem = within(menu).getByRole("menuitem", { name: "退出登录" });
+    expect(accountItem).toHaveClass("rounded-[10px]", "hover:bg-menu-hover");
+    expect(sharesItem).toHaveClass("rounded-[10px]", "hover:bg-menu-hover");
+    expect(logoutItem).toHaveClass(
+      "rounded-[10px]",
+      "text-menu-danger",
+      "hover:bg-danger-hover",
+    );
   });
 
   it("closes the user menu when pressing outside it", async () => {

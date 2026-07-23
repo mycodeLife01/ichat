@@ -4,7 +4,15 @@ import { useEffect, useState, type ReactNode, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConversationResponse, UserShareResponse } from "../api/types";
-import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
+import {
+  iconBtn,
+  popoverDangerMenuItem,
+  popoverMenu,
+  popoverMenuItem,
+  sheetItem,
+  sidebarItemSurface,
+  titleSkeleton,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -60,12 +68,6 @@ const desktopMenuWidth = 156;
 const desktopMenuHeight = 126;
 const desktopMenuOverlap = 44;
 const viewportInset = 8;
-const desktopMenuItemBase =
-  "flex h-9 w-full items-center gap-2.5 whitespace-nowrap rounded-[10px] px-3 text-left text-[14px] font-normal leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:text-fg-faint disabled:hover:bg-transparent";
-const desktopMenuItem =
-  `${desktopMenuItemBase} text-fg hover:bg-menu-hover focus-visible:bg-menu-hover active:bg-menu-hover`;
-const desktopDangerMenuItem =
-  `${desktopMenuItemBase} text-menu-danger hover:bg-danger-hover focus-visible:bg-danger-hover active:bg-danger-hover`;
 const desktopRowActionOrder = ["share", "rename", "delete"] as const;
 const mobileRowActionOrder = ["rename", "share", "delete"] as const;
 type RowActionKey = (typeof desktopRowActionOrder)[number];
@@ -200,8 +202,8 @@ export function Sidebar({
             className={
               desktop
                 ? action.danger
-                  ? desktopDangerMenuItem
-                  : desktopMenuItem
+                  ? popoverDangerMenuItem
+                  : popoverMenuItem
                 : `${sheetItem} ${action.danger ? "text-danger" : "text-fg"}`
             }
             role={desktop ? "menuitem" : undefined}
@@ -218,7 +220,7 @@ export function Sidebar({
         key={c.id}
         // leading-[22px] keeps a stable line box (>= the 22px menu button) so
         // revealing the button on hover never shifts the rows below.
-        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium leading-[22px] text-fg transition-colors duration-100 hover:bg-bg-hover max-[760px]:py-2 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
+        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[13.5px] font-medium leading-[22px] text-fg max-[760px]:py-2 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${sidebarItemSurface} ${
           active || menuOpen ? "active bg-bg-active hover:bg-bg-active" : ""
         }`}
         onClick={() => {
@@ -301,7 +303,7 @@ export function Sidebar({
         {!isRenaming && menuOpen && !isMobile && (
           createPortal(
             <div
-              className="history-menu fixed z-40 w-[156px] rounded-[14px] border border-border-strong bg-bg-raised p-1.5 shadow-menu"
+              className={`history-menu fixed z-40 w-[156px] ${popoverMenu}`}
               style={{ left: menu.left, top: menu.top }}
               role="menu"
               aria-label="会话操作"

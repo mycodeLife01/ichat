@@ -1,8 +1,16 @@
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · component: user-menu · genre: modern-minimal · system: existing warm-neutral tokens */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info, Share2, UserRound } from "lucide-react";
 
 import { Avatar } from "../ui/Avatar";
+import {
+  popoverDangerMenuItem,
+  popoverMenu,
+  popoverMenuItem,
+  sidebarItemSurface,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { AccountCard } from "./AccountCard";
 import { MySharesCard } from "./MySharesCard";
@@ -92,8 +100,8 @@ export function UserMenu({
     <div ref={rootRef} className="relative mt-2 border-t border-border pt-2 pb-1">
       <button
         ref={triggerRef}
-        className={`flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors duration-150 ${
-          open ? "bg-bg-active" : "hover:bg-bg-hover"
+        className={`flex w-full items-center gap-2.5 px-2.5 py-2 text-left ${sidebarItemSurface} ${
+          open ? "bg-bg-active hover:bg-bg-active focus-visible:bg-bg-active active:bg-bg-active" : ""
         }`}
         aria-expanded={open}
         aria-haspopup="menu"
@@ -113,7 +121,7 @@ export function UserMenu({
 
       {open && (
         <div
-          className="absolute bottom-[calc(100%+8px)] left-0 z-40 w-full rounded-xl border border-border-strong bg-bg-raised p-1.5 shadow-[0_14px_42px_rgba(20,20,19,0.16)]"
+          className={`absolute bottom-[calc(100%+8px)] left-0 z-40 w-full ${popoverMenu}`}
           role="menu"
           aria-label="个人中心"
         >
@@ -126,43 +134,37 @@ export function UserMenu({
           </div>
           <div className="my-1 border-t border-border" />
           <button
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-fg transition-colors hover:bg-bg-hover"
+            className={popoverMenuItem}
             role="menuitem"
             onClick={() => {
               setOpen(false);
               setAccountOpen(true);
             }}
           >
-            <span className="flex h-5 w-5 items-center justify-center">
-              <UserRound size={15} />
-            </span>
+            <UserRound size={18} />
             <span>账号</span>
           </button>
           <button
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-fg transition-colors hover:bg-bg-hover"
+            className={popoverMenuItem}
             role="menuitem"
             onClick={() => {
               setOpen(false);
               setSharesOpen(true);
             }}
           >
-            <span className="flex h-5 w-5 items-center justify-center">
-              <Share2 size={15} />
-            </span>
+            <Share2 size={18} />
             <span>我的分享</span>
           </button>
           <div className="my-1 border-t border-border" />
           <button
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-danger transition-colors hover:bg-danger-soft"
+            className={popoverDangerMenuItem}
             role="menuitem"
             onClick={() => {
               setOpen(false);
               setLogoutOpen(true);
             }}
           >
-            <span className="flex h-5 w-5 items-center justify-center">
-              <Icons.LogOut size={15} />
-            </span>
+            <Icons.LogOut size={18} />
             <span>退出登录</span>
           </button>
         </div>
