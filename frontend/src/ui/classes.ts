@@ -40,11 +40,8 @@ export const cardSurface =
 export const dialogSurface =
   "rounded-dialog border border-border-strong bg-surface shadow-dialog";
 
-// The composer's textarea is borderless, so the container carries the visible
-// focus indicator (focus-within) and the restrained composer elevation.
 export const composerSurface =
-  "rounded-composer border border-border-strong bg-surface shadow-composer " +
-  "focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-focus-ring";
+  "rounded-composer border border-border-strong bg-surface shadow-composer";
 
 const menuItemBase =
   `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +
@@ -123,12 +120,7 @@ export const interactionStateContract = {
   popoverSurface: staticSurfaceStates,
   cardSurface: staticSurfaceStates,
   dialogSurface: staticSurfaceStates,
-  // Focus indication is supported via focus-within: the ring appears on the
-  // container because the inner textarea has no border or outline of its own.
-  composerSurface: {
-    ...staticSurfaceStates,
-    "focus-visible": "supported",
-  },
+  composerSurface: staticSurfaceStates,
   statusNotice: {
     ...staticSurfaceStates,
     error: "supported",

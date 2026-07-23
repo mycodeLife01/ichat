@@ -4,7 +4,6 @@ import type { ThinkingLevel } from "../runs/thinkingLevel";
 import {
   composerSurface,
   focusRing,
-  iconControl,
   neutralMenuItem,
   popoverSurface,
 } from "./classes";
@@ -42,17 +41,27 @@ const composerToolTarget =
 // Labeled pills (web search, thinking level) use the pill role with a fixed
 // 1px border, so geometry never shifts between idle and selected. Background
 // and border swap as complete class sets per state: Tailwind resolves
-// conflicting utilities by stylesheet order, not className order.
+// conflicting utilities by stylesheet order, not className order. Composer
+// tools deliberately have no press motion (scale/translate) — state feedback
+// is background/color only.
 const composerPill =
   `${composerToolTarget} inline-flex items-center gap-1.5 rounded-pill border px-2.5 ` +
   `text-[13px] font-medium ${focusRing} ` +
-  "transition-[background,color,border-color,transform] duration-[120ms] " +
-  "not-disabled:active:translate-y-px " +
+  "transition-[background,color,border-color] duration-[120ms] " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 const composerPillIdle =
   "border-transparent bg-transparent text-text-muted hover:bg-hover hover:text-text-primary";
 // Selected is a neutral persistent role — never a success/danger tone.
 const composerPillSelected = "border-border-strong bg-selected text-text-primary";
+
+// Icon-only composer tool: the shared iconControl states minus its press
+// scale, which is unwanted inside the composer.
+const composerIconButton =
+  `${composerToolTarget} inline-flex w-9 items-center justify-center rounded-control ` +
+  `text-text-muted ${focusRing} transition-[background,color] duration-[120ms] ` +
+  "hover:bg-hover hover:text-text-primary " +
+  "disabled:cursor-not-allowed disabled:text-text-faint disabled:opacity-60 " +
+  "disabled:hover:bg-transparent aria-busy:cursor-wait aria-busy:opacity-60";
 
 // Send and stop share the primary pill action. State is expressed through the
 // icon plus the accessible name; disabled keeps the accent role and only drops
@@ -60,8 +69,7 @@ const composerPillSelected = "border-border-strong bg-selected text-text-primary
 const composerPrimaryAction =
   `${composerToolTarget} inline-flex w-9 items-center justify-center rounded-pill ` +
   `bg-accent text-accent-foreground ${focusRing} ` +
-  "transition-[opacity,transform] duration-[120ms] " +
-  "not-disabled:hover:opacity-90 not-disabled:active:translate-y-px " +
+  "transition-[opacity] duration-[120ms] not-disabled:hover:opacity-90 " +
   "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait aria-busy:opacity-60";
 
 export function Composer({
@@ -118,13 +126,14 @@ export function Composer({
       <div
         className={`composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 py-2.5 pr-3.5 pl-[18px] ${composerSurface}`}
       >
-        {/* Input state contract: default and focus-visible apply (the ring
-            lives on the composer surface via focus-within, so the field keeps
-            outline-none); hover/active have no visual change on a borderless
-            field; disabled/loading/error/success are not applicable — the
-            input is never locked (send gating lives on the send button) and
-            failures surface as toasts rather than field styling. Geometry
-            stays borderless and fixed at every length. */}
+        {/* Input state contract: only default applies. The field is
+            borderless inside an already-bordered surface, so focus is
+            conveyed by the caret alone (no ring — a focus outline here would
+            box the whole composer); hover/active have no visual change;
+            disabled/loading/error/success are not applicable — the input is
+            never locked (send gating lives on the send button) and failures
+            surface as toasts rather than field styling. Geometry stays
+            borderless and fixed at every length. */}
         <textarea
           ref={ref}
           className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[16px] leading-[1.55] text-text-primary outline-none placeholder:text-text-faint max-[760px]:text-[17px]"
@@ -199,11 +208,7 @@ export function Composer({
                 </div>
               )}
             </div>
-            <button
-              className={`${iconControl} ${composerToolTarget} w-9`}
-              type="button"
-              aria-label="语音输入"
-            >
+            <button className={composerIconButton} type="button" aria-label="语音输入">
               <Icons.Mic size={16} />
             </button>
             {state === "idle" ? (
