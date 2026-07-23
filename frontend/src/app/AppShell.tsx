@@ -322,7 +322,7 @@ export function AppShell() {
         onRequestDeletion={(password) => services.authApi.requestAccountDeletion(password)}
         onLoadShares={services.shareApi.listMine}
         onRevokeShare={services.shareApi.revoke}
-        onToast={(message) => dispatch({ type: "ui/showToast", message })}
+        onToast={(message, tone) => dispatch({ type: "ui/showToast", message, tone })}
         onToggleCollapsed={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
         onCloseMobile={() => dispatch({ type: "ui/setMobileSidebar", open: false })}
       />

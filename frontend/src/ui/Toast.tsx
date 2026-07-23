@@ -1,12 +1,34 @@
 import { useEffect } from "react";
+import { CircleAlert, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 
-import type { ToastState } from "./state";
+import { toastSurface } from "./classes";
+import { Icons } from "./icons";
+import type { ToastState, ToastTone } from "./state";
 
 type ToastProps = {
   toast: ToastState;
   onDismiss: () => void;
   duration?: number;
 };
+
+const presentations = {
+  neutral: {
+    Icon: Info,
+    classes: "border-neutral-border bg-neutral-soft text-neutral-foreground",
+  },
+  success: {
+    Icon: Icons.Check,
+    classes: "border-accent bg-accent text-accent-foreground",
+  },
+  error: {
+    Icon: CircleAlert,
+    classes: "border-error-border bg-error-soft text-error-foreground",
+  },
+  warning: {
+    Icon: TriangleAlert,
+    classes: "border-warning-border bg-warning-soft text-warning-foreground",
+  },
+} satisfies Record<ToastTone, { Icon: LucideIcon; classes: string }>;
 
 // A single, auto-dismissing status toast. The component is keyed on toast.id by
 // the effect dependency, so a new toast (even with the same message) clears the
@@ -21,12 +43,24 @@ export function Toast({ toast, onDismiss, duration = 2600 }: ToastProps) {
   }, [id, duration, onDismiss]);
 
   if (toast == null) return null;
+  const { Icon, classes } = presentations[toast.tone];
+
   return (
     <div
-      className="toast fixed bottom-20 left-1/2 z-[60] [transform:translateX(-50%)] animate-toast-in rounded-md bg-fg px-3.5 py-2 text-[13px] text-bg"
-      role="status"
+      key={toast.id}
+      className={`toast fixed bottom-20 left-1/2 z-[60] [transform:translateX(-50%)] animate-toast-in ${toastSurface} ${classes}`}
+      data-tone={toast.tone}
+      role={toast.tone === "error" ? "alert" : "status"}
+      aria-atomic="true"
     >
-      {toast.message}
+      <Icon
+        className="shrink-0"
+        data-toast-icon={toast.tone}
+        size={15}
+        strokeWidth={1.9}
+        aria-hidden="true"
+      />
+      <span>{toast.message}</span>
     </div>
   );
 }

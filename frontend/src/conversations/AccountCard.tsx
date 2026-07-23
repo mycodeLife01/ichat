@@ -14,6 +14,7 @@ import {
 
 import { ApiError } from "../api/errors";
 import { Avatar } from "../ui/Avatar";
+import type { ToastHandler } from "../ui/state";
 import { AvatarCropper } from "./AvatarCropper";
 
 type AccountCardProps = {
@@ -24,7 +25,7 @@ type AccountCardProps = {
   onUploadAvatar?: (blob: Blob) => Promise<string>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
-  onToast: (message: string) => void;
+  onToast: ToastHandler;
 };
 
 type AccountView = "overview" | "password" | "deletion";
@@ -98,7 +99,7 @@ export function AccountCard({
 
   const chooseAvatar = () => {
     if (!user.emailVerified) {
-      onToast("请先完成邮箱认证后再上传头像");
+      onToast("请先完成邮箱认证后再上传头像", "warning");
       return;
     }
     inputRef.current?.click();
@@ -160,9 +161,9 @@ export function AccountCard({
       await onUpdateNickname(normalized);
       setNickname(normalized);
       setSavedNickname(normalized);
-      onToast("昵称已更新");
+      onToast("昵称已更新", "success");
     } catch {
-      onToast("昵称保存失败，请重试");
+      onToast("昵称保存失败，请重试", "error");
     } finally {
       setSubmitting(false);
     }
@@ -173,12 +174,13 @@ export function AccountCard({
     setSending(true);
     try {
       await onResendVerification();
-      onToast("验证邮件已发送");
+      onToast("验证邮件已发送", "success");
     } catch (error) {
       onToast(
         error instanceof ApiError && error.status === 429
           ? "发送过于频繁，请稍后再试。"
           : "验证邮件发送失败，请重试。",
+        "error",
       );
     } finally {
       setSending(false);
@@ -448,7 +450,7 @@ export function AccountCard({
             setAvatarUrl(url);
             setAvatarStatus("头像已更新");
             setCropFile(null);
-            onToast("头像已更新");
+            onToast("头像已更新", "success");
           }}
         />
       )}

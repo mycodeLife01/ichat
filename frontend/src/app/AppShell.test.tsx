@@ -739,7 +739,9 @@ describe("AppShell", () => {
     await user.type(textarea, "你好");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast).toHaveTextContent("发送失败，请重试");
+    expect(toast).toHaveAttribute("data-tone", "error");
+    expect(toast.querySelector('[data-toast-icon="error"]')).toBeInTheDocument();
   });
 });

@@ -3,15 +3,29 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ShareLinkResponse } from "../api/types";
+import { useAppState } from "../app/context";
 import { createFakeServices, makeWrapper } from "../test/appHarness";
 import { ShareDialog } from "./ShareDialog";
+
+function ToastProbe() {
+  const { ui } = useAppState();
+  return (
+    <output data-testid="toast" data-tone={ui.toast?.tone ?? ""}>
+      {ui.toast?.message ?? ""}
+    </output>
+  );
+}
 
 function renderDialog(shareOverrides: Parameters<typeof createFakeServices>[4]) {
   const services = createFakeServices({}, {}, {}, {}, shareOverrides);
   const onClose = vi.fn();
-  render(<ShareDialog conversationId="conv-1" onClose={onClose} />, {
-    wrapper: makeWrapper(services),
-  });
+  render(
+    <>
+      <ShareDialog conversationId="conv-1" onClose={onClose} />
+      <ToastProbe />
+    </>,
+    { wrapper: makeWrapper(services) },
+  );
   return { onClose };
 }
 
@@ -27,6 +41,10 @@ describe("ShareDialog", () => {
 
   it("creates a link when none is active yet", async () => {
     const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn(async () => undefined) },
+      configurable: true,
+    });
     const created: ShareLinkResponse = {
       token: "new-token",
       expires_at: null,
@@ -45,6 +63,8 @@ describe("ShareDialog", () => {
     // The new link replaces the create form.
     expect(await screen.findByText(/new-token/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /创建链接/ })).toBeNull();
+    expect(screen.getByTestId("toast")).toHaveTextContent("链接已复制");
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "success");
   });
 
   it("shows the single active link with copy + revoke, hiding the create form", async () => {
@@ -84,5 +104,20 @@ describe("ShareDialog", () => {
       expect(screen.getByRole("button", { name: /创建链接/ })).toBeInTheDocument(),
     );
     expect(screen.queryByText(/to-revoke/)).toBeNull();
+    expect(screen.getByTestId("toast")).toHaveTextContent("已撤销分享");
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "success");
+  });
+
+  it("classifies share loading failures as errors", async () => {
+    renderDialog({
+      list: async () => {
+        throw new Error("network");
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("toast")).toHaveTextContent("加载分享链接失败"),
+    );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
   });
 });

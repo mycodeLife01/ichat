@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Info, Share2, UserRound } from "lucide-react";
 
 import { Avatar } from "../ui/Avatar";
+import type { ToastHandler } from "../ui/state";
 import {
   popoverDangerMenuItem,
   popoverMenu,
@@ -26,7 +27,7 @@ type UserMenuProps = {
   onRequestDeletion: (password: string) => Promise<unknown>;
   onLoadShares: () => Promise<UserShareResponse[]>;
   onRevokeShare: (conversationId: string, token: string) => Promise<unknown>;
-  onToast: (message: string) => void;
+  onToast: ToastHandler;
 };
 
 function UserAvatar({ name, url, size = "md" }: { name: string; url?: string | null; size?: "sm" | "md" }) {

@@ -161,6 +161,9 @@ describe("useSendMessage", () => {
       await result.current.send("会失败");
     });
 
-    expect(result.current.ui.toast?.message).toBe("发送失败，请重试");
+    expect(result.current.ui.toast).toMatchObject({
+      message: "发送失败，请重试",
+      tone: "error",
+    });
   });
 });

@@ -99,6 +99,7 @@ export function useConversationLoader() {
           dispatch({
             type: "ui/showToast",
             message: "会话 ID 无效或已失效，已回到新对话",
+            tone: "warning",
           });
           selectionStore.clear();
         }

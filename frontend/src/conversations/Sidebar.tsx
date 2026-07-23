@@ -14,6 +14,7 @@ import {
   titleSkeleton,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
+import type { ToastHandler } from "../ui/state";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
 import { UserMenu } from "./UserMenu";
@@ -50,7 +51,7 @@ type SidebarProps = {
   onRequestDeletion: (password: string) => Promise<unknown>;
   onLoadShares: () => Promise<UserShareResponse[]>;
   onRevokeShare: (conversationId: string, token: string) => Promise<unknown>;
-  onToast: (message: string) => void;
+  onToast: ToastHandler;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 };

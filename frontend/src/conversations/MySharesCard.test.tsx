@@ -60,12 +60,12 @@ describe("MySharesCard", () => {
     const item = await screen.findByRole("article", { name: "项目讨论" });
     await user.click(within(item).getByRole("button", { name: "复制链接" }));
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/share/share-token`);
-    expect(onToast).toHaveBeenCalledWith("链接已复制");
+    expect(onToast).toHaveBeenCalledWith("链接已复制", "success");
 
     await user.click(within(item).getByRole("button", { name: "撤销分享" }));
     expect(onRevoke).toHaveBeenCalledWith("conv-1", "share-token");
     expect(screen.queryByRole("article", { name: "项目讨论" })).toBeNull();
-    expect(onToast).toHaveBeenCalledWith("已撤销分享");
+    expect(onToast).toHaveBeenCalledWith("已撤销分享", "success");
   });
 
   it("shows an empty state", async () => {
@@ -103,9 +103,16 @@ describe("MySharesCard", () => {
     expect(await screen.findByText("分享列表加载失败")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     const item = await screen.findByRole("article", { name: "项目讨论" });
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn(async () => Promise.reject(new Error("copy failed"))) },
+      configurable: true,
+    });
+    await user.click(within(item).getByRole("button", { name: "复制链接" }));
+    expect(onToast).toHaveBeenCalledWith("复制失败", "error");
+
     await user.click(within(item).getByRole("button", { name: "撤销分享" }));
 
     expect(screen.getByRole("article", { name: "项目讨论" })).toBeInTheDocument();
-    expect(onToast).toHaveBeenCalledWith("撤销失败");
+    expect(onToast).toHaveBeenCalledWith("撤销失败", "error");
   });
 });

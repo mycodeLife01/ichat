@@ -39,7 +39,9 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
         if (active) setActiveLink(items[0] ?? null);
       })
       .catch(() => {
-        if (active) dispatch({ type: "ui/showToast", message: "加载分享链接失败" });
+        if (active) {
+          dispatch({ type: "ui/showToast", message: "加载分享链接失败", tone: "error" });
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -51,8 +53,8 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
 
   const copy = (token: string) => {
     navigator.clipboard?.writeText(shareUrl(token)).then(
-      () => dispatch({ type: "ui/showToast", message: "链接已复制" }),
-      () => dispatch({ type: "ui/showToast", message: "复制失败" }),
+      () => dispatch({ type: "ui/showToast", message: "链接已复制", tone: "success" }),
+      () => dispatch({ type: "ui/showToast", message: "复制失败", tone: "error" }),
     );
   };
 
@@ -63,7 +65,7 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
       setActiveLink(link);
       copy(link.token);
     } catch {
-      dispatch({ type: "ui/showToast", message: "创建分享失败" });
+      dispatch({ type: "ui/showToast", message: "创建分享失败", tone: "error" });
     } finally {
       setCreating(false);
     }
@@ -74,9 +76,9 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
       await services.shareApi.revoke(conversationId, token);
       // The link is gone; the create form reappears so a new one can be minted.
       setActiveLink(null);
-      dispatch({ type: "ui/showToast", message: "已撤销分享" });
+      dispatch({ type: "ui/showToast", message: "已撤销分享", tone: "success" });
     } catch {
-      dispatch({ type: "ui/showToast", message: "撤销失败" });
+      dispatch({ type: "ui/showToast", message: "撤销失败", tone: "error" });
     }
   };
 

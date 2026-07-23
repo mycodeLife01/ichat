@@ -14,7 +14,11 @@ const SENT_TEXT = "We sent a verification email to";
 
 function ToastProbe() {
   const { ui } = useAppState();
-  return <div data-testid="toast">{ui.toast?.message ?? ""}</div>;
+  return (
+    <div data-testid="toast" data-tone={ui.toast?.tone ?? ""}>
+      {ui.toast?.message ?? ""}
+    </div>
+  );
 }
 
 function unverifiedSession() {
@@ -79,6 +83,7 @@ describe("VerifyEmailBanner", () => {
         "Verification email sent. Check your inbox.",
       ),
     );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "success");
     expect(screen.getByText(SENT_TEXT, { exact: false })).toBeInTheDocument();
     const button = screen.getByRole("button", { name: "Resend in 60s" });
     expect(button).toBeDisabled();
@@ -126,6 +131,7 @@ describe("VerifyEmailBanner", () => {
     await waitFor(() =>
       expect(screen.getByTestId("toast")).toHaveTextContent("Please try again later."),
     );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
     expect(
       screen.getByRole("button", { name: "Send verification email" }),
     ).toBeInTheDocument();
@@ -153,6 +159,7 @@ describe("VerifyEmailBanner", () => {
         "Could not send the email. Try again.",
       ),
     );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
     const button = screen.getByRole("button", { name: "Send verification email" });
     expect(button).toBeEnabled();
     expect(screen.getByText(BANNER_TEXT)).toBeInTheDocument();

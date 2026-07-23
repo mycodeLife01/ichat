@@ -41,12 +41,14 @@ export function VerifyEmailBanner() {
       dispatch({
         type: "ui/showToast",
         message: "Verification email sent. Check your inbox.",
+        tone: "success",
       });
     } catch (error) {
       const tooMany = error instanceof ApiError && error.status === 429;
       dispatch({
         type: "ui/showToast",
         message: tooMany ? "Please try again later." : "Could not send the email. Try again.",
+        tone: "error",
       });
     } finally {
       setSending(false);

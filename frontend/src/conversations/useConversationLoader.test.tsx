@@ -241,7 +241,10 @@ describe("useConversationLoader", () => {
 
     expect(result.current.loader.selectedId).toBeNull();
     expect(selectionStore.read()).toBeNull();
-    expect(result.current.ui.toast?.message).toContain("会话 ID 无效");
+    expect(result.current.ui.toast).toMatchObject({
+      message: expect.stringContaining("会话 ID 无效"),
+      tone: "warning",
+    });
   });
 
   it("clears the active run when selecting another conversation", async () => {

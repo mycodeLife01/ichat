@@ -42,7 +42,7 @@ export function useSendMessage(
         // Send failed before streaming started. Keep input so the user can retry,
         // and surface a Chinese toast.
         console.error("send message failed", error);
-        dispatch({ type: "ui/showToast", message: "发送失败，请重试" });
+        dispatch({ type: "ui/showToast", message: "发送失败，请重试", tone: "error" });
       }
     },
     [conversationIndex.selectedId, dispatch, conversationApi, start],

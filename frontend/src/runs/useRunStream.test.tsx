@@ -119,7 +119,7 @@ describe("useRunStream", () => {
     );
   });
 
-  it("does not refetch detail on failure", async () => {
+  it("keeps run failure in message context without adding a toast", async () => {
     const detail = vi.fn(async () => conversationDetailResponse);
     const services = createFakeServices(
       {},
@@ -138,6 +138,7 @@ describe("useRunStream", () => {
     });
 
     expect(detail).not.toHaveBeenCalled();
+    expect(result.current.ui.toast).toBeNull();
   });
 
   it("requests cancellation and flips to stopping", async () => {
@@ -200,7 +201,10 @@ describe("useRunStream", () => {
     // The stop button recovers so the user can retry.
     expect(result.current.activeRun?.cancelRequested).toBe(false);
     expect(result.current.activeRun?.status).toBe("streaming");
-    expect(result.current.ui.toast?.message).toBe("停止失败，请重试");
+    expect(result.current.ui.toast).toMatchObject({
+      message: "停止失败，请重试",
+      tone: "error",
+    });
   });
 
   it("ignores late deltas once the active run has switched to another conversation", async () => {

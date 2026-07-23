@@ -83,6 +83,24 @@ describe("AccountCard", () => {
     click.mockRestore();
   });
 
+  it("classifies the unverified avatar restriction as a warning", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    render(
+      <AccountCard
+        user={{ ...verifiedUser, emailVerified: false }}
+        {...props}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "选择头像" }));
+
+    expect(props.onToast).toHaveBeenCalledWith(
+      "请先完成邮箱认证后再上传头像",
+      "warning",
+    );
+  });
+
   it("opens the cropper after selecting a supported image", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 512, height: 512, close: vi.fn() })));
@@ -115,7 +133,7 @@ describe("AccountCard", () => {
     const verificationButton = screen.getByRole("button", { name: "认证邮箱" });
     expect(verificationButton).toHaveClass("bg-accent", "text-accent-fg");
     await user.click(verificationButton);
-    expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送");
+    expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送", "success");
 
     rerender(
       <AccountCard
@@ -125,7 +143,7 @@ describe("AccountCard", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "认证邮箱" }));
-    expect(props.onToast).toHaveBeenCalledWith("发送过于频繁，请稍后再试。");
+    expect(props.onToast).toHaveBeenCalledWith("发送过于频繁，请稍后再试。", "error");
   });
 
   it("updates the nickname directly from the account overview", async () => {
@@ -139,7 +157,21 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(props.onUpdateNickname).toHaveBeenCalledWith("Alice Cooper");
-    expect(props.onToast).toHaveBeenCalledWith("昵称已更新");
+    expect(props.onToast).toHaveBeenCalledWith("昵称已更新", "success");
+  });
+
+  it("classifies nickname update failures as errors", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    props.onUpdateNickname.mockRejectedValueOnce(new Error("network"));
+    render(<AccountCard user={verifiedUser} {...props} />);
+
+    const input = screen.getByLabelText("昵称");
+    await user.clear(input);
+    await user.type(input, "Alice Cooper");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(props.onToast).toHaveBeenCalledWith("昵称保存失败，请重试", "error");
   });
 
   it("does not request a nickname update when the trimmed value is unchanged", async () => {

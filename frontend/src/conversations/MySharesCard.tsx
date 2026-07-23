@@ -3,12 +3,13 @@ import { Copy, Share2, Trash2, X } from "lucide-react";
 
 import type { UserShareResponse } from "../api/types";
 import { Icons } from "../ui/icons";
+import type { ToastHandler } from "../ui/state";
 
 type MySharesCardProps = {
   onClose: () => void;
   onLoad: () => Promise<UserShareResponse[]>;
   onRevoke: (conversationId: string, token: string) => Promise<unknown>;
-  onToast: (message: string) => void;
+  onToast: ToastHandler;
 };
 
 function shareUrl(token: string) {
@@ -40,9 +41,9 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
   const copy = async (token: string) => {
     try {
       await navigator.clipboard.writeText(shareUrl(token));
-      onToast("链接已复制");
+      onToast("链接已复制", "success");
     } catch {
-      onToast("复制失败");
+      onToast("复制失败", "error");
     }
   };
 
@@ -52,9 +53,9 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
     try {
       await onRevoke(share.conversation_id, share.token);
       setShares((items) => items.filter((item) => item.token !== share.token));
-      onToast("已撤销分享");
+      onToast("已撤销分享", "success");
     } catch {
-      onToast("撤销失败");
+      onToast("撤销失败", "error");
     } finally {
       setRevoking(null);
     }
