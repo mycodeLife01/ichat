@@ -57,10 +57,32 @@ function baseProps() {
 }
 
 describe("Sidebar", () => {
-  it("groups conversations and renders rows", () => {
-    render(<Sidebar {...baseProps()} />);
-    expect(screen.getByText("今天")).toBeInTheDocument();
-    expect(screen.getByText("今天的对话")).toBeInTheDocument();
+  it("renders one chat section and emphasizes every conversation title", () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    const older = new Date(Date.now() - 172_800_000).toISOString();
+
+    render(
+      <Sidebar
+        {...baseProps()}
+        items={[
+          makeConversation("1", "今天的对话", today),
+          makeConversation("2", "昨天的对话", yesterday),
+          makeConversation("3", "更早的对话", older),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("聊天")).toBeInTheDocument();
+    expect(screen.queryByText("今天")).toBeNull();
+    expect(screen.queryByText("昨天")).toBeNull();
+    expect(screen.queryByText("更早")).toBeNull();
+
+    for (const title of ["今天的对话", "昨天的对话", "更早的对话"]) {
+      expect(screen.getByText(title).closest(".history-row")).toHaveClass(
+        "font-medium",
+        "text-fg",
+      );
+    }
   });
 
   it("renders a title skeleton for a title-pending row", () => {

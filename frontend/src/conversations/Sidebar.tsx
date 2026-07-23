@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties, type UIEvent } from "react";
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · component: sidebar · genre: modern-minimal · system: existing warm-neutral tokens */
+import { useEffect, useState, type CSSProperties, type UIEvent } from "react";
 
 import type { ConversationResponse, UserShareResponse } from "../api/types";
 import { iconBtn, sheetItem, titleSkeleton } from "../ui/classes";
-import { newChatHotkeyLabel } from "../ui/hotkeys";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -45,29 +46,8 @@ type SidebarProps = {
   onCloseMobile: () => void;
 };
 
-type Groups = {
-  today: ConversationResponse[];
-  yesterday: ConversationResponse[];
-  older: ConversationResponse[];
-};
-
-function groupByDate(items: ConversationResponse[]): Groups {
-  const today: ConversationResponse[] = [];
-  const yesterday: ConversationResponse[] = [];
-  const older: ConversationResponse[] = [];
-  const now = new Date();
-  const yesterdayStr = new Date(now.getTime() - 86_400_000).toDateString();
-  for (const c of items) {
-    const d = new Date(c.updated_at).toDateString();
-    if (d === now.toDateString()) today.push(c);
-    else if (d === yesterdayStr) yesterday.push(c);
-    else older.push(c);
-  }
-  return { today, yesterday, older };
-}
-
 const sectionLabel =
-  "px-2.5 pt-3.5 pb-1 text-[11px] font-medium tracking-[0.04em] text-fg-subtle uppercase max-[760px]:text-[12px]";
+  "px-2.5 pb-1.5 text-[13px] font-semibold leading-5 text-fg max-[760px]:text-[14px]";
 
 export function Sidebar({
   items,
@@ -105,8 +85,6 @@ export function Sidebar({
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, []);
-
-  const groups = useMemo(() => groupByDate(items), [items]);
 
   const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
     if (!hasMore || isLoadingMore) return;
@@ -181,10 +159,8 @@ export function Sidebar({
         key={c.id}
         // leading-[22px] keeps a stable line box (>= the 22px menu button) so
         // revealing the button on hover never shifts the rows below.
-        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-md px-[11px] py-[7.7px] text-[13.5px] leading-[22px] transition-[background,color] duration-100 max-[760px]:py-[9px] max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
-          active
-            ? "active bg-bg-active font-medium text-fg"
-            : "text-fg-muted hover:bg-bg-hover hover:text-fg"
+        className={`history-row group/row relative flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium leading-[22px] text-fg transition-colors duration-100 hover:bg-bg-hover max-[760px]:py-2 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
+          active ? "active bg-bg-active hover:bg-bg-active" : ""
         }`}
         onClick={() => {
           if (isRenaming) return;
@@ -220,7 +196,9 @@ export function Sidebar({
         {!isRenaming && (
           <button
             className={`h-[22px] w-[22px] shrink-0 items-center justify-center rounded-sm text-fg-subtle hover:text-fg ${
-              active ? "inline-flex" : "hidden group-hover/row:inline-flex"
+              isMobile || active
+                ? "inline-flex"
+                : "hidden group-hover/row:inline-flex group-focus-within/row:inline-flex"
             }`}
             aria-label="更多"
             onClick={(event) => {
@@ -256,8 +234,8 @@ export function Sidebar({
   return (
     <>
       <aside className={sidebarClasses.join(" ")}>
-        <div className="flex h-full w-[var(--sidebar-width)] flex-col px-3 pt-4 pb-3">
-          <div className="flex items-center justify-between pt-1 pr-2 pb-4 pl-2">
+        <div className="flex h-full w-[var(--sidebar-width)] flex-col px-2.5 pt-3 pb-2.5">
+          <div className="flex items-center justify-between px-2 pb-3.5">
             <Wordmark size={isMobile ? 20 : 18} />
             {!isMobile && (
               <button className={iconBtn} aria-label="收起侧栏" onClick={onToggleCollapsed}>
@@ -267,48 +245,27 @@ export function Sidebar({
           </div>
 
           <button
-            className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-raised px-2.5 py-2 text-left text-sm font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong hover:bg-bg max-[760px]:py-2.5 max-[760px]:text-[15px]"
+            className="flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-left text-[13.5px] font-medium text-fg transition-colors duration-[120ms] hover:bg-bg-hover max-[760px]:py-2.5 max-[760px]:text-[15px]"
             onClick={() => {
               onNew();
               if (isMobile) onCloseMobile();
             }}
           >
-            <Icons.Plus size={14} />
+            <Icons.Plus size={16} />
             新建对话
-            {!isMobile && (
-              <span className="ml-auto font-mono text-[11px] text-fg-subtle">
-                {newChatHotkeyLabel}
-              </span>
-            )}
           </button>
 
-          {/* -mr-3/pr-3 cancel the parent's px-3 so the scrollbar sits flush
+          {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
               against the sidebar's right border; rows keep their position. */}
           <div
-            className="mt-[18px] -mr-3 flex flex-1 flex-col gap-px overflow-y-auto pr-3"
+            className="mt-5 -mr-2.5 flex flex-1 flex-col gap-px overflow-y-auto pr-2.5"
             data-testid="conversation-history"
             onScroll={handleHistoryScroll}
           >
-            {groups.today.length > 0 && (
-              <>
-                <div className={sectionLabel}>今天</div>
-                {groups.today.map(renderRow)}
-              </>
-            )}
-            {groups.yesterday.length > 0 && (
-              <>
-                <div className={sectionLabel}>昨天</div>
-                {groups.yesterday.map(renderRow)}
-              </>
-            )}
-            {groups.older.length > 0 && (
-              <>
-                <div className={sectionLabel}>更早</div>
-                {groups.older.map(renderRow)}
-              </>
-            )}
+            <div className={sectionLabel}>聊天</div>
+            {items.map(renderRow)}
             {items.length === 0 && (
-              <div className="px-2.5 py-4 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
                 还没有已保存的对话。开始一次对话后会自动出现在这里。
               </div>
             )}
