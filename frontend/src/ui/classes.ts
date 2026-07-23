@@ -22,11 +22,14 @@ export const buttonControl =
 export const primaryButton =
   `${buttonStateBase} bg-accent text-accent-foreground hover:opacity-90`;
 
-export const interactiveItem =
+const interactiveItemStateBase =
   `rounded-item ${focusRing} transition-[background,color,transform] duration-[120ms] ` +
-  "hover:bg-hover focus-visible:bg-hover active:scale-[0.99] aria-selected:bg-selected " +
+  "active:scale-[0.99] aria-selected:bg-selected " +
   "disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent " +
   "aria-busy:cursor-wait aria-busy:opacity-60";
+
+export const interactiveItem =
+  `${interactiveItemStateBase} hover:bg-hover focus-visible:bg-hover`;
 
 export const popoverSurface =
   "rounded-popover border border-border-strong bg-surface shadow-popover";
@@ -41,10 +44,10 @@ export const composerSurface =
   "rounded-composer border border-border-strong bg-surface";
 
 const menuItemBase =
-  `${interactiveItem} flex w-full items-center gap-2.5 text-left`;
+  `${interactiveItemStateBase} flex w-full items-center gap-2.5 text-left`;
 
 export const neutralMenuItem =
-  `${menuItemBase} text-text-primary`;
+  `${menuItemBase} text-text-primary hover:bg-hover focus-visible:bg-hover`;
 
 export const dangerMenuItem =
   `${menuItemBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft active:bg-danger-soft`;
