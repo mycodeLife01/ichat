@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CircleAlert } from "lucide-react";
 
 import { ApiError } from "../api/errors";
 import type { MessageSource, PublicShareResponse, SharedMessage } from "../api/types";
 import { useAppActions } from "../app/context";
+import { buttonControl, messageBubble, primaryButton } from "../ui/classes";
+import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
 import { SourcesTrigger } from "./Message";
@@ -78,7 +81,7 @@ export function SharePage() {
           <span className="text-[13px] text-fg-subtle">只读分享</span>
           <Link
             to="/"
-            className="ml-auto rounded-md border border-border bg-bg-raised px-3 py-1.5 text-[13px] font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong hover:bg-bg"
+            className={`${buttonControl} ml-auto h-8 border border-border bg-surface px-3 text-[13px] font-medium hover:border-border-strong`}
           >
             登录 iChat
           </Link>
@@ -92,17 +95,33 @@ export function SharePage() {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
           {state.status === "loading" && (
-            <div className="px-8 pt-16 text-center text-[14px] text-fg-subtle">加载中…</div>
+            <div
+              className="flex justify-center px-8 pt-16 text-text-muted"
+              role="status"
+              aria-label="加载中"
+            >
+              <Icons.Loading className="animate-spin" size={20} aria-hidden="true" />
+            </div>
           )}
           {state.status === "error" && (
-            <div className="mx-auto max-w-[var(--reading-width)] px-8 pt-16 text-center">
-              <h1 className="mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
+            <div
+              className="mx-auto max-w-[var(--reading-width)] px-8 pt-16 text-center"
+              role="alert"
+              aria-atomic="true"
+            >
+              <CircleAlert
+                className="mx-auto text-error-foreground"
+                size={22}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+              <h1 className="mt-3 mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
               <p className="text-[14px] leading-[1.6] text-fg-muted">
                 该分享链接可能已被撤销、已过期，或从未存在。
               </p>
               <Link
                 to="/"
-                className="mt-5 inline-block rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
+                className={`${primaryButton} mt-5 h-9 px-3.5 text-[13.5px] font-medium`}
               >
                 前往 iChat
               </Link>
@@ -173,7 +192,7 @@ function SharedMessageView({
   if (message.role === "user") {
     return (
       <div className="msg user flex scroll-mt-[60px] flex-col items-end gap-1.5">
-        <div className="max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]">
+        <div className={`max-w-[78%] ${messageBubble} max-[760px]:max-w-[86%] max-[760px]:text-[17px]`}>
           <div className="whitespace-pre-wrap wrap-anywhere">{message.content}</div>
         </div>
       </div>

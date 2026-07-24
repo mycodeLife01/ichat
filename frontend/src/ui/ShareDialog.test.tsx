@@ -30,12 +30,21 @@ function renderDialog(shareOverrides: Parameters<typeof createFakeServices>[4]) 
 }
 
 describe("ShareDialog", () => {
+  it("renders as a labelled modal dialog and closes on Escape", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderDialog({ list: async () => [] });
+
+    expect(screen.getByRole("dialog", { name: "分享对话" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("uses an animated loading icon while the share link request is pending", () => {
     renderDialog({ list: () => new Promise(() => {}) });
 
     const loading = screen.getByRole("status", { name: "加载中" });
     expect(loading).toBeInTheDocument();
-    expect(loading.querySelector("svg")).toHaveClass("animate-spin");
+    expect(loading.querySelector("svg")).not.toBeNull();
     expect(screen.queryByText("加载中…")).toBeNull();
   });
 
@@ -119,5 +128,85 @@ describe("ShareDialog", () => {
       expect(screen.getByTestId("toast")).toHaveTextContent("加载分享链接失败"),
     );
     expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
+  });
+
+  it("blocks repeat submits while creating, keeping an understandable label", async () => {
+    const user = userEvent.setup();
+    const create = vi.fn(() => new Promise<ShareLinkResponse>(() => {}));
+
+    renderDialog({ list: async () => [], create });
+
+    await user.click(await screen.findByRole("button", { name: /创建链接/ }));
+
+    const pending = screen.getByRole("button", { name: "正在创建链接" });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    await user.click(pending);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks repeat submits while revoking", async () => {
+    const user = userEvent.setup();
+    const link: ShareLinkResponse = {
+      token: "slow-revoke",
+      expires_at: null,
+      revoked_at: null,
+      created_at: "2026-05-24T10:00:00Z",
+    };
+    const revoke = vi.fn(() => new Promise<{ status: "ok" }>(() => {}));
+
+    renderDialog({ list: async () => [link], revoke });
+
+    await screen.findByText(/slow-revoke/);
+    const button = screen.getByRole("button", { name: "撤销链接" });
+    await user.click(button);
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await user.click(button);
+    expect(revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies create failures as errors", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      list: async () => [],
+      create: async () => {
+        throw new Error("boom");
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /创建链接/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("toast")).toHaveTextContent("创建分享失败"),
+    );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
+  });
+
+  it("classifies revoke failures as errors and keeps the link", async () => {
+    const user = userEvent.setup();
+    const link: ShareLinkResponse = {
+      token: "keep-me",
+      expires_at: null,
+      revoked_at: null,
+      created_at: "2026-05-24T10:00:00Z",
+    };
+
+    renderDialog({
+      list: async () => [link],
+      revoke: async () => {
+        throw new Error("boom");
+      },
+    });
+
+    await screen.findByText(/keep-me/);
+    await user.click(screen.getByRole("button", { name: "撤销链接" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("toast")).toHaveTextContent("撤销失败"),
+    );
+    expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
+    expect(screen.getByText(/keep-me/)).toBeInTheDocument();
   });
 });

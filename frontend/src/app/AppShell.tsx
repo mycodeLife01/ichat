@@ -23,6 +23,7 @@ import { ShareDialog } from "../ui/ShareDialog";
 import { VerifyEmailBanner } from "../ui/VerifyEmailBanner";
 import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
+import type { ToastHandler } from "../ui/state";
 import { useAppActions, useAppState } from "./context";
 import type { MessageSource } from "../api/types";
 
@@ -144,6 +145,12 @@ export function AppShell() {
   // Stable so Toast's auto-dismiss effect doesn't re-arm on every render.
   const dismissToast = useCallback(
     () => dispatch({ type: "ui/hideToast" }),
+    [dispatch],
+  );
+  // Stable so consumers can safely list it in effect deps (MySharesCard's
+  // load effect reports failures through it).
+  const showToast = useCallback<ToastHandler>(
+    (message, tone) => dispatch({ type: "ui/showToast", message, tone }),
     [dispatch],
   );
 
@@ -322,7 +329,7 @@ export function AppShell() {
         onRequestDeletion={(password) => services.authApi.requestAccountDeletion(password)}
         onLoadShares={services.shareApi.listMine}
         onRevokeShare={services.shareApi.revoke}
-        onToast={(message, tone) => dispatch({ type: "ui/showToast", message, tone })}
+        onToast={showToast}
         onToggleCollapsed={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
         onCloseMobile={() => dispatch({ type: "ui/setMobileSidebar", open: false })}
       />

@@ -35,6 +35,17 @@ describe("SharePage", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("shows an icon-based loading status while the snapshot is pending", () => {
+    const services = servicesWithShare({
+      getPublic: () => new Promise(() => {}),
+    });
+
+    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    const loading = screen.getByRole("status", { name: "加载中" });
+    expect(loading.querySelector("svg")).not.toBeNull();
+  });
+
   it("shows a not-found state when the token is unknown/revoked/expired", async () => {
     const services = servicesWithShare({
       getPublic: async () => {
@@ -44,6 +55,11 @@ describe("SharePage", () => {
 
     renderWithApp(<App />, services, undefined, ["/share/missing"]);
 
-    expect(await screen.findByText("分享不存在或已失效")).toBeInTheDocument();
+    // Inaccessible shares surface as a persistent inline state with an icon,
+    // not a transient notification.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("分享不存在或已失效");
+    expect(alert.querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "前往 iChat" })).toBeInTheDocument();
   });
 });

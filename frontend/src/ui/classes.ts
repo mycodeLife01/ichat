@@ -5,11 +5,19 @@
 export const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
 
-export const iconControl =
-  `inline-flex items-center justify-center rounded-control text-text-muted ${focusRing} ` +
-  "transition-[background,color,transform] duration-[120ms] hover:bg-hover hover:text-text-primary " +
-  "active:scale-[0.97] disabled:cursor-not-allowed disabled:text-text-faint disabled:opacity-60 " +
+const iconControlStateBase =
+  `inline-flex items-center justify-center rounded-control ${focusRing} ` +
+  "transition-[background,color,transform] duration-[120ms] active:scale-[0.97] " +
+  "disabled:cursor-not-allowed disabled:text-text-faint disabled:opacity-60 " +
   "disabled:hover:bg-transparent aria-busy:cursor-wait aria-busy:opacity-60";
+
+export const iconControl =
+  `${iconControlStateBase} text-text-muted hover:bg-hover hover:text-text-primary`;
+
+// Danger entry points stay red at rest and gain the soft red surface on
+// hover/focus, per the danger action rule.
+export const dangerIconControl =
+  `${iconControlStateBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft`;
 
 const buttonStateBase =
   `inline-flex items-center justify-center rounded-control ${focusRing} ` +
@@ -48,6 +56,11 @@ export const dialogSurface =
 
 export const composerSurface =
   "rounded-composer border border-border-strong bg-surface shadow-composer";
+
+// User message bubble — a static content container in the reading column,
+// shared by the live thread and the public share page.
+export const messageBubble =
+  "rounded-item border border-border bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-text-primary";
 
 const menuItemBase =
   `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +
@@ -113,6 +126,7 @@ const staticSurfaceStates = {
 // static surfaces intentionally have no interaction states.
 export const interactionStateContract = {
   iconControl: interactiveStates,
+  dangerIconControl: interactiveStates,
   buttonControl: interactiveStates,
   primaryButton: interactiveStates,
   solidDangerButton: interactiveStates,
