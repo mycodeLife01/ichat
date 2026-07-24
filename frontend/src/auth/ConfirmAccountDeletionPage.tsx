@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoaderCircle } from "lucide-react";
 
 import { useAppActions } from "../app/context";
+import { buttonControl } from "../ui/classes";
+import { InlineStatus } from "../ui/InlineStatus";
+import { authCtaLink } from "./authFields";
 import { tokenStore } from "./tokenStore";
 import { Wordmark } from "../ui/Wordmark";
 
@@ -38,19 +42,41 @@ export function ConfirmAccountDeletionPage() {
   return (
     <main className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
-        <Link to="/" aria-label="iChat 首页"><Wordmark size={18} /></Link>
+        <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
+          <Wordmark size={18} />
+        </Link>
       </header>
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center px-6 text-center">
-        {status === "loading" && <p className="text-[14px] text-fg-muted">正在确认注销…</p>}
+        {status === "loading" && (
+          <p
+            className="inline-flex items-center gap-2 text-[14px] text-fg-muted"
+            role="status"
+            aria-live="polite"
+          >
+            <LoaderCircle className="animate-spin" size={15} strokeWidth={1.9} aria-hidden="true" />
+            正在确认注销…
+          </p>
+        )}
         {status === "success" && <>
           <h1 className="text-xl font-semibold text-fg">账号已停用</h1>
-          <p className="mt-3 text-[13px] leading-6 text-fg-muted">你的登录凭证已失效，账号数据目前按注销策略保留。</p>
-          <Link to="/" className="mt-6 rounded-full bg-accent px-5 py-2.5 text-[13px] font-medium text-accent-fg">返回登录</Link>
+          <InlineStatus tone="success" className="mt-4 text-left">
+            你的登录凭证已失效，账号数据目前按注销策略保留。
+          </InlineStatus>
+          <Link to="/" className={`${authCtaLink} mt-6`}>
+            返回登录
+          </Link>
         </>}
         {status === "error" && <>
           <h1 className="text-xl font-semibold text-fg">注销链接不可用</h1>
-          <p className="mt-3 text-[13px] leading-6 text-fg-muted">链接可能已过期、已使用或无效，账号状态未发生变化。</p>
-          <Link to="/" className="mt-6 rounded-full border border-border-strong px-5 py-2.5 text-[13px] font-medium text-fg">返回 iChat</Link>
+          <InlineStatus tone="warning" className="mt-4 text-left">
+            链接可能已过期、已使用或无效，账号状态未发生变化。
+          </InlineStatus>
+          <Link
+            to="/"
+            className={`${buttonControl} mt-6 h-11 border border-border-strong px-5 text-[13px] font-medium`}
+          >
+            返回 iChat
+          </Link>
         </>}
       </div>
     </main>

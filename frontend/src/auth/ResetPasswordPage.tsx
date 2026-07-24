@@ -3,17 +3,13 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { toApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
+import { primaryButton } from "../ui/classes";
+import { InlineStatus } from "../ui/InlineStatus";
+import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { Wordmark } from "../ui/Wordmark";
+import { authCtaLink, authField, authFieldInput, authFieldLabel, AuthFieldError } from "./authFields";
 
 type Status = "form" | "success";
-
-const field = "mb-3.5 flex flex-col gap-1.5";
-const fieldLabel = "text-[12.5px] font-medium text-fg-muted";
-const fieldInput =
-  "rounded-[10px] border border-border-strong bg-bg px-3.5 py-[11px] text-[14.5px] text-fg " +
-  "outline-none transition-[border-color] duration-[140ms] placeholder:text-fg-faint " +
-  "focus:border-fg-subtle focus-visible:outline-none";
-const fieldErr = "mt-0.5 text-xs text-danger";
 
 // Public page (outside AuthGate): the reset link in the email points here with a
 // `?token=` param, so a logged-out visitor must be able to set a new password.
@@ -68,7 +64,7 @@ export function ResetPasswordPage() {
   return (
     <main className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
-        <Link to="/" aria-label="iChat 首页">
+        <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
           <Wordmark size={18} />
         </Link>
       </header>
@@ -77,26 +73,20 @@ export function ResetPasswordPage() {
         {!token ? (
           <div className="text-center">
             <h1 className="text-xl font-semibold text-fg">重置链接无效</h1>
-            <p className="mt-3 text-[13px] leading-6 text-fg-muted">
+            <InlineStatus tone="warning" className="mt-4 text-left">
               链接缺少必要的参数，可能已损坏。请重新申请重置密码。
-            </p>
-            <Link
-              to="/"
-              className="mt-6 inline-block rounded-full bg-accent px-5 py-2.5 text-[13px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
-            >
+            </InlineStatus>
+            <Link to="/" className={`${authCtaLink} mt-6`}>
               返回登录
             </Link>
           </div>
         ) : status === "success" ? (
           <div className="text-center">
             <h1 className="text-xl font-semibold text-fg">密码已重置</h1>
-            <p className="mt-3 text-[13px] leading-6 text-fg-muted">
+            <InlineStatus tone="success" className="mt-4 text-left">
               你的密码已更新，所有设备上的登录状态已失效。请使用新密码重新登录。
-            </p>
-            <Link
-              to="/"
-              className="mt-6 inline-block rounded-full bg-accent px-5 py-2.5 text-[13px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
-            >
+            </InlineStatus>
+            <Link to="/" className={`${authCtaLink} mt-6`}>
               返回登录
             </Link>
           </div>
@@ -110,58 +100,57 @@ export function ResetPasswordPage() {
             </div>
 
             <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="reset-password">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="reset-password">
                   新密码
                 </label>
                 <input
                   id="reset-password"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="new-password"
                   type="password"
                   autoComplete="new-password"
                   placeholder="至少 8 位"
                   value={password}
+                  aria-invalid={fieldErrors.password != null}
+                  aria-describedby={fieldErrors.password ? "reset-password-error" : undefined}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-                {fieldErrors.password ? (
-                  <div className={fieldErr}>{fieldErrors.password}</div>
-                ) : null}
+                <AuthFieldError id="reset-password-error" message={fieldErrors.password} />
               </div>
 
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="reset-confirm">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="reset-confirm">
                   确认新密码
                 </label>
                 <input
                   id="reset-confirm"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="confirm-password"
                   type="password"
                   autoComplete="new-password"
                   value={confirm}
+                  aria-invalid={fieldErrors.confirm != null}
+                  aria-describedby={fieldErrors.confirm ? "reset-confirm-error" : undefined}
                   onChange={(event) => setConfirm(event.target.value)}
                 />
-                {fieldErrors.confirm ? (
-                  <div className={fieldErr}>{fieldErrors.confirm}</div>
-                ) : null}
+                <AuthFieldError id="reset-confirm-error" message={fieldErrors.confirm} />
               </div>
 
               {formMessage ? (
-                <p
-                  className="mt-0.5 mb-0 rounded-lg bg-danger-soft px-3 py-[9px] text-[12.5px] text-danger"
-                  role="alert"
-                >
+                <InlineStatus tone="error" className="mt-0.5">
                   {formMessage}
-                </p>
+                </InlineStatus>
               ) : null}
 
               <button
                 type="submit"
-                className="mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${primaryButton} mt-2 h-11 w-full text-sm font-medium`}
                 disabled={submitting}
+                aria-busy={submitting}
+                aria-label={submitting ? "正在重置密码" : "重置密码"}
               >
-                {submitting ? "提交中…" : "重置密码"}
+                <LoadingButtonContent loading={submitting} label="重置密码" />
               </button>
             </form>
           </>

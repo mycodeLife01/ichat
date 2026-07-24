@@ -86,7 +86,35 @@ describe("AuthScreen", () => {
 
     expect(screen.getByText("请输入用户名或邮箱")).toBeInTheDocument();
     expect(screen.getByText("密码长度需为 8–128 位")).toBeInTheDocument();
+    const identifier = screen.getByLabelText("用户名或邮箱");
+    expect(identifier).toHaveAttribute("aria-invalid", "true");
+    expect(identifier).toHaveAccessibleDescription("请输入用户名或邮箱");
+    expect(screen.getByLabelText("密码")).toHaveAttribute("aria-invalid", "true");
     expect(login).not.toHaveBeenCalled();
+  });
+
+  it("marks the submit button busy while login is pending", async () => {
+    const user = userEvent.setup();
+    let resolveLogin!: (value: typeof authTokenResponse) => void;
+    const login = vi.fn(
+      () =>
+        new Promise<typeof authTokenResponse>((resolve) => {
+          resolveLogin = resolve;
+        }),
+    );
+    renderWithApp(<AuthScreen />, createFakeServices({ login }));
+
+    await user.type(screen.getByLabelText("用户名或邮箱"), "alice");
+    await user.type(screen.getByLabelText("密码"), "password123");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    const pending = await screen.findByRole("button", { name: "正在登录" });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(login).toHaveBeenCalledOnce();
+
+    resolveLogin(authTokenResponse);
+    expect(await screen.findByRole("button", { name: "登录" })).toBeEnabled();
   });
 
   it("rejects an invalid email on register", async () => {
@@ -202,9 +230,9 @@ describe("AuthScreen", () => {
     await user.click(screen.getByRole("button", { name: "发送重置链接" }));
 
     expect(requestPasswordReset).toHaveBeenCalledWith("alice@example.com");
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "我们已发送一封包含重置链接的邮件",
-    );
+    const sentNotice = await screen.findByRole("status");
+    expect(sentNotice).toHaveTextContent("我们已发送一封包含重置链接的邮件");
+    expect(sentNotice).toHaveAttribute("data-tone", "success");
   });
 
   it("rejects an invalid email before requesting a reset", async () => {

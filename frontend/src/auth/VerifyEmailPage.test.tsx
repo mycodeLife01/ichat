@@ -38,6 +38,11 @@ describe("VerifyEmailPage", () => {
 
     expect(await screen.findByText("Email verified")).toBeInTheDocument();
     expect(verifyEmail).toHaveBeenCalledWith("abc123");
+    expect(
+      screen.getByText("Your email is verified and your account is more secure.").closest(
+        "[data-tone]",
+      ),
+    ).toHaveAttribute("data-tone", "success");
   });
 
   it("waits for session recovery before verifying and refreshing the user", async () => {
@@ -125,6 +130,11 @@ describe("VerifyEmailPage", () => {
     renderAt("/verify-email?token=bad", createFakeServices({ verifyEmail }));
 
     expect(await screen.findByText("Verification link unavailable")).toBeInTheDocument();
+    expect(
+      screen
+        .getByText("This verification link may be expired, already used, or invalid.")
+        .closest("[data-tone]"),
+    ).toHaveAttribute("data-tone", "warning");
     expect(screen.queryByRole("button", { name: "Resend verification email" })).toBeNull();
     expect(screen.getByRole("link", { name: "Go to iChat" })).toBeInTheDocument();
   });
@@ -147,6 +157,44 @@ describe("VerifyEmailPage", () => {
       await screen.findByRole("button", { name: "Resend verification email" }),
     );
     expect(resendVerificationEmail).toHaveBeenCalledOnce();
-    expect(await screen.findByText("Verification email sent. Check your inbox.")).toBeInTheDocument();
+    const sent = await screen.findByText("Verification email sent. Check your inbox.");
+    expect(sent.closest("[data-tone]")).toHaveAttribute("data-tone", "success");
+  });
+
+  it("marks the resend button busy while sending and reports a send failure", async () => {
+    tokenStore.save(createAuthSession(authTokenResponse));
+    const me = vi.fn(async () => authTokenResponse.user);
+    const verifyEmail = vi.fn(async () => {
+      throw new ApiError({ status: 400 });
+    });
+    let rejectResend!: (error: Error) => void;
+    const resendVerificationEmail = vi.fn(
+      () =>
+        new Promise<{ status: string }>((_resolve, reject) => {
+          rejectResend = reject;
+        }),
+    );
+    const user = userEvent.setup();
+
+    renderAt(
+      "/verify-email?token=bad",
+      createFakeServices({ verifyEmail, me, resendVerificationEmail }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Resend verification email" }),
+    );
+
+    const pending = await screen.findByRole("button", { name: "Sending verification email" });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+
+    rejectResend(new Error("smtp down"));
+
+    const failure = await screen.findByText("Could not send the email. Please try again later.");
+    expect(failure.closest("[data-tone]")).toHaveAttribute("data-tone", "error");
+    expect(
+      screen.getByRole("button", { name: "Resend verification email" }),
+    ).toBeEnabled();
   });
 });

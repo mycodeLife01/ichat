@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoaderCircle } from "lucide-react";
 
 import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
+import { primaryButton } from "../ui/classes";
+import { InlineStatus } from "../ui/InlineStatus";
+import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { Wordmark } from "../ui/Wordmark";
+import { authCtaLink } from "./authFields";
 import { useAuthSession } from "./useAuthSession";
 
 type Status = "loading" | "success" | "error";
@@ -83,7 +88,7 @@ export function VerifyEmailPage() {
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border bg-bg">
         <div className="mx-auto flex w-full max-w-[var(--reading-width)] items-center px-8 max-[760px]:px-[18px]">
-          <Link to="/" className="flex items-center" aria-label="iChat home">
+          <Link to="/" className="flex min-h-11 items-center" aria-label="iChat home">
             <Wordmark size={18} />
           </Link>
         </div>
@@ -91,58 +96,72 @@ export function VerifyEmailPage() {
 
       <div className="mx-auto w-full max-w-[var(--reading-width)] px-8 pt-16 text-center max-[760px]:px-[18px]">
         {status === "loading" && (
-          <p className="text-[14px] text-fg-subtle">Verifying…</p>
+          <p
+            className="inline-flex items-center gap-2 text-[14px] text-fg-subtle"
+            role="status"
+            aria-live="polite"
+          >
+            <LoaderCircle className="animate-spin" size={15} strokeWidth={1.9} aria-hidden="true" />
+            Verifying…
+          </p>
         )}
 
         {status === "success" && (
           <>
             <h1 className="mb-2 text-lg font-medium text-fg">Email verified</h1>
-            <p className="text-[14px] leading-[1.6] text-fg-muted">
+            <InlineStatus tone="success" className="mx-auto inline-flex text-left">
               Your email is verified and your account is more secure.
-            </p>
-            <Link
-              to="/"
-              className="mt-5 inline-block rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
-            >
-              Return to iChat
-            </Link>
+            </InlineStatus>
+            <div>
+              <Link to="/" className={`${authCtaLink} mt-5`}>
+                Return to iChat
+              </Link>
+            </div>
           </>
         )}
 
         {status === "error" && (
           <>
             <h1 className="mb-2 text-lg font-medium text-fg">Verification link unavailable</h1>
-            <p className="text-[14px] leading-[1.6] text-fg-muted">
+            <InlineStatus tone="warning" className="mx-auto inline-flex text-left">
               This verification link may be expired, already used, or invalid.
-            </p>
+            </InlineStatus>
             {showResend ? (
               <div className="mt-5 flex flex-col items-center gap-2">
                 <button
                   type="button"
                   onClick={() => void onResend()}
                   disabled={resend === "sending"}
-                  className="rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90 disabled:opacity-60"
+                  aria-busy={resend === "sending"}
+                  aria-label={
+                    resend === "sending"
+                      ? "Sending verification email"
+                      : "Resend verification email"
+                  }
+                  className={`${primaryButton} h-11 px-4 text-[13.5px] font-medium`}
                 >
-                  {resend === "sending" ? "Sending…" : "Resend verification email"}
+                  <LoadingButtonContent
+                    loading={resend === "sending"}
+                    label="Resend verification email"
+                  />
                 </button>
                 {resend === "sent" && (
-                  <span className="text-[13px] text-fg-subtle">
+                  <InlineStatus tone="success" className="text-left">
                     Verification email sent. Check your inbox.
-                  </span>
+                  </InlineStatus>
                 )}
                 {resend === "error" && (
-                  <span className="text-[13px] text-fg-subtle">
+                  <InlineStatus tone="error" className="text-left">
                     Could not send the email. Please try again later.
-                  </span>
+                  </InlineStatus>
                 )}
               </div>
             ) : (
-              <Link
-                to="/"
-                className="mt-5 inline-block rounded-md bg-accent px-3.5 py-2 text-[13.5px] font-medium text-accent-fg transition-opacity duration-[120ms] hover:opacity-90"
-              >
-                Go to iChat
-              </Link>
+              <div>
+                <Link to="/" className={`${authCtaLink} mt-5`}>
+                  Go to iChat
+                </Link>
+              </div>
             )}
           </>
         )}
