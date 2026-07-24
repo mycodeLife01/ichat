@@ -259,7 +259,7 @@ pnpm run build
 | 02 | 让全局 Toast 端到端保留通知语义 | `ready-for-agent` | 01 |
 | 03 | 统一聊天导航与桌面移动操作菜单 | `completed` | 01 |
 | 04 | 统一 Composer 及其内部交互状态 | `completed` | 01 |
-| 05 | 统一 Dialog、账户卡片与危险确认流程 | `ready-for-agent` | 01, 02 |
+| 05 | 统一 Dialog、账户卡片与危险确认流程 | `completed` | 01, 02 |
 | 06 | 统一认证与账户生命周期页面状态 | `ready-for-agent` | 01, 02 |
 | 07 | 统一分享管理与公开分享界面 | `ready-for-agent` | 01, 02 |
 | 08 | 统一消息、Run 状态与引用阅读表面 | `ready-for-agent` | 01 |

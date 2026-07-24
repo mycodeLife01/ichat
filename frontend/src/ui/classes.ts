@@ -22,6 +22,9 @@ export const buttonControl =
 export const primaryButton =
   `${buttonStateBase} bg-accent text-accent-foreground hover:opacity-90`;
 
+export const solidDangerButton =
+  `${buttonStateBase} bg-danger-solid text-danger-solid-foreground hover:opacity-90`;
+
 const interactiveItemStateBase =
   `rounded-item ${focusRing} transition-[background,color] duration-[120ms] ` +
   "aria-current:bg-selected aria-selected:bg-selected data-[selected=true]:bg-selected " +
@@ -30,6 +33,9 @@ const interactiveItemStateBase =
 
 export const interactiveItem =
   `${interactiveItemStateBase} hover:bg-hover focus-visible:bg-hover active:bg-active`;
+
+export const dangerInteractiveItem =
+  `${interactiveItemStateBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft active:bg-danger-soft`;
 
 export const popoverSurface =
   "rounded-popover border border-border-strong bg-surface shadow-popover";
@@ -109,7 +115,9 @@ export const interactionStateContract = {
   iconControl: interactiveStates,
   buttonControl: interactiveStates,
   primaryButton: interactiveStates,
+  solidDangerButton: interactiveStates,
   interactiveItem: interactiveStates,
+  dangerInteractiveItem: interactiveStates,
   neutralMenuItem: interactiveStates,
   dangerMenuItem: interactiveStates,
   inputControl: {
