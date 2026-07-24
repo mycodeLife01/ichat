@@ -260,13 +260,13 @@ pnpm run build
 | 03 | 统一聊天导航与桌面移动操作菜单 | `completed` | 01 |
 | 04 | 统一 Composer 及其内部交互状态 | `completed` | 01 |
 | 05 | 统一 Dialog、账户卡片与危险确认流程 | `completed` | 01, 02 |
-| 06 | 统一认证与账户生命周期页面状态 | `ready-for-agent` | 01, 02 |
-| 07 | 统一分享管理与公开分享界面 | `ready-for-agent` | 01, 02 |
-| 08 | 统一消息、Run 状态与引用阅读表面 | `ready-for-agent` | 01 |
+| 06 | 统一认证与账户生命周期页面状态 | `completed` | 01, 02 |
+| 07 | 统一分享管理与公开分享界面 | `completed` | 01, 02 |
+| 08 | 统一消息、Run 状态与引用阅读表面 | `completed` | 01 |
 | 09 | 完成全局设计系统合规与浏览器视觉验收 | `ready-for-agent` | 02, 03, 04, 05, 06, 07, 08 |
 
 ## Frontier
 
-当前 frontier：02、08。
+当前 frontier：09。
 
 完成或阻塞 ticket 时，同时更新本索引和对应 issue 文件的状态。
