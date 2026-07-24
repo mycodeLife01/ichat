@@ -72,19 +72,27 @@ describe("StreamingMessage", () => {
     expect(screen.queryByText("[1] Release notes")).toBeNull();
   });
 
-  it("shows the failed status-pill (demo copy)", () => {
+  it("shows a persistent error status for a failed run (icon + copy, alert role)", () => {
     const { container } = render(
       <StreamingMessage run={run({ draftText: "部分", status: "failed" })} />,
     );
-    expect(container.querySelector(".status-pill.failed")).toBeTruthy();
-    expect(screen.getByText("生成失败 · 请稍后重试")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("生成失败 · 请稍后重试");
+    expect(alert).toHaveAttribute("data-tone", "error");
+    // Color is not the only channel: an icon accompanies the copy.
+    expect(container.querySelector('[data-status-icon="error"]')).toBeTruthy();
+    // The partial draft stays readable next to the status.
+    expect(screen.getByText("部分")).toBeInTheDocument();
   });
 
-  it("shows the stopped status-pill (demo copy)", () => {
+  it("shows a neutral persistent status for a cancelled run", () => {
     const { container } = render(
       <StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />,
     );
-    expect(container.querySelector(".status-pill.stopped")).toBeTruthy();
-    expect(screen.getByText("已停止")).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("已停止");
+    expect(status).toHaveAttribute("data-tone", "neutral");
+    expect(container.querySelector('[data-status-icon="neutral"]')).toBeTruthy();
+    expect(screen.getByText("部分")).toBeInTheDocument();
   });
 });

@@ -393,7 +393,7 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services);
 
     const textarea = await screen.findByPlaceholderText("有问题，尽管问");
     await user.type(textarea, "你好");
@@ -401,11 +401,9 @@ describe("AppShell", () => {
 
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
-    // Terminal arrived: the partial stays with its pill, and the composer is
-    // usable again — not stuck on a disabled "停止中" button.
-    await waitFor(() =>
-      expect(container.querySelector(".status-pill.stopped")).toBeTruthy(),
-    );
+    // Terminal arrived: the partial stays with its persistent stopped status,
+    // and the composer is usable again — not stuck on a disabled "停止中" button.
+    await waitFor(() => expect(screen.getByText("已停止")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
@@ -433,7 +431,7 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(
+    renderWithApp(
       <AppShell />,
       services,
       undefined,
@@ -441,8 +439,9 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("写到一半")).toBeInTheDocument();
+    // The stopped status is a persistent neutral fact in message context.
     expect(screen.getByText("已停止")).toBeInTheDocument();
-    expect(container.querySelector(".status-pill.stopped")).toBeTruthy();
+    expect(screen.getByRole("status")).toHaveTextContent("已停止");
     expect(streamEvents).not.toHaveBeenCalled();
   });
 
@@ -651,16 +650,14 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services);
 
     const textarea = await screen.findByPlaceholderText("有问题，尽管问");
     await user.type(textarea, "你好");
     await user.click(screen.getByRole("button", { name: "发送" }));
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
-    await waitFor(() =>
-      expect(container.querySelector(".status-pill.stopped")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("已停止")).toBeInTheDocument());
     // The run is terminal: editing the user message must be allowed again.
     const sentMsg = screen.getByText("你好").closest(".msg") as HTMLElement;
     expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();

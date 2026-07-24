@@ -253,7 +253,7 @@ body {
 .md ul { list-style: disc; }
 .md ol { list-style: decimal; }
 .md li { margin: 4px 0; }
-.md li::marker { color: var(--color-fg-subtle); }
+.md li::marker { color: var(--color-text-faint); }
 .md a {
   color: var(--color-accent);
   text-decoration: underline;
@@ -267,7 +267,7 @@ body {
   /* Preflight zeroes the UA's 40px side margins the old look relied on. */
   margin-inline: 40px;
   padding: 2px 0 2px 14px;
-  color: var(--color-fg-muted);
+  color: var(--color-text-muted);
   font-style: normal;
 }
 /* h1–h3 are styled above; keep deeper headings bold where preflight would
@@ -276,18 +276,18 @@ body {
 .md code {
   font-family: var(--font-mono);
   font-size: 13.5px;
-  background: var(--color-bg-sunken);
+  background: var(--color-sunken);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-detail);
   border: 1px solid var(--color-border);
 }
 .md pre {
   font-family: var(--font-mono);
   font-size: 13.5px;
-  background: #f7f7f5;
-  color: var(--color-fg);
+  background: var(--color-sunken);
+  color: var(--color-text-primary);
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-detail);
   border: 1px solid var(--color-border-strong);
   overflow-x: auto;
   line-height: 1.55;
@@ -310,7 +310,7 @@ body {
   text-align: left;
 }
 .md th {
-  background: var(--color-bg-sunken);
+  background: var(--color-sunken);
   font-weight: 600;
 }
 .md hr {
@@ -336,11 +336,11 @@ body {
    clipped to the glyphs, animated by background-position — same direction as
    the title skeleton). Hovering forces solid black in any state. */
 .thinking-label {
-  color: var(--color-fg-muted);
+  color: var(--color-text-muted);
   transition: color 120ms ease;
 }
 .thinking-label:hover {
-  color: var(--color-fg);
+  color: var(--color-text-primary);
 }
 .thinking-label.is-streaming {
   /* A lighter glint sweeps over the gray base text (DeepSeek-style): the bright
@@ -348,11 +348,11 @@ body {
      reads as a glow passing first→last char rather than a dark smudge. */
   background: linear-gradient(
     90deg,
-    var(--color-fg-muted) 0%,
-    var(--color-fg-muted) 40%,
-    var(--color-fg-faint) 50%,
-    var(--color-fg-muted) 60%,
-    var(--color-fg-muted) 100%
+    var(--color-text-muted) 0%,
+    var(--color-text-muted) 40%,
+    var(--color-text-faint) 50%,
+    var(--color-text-muted) 60%,
+    var(--color-text-muted) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -364,8 +364,8 @@ body {
 }
 .thinking-label.is-streaming:hover {
   background: none;
-  -webkit-text-fill-color: var(--color-fg);
-  color: var(--color-fg);
+  -webkit-text-fill-color: var(--color-text-primary);
+  color: var(--color-text-primary);
   animation: none;
 }
 @keyframes thinking-shimmer {
@@ -376,7 +376,8 @@ body {
   .thinking-label.is-streaming { animation: none; }
 }
 
-/* Syntax highlighting (very light) */
+/* Syntax highlighting (very light). Whitelisted non-business colors: these
+   token hues live only here, never in component JSX. */
 .tok-kw { color: #c678dd; }
 .tok-str { color: #98c379; }
 .tok-num { color: #d19a66; }

@@ -1,12 +1,9 @@
 import type { ActiveRunState } from "../runs/state";
-import { Icons } from "../ui/icons";
+import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type StreamingMessageProps = { run: NonNullable<ActiveRunState> };
-
-const statusPill =
-  "mt-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-[3px] text-xs";
 
 export function StreamingMessage({ run }: StreamingMessageProps) {
   const isStreaming =
@@ -32,19 +29,19 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           />
         )}
         <Markdown content={run.draftText} streaming />
+        {/* Terminal states stay in message context (no duplicate toast): a
+            cancelled run is a neutral persistent fact, a failed run is a
+            persistent alert — both carry an icon so color is not the only
+            channel. */}
         {run.status === "cancelled" && (
-          <div className={`status-pill stopped ${statusPill} border-border bg-bg-sunken text-fg-muted`}>
-            <span className="h-2 w-2 rounded-[2px] bg-fg-subtle" />
+          <InlineStatus tone="neutral" className="mt-2 w-fit">
             已停止
-          </div>
+          </InlineStatus>
         )}
         {run.status === "failed" && (
-          <div
-            className={`status-pill failed ${statusPill} border-[rgba(181,74,46,0.18)] bg-danger-soft text-danger`}
-          >
-            <Icons.Close size={12} />
+          <InlineStatus tone="error" className="mt-2 w-fit">
             生成失败 · 请稍后重试
-          </div>
+          </InlineStatus>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { focusRing } from "../ui/classes";
 import { Icons } from "../ui/icons";
 
 type ThinkingBlockProps = {
@@ -15,10 +16,10 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
 
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-fg-muted max-[760px]:text-[15px]`}
+      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
     >
       <div
-        className="group inline-flex max-w-full cursor-pointer items-center gap-1.5 py-0.5 select-none"
+        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail py-0.5 select-none`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -40,12 +41,12 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
         </span>
         <Icons.Chevron
           size={14}
-          className={`shrink-0 text-fg-subtle transition-transform duration-[160ms]${open ? "" : " -rotate-90"}`}
+          className={`shrink-0 text-text-faint transition-transform duration-[160ms]${open ? "" : " -rotate-90"}`}
         />
       </div>
       {content && (
         <div
-          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-fg-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
+          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-text-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
         >
           {content}
         </div>

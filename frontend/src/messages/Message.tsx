@@ -3,10 +3,12 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { MessageResponse, MessageSource } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
-  ghostBtn,
+  buttonControl,
+  focusRing,
+  messageBubble,
   mobileActionItem,
   neutralMenuItem,
-  primaryBtn,
+  primaryButton,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
@@ -234,14 +236,14 @@ export function Message({
         {/* Full thread width (matches the reading column) so long content has
             room; the textarea auto-grows, so short content still gets a
             comfortable editing area via min-h. */}
-        <div className="w-full animate-edit-in rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
+        <div className="w-full animate-edit-in rounded-item border border-border-strong bg-sunken px-3.5 py-2.5">
           {/* p-[2px] preserves the UA default padding the pre-Tailwind version
               never reset (preflight zeroes it, shifting text wrapping); inline-block
               (the default — no `block`) keeps the old baseline gap below the box. */}
           <textarea
             autoFocus
             ref={editRef}
-            className="min-h-[88px] w-full resize-none overflow-y-auto border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none max-[760px]:text-[17px]"
+            className="min-h-[88px] w-full resize-none overflow-y-auto border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-text-primary outline-none max-[760px]:text-[17px]"
             style={{ maxHeight: `${EDIT_MAX_HEIGHT}px` }}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -254,10 +256,14 @@ export function Message({
             }}
           />
           <div className="mt-2 flex justify-end gap-1.5">
-            <button className={ghostBtn} onClick={cancel}>
+            <button className={`${buttonControl} px-2.5 py-[5px] text-[13px]`} onClick={cancel}>
               取消
             </button>
-            <button className={primaryBtn} onClick={save} disabled={draft.trim() === ""}>
+            <button
+              className={`${primaryButton} px-3.5 py-2 text-[13.5px] font-medium`}
+              onClick={save}
+              disabled={draft.trim() === ""}
+            >
               保存
             </button>
           </div>
@@ -271,7 +277,7 @@ export function Message({
     return (
       <div className={`${msgBase} user items-end`}>
         <div
-          className={`max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
+          className={`max-w-[78%] ${messageBubble} max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
             isMobile ? " select-none [-webkit-touch-callout:none]" : ""
           }`}
           onTouchStart={isMobile ? startLongPress : undefined}
@@ -292,12 +298,12 @@ export function Message({
             </div>
             {/* Fade the clipped last line into the bubble background. */}
             {collapsed && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-bg-sunken to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
             )}
           </div>
           {overflowing && (
             <button
-              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-fg-muted transition-colors duration-[120ms] hover:text-fg"
+              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
               type="button"
               aria-expanded={expanded}
               onClick={() => setExpanded(!expanded)}
@@ -344,7 +350,7 @@ export function SourcesTrigger({
 }) {
   return (
     <button
-      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover hover:text-fg"
+      className={`${focusRing} mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-pill border border-border bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-text-muted transition-colors duration-[120ms] hover:bg-hover hover:text-text-primary max-[760px]:min-h-11`}
       type="button"
       aria-label={`查看 ${sources.length} 个来源`}
       onClick={onClick}
@@ -353,7 +359,7 @@ export function SourcesTrigger({
         {sources.slice(0, 3).map((source) => (
           <span
             key={`${source.id}:${source.url}`}
-            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-full border border-border bg-bg-raised"
+            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-pill border border-border bg-surface"
           >
             <SourceFavicon url={source.url} size={12} />
           </span>

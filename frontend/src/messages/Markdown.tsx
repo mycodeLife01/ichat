@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
 import type { MessageSource } from "../api/types";
+import { iconControl } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Citation } from "./Citation";
 import { rehypeCitations } from "./citations";
@@ -74,7 +75,7 @@ function Pre(props: ComponentPropsWithoutRef<"pre">) {
     <div className="code-block relative">
       <pre ref={preRef} {...props} />
       <button
-        className="absolute top-2 right-2 inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-none bg-transparent p-0 text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
+        className={`${iconControl} absolute top-2 right-2 h-7 w-7`}
         type="button"
         aria-label={copied ? "已复制" : "复制代码"}
         onClick={handleCopy}
@@ -146,7 +147,7 @@ export function Markdown({ content, sources, isMobile, streaming }: MarkdownProp
   }, [content, sources, isMobile, streaming]);
 
   return (
-    <div className="body md text-[16px] leading-[1.75] text-fg max-[760px]:text-[17px]">
+    <div className="body md text-[16px] leading-[1.75] text-text-primary max-[760px]:text-[17px]">
       {rendered}
     </div>
   );
