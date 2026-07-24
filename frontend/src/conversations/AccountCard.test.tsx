@@ -127,7 +127,7 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "选择头像" }));
 
     expect(props.onToast).toHaveBeenCalledWith(
-      "请先完成邮箱认证后再上传头像",
+      "Verify your email before uploading an avatar.",
       "warning",
     );
   });
@@ -160,7 +160,10 @@ describe("AccountCard", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input).toHaveAccessibleDescription("仅支持 JPEG、PNG 和静态 WebP 图片。");
+    expect(input).toHaveAccessibleDescription("Only JPEG, PNG, and static WebP images are supported.");
+    expect(screen.getByRole("button", { name: "选择头像" })).toHaveAccessibleDescription(
+      "Only JPEG, PNG, and static WebP images are supported.",
+    );
   });
 
   it("keeps avatar upload failures inline and reports an error toast", async () => {
@@ -193,10 +196,9 @@ describe("AccountCard", () => {
     );
     await user.click(await screen.findByRole("button", { name: "确认并上传" }));
 
-    const slider = screen.getByRole("slider", { name: "缩放" });
-    expect(slider).toHaveAttribute("aria-invalid", "true");
-    expect(slider).toHaveAccessibleDescription("头像上传失败，请重试。");
-    expect(props.onToast).toHaveBeenCalledWith("头像上传失败，请重试。", "error");
+    expect(screen.getByRole("slider", { name: "缩放" })).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByRole("alert")).toHaveTextContent("Avatar upload failed. Please try again.");
+    expect(props.onToast).toHaveBeenCalledWith("Avatar upload failed. Please try again.", "error");
 
     getContext.mockRestore();
     toBlob.mockRestore();
@@ -229,7 +231,10 @@ describe("AccountCard", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "认证邮箱" }));
-    expect(props.onToast).toHaveBeenCalledWith("发送过于频繁，请稍后再试。", "error");
+    expect(props.onToast).toHaveBeenCalledWith(
+      "Too many requests. Please try again later.",
+      "error",
+    );
   });
 
   it("updates the nickname directly from the account overview", async () => {
@@ -255,7 +260,7 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input).toHaveAccessibleDescription("昵称长度需为 1–50 个字符。");
+    expect(input).toHaveAccessibleDescription("Nickname must be between 1 and 50 characters.");
   });
 
   it("classifies nickname update failures as errors", async () => {
@@ -269,9 +274,12 @@ describe("AccountCard", () => {
     await user.type(input, "Alice Cooper");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(props.onToast).toHaveBeenCalledWith("昵称保存失败，请重试", "error");
+    expect(props.onToast).toHaveBeenCalledWith(
+      "Failed to save nickname. Please try again.",
+      "error",
+    );
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input).toHaveAccessibleDescription("昵称保存失败，请重试");
+    expect(input).toHaveAccessibleDescription("Failed to save nickname. Please try again.");
   });
 
   it("does not request a nickname update when the trimmed value is unchanged", async () => {
@@ -299,7 +307,9 @@ describe("AccountCard", () => {
     await user.type(newPassword, "short");
     await user.click(screen.getByRole("button", { name: "修改密码" }));
     expect(newPassword).toHaveAttribute("aria-invalid", "true");
-    expect(newPassword).toHaveAccessibleDescription("新密码长度需为 8–128 个字符。");
+    expect(newPassword).toHaveAccessibleDescription(
+      "New password must be between 8 and 128 characters.",
+    );
 
     await user.clear(newPassword);
     await user.type(newPassword, "new-password");
@@ -320,7 +330,7 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "修改密码" }));
 
     expect(currentPassword).toHaveAttribute("aria-invalid", "true");
-    expect(currentPassword).toHaveAccessibleDescription("当前密码不正确。");
+    expect(currentPassword).toHaveAccessibleDescription("Current password is incorrect.");
   });
 
   it("requests a deletion email without claiming the account is deleted", async () => {
@@ -350,7 +360,7 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "发送注销确认邮件" }));
 
     expect(password).toHaveAttribute("aria-invalid", "true");
-    expect(password).toHaveAccessibleDescription("当前密码不正确。");
+    expect(password).toHaveAccessibleDescription("Current password is incorrect.");
 
     await user.click(screen.getByRole("button", { name: "账号" }));
     expect(screen.getByRole("button", { name: "注销账号" })).toBeInTheDocument();

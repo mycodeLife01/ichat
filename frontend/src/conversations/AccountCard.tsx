@@ -40,7 +40,7 @@ type AccountCardProps = {
 type AccountView = "overview" | "password" | "deletion";
 type PasswordErrors = {
   current?: string;
-  next?: string;
+  newPassword?: string;
   form?: string;
 };
 
@@ -70,7 +70,7 @@ function AccountActionRow({
     >
       <span
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-pill ${
-          danger ? "bg-danger-soft" : "bg-sunken text-text-muted"
+          danger ? "text-danger" : "bg-sunken text-text-muted"
         }`}
       >
         {icon}
@@ -114,7 +114,7 @@ export function AccountCard({
 
   const chooseAvatar = () => {
     if (!user.emailVerified) {
-      onToast("请先完成邮箱认证后再上传头像", "warning");
+      onToast("Verify your email before uploading an avatar.", "warning");
       return;
     }
     inputRef.current?.click();
@@ -125,18 +125,18 @@ export function AccountCard({
     if (!file) return;
     setAvatarError(null);
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setAvatarError("仅支持 JPEG、PNG 和静态 WebP 图片。");
+      setAvatarError("Only JPEG, PNG, and static WebP images are supported.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setAvatarError("原图不能超过 10 MiB。");
+      setAvatarError("The source image must not exceed 10 MiB.");
       return;
     }
     if (file.type === "image/webp") {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const signature = new TextDecoder("latin1").decode(bytes);
       if (signature.includes("ANIM") || signature.includes("ANMF")) {
-        setAvatarError("头像不支持动画 WebP，请选择静态图片。");
+        setAvatarError("Animated WebP images are not supported.");
         return;
       }
     }
@@ -148,13 +148,13 @@ export function AccountCard({
       const bitmap = await createImageBitmap(file);
       const { width, height } = bitmap;
       bitmap.close();
-      if (width < 128 || height < 128) throw new Error("图片至少需要 128×128 像素。");
+      if (width < 128 || height < 128) throw new Error("The image must be at least 128×128 pixels.");
       if (width > 8192 || height > 8192 || width * height > 20_000_000) {
-        throw new Error("图片像素过大，请选择最长边不超过 8192 且总像素不超过 2000 万的图片。");
+        throw new Error("The image must be at most 8192 pixels per side and 20 million pixels total.");
       }
       setCropFile(file);
     } catch (error) {
-      setAvatarError(error instanceof Error ? error.message : "图片无法解码，请选择其他图片。");
+      setAvatarError(error instanceof Error ? error.message : "The image could not be decoded.");
     }
   };
 
@@ -168,7 +168,7 @@ export function AccountCard({
   const saveNickname = async () => {
     const normalized = nickname.trim();
     if (normalized.length < 1 || normalized.length > 50) {
-      setNicknameError("昵称长度需为 1–50 个字符。");
+      setNicknameError("Nickname must be between 1 and 50 characters.");
       return;
     }
     if (normalized === savedNickname) return;
@@ -180,8 +180,8 @@ export function AccountCard({
       setSavedNickname(normalized);
       onToast("昵称已更新", "success");
     } catch {
-      setNicknameError("昵称保存失败，请重试");
-      onToast("昵称保存失败，请重试", "error");
+      setNicknameError("Failed to save nickname. Please try again.");
+      onToast("Failed to save nickname. Please try again.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -196,8 +196,8 @@ export function AccountCard({
     } catch (error) {
       onToast(
         error instanceof ApiError && error.status === 429
-          ? "发送过于频繁，请稍后再试。"
-          : "验证邮件发送失败，请重试。",
+          ? "Too many requests. Please try again later."
+          : "Failed to send the verification email. Please try again.",
         "error",
       );
     } finally {
@@ -207,7 +207,7 @@ export function AccountCard({
 
   const changePassword = async () => {
     if (newPassword.length < 8 || newPassword.length > 128) {
-      setPasswordErrors({ next: "新密码长度需为 8–128 个字符。" });
+      setPasswordErrors({ newPassword: "New password must be between 8 and 128 characters." });
       return;
     }
     setSubmitting(true);
@@ -216,13 +216,13 @@ export function AccountCard({
       await onChangePassword(currentPassword, newPassword);
     } catch (error) {
       if (error instanceof ApiError && error.status === 400) {
-        setPasswordErrors({ current: "当前密码不正确。" });
+        setPasswordErrors({ current: "Current password is incorrect." });
       } else {
         setPasswordErrors({
           form:
             error instanceof ApiError && error.status === 429
-              ? "尝试次数过多，请稍后再试。"
-              : "密码修改失败，请重试。",
+              ? "Too many attempts. Please try again later."
+              : "Failed to change password. Please try again.",
         });
       }
       setSubmitting(false);
@@ -240,10 +240,10 @@ export function AccountCard({
     } catch (error) {
       setDeletionError(
         error instanceof ApiError && error.status === 429
-          ? "请求过于频繁，请稍后再试。"
+          ? "Too many requests. Please try again later."
           : error instanceof ApiError && error.status === 400
-            ? "当前密码不正确。"
-            : "确认邮件发送失败，请重试。",
+            ? "Current password is incorrect."
+            : "Failed to send the confirmation email. Please try again.",
       );
     } finally {
       setSubmitting(false);
@@ -284,8 +284,12 @@ export function AccountCard({
                 <div className="flex items-center gap-4">
                   <button
                     type="button"
-                    className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-visible rounded-pill bg-accent text-lg font-semibold text-accent-foreground"
+                    className={`relative flex h-14 w-14 shrink-0 items-center justify-center overflow-visible rounded-pill bg-accent text-lg font-semibold text-accent-foreground ${
+                      avatarError ? "outline-2 outline-error-border" : ""
+                    }`}
                     aria-label="选择头像"
+                    aria-invalid={avatarError != null}
+                    aria-describedby={avatarError ? "account-avatar-error" : undefined}
                     onClick={chooseAvatar}
                   >
                     <Avatar
@@ -316,9 +320,13 @@ export function AccountCard({
                   />
                 </div>
                 {avatarError && (
-                  <p id="account-avatar-error" className="mt-2 text-[12px] text-error-foreground" role="alert">
+                  <InlineStatus
+                    id="account-avatar-error"
+                    tone="error"
+                    className="mt-2 border-0 bg-transparent px-0 py-0"
+                  >
                     {avatarError}
-                  </p>
+                  </InlineStatus>
                 )}
 
                 <form
@@ -352,9 +360,13 @@ export function AccountCard({
                   </button>
                 </form>
                 {nicknameError && (
-                  <p id="account-nickname-error" className="mt-2 text-[12px] text-error-foreground" role="alert">
+                  <InlineStatus
+                    id="account-nickname-error"
+                    tone="error"
+                    className="mt-2 border-0 bg-transparent px-0 py-0"
+                  >
                     {nicknameError}
-                  </p>
+                  </InlineStatus>
                 )}
               </section>
 
@@ -450,9 +462,13 @@ export function AccountCard({
                     }}
                   />
                   {passwordErrors.current && (
-                    <p id="account-current-password-error" className="mt-2 text-[12px] text-error-foreground" role="alert">
+                    <InlineStatus
+                      id="account-current-password-error"
+                      tone="error"
+                      className="mt-2 border-0 bg-transparent px-0 py-0"
+                    >
                       {passwordErrors.current}
-                    </p>
+                    </InlineStatus>
                   )}
                 </div>
                 <div>
@@ -464,17 +480,21 @@ export function AccountCard({
                     autoComplete="new-password"
                     placeholder="新密码（8–128 位）"
                     value={newPassword}
-                    aria-invalid={passwordErrors.next != null}
-                    aria-describedby={passwordErrors.next ? "account-new-password-error" : undefined}
+                    aria-invalid={passwordErrors.newPassword != null}
+                    aria-describedby={passwordErrors.newPassword ? "account-new-password-error" : undefined}
                     onChange={(event) => {
                       setNewPassword(event.target.value);
-                      setPasswordErrors((errors) => ({ ...errors, next: undefined }));
+                      setPasswordErrors((errors) => ({ ...errors, newPassword: undefined }));
                     }}
                   />
-                  {passwordErrors.next && (
-                    <p id="account-new-password-error" className="mt-2 text-[12px] text-error-foreground" role="alert">
-                      {passwordErrors.next}
-                    </p>
+                  {passwordErrors.newPassword && (
+                    <InlineStatus
+                      id="account-new-password-error"
+                      tone="error"
+                      className="mt-2 border-0 bg-transparent px-0 py-0"
+                    >
+                      {passwordErrors.newPassword}
+                    </InlineStatus>
                   )}
                 </div>
               </div>
@@ -524,9 +544,13 @@ export function AccountCard({
                 }}
               />
               {deletionError && (
-                <p id="account-deletion-password-error" className="mt-2 text-[12px] text-error-foreground" role="alert">
+                <InlineStatus
+                  id="account-deletion-password-error"
+                  tone="error"
+                  className="mt-2 border-0 bg-transparent px-0 py-0"
+                >
                   {deletionError}
-                </p>
+                </InlineStatus>
               )}
               <div className="mt-4 flex justify-end">
                 <button
@@ -547,9 +571,14 @@ export function AccountCard({
           onCancel={() => setCropFile(null)}
           onError={(message) => onToast(message, "error")}
           onConfirm={async (blob) => {
-            if (!onUploadAvatar) throw new Error("头像上传服务暂不可用。");
+            if (!onUploadAvatar) throw new Error("Avatar upload is unavailable.");
             setAvatarStatus("正在处理头像…");
-            const url = await onUploadAvatar(blob);
+            let url: string;
+            try {
+              url = await onUploadAvatar(blob);
+            } catch {
+              throw new Error("Avatar upload failed. Please try again.");
+            }
             setAvatarUrl(url);
             setAvatarStatus("头像已更新");
             setCropFile(null);

@@ -114,9 +114,9 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
       }
     }
     if (!blob || !["image/webp", "image/png", "image/jpeg"].includes(blob.type)) {
-      throw new Error("此浏览器无法导出头像图片。");
+      throw new Error("This browser cannot export the avatar image.");
     }
-    if (blob.size > MAX_OUTPUT_BYTES) throw new Error("裁剪后的头像超过 2 MiB，请缩小图片复杂度。");
+    if (blob.size > MAX_OUTPUT_BYTES) throw new Error("The cropped avatar must not exceed 2 MiB.");
     return blob;
   };
 
@@ -215,8 +215,6 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
           max={MAX_ZOOM}
           step="0.01"
           value={zoom}
-          aria-invalid={error != null}
-          aria-describedby={error ? "avatar-crop-error" : undefined}
           onChange={(event) => {
             const nextZoom = Number(event.target.value);
             setZoom(nextZoom);
@@ -224,8 +222,8 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
           }}
         />
         {error && (
-          <InlineStatus tone="error" className="mt-3">
-            <span id="avatar-crop-error">{error}</span>
+          <InlineStatus id="avatar-crop-error" tone="error" className="mt-3">
+            {error}
           </InlineStatus>
         )}
         <div className="mt-5 flex justify-end gap-2">
@@ -242,7 +240,7 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
               void createBlob()
                 .then(onConfirm)
                 .catch((reason: unknown) => {
-                  const message = reason instanceof Error ? reason.message : "头像处理失败。";
+                  const message = reason instanceof Error ? reason.message : "Avatar processing failed.";
                   setError(message);
                   onError(message);
                 })

@@ -15,6 +15,7 @@ interface InlineStatusProps {
   tone: InlineStatusTone;
   children: ReactNode;
   className?: string;
+  id?: string;
 }
 
 const presentations = {
@@ -36,12 +37,13 @@ const presentations = {
   },
 } satisfies Record<InlineStatusTone, { Icon: LucideIcon; classes: string }>;
 
-export function InlineStatus({ tone, children, className = "" }: InlineStatusProps) {
+export function InlineStatus({ tone, children, className = "", id }: InlineStatusProps) {
   const { Icon, classes } = presentations[tone];
   const role = tone === "error" ? "alert" : "status";
 
   return (
     <div
+      id={id}
       className={`${statusNotice} ${classes} ${className}`.trim()}
       data-tone={tone}
       role={role}
