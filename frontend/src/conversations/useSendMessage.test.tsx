@@ -21,9 +21,23 @@ type Start = (runId: string, conversationId: string, afterSeq: number) => void;
 
 function useSendProbe(start: Start) {
   const send = useSendMessage(start);
-  const { conversationIndex, conversationDetail, activeRun, ui } = useAppState();
+  const {
+    conversationIndex,
+    conversationDetail,
+    activeRun,
+    pendingSubmission,
+    ui,
+  } = useAppState();
   const { dispatch } = useAppActions();
-  return { send, conversationIndex, conversationDetail, activeRun, ui, dispatch };
+  return {
+    send,
+    conversationIndex,
+    conversationDetail,
+    activeRun,
+    pendingSubmission,
+    ui,
+    dispatch,
+  };
 }
 
 describe("useSendMessage", () => {
@@ -85,6 +99,54 @@ describe("useSendMessage", () => {
     );
   });
 
+  it("exposes a pending submission until the send API resolves", async () => {
+    const start = vi.fn();
+    let resolveSend!: (value: typeof sendMessageResponse) => void;
+    const sendMessage = vi.fn(
+      () =>
+        new Promise<typeof sendMessageResponse>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    const services = createFakeServices({}, { sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: "55" });
+    });
+
+    let sendResult!: Promise<boolean>;
+    await act(async () => {
+      sendResult = result.current.send("世界");
+      await Promise.resolve();
+    });
+
+    expect(result.current.pendingSubmission).toEqual({
+      content: "世界",
+      conversationId: "55",
+    });
+    expect(result.current.conversationDetail.messages).toEqual([]);
+    expect(result.current.activeRun).toBeNull();
+
+    let duplicateResult: boolean | undefined;
+    await act(async () => {
+      duplicateResult = await result.current.send("重复发送");
+    });
+    expect(duplicateResult).toBe(false);
+    expect(sendMessage).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveSend(sendMessageResponse);
+      await sendResult;
+    });
+
+    expect(await sendResult).toBe(true);
+    expect(result.current.pendingSubmission).toBeNull();
+    expect(result.current.conversationDetail.messages.at(-1)).toEqual(
+      sendMessageResponse.message,
+    );
+  });
+
   it("sends web_search_enabled true only when preference and capability are enabled", async () => {
     webSearchPreferenceStore.save(true);
     webSearchPreferenceStore.setCapability(true);
@@ -139,12 +201,15 @@ describe("useSendMessage", () => {
     const services = createFakeServices({}, { create, sendMessage });
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
+    let sent: boolean | undefined;
     await act(async () => {
-      await result.current.send("会失败");
+      sent = await result.current.send("会失败");
     });
 
     expect(sendMessage).toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
+    expect(sent).toBe(false);
+    expect(result.current.pendingSubmission).toBeNull();
     expect(result.current.activeRun).toBeNull();
   });
 

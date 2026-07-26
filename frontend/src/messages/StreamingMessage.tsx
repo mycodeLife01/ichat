@@ -5,6 +5,16 @@ import { ThinkingBlock } from "./ThinkingBlock";
 
 type StreamingMessageProps = { run: NonNullable<ActiveRunState> };
 
+export function PendingAssistantMessage() {
+  return (
+    <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
+      <div className="min-w-0 flex-1">
+        <ThinkingBlock content="" streaming />
+      </div>
+    </div>
+  );
+}
+
 export function StreamingMessage({ run }: StreamingMessageProps) {
   const isStreaming =
     run.status === "queued" ||
@@ -16,8 +26,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // While a web_search tool call is in flight, the collapsible header label
   // takes over the thinking copy: 正在搜索… → 已找到 n 个来源 (no preview box).
   const toolLabel = run.toolState ? labelForToolState(run.toolState) : undefined;
-  const showThinking =
-    thinking && (run.draftReasoning !== "" || run.toolState !== null);
+  const showThinking = thinking;
 
   return (
     <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">

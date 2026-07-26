@@ -312,6 +312,58 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
+  it("shows the optimistic turn while the send API is pending", async () => {
+    const user = userEvent.setup();
+    const draft: ConversationResponse = {
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const sendMessage = vi.fn(
+      () => new Promise<SendMessageResponse>(() => {}),
+    );
+    const services = createFakeServices(
+      {},
+      { list: async () => [], create: async () => draft, sendMessage },
+    );
+
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("你好")).toBeInTheDocument();
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+    const submitting = screen.getByRole("button", { name: "发送中" });
+    expect(submitting).toBeDisabled();
+    expect(submitting).toHaveAttribute("aria-busy", "true");
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+  });
+
+  it("restores the submitted text when sending fails", async () => {
+    const user = userEvent.setup();
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [],
+        create: async () => ({
+          id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+        }),
+        sendMessage: async () => {
+          throw new Error("network");
+        },
+      },
+    );
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "请再试一次");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("发送失败，请重试");
+    await waitFor(() => expect(textarea).toHaveValue("请再试一次"));
+    expect(screen.queryByText("正在思考")).toBeNull();
+  });
+
   it("swaps the send button for the demo stop button while streaming", async () => {
     const user = userEvent.setup();
 

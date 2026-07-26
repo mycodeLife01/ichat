@@ -68,6 +68,14 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalled();
   });
 
+  it("shows a disabled busy send action while submitting", () => {
+    renderComposer({ state: "submitting" });
+    const submitting = screen.getByRole("button", { name: "发送中" });
+    expect(submitting).toBeDisabled();
+    expect(submitting).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("button", { name: "停止生成" })).toBeNull();
+  });
+
   it("shows the stop button while streaming and calls onStop", async () => {
     const onStop = vi.fn();
     const user = userEvent.setup();

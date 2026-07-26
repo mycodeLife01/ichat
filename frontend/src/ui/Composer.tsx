@@ -9,7 +9,7 @@ import {
 } from "./classes";
 import { Icons } from "./icons";
 
-type ComposerState = "idle" | "streaming" | "stopping";
+type ComposerState = "idle" | "submitting" | "streaming" | "stopping";
 
 type ComposerProps = {
   value: string;
@@ -208,6 +208,16 @@ export function Composer({
                 onClick={send}
               >
                 <Icons.ArrowUp size={15} />
+              </button>
+            ) : state === "submitting" ? (
+              <button
+                className={composerPrimaryAction}
+                type="button"
+                aria-label="发送中"
+                aria-busy="true"
+                disabled
+              >
+                <Icons.Loading className="animate-spin" size={15} aria-hidden="true" />
               </button>
             ) : (
               <button

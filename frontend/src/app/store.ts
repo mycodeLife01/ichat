@@ -15,6 +15,12 @@ import {
   type ActiveRunAction,
   type ActiveRunState,
 } from "../runs/state";
+import {
+  initialPendingSubmissionState,
+  pendingSubmissionReducer,
+  type PendingSubmissionAction,
+  type PendingSubmissionState,
+} from "../conversations/submission";
 import { initialUiState, uiReducer, type UiAction, type UiState } from "../ui/state";
 
 export type ComposerState = { input: string; isComposing: boolean };
@@ -25,6 +31,7 @@ export type AppState = {
   auth: AuthState;
   conversationIndex: ConversationIndexState;
   conversationDetail: ConversationDetailState;
+  pendingSubmission: PendingSubmissionState;
   activeRun: ActiveRunState;
   composer: ComposerState;
   ui: UiState;
@@ -35,6 +42,7 @@ export type AppAction =
   | AuthAction
   | ConversationIndexAction
   | ConversationDetailAction
+  | PendingSubmissionAction
   | UiAction
   | ActiveRunAction
   | AppResetAction;
@@ -43,6 +51,7 @@ export const initialState: AppState = {
   auth: initialAuthState,
   conversationIndex: initialConversationIndexState,
   conversationDetail: initialConversationDetailState,
+  pendingSubmission: initialPendingSubmissionState,
   activeRun: initialActiveRunState,
   composer: initialComposerState,
   ui: initialUiState,
@@ -58,6 +67,7 @@ export function rootReducer(state: AppState, action: AppAction): AppState {
     auth: authReducer(state.auth, action),
     conversationIndex: conversationIndexReducer(state.conversationIndex, action),
     conversationDetail: conversationDetailReducer(state.conversationDetail, action),
+    pendingSubmission: pendingSubmissionReducer(state.pendingSubmission, action),
     activeRun: activeRunReducer(state.activeRun, action),
     composer: composerReducer(state.composer, action),
     ui: uiReducer(state.ui, action),

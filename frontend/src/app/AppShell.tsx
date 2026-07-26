@@ -9,7 +9,10 @@ import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
 import { MessageThread } from "../messages/MessageThread";
 import { SourcesPanel } from "../messages/SourcesPanel";
-import { StreamingMessage } from "../messages/StreamingMessage";
+import {
+  PendingAssistantMessage,
+  StreamingMessage,
+} from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
@@ -42,7 +45,7 @@ function useIsMobile() {
 
 export function AppShell() {
   const { user, logout } = useAuthSession();
-  const { ui, activeRun, conversationIndex } = useAppState();
+  const { ui, activeRun, conversationIndex, pendingSubmission } = useAppState();
   const { dispatch, services, stateRef } = useAppActions();
   const {
     items,
@@ -119,23 +122,31 @@ export function AppShell() {
       activeRun?.draftReasoning,
       activeRun?.toolState,
       activeRun?.status,
+      pendingSubmission?.content,
     ],
     // Jump to the bottom unconditionally when entering a conversation or when
     // the user submits a new message — even if they had scrolled up. Keyed on
-    // the loaded detail's id (not selectedId) so the jump happens in the same
-    // commit the messages render, when scrollHeight is final.
-    `${detail.conversation?.id}:${lastUserMessageId}`,
+    // the loaded detail plus the pending content so both the optimistic turn
+    // and the server-materialized message move the viewport after rendering.
+    `${detail.conversation?.id}:${lastUserMessageId}:${pendingSubmission?.content ?? ""}`,
   );
 
   const onSend = () => {
     const text = composerValue;
+    if (text.trim() === "" || pendingSubmission !== null) return;
     // Animate the composer only for the first message of a brand-new conversation
     // (the empty/welcome state). Follow-up messages keep the composer pinned.
     if (selectedId == null || messages.length === 0) {
       setAnimateComposer(true);
     }
     setComposerValue("");
-    void send(text);
+    void send(text).then((sent) => {
+      // A rapid duplicate call is ignored while the original submission stays
+      // pending; only a real failure clears that state and restores the draft.
+      if (!sent && stateRef.current.pendingSubmission === null) {
+        setComposerValue((current) => (current === "" ? text : current));
+      }
+    });
   };
 
   const onStop = () => {
@@ -168,19 +179,22 @@ export function AppShell() {
     navigate("/");
   };
 
-  // demo Composer state: idle / streaming / stopping. Derived from status alone:
-  // cancelRequested stays true after the run_cancelled terminal, so checking it
-  // would leave the composer stuck on a disabled "停止中" after the stop lands.
-  const composerState: "idle" | "streaming" | "stopping" =
-    activeRun != null && activeRun.conversationId === selectedId
-      ? activeRun.status === "cancelling"
-        ? "stopping"
-        : activeRun.status === "queued" ||
-            activeRun.status === "started" ||
-            activeRun.status === "streaming"
-          ? "streaming"
-          : "idle"
-      : "idle";
+  // Keep the pre-Run HTTP phase distinct from streaming: the submit action is
+  // busy but cannot offer Stop until the server has returned a Run id.
+  let composerState: "idle" | "submitting" | "streaming" | "stopping" = "idle";
+  if (pendingSubmission !== null) {
+    composerState = "submitting";
+  } else if (activeRun != null && activeRun.conversationId === selectedId) {
+    if (activeRun.status === "cancelling") {
+      composerState = "stopping";
+    } else if (
+      activeRun.status === "queued" ||
+      activeRun.status === "started" ||
+      activeRun.status === "streaming"
+    ) {
+      composerState = "streaming";
+    }
+  }
 
   // Bootstrap (once): load list + capabilities, then let the current URL drive
   // the initial route. Landing on `/` is always a blank new conversation; only
@@ -258,14 +272,26 @@ export function AppShell() {
 
   const activeConversation = detail.conversation;
   const messages = detail.messages;
-  const showWelcome = (selectedId == null || messages.length === 0) && activeRun == null;
+  const pendingMessage =
+    pendingSubmission !== null &&
+    pendingSubmission.conversationId === selectedId
+      ? pendingSubmission.content
+      : null;
+  const showWelcome =
+    (selectedId == null || messages.length === 0) &&
+    activeRun == null &&
+    pendingMessage == null;
   const sidebarCollapsed = ui.sidebarCollapsed;
   // Edit / regenerate mutate the thread by queuing a new run; block them while a
   // run for this conversation is in flight (the backend would 409 anyway). A
   // terminal activeRun (stopped/failed partial kept on screen) must not block —
   // composerState is already "idle" for those.
   const mutateDisabledReason =
-    composerState !== "idle" ? "请先停止当前生成" : null;
+    composerState === "submitting"
+      ? "请等待消息发送完成"
+      : composerState !== "idle"
+        ? "请先停止当前生成"
+        : null;
 
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"
@@ -362,15 +388,18 @@ export function AppShell() {
           {!showWelcome && (
             <MessageThread
               messages={messages}
+              pendingMessage={pendingMessage}
               isMobile={isMobile}
               mutateDisabledReason={mutateDisabledReason}
               onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
               onRegenerate={(id) => void regenerate(id)}
               onShowSources={showSources}
             >
-              {activeRun && activeRun.conversationId === selectedId && (
+              {pendingMessage ? (
+                <PendingAssistantMessage />
+              ) : activeRun && activeRun.conversationId === selectedId ? (
                 <StreamingMessage run={activeRun} />
-              )}
+              ) : null}
             </MessageThread>
           )}
         </div>

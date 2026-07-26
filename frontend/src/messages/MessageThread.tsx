@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
+import { messageBubble } from "../ui/classes";
 import { Message } from "./Message";
 
 type MessageThreadProps = {
   messages: MessageResponse[];
+  pendingMessage?: string | null;
   isMobile?: boolean;
   mutateDisabledReason?: string | null;
   onEditAndRegenerate?: (messageId: string, content: string) => void;
@@ -15,6 +17,7 @@ type MessageThreadProps = {
 
 export function MessageThread({
   messages,
+  pendingMessage = null,
   isMobile = false,
   mutateDisabledReason = null,
   onEditAndRegenerate,
@@ -35,6 +38,19 @@ export function MessageThread({
           onShowSources={onShowSources}
         />
       ))}
+      {pendingMessage && (
+        <div
+          className="msg user flex scroll-mt-[60px] flex-col items-end gap-1.5"
+          data-state="pending"
+        >
+          <div
+            className={`max-w-[70%] ${messageBubble} whitespace-pre-wrap wrap-anywhere`}
+            aria-busy="true"
+          >
+            {pendingMessage}
+          </div>
+        </div>
+      )}
       {children}
     </div>
   );

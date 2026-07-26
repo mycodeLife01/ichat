@@ -22,6 +22,12 @@ describe("MessageThread", () => {
     expect(screen.getByText("答案")).toBeInTheDocument();
   });
 
+  it("renders a pending user message without message actions", () => {
+    render(<MessageThread messages={[]} pendingMessage="刚刚发送的问题" />);
+    expect(screen.getByText("刚刚发送的问题")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /复制|编辑并重发/ })).toBeNull();
+  });
+
   it("passes isMobile down: assistant actions resident, user actions behind long-press", () => {
     render(<MessageThread messages={messages} isMobile />);
     // The assistant bar renders resident copy/regenerate; the user message

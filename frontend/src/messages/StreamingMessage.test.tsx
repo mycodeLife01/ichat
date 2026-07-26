@@ -19,6 +19,11 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
 }
 
 describe("StreamingMessage", () => {
+  it("shows 正在思考 before the first stream event arrives", () => {
+    render(<StreamingMessage run={run({ status: "started" })} />);
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
+
   it("renders streamed body text in a .body.md block", () => {
     const { container } = render(
       <StreamingMessage run={run({ draftText: "Hello world", status: "streaming" })} />,
