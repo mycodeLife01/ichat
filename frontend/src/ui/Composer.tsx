@@ -27,9 +27,9 @@ type ComposerProps = {
 const MAX_HEIGHT = 240;
 
 const THINKING_LEVEL_OPTIONS: { value: ThinkingLevel; label: string }[] = [
-  { value: "fast", label: "Fast" },
-  { value: "high", label: "High" },
-  { value: "max", label: "Max" },
+  { value: "fast", label: "快速" },
+  { value: "high", label: "高" },
+  { value: "max", label: "极致" },
 ];
 
 // Composer tools share one geometry: a 36px visual target with a 4px
@@ -53,15 +53,6 @@ const composerPillIdle =
   "border-transparent bg-transparent text-text-muted hover:bg-hover hover:text-text-primary";
 // Selected is a neutral persistent role — never a success/danger tone.
 const composerPillSelected = "border-border-strong bg-selected text-text-primary";
-
-// Icon-only composer tool: the shared iconControl states minus its press
-// scale, which is unwanted inside the composer.
-const composerIconButton =
-  `${composerToolTarget} inline-flex w-9 items-center justify-center rounded-control ` +
-  `text-text-muted ${focusRing} transition-[background,color] duration-[120ms] ` +
-  "hover:bg-hover hover:text-text-primary " +
-  "disabled:cursor-not-allowed disabled:text-text-faint disabled:opacity-60 " +
-  "disabled:hover:bg-transparent aria-busy:cursor-wait aria-busy:opacity-60";
 
 // Send and stop share the primary pill action. State is expressed through the
 // icon plus the accessible name; disabled keeps the accent role and only drops
@@ -119,7 +110,7 @@ export function Composer({
   };
 
   const thinkingLabel =
-    THINKING_LEVEL_OPTIONS.find((option) => option.value === thinkingLevel)?.label ?? "Fast";
+    THINKING_LEVEL_OPTIONS.find((option) => option.value === thinkingLevel)?.label ?? "快速";
 
   return (
     <div className="composer-wrap border-t border-transparent bg-canvas px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
@@ -208,9 +199,6 @@ export function Composer({
                 </div>
               )}
             </div>
-            <button className={composerIconButton} type="button" aria-label="语音输入">
-              <Icons.Mic size={16} />
-            </button>
             {state === "idle" ? (
               <button
                 className={composerPrimaryAction}

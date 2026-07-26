@@ -88,11 +88,11 @@ describe("Composer", () => {
 
   it("shows the current thinking level on the trigger button", () => {
     renderComposer({ thinkingLevel: "max" });
-    expect(screen.getByRole("button", { name: "智能水平" })).toHaveTextContent("Max");
+    expect(screen.getByRole("button", { name: "智能水平" })).toHaveTextContent("极致");
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("opens the level menu with Fast/High/Max and checks the current one", async () => {
+  it("opens the level menu with Chinese labels and checks the current one", async () => {
     const user = userEvent.setup();
     renderComposer({ thinkingLevel: "high" });
 
@@ -103,12 +103,12 @@ describe("Composer", () => {
 
     expect(screen.getByRole("menu", { name: "智能水平" })).toBeInTheDocument();
     const options = screen.getAllByRole("menuitemradio");
-    expect(options.map((o) => o.textContent)).toEqual(["Fast", "High", "Max"]);
-    expect(screen.getByRole("menuitemradio", { name: "High" })).toHaveAttribute(
+    expect(options.map((o) => o.textContent)).toEqual(["快速", "高", "极致"]);
+    expect(screen.getByRole("menuitemradio", { name: "高" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    expect(screen.getByRole("menuitemradio", { name: "Fast" })).toHaveAttribute(
+    expect(screen.getByRole("menuitemradio", { name: "快速" })).toHaveAttribute(
       "aria-checked",
       "false",
     );
@@ -120,10 +120,15 @@ describe("Composer", () => {
     renderComposer({ thinkingLevel: "fast", onThinkingLevelChange });
 
     await user.click(screen.getByRole("button", { name: "智能水平" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Max" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "极致" }));
 
     expect(onThinkingLevelChange).toHaveBeenCalledWith("max");
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("does not show a voice input button", () => {
+    renderComposer();
+    expect(screen.queryByRole("button", { name: "语音输入" })).toBeNull();
   });
 
   it("toggles the web search tool and disables it when unavailable", async () => {
