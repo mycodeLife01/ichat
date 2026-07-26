@@ -86,6 +86,22 @@ describe("Sidebar", () => {
     );
   });
 
+  it("distinguishes the chat section label from compact history rows", () => {
+    render(<Sidebar {...baseProps()} />);
+
+    expect(screen.getByText("聊天")).toHaveClass(
+      "text-[14px]",
+      "font-semibold",
+      "leading-5",
+    );
+    expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
+      "text-[14px]",
+      "font-normal",
+      "leading-5",
+    );
+    expect(screen.getByTestId("conversation-history")).not.toHaveClass("gap-px");
+  });
+
   it("renders a title skeleton for a title-pending row", () => {
     const props = baseProps();
     // A conversation whose auto-title hasn't been written back yet (title empty)

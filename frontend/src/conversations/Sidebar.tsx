@@ -57,7 +57,7 @@ type SidebarProps = {
 };
 
 const sectionLabel =
-  "px-2.5 pb-1.5 text-[13px] font-semibold leading-5 text-fg max-[760px]:text-[14px]";
+  "px-2.5 pb-1.5 text-[14px] font-semibold leading-5 text-fg";
 
 type ConversationMenu = {
   conversationId: string;
@@ -214,7 +214,7 @@ export function Sidebar({
         key={c.id}
         // A fixed minimum height keeps revealing the desktop action button from
         // shifting adjacent rows; mobile raises the whole target to 44px.
-        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[13.5px] font-medium leading-[22px] text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem}`}
+        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem}`}
         data-selected={active || menuOpen}
       >
         {isRenaming ? (
@@ -370,7 +370,7 @@ export function Sidebar({
           {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
               against the sidebar's right border; rows keep their position. */}
           <div
-            className="mt-5 -mr-2.5 flex flex-1 flex-col gap-px overflow-y-auto pr-2.5"
+            className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
             data-testid="conversation-history"
             onScroll={handleHistoryScroll}
           >
