@@ -160,9 +160,13 @@ describe("Composer", () => {
 
   it("exposes the web search toggle as pressed while enabled", () => {
     renderComposer({ webSearchEnabled: true });
-    expect(screen.getByRole("button", { name: "智能搜索" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    const searchButton = screen.getByRole("button", { name: "智能搜索" });
+    expect(searchButton).toHaveAttribute("aria-pressed", "true");
+    expect(searchButton).toHaveClass(
+      "border-search-border",
+      "bg-search-soft",
+      "text-search-foreground",
+      "hover:bg-search-soft-hover",
     );
   });
 

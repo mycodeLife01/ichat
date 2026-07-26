@@ -27,6 +27,7 @@ describe("InlineStatus", () => {
       const icon = container.querySelector(`[data-status-icon="${tone}"]`);
       expect(icon).toBeInTheDocument();
       expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon?.parentElement).toHaveClass("flex", "h-[1.55em]", "items-center");
     },
   );
 });

@@ -66,6 +66,12 @@
   --color-warning-soft: #fff7df;
   --color-warning-border: #ead59b;
 
+  /* Web search uses a blue informational selected state. */
+  --color-search-foreground: #1a73c7;
+  --color-search-soft: #e9f2fb;
+  --color-search-soft-hover: #e0ecfa;
+  --color-search-border: #bcd9f4;
+
   /* Danger is an action role in the error family. Only the final irreversible
      action consumes the solid role. */
   --color-danger: var(--color-error-foreground);

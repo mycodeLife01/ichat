@@ -49,13 +49,14 @@ export function InlineStatus({ tone, children, className = "", id }: InlineStatu
       role={role}
       aria-atomic="true"
     >
-      <Icon
-        className="mt-px shrink-0"
-        data-status-icon={tone}
-        size={15}
-        strokeWidth={1.8}
-        aria-hidden="true"
-      />
+      <span className="flex h-[1.55em] shrink-0 items-center">
+        <Icon
+          data-status-icon={tone}
+          size={15}
+          strokeWidth={1.8}
+          aria-hidden="true"
+        />
+      </span>
       <span>{children}</span>
     </div>
   );

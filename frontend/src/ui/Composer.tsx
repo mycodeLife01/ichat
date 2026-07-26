@@ -51,8 +51,8 @@ const composerPill =
   "disabled:cursor-not-allowed disabled:opacity-50";
 const composerPillIdle =
   "border-transparent bg-transparent text-text-muted hover:bg-hover hover:text-text-primary";
-// Selected is a neutral persistent role — never a success/danger tone.
-const composerPillSelected = "border-border-strong bg-selected text-text-primary";
+const webSearchPillSelected =
+  "border-search-border bg-search-soft text-search-foreground hover:bg-search-soft-hover";
 
 // Send and stop share the primary pill action. State is expressed through the
 // icon plus the accessible name; disabled keeps the accent role and only drops
@@ -148,7 +148,7 @@ export function Composer({
           <div className="flex items-center gap-1">
             <button
               className={`${composerPill} ${
-                webSearchEnabled ? composerPillSelected : composerPillIdle
+                webSearchEnabled ? webSearchPillSelected : composerPillIdle
               }`}
               type="button"
               aria-pressed={webSearchEnabled}
