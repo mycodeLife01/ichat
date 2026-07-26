@@ -5,6 +5,11 @@ import { describe, expect, it } from "vitest";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 describe("ThinkingBlock", () => {
+  it("shows the active thinking label while streaming", () => {
+    render(<ThinkingBlock content="推理内容" streaming />);
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
+
   it("starts expanded and shows the done label", () => {
     render(<ThinkingBlock content="推理内容" streaming={false} />);
     expect(screen.getByText("已思考")).toBeInTheDocument();

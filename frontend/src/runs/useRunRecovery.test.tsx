@@ -72,7 +72,7 @@ describe("useRunRecovery", () => {
     expect(result.current.activeRun).toBeNull();
   });
 
-  it("restores and resumes an in-progress run", async () => {
+  it("restores and resumes an in-progress formal draft without completed reasoning", async () => {
     const start = vi.fn();
     const state = vi.fn(async () => ({
       ...runStateResponse,
@@ -91,7 +91,7 @@ describe("useRunRecovery", () => {
       conversationId: conversationResponse.id,
       latestSeq: runStateResponse.latest_seq,
       draftText: runStateResponse.draft_text,
-      draftReasoning: "想",
+      draftReasoning: "",
       toolState: null,
       status: "streaming",
       cancelRequested: false,

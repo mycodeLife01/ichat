@@ -60,7 +60,7 @@ export const composerSurface =
 // User message bubble — a static content container in the reading column,
 // shared by the live thread and the public share page.
 export const messageBubble =
-  "rounded-item border border-border bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-text-primary";
+  "min-w-0 overflow-hidden rounded-[22px] bg-sunken px-4 py-2.5 text-[16px] leading-6 text-text-primary";
 
 const menuItemBase =
   `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +

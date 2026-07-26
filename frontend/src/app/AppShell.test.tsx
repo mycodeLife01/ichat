@@ -401,9 +401,12 @@ describe("AppShell", () => {
 
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
-    // Terminal arrived: the partial stays with its persistent stopped status,
-    // and the composer is usable again — not stuck on a disabled "停止中" button.
-    await waitFor(() => expect(screen.getByText("已停止")).toBeInTheDocument());
+    // Terminal arrived: the partial stays without a stopped-status block, and
+    // the composer is usable again — not stuck on a disabled "停止中" button.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("已停止")).toBeNull();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
@@ -439,9 +442,8 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("写到一半")).toBeInTheDocument();
-    // The stopped status is a persistent neutral fact in message context.
-    expect(screen.getByText("已停止")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("已停止");
+    expect(screen.queryByText("已停止")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
     expect(streamEvents).not.toHaveBeenCalled();
   });
 
@@ -657,7 +659,10 @@ describe("AppShell", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
-    await waitFor(() => expect(screen.getByText("已停止")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("已停止")).toBeNull();
     // The run is terminal: editing the user message must be allowed again.
     const sentMsg = screen.getByText("你好").closest(".msg") as HTMLElement;
     expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();

@@ -11,7 +11,6 @@ import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
 import { SourcesTrigger } from "./Message";
 import { SourcesPanel } from "./SourcesPanel";
-import { ThinkingBlock } from "./ThinkingBlock";
 
 type LoadState =
   | { status: "loading" }
@@ -192,8 +191,10 @@ function SharedMessageView({
   if (message.role === "user") {
     return (
       <div className="msg user flex scroll-mt-[60px] flex-col items-end gap-1.5">
-        <div className={`max-w-[78%] ${messageBubble} max-[760px]:max-w-[86%] max-[760px]:text-[17px]`}>
-          <div className="whitespace-pre-wrap wrap-anywhere">{message.content}</div>
+        <div className={`max-w-[70%] ${messageBubble}`}>
+          <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
+            {message.content}
+          </div>
         </div>
       </div>
     );
@@ -203,7 +204,6 @@ function SharedMessageView({
   return (
     <div className="msg assistant flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
       <div className="min-w-0 flex-1">
-        {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
         <Markdown
           content={message.content}
           sources={sources.length > 0 ? sources : undefined}

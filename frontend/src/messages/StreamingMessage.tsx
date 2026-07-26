@@ -16,7 +16,8 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // While a web_search tool call is in flight, the collapsible header label
   // takes over the thinking copy: 正在搜索… → 已找到 n 个来源 (no preview box).
   const toolLabel = run.toolState ? labelForToolState(run.toolState) : undefined;
-  const showThinking = run.draftReasoning !== "" || run.toolState !== null;
+  const showThinking =
+    thinking && (run.draftReasoning !== "" || run.toolState !== null);
 
   return (
     <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
@@ -29,15 +30,8 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           />
         )}
         <Markdown content={run.draftText} streaming />
-        {/* Terminal states stay in message context (no duplicate toast): a
-            cancelled run is a neutral persistent fact, a failed run is a
-            persistent alert — both carry an icon so color is not the only
-            channel. */}
-        {run.status === "cancelled" && (
-          <InlineStatus tone="neutral" className="mt-2 w-fit">
-            已停止
-          </InlineStatus>
-        )}
+        {/* Failures remain in message context as a persistent alert. Cancelled
+            runs keep any partial formal answer without an extra status block. */}
         {run.status === "failed" && (
           <InlineStatus tone="error" className="mt-2 w-fit">
             生成失败 · 请稍后重试

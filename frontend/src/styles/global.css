@@ -337,7 +337,7 @@ body {
   .md table { font-size: 15.5px; }
 }
 
-/* Thinking / tool-status label (思考中 / 已思考 / 正在搜索…). Body-sized text
+/* Thinking / tool-status label (正在思考 / 已思考 / 正在搜索…). Body-sized text
    that, while streaming, runs a glow sweeping first→last character (gradient
    clipped to the glyphs, animated by background-position — same direction as
    the title skeleton). Hovering forces solid black in any state. */

@@ -27,9 +27,20 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".body.md")).toBeTruthy();
   });
 
-  it("renders the reasoning block", () => {
+  it("renders the reasoning block only before the formal answer starts", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByText("在想")).toBeInTheDocument();
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
+
+  it("hides reasoning after the formal answer starts", () => {
+    render(
+      <StreamingMessage
+        run={run({ draftText: "正式回答", draftReasoning: "不再展示", status: "streaming" })}
+      />,
+    );
+    expect(screen.getByText("正式回答")).toBeInTheDocument();
+    expect(screen.queryByText("不再展示")).toBeNull();
   });
 
   it("surfaces web search phases in the collapsible header and shows no preview box", () => {
@@ -85,14 +96,9 @@ describe("StreamingMessage", () => {
     expect(screen.getByText("部分")).toBeInTheDocument();
   });
 
-  it("shows a neutral persistent status for a cancelled run", () => {
-    const { container } = render(
-      <StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />,
-    );
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("已停止");
-    expect(status).toHaveAttribute("data-tone", "neutral");
-    expect(container.querySelector('[data-status-icon="neutral"]')).toBeTruthy();
+  it("keeps the partial answer without a status block for a cancelled run", () => {
+    render(<StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />);
     expect(screen.getByText("部分")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

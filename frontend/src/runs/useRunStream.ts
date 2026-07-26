@@ -113,7 +113,7 @@ export function useRunStream() {
 
   // Optimistically flip to "停止中" and ask the server to cancel. We do NOT abort
   // the local stream — the server's run_cancelled event arrives over SSE and
-  // drives the terminal transition (so "已停止" only shows after the real terminal).
+  // drives the terminal transition and returns the composer to idle.
   const cancel = useCallback(
     async (runId: string): Promise<void> => {
       // The stop button disables on "stopping", but that only lands after a

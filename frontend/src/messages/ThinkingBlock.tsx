@@ -6,7 +6,7 @@ import { Icons } from "../ui/icons";
 type ThinkingBlockProps = {
   content: string;
   streaming: boolean;
-  // Overrides the default 思考中…/已思考 header — used while a tool call is in
+  // Overrides the default 正在思考/已思考 header — used while a tool call is in
   // flight to surface the search phase (正在搜索… / 已找到 n 个来源).
   label?: string;
 };
@@ -37,7 +37,7 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
         <span
           className={`thinking-label min-w-0 truncate text-[16px] leading-[1.6] max-[760px]:text-[17px]${streaming ? " is-streaming" : ""}`}
         >
-          {label ?? (streaming ? "思考中…" : "已思考")}
+          {label ?? (streaming ? "正在思考" : "已思考")}
         </span>
         <Icons.Chevron
           size={14}

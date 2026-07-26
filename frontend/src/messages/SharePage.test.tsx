@@ -10,7 +10,7 @@ function servicesWithShare(overrides: Parameters<typeof createFakeServices>[4]) 
 }
 
 describe("SharePage", () => {
-  it("renders a read-only snapshot with reasoning and sources", async () => {
+  it("renders a read-only snapshot without completed reasoning", async () => {
     const services = servicesWithShare({
       getPublic: async () => ({
         title: "Shared chat",
@@ -31,6 +31,7 @@ describe("SharePage", () => {
 
     expect(await screen.findByText("ask something")).toBeInTheDocument();
     expect(screen.getByText("the answer")).toBeInTheDocument();
+    expect(screen.queryByText("let me think")).toBeNull();
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
   });
