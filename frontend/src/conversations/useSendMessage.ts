@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import { useAppActions, useAppState } from "../app/context";
+import { useAppActions } from "../app/context";
 import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
 import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { selectionStore } from "./selectionStore";
@@ -10,20 +10,30 @@ import { selectionStore } from "./selectionStore";
 export function useSendMessage(
   start: (runId: string, conversationId: string, afterSeq: number) => void,
 ) {
-  const { conversationIndex } = useAppState();
-  const { dispatch, services } = useAppActions();
+  const { dispatch, services, stateRef } = useAppActions();
   const { conversationApi } = services;
 
   return useCallback(
-    async (content: string): Promise<void> => {
+    async (content: string): Promise<boolean> => {
       const trimmed = content.trim();
-      if (trimmed === "") return;
+      if (trimmed === "" || stateRef.current.pendingSubmission !== null) return false;
+
+      let targetId = stateRef.current.conversationIndex.selectedId;
+      const runOptions = toRunOptions(
+        thinkingLevelStore.read(),
+        webSearchPreferenceStore.requestEnabled(),
+      );
+      dispatch({
+        type: "submission/started",
+        content: trimmed,
+        conversationId: targetId,
+      });
 
       try {
-        let targetId = conversationIndex.selectedId;
         if (targetId == null) {
           const convo = await conversationApi.create();
           targetId = convo.id;
+          dispatch({ type: "submission/targeted", conversationId: convo.id });
           dispatch({ type: "conversations/detailLoaded", conversation: convo, messages: [] });
           dispatch({ type: "conversations/selected", id: convo.id });
           dispatch({ type: "conversations/draftCreated", id: convo.id });
@@ -33,18 +43,20 @@ export function useSendMessage(
         const { message, run } = await conversationApi.sendMessage(
           targetId,
           trimmed,
-          toRunOptions(thinkingLevelStore.read(), webSearchPreferenceStore.requestEnabled()),
+          runOptions,
         );
         dispatch({ type: "conversations/messageAppended", message });
         dispatch({ type: "run/started", runId: run.id, conversationId: targetId });
+        dispatch({ type: "submission/cleared" });
         void start(run.id, targetId, 0);
+        return true;
       } catch (error) {
-        // Send failed before streaming started. Keep input so the user can retry,
-        // and surface a Chinese toast.
+        dispatch({ type: "submission/cleared" });
         console.error("send message failed", error);
-        dispatch({ type: "ui/showToast", message: "发送失败，请重试" });
+        dispatch({ type: "ui/showToast", message: "发送失败，请重试", tone: "error" });
+        return false;
       }
     },
-    [conversationIndex.selectedId, dispatch, conversationApi, start],
+    [dispatch, conversationApi, start, stateRef],
   );
 }

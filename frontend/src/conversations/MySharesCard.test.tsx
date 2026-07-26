@@ -14,6 +14,24 @@ const share = {
 };
 
 describe("MySharesCard", () => {
+  it("closes on Escape as a labelled modal dialog", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <MySharesCard
+        onClose={onClose}
+        onLoad={async () => []}
+        onRevoke={vi.fn()}
+        onToast={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "我的分享" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("stays open when a drag starts inside the card and ends on the backdrop", async () => {
     const onClose = vi.fn();
     render(
@@ -60,15 +78,15 @@ describe("MySharesCard", () => {
     const item = await screen.findByRole("article", { name: "项目讨论" });
     await user.click(within(item).getByRole("button", { name: "复制链接" }));
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/share/share-token`);
-    expect(onToast).toHaveBeenCalledWith("链接已复制");
+    expect(onToast).toHaveBeenCalledWith("链接已复制", "success");
 
     await user.click(within(item).getByRole("button", { name: "撤销分享" }));
     expect(onRevoke).toHaveBeenCalledWith("conv-1", "share-token");
     expect(screen.queryByRole("article", { name: "项目讨论" })).toBeNull();
-    expect(onToast).toHaveBeenCalledWith("已撤销分享");
+    expect(onToast).toHaveBeenCalledWith("已撤销分享", "success");
   });
 
-  it("shows an empty state", async () => {
+  it("shows an empty state with an icon", async () => {
     render(
       <MySharesCard
         onClose={vi.fn()}
@@ -78,7 +96,10 @@ describe("MySharesCard", () => {
       />,
     );
 
-    expect(await screen.findByText("还没有有效的会话分享")).toBeInTheDocument();
+    const message = await screen.findByText("还没有有效的会话分享");
+    const empty = message.closest('[role="status"]');
+    expect(empty).not.toBeNull();
+    expect(empty!.querySelector("svg")).not.toBeNull();
   });
 
   it("shows load and revoke failures without removing the share", async () => {
@@ -100,12 +121,25 @@ describe("MySharesCard", () => {
       />,
     );
 
-    expect(await screen.findByText("分享列表加载失败")).toBeInTheDocument();
+    // Load failure is announced persistently (inline alert with icon) and as
+    // an error toast.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("分享列表加载失败");
+    expect(alert.querySelector("svg")).not.toBeNull();
+    expect(onToast).toHaveBeenCalledWith("分享列表加载失败", "error");
+
     await user.click(screen.getByRole("button", { name: "重试" }));
     const item = await screen.findByRole("article", { name: "项目讨论" });
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn(async () => Promise.reject(new Error("copy failed"))) },
+      configurable: true,
+    });
+    await user.click(within(item).getByRole("button", { name: "复制链接" }));
+    expect(onToast).toHaveBeenCalledWith("复制失败", "error");
+
     await user.click(within(item).getByRole("button", { name: "撤销分享" }));
 
     expect(screen.getByRole("article", { name: "项目讨论" })).toBeInTheDocument();
-    expect(onToast).toHaveBeenCalledWith("撤销失败");
+    expect(onToast).toHaveBeenCalledWith("撤销失败", "error");
   });
 });

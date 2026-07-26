@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { MessageSource } from "../api/types";
+import { focusRing, iconControl, popoverSurface } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { domainOf, siteName } from "./sourceUtils";
 import { SourceFavicon } from "./SourcesPanel";
@@ -104,8 +105,8 @@ export function Citation({ node, sources, isMobile = false }: CitationProps) {
       <button
         ref={chipRef}
         type="button"
-        className={`citation-chip mx-0.5 inline-flex max-w-[160px] cursor-pointer items-center gap-0.5 rounded-full border border-border bg-bg-sunken px-1.5 py-px align-middle text-[11px] leading-[1.4] text-fg-muted transition-colors duration-[120ms] hover:bg-fg hover:text-bg ${
-          open ? "bg-fg text-bg" : ""
+        className={`citation-chip ${focusRing} mx-0.5 inline-flex max-w-[160px] cursor-pointer items-center gap-0.5 rounded-pill border border-border bg-sunken px-1.5 py-px align-middle text-[11px] leading-[1.4] text-text-muted transition-colors duration-[120ms] hover:bg-accent hover:text-accent-foreground ${
+          open ? "bg-accent text-accent-foreground" : ""
         }`}
         aria-label={`查看 ${cited.length} 个引用来源`}
         onMouseEnter={
@@ -170,20 +171,20 @@ function CitationCard({
   return createPortal(
     <div
       ref={ref}
-      className="citation-card fixed z-50 w-[320px] rounded-lg border border-border-strong bg-bg-raised p-3 shadow-[0_8px_24px_rgba(20,20,19,0.12)]"
+      className={`citation-card ${popoverSurface} fixed z-50 w-[320px] p-3`}
       style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
       {total > 1 && (
-        <div className="mb-2 flex items-center justify-between text-[12px] text-fg-subtle">
+        <div className="mb-2 flex items-center justify-between text-[12px] text-text-faint">
           <span>
             {page + 1}/{total}
           </span>
           <span className="flex items-center gap-1">
             <button
               type="button"
-              className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent p-0 text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover disabled:cursor-default disabled:opacity-40"
+              className={`${iconControl} h-6 w-6`}
               aria-label="上一个来源"
               disabled={page === 0}
               onClick={() => setPage(Math.max(0, page - 1))}
@@ -192,7 +193,7 @@ function CitationCard({
             </button>
             <button
               type="button"
-              className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent p-0 text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover disabled:cursor-default disabled:opacity-40"
+              className={`${iconControl} h-6 w-6`}
               aria-label="下一个来源"
               disabled={page >= total - 1}
               onClick={() => setPage(Math.min(total - 1, page + 1))}
@@ -203,21 +204,21 @@ function CitationCard({
         </div>
       )}
       <a
-        className="block no-underline"
+        className={`${focusRing} block rounded-item no-underline`}
         href={current.url}
         target="_blank"
         rel="noreferrer"
       >
-        <div className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+        <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
           <SourceFavicon url={current.url} size={16} />
           <span className="truncate">{domainOf(current.url)}</span>
-          {date && <span className="ml-auto shrink-0 text-fg-subtle">{date}</span>}
+          {date && <span className="ml-auto shrink-0 text-text-faint">{date}</span>}
         </div>
-        <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-fg">
+        <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-text-primary">
           {current.title}
         </div>
         {current.snippet && (
-          <div className="mt-1 line-clamp-4 text-[12.5px] leading-[1.5] text-fg-muted">
+          <div className="mt-1 line-clamp-4 text-[12.5px] leading-[1.5] text-text-muted">
             {current.snippet}
           </div>
         )}

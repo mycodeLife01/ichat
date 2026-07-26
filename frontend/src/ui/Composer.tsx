@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ThinkingLevel } from "../runs/thinkingLevel";
+import {
+  composerSurface,
+  focusRing,
+  neutralMenuItem,
+  popoverSurface,
+} from "./classes";
 import { Icons } from "./icons";
 
-type ComposerState = "idle" | "streaming" | "stopping";
+type ComposerState = "idle" | "submitting" | "streaming" | "stopping";
 
 type ComposerProps = {
   value: string;
@@ -21,18 +27,41 @@ type ComposerProps = {
 const MAX_HEIGHT = 240;
 
 const THINKING_LEVEL_OPTIONS: { value: ThinkingLevel; label: string }[] = [
-  { value: "fast", label: "Fast" },
-  { value: "high", label: "High" },
-  { value: "max", label: "Max" },
+  { value: "fast", label: "快速" },
+  { value: "high", label: "高" },
+  { value: "max", label: "极致" },
 ];
 
-// Background/text colors live outside the base string: Tailwind resolves
-// conflicting utilities by stylesheet order, not className order, so a toggled
-// state must swap classes instead of appending overrides.
-const composerToolBase =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full p-0 " +
-  "transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg";
-const composerTool = `${composerToolBase} bg-transparent text-fg-muted`;
+// Composer tools share one geometry: a 36px visual target with a 4px
+// pseudo-element bleed, so the effective touch target reaches 44×44 CSS px
+// without enlarging the visual footprint.
+const composerToolTarget =
+  "relative h-9 before:absolute before:-inset-1 before:content-['']";
+
+// Labeled pills (web search, thinking level) use the pill role with a fixed
+// 1px border, so geometry never shifts between idle and selected. Background
+// and border swap as complete class sets per state: Tailwind resolves
+// conflicting utilities by stylesheet order, not className order. Composer
+// tools deliberately have no press motion (scale/translate) — state feedback
+// is background/color only.
+const composerPill =
+  `${composerToolTarget} inline-flex items-center gap-1.5 rounded-pill border px-2.5 ` +
+  `text-[13px] font-medium ${focusRing} ` +
+  "transition-[background,color,border-color] duration-[120ms] " +
+  "disabled:cursor-not-allowed disabled:opacity-50";
+const composerPillIdle =
+  "border-transparent bg-transparent text-text-muted hover:bg-hover hover:text-text-primary";
+const webSearchPillSelected =
+  "border-search-border bg-search-soft text-search-foreground hover:bg-search-soft-hover";
+
+// Send and stop share the primary pill action. State is expressed through the
+// icon plus the accessible name; disabled keeps the accent role and only drops
+// opacity, with native behavior and a not-allowed cursor.
+const composerPrimaryAction =
+  `${composerToolTarget} inline-flex w-9 items-center justify-center rounded-pill ` +
+  `bg-accent text-accent-foreground ${focusRing} ` +
+  "transition-[opacity] duration-[120ms] not-disabled:hover:opacity-90 " +
+  "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait aria-busy:opacity-60";
 
 export function Composer({
   value,
@@ -81,14 +110,24 @@ export function Composer({
   };
 
   const thinkingLabel =
-    THINKING_LEVEL_OPTIONS.find((option) => option.value === thinkingLevel)?.label ?? "Fast";
+    THINKING_LEVEL_OPTIONS.find((option) => option.value === thinkingLevel)?.label ?? "快速";
 
   return (
-    <div className="composer-wrap border-t border-transparent bg-bg px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
-      <div className="composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 rounded-[18px] border border-border-strong bg-bg-raised py-2.5 pr-3.5 pl-[18px]">
+    <div className="composer-wrap border-t border-transparent bg-canvas px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
+      <div
+        className={`composer relative mx-auto flex w-full max-w-[var(--reading-width)] flex-col gap-1 py-2.5 pr-3.5 pl-[18px] ${composerSurface}`}
+      >
+        {/* Input state contract: only default applies. The field is
+            borderless inside an already-bordered surface, so focus is
+            conveyed by the caret alone (no ring — a focus outline here would
+            box the whole composer); hover/active have no visual change;
+            disabled/loading/error/success are not applicable — the input is
+            never locked (send gating lives on the send button) and failures
+            surface as toasts rather than field styling. Geometry stays
+            borderless and fixed at every length. */}
         <textarea
           ref={ref}
-          className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[16px] leading-[1.55] text-fg outline-none placeholder:text-fg-faint max-[760px]:text-[17px]"
+          className="m-0 block min-h-[22px] w-full min-w-0 resize-none overflow-y-auto border-none bg-transparent py-2 text-[16px] leading-[1.55] text-text-primary outline-none placeholder:text-text-faint max-[760px]:text-[17px]"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="有问题，尽管问"
@@ -107,15 +146,9 @@ export function Composer({
         />
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-1">
-            {/* Web search toggle as a labeled pill (replaces the old icon-only
-                globe + the "+" attachment button). Enabled state turns blue;
-                the theme has no blue token, so these are intentional one-off
-                arbitrary values. The globe inherits the button's text color. */}
             <button
-              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition-[background,color,border-color] duration-[120ms] disabled:cursor-not-allowed disabled:opacity-50 ${
-                webSearchEnabled
-                  ? "border-[#bcd9f4] bg-[#e9f2fb] text-[#1a73c7] hover:bg-[#e0ecfa]"
-                  : "border-border-strong bg-transparent text-fg-muted hover:bg-bg-hover hover:text-fg"
+              className={`${composerPill} ${
+                webSearchEnabled ? webSearchPillSelected : composerPillIdle
               }`}
               type="button"
               aria-pressed={webSearchEnabled}
@@ -130,7 +163,7 @@ export function Composer({
           <div className="flex items-center gap-1">
             <div className="relative" ref={levelMenuRef}>
               <button
-                className="inline-flex h-8 items-center gap-1 rounded-full bg-transparent px-2.5 text-[13px] font-medium text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
+                className={`${composerPill} ${composerPillIdle}`}
                 type="button"
                 aria-label="智能水平"
                 aria-haspopup="menu"
@@ -144,15 +177,15 @@ export function Composer({
                 <div
                   role="menu"
                   aria-label="智能水平"
-                  className="absolute right-0 bottom-[calc(100%+6px)] z-10 min-w-[148px] rounded-[10px] border border-border-strong bg-bg-raised p-1 shadow-[0_6px_20px_rgba(20,20,19,0.08)]"
+                  className={`absolute right-0 bottom-[calc(100%+6px)] z-10 min-w-[148px] p-1.5 ${popoverSurface}`}
                 >
-                  <div className="px-2.5 pt-1.5 pb-1 text-[12px] text-fg-faint">智能水平</div>
+                  <div className="px-3 pt-1.5 pb-1 text-[12px] text-text-faint">智能水平</div>
                   {THINKING_LEVEL_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       role="menuitemradio"
                       aria-checked={option.value === thinkingLevel}
-                      className="flex w-full items-center justify-between gap-2 rounded-md bg-transparent px-2.5 py-[7px] text-left text-[13px] text-fg transition-[background] duration-[120ms] hover:bg-bg-hover"
+                      className={`${neutralMenuItem} justify-between max-[760px]:min-h-11`}
                       type="button"
                       onClick={() => {
                         onThinkingLevelChange(option.value);
@@ -166,12 +199,9 @@ export function Composer({
                 </div>
               )}
             </div>
-            <button className={composerTool} type="button" aria-label="语音输入">
-              <Icons.Mic size={16} />
-            </button>
             {state === "idle" ? (
               <button
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-[13px] font-medium text-accent-fg transition-[opacity_120ms,transform_60ms,background_120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:bg-bg-sunken disabled:text-fg-faint"
+                className={composerPrimaryAction}
                 type="button"
                 aria-label="发送"
                 disabled={!value.trim()}
@@ -179,11 +209,22 @@ export function Composer({
               >
                 <Icons.ArrowUp size={15} />
               </button>
+            ) : state === "submitting" ? (
+              <button
+                className={composerPrimaryAction}
+                type="button"
+                aria-label="发送中"
+                aria-busy="true"
+                disabled
+              >
+                <Icons.Loading className="animate-spin" size={15} aria-hidden="true" />
+              </button>
             ) : (
               <button
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[18px] bg-accent p-0 text-[13px] font-medium text-accent-fg transition-[opacity_120ms,transform_60ms,background_120ms] not-disabled:hover:opacity-[0.88] not-disabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                className={composerPrimaryAction}
                 type="button"
                 aria-label={state === "stopping" ? "停止中" : "停止生成"}
+                aria-busy={state === "stopping"}
                 disabled={state === "stopping"}
                 onClick={onStop}
               >

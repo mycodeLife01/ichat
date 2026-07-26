@@ -73,7 +73,7 @@ export function useRunRecovery(start: StartStream) {
         status: runState.status,
       });
 
-      // failed / cancelled: the partial and its status pill are all there is.
+      // Failed/cancelled runs keep only their partial formal answer.
       if (runState.status === "failed" || runState.status === "cancelled") return;
       void start(runId, conversationId, runState.latest_seq);
     },

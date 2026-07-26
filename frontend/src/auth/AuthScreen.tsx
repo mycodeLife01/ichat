@@ -2,7 +2,11 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 
 import { toApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
+import { dialogSurface, primaryButton } from "../ui/classes";
+import { InlineStatus } from "../ui/InlineStatus";
+import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { AuthBackground } from "./AuthBackground";
+import { authField, authFieldInput, authFieldLabel, AuthFieldError } from "./authFields";
 import { mapAuthError, type AuthFieldErrors, type AuthMode } from "./authErrorMessages";
 import { useAuthSession } from "./useAuthSession";
 
@@ -13,23 +17,15 @@ type ScreenMode = AuthMode | "forgot";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const authTab =
-  "relative mr-6 cursor-pointer border-none bg-transparent py-2.5 text-sm font-medium";
+  "relative mr-6 min-h-11 cursor-pointer border-none bg-transparent py-2.5 text-sm font-medium";
 const authTabActive =
   " text-fg after:absolute after:right-0 after:-bottom-px after:left-0 after:h-[1.5px] after:bg-fg after:content-['']";
 
-const field = "mb-3.5 flex flex-col gap-1.5";
-const fieldLabel = "text-[12.5px] font-medium text-fg-muted";
-// Clean focus: a single thin gray border, no ring/outline/background change
-// (overrides the global :focus-visible accent outline).
-const fieldInput =
-  "rounded-[10px] border border-border-strong bg-bg px-3.5 py-[11px] text-[14.5px] text-fg " +
-  "outline-none transition-[border-color] duration-[140ms] placeholder:text-fg-faint " +
-  "focus:border-fg-subtle focus-visible:outline-none";
-const fieldErr = "mt-0.5 text-xs text-danger";
+const submitButton = `${primaryButton} mt-2 h-11 w-full text-sm font-medium`;
 
 const authFootBtn =
-  "ml-1 cursor-pointer border-none bg-transparent p-0 font-[inherit] text-fg underline " +
-  "decoration-border-strong underline-offset-2 hover:decoration-fg";
+  "ml-1 inline-flex min-h-11 cursor-pointer items-center border-none bg-transparent p-0 " +
+  "font-[inherit] text-fg underline decoration-border-strong underline-offset-2 hover:decoration-fg";
 
 export function AuthScreen() {
   const { login, register, isSubmitting } = useAuthSession();
@@ -165,21 +161,13 @@ export function AuthScreen() {
     }
   }
 
-  const submitLabel = isSubmitting
-    ? mode === "register"
-      ? "注册中…"
-      : "登录中…"
-    : mode === "register"
-      ? "注册"
-      : "登录";
-
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-sans text-fg">
       <AuthBackground />
 
       <section
         ref={cardRef}
-        className="relative z-[1] w-full max-w-[420px] overflow-hidden rounded-[18px] border border-border bg-bg-raised px-9 pt-9 pb-7 shadow-[0_1px_0_rgb(255_255_255/90%)_inset,0_2px_6px_rgb(20_20_19/4%),0_24px_64px_rgb(20_20_19/8%)] max-[480px]:rounded-2xl max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]"
+        className={`${dialogSurface} relative z-[1] w-full max-w-[420px] overflow-hidden px-9 pt-9 pb-7 max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]`}
       >
         <div className="mb-[26px] flex flex-col items-start">
           <span className="font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
@@ -219,50 +207,46 @@ export function AuthScreen() {
 
         {mode === "forgot" ? (
           resetSent ? (
-            <div className="flex flex-col">
-              <p
-                className="mt-0.5 mb-0 rounded-lg bg-bg px-3 py-[9px] text-[12.5px] leading-[1.55] text-fg-muted"
-                role="status"
-              >
-                我们已发送一封包含重置链接的邮件。请查收邮箱（含垃圾邮件文件夹），并在
-                30 分钟内使用该链接。
-              </p>
-            </div>
+            <InlineStatus tone="success" className="mt-0.5">
+              我们已发送一封包含重置链接的邮件。请查收邮箱（含垃圾邮件文件夹），并在
+              30 分钟内使用该链接。
+            </InlineStatus>
           ) : (
             <form className="flex flex-col" onSubmit={handleResetRequest} noValidate>
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="auth-reset-email">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="auth-reset-email">
                   邮箱
                 </label>
                 <input
                   id="auth-reset-email"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={resetEmail}
+                  aria-invalid={fieldErrors.email != null}
+                  aria-describedby={fieldErrors.email ? "auth-reset-email-error" : undefined}
                   onChange={(event) => setResetEmail(event.target.value)}
                 />
-                {fieldErrors.email ? <div className={fieldErr}>{fieldErrors.email}</div> : null}
+                <AuthFieldError id="auth-reset-email-error" message={fieldErrors.email} />
               </div>
 
               {formMessage ? (
-                <p
-                  className="mt-0.5 mb-0 rounded-lg bg-danger-soft px-3 py-[9px] text-[12.5px] text-danger"
-                  role="alert"
-                >
+                <InlineStatus tone="error" className="mt-0.5">
                   {formMessage}
-                </p>
+                </InlineStatus>
               ) : null}
 
               <button
                 type="submit"
-                className="mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                className={submitButton}
                 disabled={resetSubmitting}
+                aria-busy={resetSubmitting}
+                aria-label={resetSubmitting ? "正在发送重置链接" : "发送重置链接"}
               >
-                {resetSubmitting ? "发送中…" : "发送重置链接"}
+                <LoadingButtonContent loading={resetSubmitting} label="发送重置链接" />
               </button>
             </form>
           )
@@ -270,108 +254,122 @@ export function AuthScreen() {
           <form className="flex flex-col" onSubmit={handleSubmit} noValidate>
           {mode === "register" ? (
             <>
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="auth-username">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="auth-username">
                   用户名
                 </label>
                 <input
                   id="auth-username"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="username"
                   autoComplete="username"
                   value={username}
+                  aria-invalid={fieldErrors.username != null}
+                  aria-describedby={fieldErrors.username ? "auth-username-error" : undefined}
                   onChange={(event) => setUsername(event.target.value)}
                 />
-                {fieldErrors.username ? (
-                  <div className={fieldErr}>{fieldErrors.username}</div>
-                ) : null}
+                <AuthFieldError id="auth-username-error" message={fieldErrors.username} />
               </div>
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="auth-nickname">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="auth-nickname">
                   昵称（可选）
                 </label>
                 <input
                   id="auth-nickname"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="nickname"
                   autoComplete="nickname"
                   placeholder="默认与用户名相同"
                   value={nickname}
+                  aria-invalid={fieldErrors.nickname != null}
+                  aria-describedby={fieldErrors.nickname ? "auth-nickname-error" : undefined}
                   onChange={(event) => setNickname(event.target.value)}
                 />
-                {fieldErrors.nickname ? (
-                  <div className={fieldErr}>{fieldErrors.nickname}</div>
-                ) : null}
+                <AuthFieldError id="auth-nickname-error" message={fieldErrors.nickname} />
               </div>
-              <div className={field}>
-                <label className={fieldLabel} htmlFor="auth-email">
+              <div className={authField}>
+                <label className={authFieldLabel} htmlFor="auth-email">
                   邮箱
                 </label>
                 <input
                   id="auth-email"
-                  className={fieldInput}
+                  className={authFieldInput}
                   name="email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
+                  aria-invalid={fieldErrors.email != null}
+                  aria-describedby={fieldErrors.email ? "auth-email-error" : undefined}
                   onChange={(event) => setEmail(event.target.value)}
                 />
-                {fieldErrors.email ? <div className={fieldErr}>{fieldErrors.email}</div> : null}
+                <AuthFieldError id="auth-email-error" message={fieldErrors.email} />
               </div>
             </>
           ) : (
-            <div className={field}>
-              <label className={fieldLabel} htmlFor="auth-identifier">
+            <div className={authField}>
+              <label className={authFieldLabel} htmlFor="auth-identifier">
                 用户名或邮箱
               </label>
               <input
                 id="auth-identifier"
-                className={fieldInput}
+                className={authFieldInput}
                 name="identifier"
                 autoComplete="username"
                 value={identifier}
+                aria-invalid={fieldErrors.identifier != null}
+                aria-describedby={fieldErrors.identifier ? "auth-identifier-error" : undefined}
                 onChange={(event) => setIdentifier(event.target.value)}
               />
-              {fieldErrors.identifier ? (
-                <div className={fieldErr}>{fieldErrors.identifier}</div>
-              ) : null}
+              <AuthFieldError id="auth-identifier-error" message={fieldErrors.identifier} />
             </div>
           )}
 
-          <div className={field}>
-            <label className={fieldLabel} htmlFor="auth-password">
+          <div className={authField}>
+            <label className={authFieldLabel} htmlFor="auth-password">
               密码
             </label>
             <input
               id="auth-password"
-              className={fieldInput}
+              className={authFieldInput}
               name="password"
               type="password"
               autoComplete={mode === "register" ? "new-password" : "current-password"}
               placeholder={mode === "register" ? "至少 8 位" : ""}
               value={password}
+              aria-invalid={fieldErrors.password != null}
+              aria-describedby={fieldErrors.password ? "auth-password-error" : undefined}
               onChange={(event) => setPassword(event.target.value)}
             />
-            {fieldErrors.password ? <div className={fieldErr}>{fieldErrors.password}</div> : null}
+            <AuthFieldError id="auth-password-error" message={fieldErrors.password} />
           </div>
 
           {formMessage ? (
-            <p
-              className="mt-0.5 mb-0 rounded-lg bg-danger-soft px-3 py-[9px] text-[12.5px] text-danger"
-              role="alert"
-            >
+            <InlineStatus tone="error" className="mt-0.5">
               {formMessage}
-            </p>
+            </InlineStatus>
           ) : null}
 
           <button
             type="submit"
-            className="mt-2 w-full cursor-pointer rounded-[10px] border-none bg-accent p-3 text-sm font-medium text-accent-fg transition-[opacity_120ms,transform_80ms] hover:opacity-[0.92] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+            className={submitButton}
             disabled={isSubmitting}
+            aria-busy={isSubmitting}
+            aria-label={
+              isSubmitting
+                ? mode === "register"
+                  ? "正在注册"
+                  : "正在登录"
+                : mode === "register"
+                  ? "注册"
+                  : "登录"
+            }
           >
-            {submitLabel}
+            <LoadingButtonContent
+              loading={isSubmitting}
+              label={mode === "register" ? "注册" : "登录"}
+            />
           </button>
           </form>
         )}

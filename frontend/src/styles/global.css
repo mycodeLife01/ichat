@@ -12,36 +12,100 @@
   --text-sm--line-height: 1.6;
   --text-2xl: 24px;
   --text-2xl--line-height: 1.6;
-  --radius-2xl: 16px;
+  /* Semantic radius hierarchy. Parent surfaces use a larger role than their
+     nested controls/items instead of selecting arbitrary radii in JSX. */
+  --radius-detail: 4px;
+  --radius-control: 8px;
+  --radius-item: 10px;
+  --radius-popover: 14px;
+  --radius-card: 16px;
+  --radius-dialog: 20px;
+  --radius-composer: 28px;
+  --radius-pill: 999px;
+
+  /* Tailwind/legacy aliases kept while business surfaces migrate. */
+  --radius-sm: var(--radius-detail);
+  --radius-md: 6px;
+  --radius-lg: var(--radius-item);
+  --radius-2xl: var(--radius-card);
   /* Legacy transitions used the CSS default curve, not Tailwind's. */
   --default-transition-timing-function: ease;
 
-  --color-bg: #fbfbfa;
-  --color-bg-sunken: #f4f3f0;
-  --color-bg-raised: #ffffff;
-  --color-bg-hover: rgba(20, 20, 19, 0.04);
-  --color-bg-active: rgba(20, 20, 19, 0.07);
-
-  --color-fg: #1a1a19;
-  --color-fg-muted: #6b6a66;
-  --color-fg-subtle: #95938e;
-  --color-fg-faint: #b8b6b0;
+  /* Neutral surfaces and text. Hover and active are transient; selected is persistent. */
+  --color-canvas: #fbfbfa;
+  --color-sidebar: #f4f3f0;
+  --color-surface: #ffffff;
+  --color-sunken: #f4f3f0;
+  --color-hover: rgba(20, 20, 19, 0.04);
+  --color-active: rgba(20, 20, 19, 0.1);
+  --color-selected: rgba(20, 20, 19, 0.07);
+  --color-text-primary: #1a1a19;
+  --color-text-muted: #6b6a66;
+  --color-text-faint: #b8b6b0;
 
   --color-border: rgba(20, 20, 19, 0.08);
   --color-border-strong: rgba(20, 20, 19, 0.14);
-  --color-border-focus: rgba(20, 20, 19, 0.55);
 
   --color-accent: #1a1a19;
-  --color-accent-fg: #fbfbfa;
+  --color-accent-foreground: #fbfbfa;
+
+  /* Tone families expose foreground, soft surface, and border roles. */
+  --color-neutral-foreground: #6b6a66;
+  --color-neutral-soft: #f4f3f0;
+  --color-neutral-border: rgba(20, 20, 19, 0.12);
+
+  --color-success-foreground: #39734a;
+  --color-success-soft: #f0f8f2;
+  --color-success-border: #cce5d2;
+
+  --color-error-foreground: #a6402b;
+  --color-error-soft: #fbeeea;
+  --color-error-border: #e8c7bd;
+
+  --color-warning-foreground: #805b12;
+  --color-warning-soft: #fff7df;
+  --color-warning-border: #ead59b;
+
+  /* Web search uses a blue informational selected state. */
+  --color-search-foreground: #1a73c7;
+  --color-search-soft: #e9f2fb;
+  --color-search-soft-hover: #e0ecfa;
+  --color-search-border: #bcd9f4;
+
+  /* Danger is an action role in the error family. Only the final irreversible
+     action consumes the solid role. */
+  --color-danger: var(--color-error-foreground);
+  --color-danger-soft: var(--color-error-soft);
+  --color-danger-border: var(--color-error-border);
+  --color-danger-solid: #a6402b;
+  --color-danger-solid-foreground: #ffffff;
+
+  /* Layering, focus, and elevation values stay out of business components. */
+  --color-overlay: rgba(20, 20, 19, 0.45);
+  --color-focus-ring: #2563eb;
+  --shadow-popover: 0 5px 18px rgba(20, 20, 19, 0.14);
+  --shadow-dialog: 0 24px 80px rgba(20, 20, 19, 0.22);
+  --shadow-composer: 0 4px 16px rgba(20, 20, 19, 0.05);
+
+  /* Legacy color aliases kept until the migration tickets move consumers to
+     the semantic roles above. */
+  --color-bg: var(--color-canvas);
+  --color-bg-sunken: var(--color-sunken);
+  --color-bg-raised: var(--color-surface);
+  --color-bg-hover: var(--color-hover);
+  --color-bg-active: var(--color-active);
+  --color-menu-hover: var(--color-hover);
+
+  --color-fg: var(--color-text-primary);
+  --color-fg-muted: #6b6a66;
+  --color-fg-subtle: #95938e;
+  --color-fg-faint: var(--color-text-faint);
+  --color-border-focus: var(--color-focus-ring);
+  --color-accent-fg: var(--color-accent-foreground);
   --color-accent-soft: rgba(20, 20, 19, 0.07);
-
-  --color-danger: #b54a2e;
-  --color-danger-soft: rgba(181, 74, 46, 0.08);
-
-  /* rounded-sm / rounded-md / rounded-lg (legacy --radius-sm / --radius / --radius-lg) */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --color-menu-danger: var(--color-danger);
+  --color-danger-hover: var(--color-danger-soft);
+  --shadow-menu: var(--shadow-popover);
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
@@ -163,9 +227,8 @@ body {
   input:focus-visible,
   textarea:focus-visible,
   [role="button"]:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 }
 
@@ -196,7 +259,7 @@ body {
 .md ul { list-style: disc; }
 .md ol { list-style: decimal; }
 .md li { margin: 4px 0; }
-.md li::marker { color: var(--color-fg-subtle); }
+.md li::marker { color: var(--color-text-faint); }
 .md a {
   color: var(--color-accent);
   text-decoration: underline;
@@ -210,7 +273,7 @@ body {
   /* Preflight zeroes the UA's 40px side margins the old look relied on. */
   margin-inline: 40px;
   padding: 2px 0 2px 14px;
-  color: var(--color-fg-muted);
+  color: var(--color-text-muted);
   font-style: normal;
 }
 /* h1–h3 are styled above; keep deeper headings bold where preflight would
@@ -219,18 +282,18 @@ body {
 .md code {
   font-family: var(--font-mono);
   font-size: 13.5px;
-  background: var(--color-bg-sunken);
+  background: var(--color-sunken);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-detail);
   border: 1px solid var(--color-border);
 }
 .md pre {
   font-family: var(--font-mono);
   font-size: 13.5px;
-  background: #f7f7f5;
-  color: var(--color-fg);
+  background: var(--color-sunken);
+  color: var(--color-text-primary);
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-detail);
   border: 1px solid var(--color-border-strong);
   overflow-x: auto;
   line-height: 1.55;
@@ -253,7 +316,7 @@ body {
   text-align: left;
 }
 .md th {
-  background: var(--color-bg-sunken);
+  background: var(--color-sunken);
   font-weight: 600;
 }
 .md hr {
@@ -274,16 +337,16 @@ body {
   .md table { font-size: 15.5px; }
 }
 
-/* Thinking / tool-status label (思考中 / 已思考 / 正在搜索…). Body-sized text
+/* Thinking / tool-status label (正在思考 / 已思考 / 正在搜索…). Body-sized text
    that, while streaming, runs a glow sweeping first→last character (gradient
    clipped to the glyphs, animated by background-position — same direction as
    the title skeleton). Hovering forces solid black in any state. */
 .thinking-label {
-  color: var(--color-fg-muted);
+  color: var(--color-text-muted);
   transition: color 120ms ease;
 }
 .thinking-label:hover {
-  color: var(--color-fg);
+  color: var(--color-text-primary);
 }
 .thinking-label.is-streaming {
   /* A lighter glint sweeps over the gray base text (DeepSeek-style): the bright
@@ -291,11 +354,11 @@ body {
      reads as a glow passing first→last char rather than a dark smudge. */
   background: linear-gradient(
     90deg,
-    var(--color-fg-muted) 0%,
-    var(--color-fg-muted) 40%,
-    var(--color-fg-faint) 50%,
-    var(--color-fg-muted) 60%,
-    var(--color-fg-muted) 100%
+    var(--color-text-muted) 0%,
+    var(--color-text-muted) 40%,
+    var(--color-text-faint) 50%,
+    var(--color-text-muted) 60%,
+    var(--color-text-muted) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -307,8 +370,8 @@ body {
 }
 .thinking-label.is-streaming:hover {
   background: none;
-  -webkit-text-fill-color: var(--color-fg);
-  color: var(--color-fg);
+  -webkit-text-fill-color: var(--color-text-primary);
+  color: var(--color-text-primary);
   animation: none;
 }
 @keyframes thinking-shimmer {
@@ -319,7 +382,8 @@ body {
   .thinking-label.is-streaming { animation: none; }
 }
 
-/* Syntax highlighting (very light) */
+/* Syntax highlighting (very light). Whitelisted non-business colors: these
+   token hues live only here, never in component JSX. */
 .tok-kw { color: #c678dd; }
 .tok-str { color: #98c379; }
 .tok-num { color: #d19a66; }

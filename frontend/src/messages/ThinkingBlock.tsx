@@ -1,11 +1,12 @@
 import { useState } from "react";
 
+import { focusRing } from "../ui/classes";
 import { Icons } from "../ui/icons";
 
 type ThinkingBlockProps = {
   content: string;
   streaming: boolean;
-  // Overrides the default 思考中…/已思考 header — used while a tool call is in
+  // Overrides the default 正在思考/已思考 header — used while a tool call is in
   // flight to surface the search phase (正在搜索… / 已找到 n 个来源).
   label?: string;
 };
@@ -15,10 +16,10 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
 
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-fg-muted max-[760px]:text-[15px]`}
+      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
     >
       <div
-        className="group inline-flex max-w-full cursor-pointer items-center gap-1.5 py-0.5 select-none"
+        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail py-0.5 select-none`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -36,16 +37,16 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
         <span
           className={`thinking-label min-w-0 truncate text-[16px] leading-[1.6] max-[760px]:text-[17px]${streaming ? " is-streaming" : ""}`}
         >
-          {label ?? (streaming ? "思考中…" : "已思考")}
+          {label ?? (streaming ? "正在思考" : "已思考")}
         </span>
         <Icons.Chevron
           size={14}
-          className={`shrink-0 text-fg-subtle transition-transform duration-[160ms]${open ? "" : " -rotate-90"}`}
+          className={`shrink-0 text-text-faint transition-transform duration-[160ms]${open ? "" : " -rotate-90"}`}
         />
       </div>
       {content && (
         <div
-          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-fg-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
+          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-text-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
         >
           {content}
         </div>

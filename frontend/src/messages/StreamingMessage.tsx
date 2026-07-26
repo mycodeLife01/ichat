@@ -1,12 +1,19 @@
 import type { ActiveRunState } from "../runs/state";
-import { Icons } from "../ui/icons";
+import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type StreamingMessageProps = { run: NonNullable<ActiveRunState> };
 
-const statusPill =
-  "mt-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-[3px] text-xs";
+export function PendingAssistantMessage() {
+  return (
+    <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
+      <div className="min-w-0 flex-1">
+        <ThinkingBlock content="" streaming />
+      </div>
+    </div>
+  );
+}
 
 export function StreamingMessage({ run }: StreamingMessageProps) {
   const isStreaming =
@@ -19,7 +26,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // While a web_search tool call is in flight, the collapsible header label
   // takes over the thinking copy: 正在搜索… → 已找到 n 个来源 (no preview box).
   const toolLabel = run.toolState ? labelForToolState(run.toolState) : undefined;
-  const showThinking = run.draftReasoning !== "" || run.toolState !== null;
+  const showThinking = thinking;
 
   return (
     <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
@@ -32,19 +39,12 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           />
         )}
         <Markdown content={run.draftText} streaming />
-        {run.status === "cancelled" && (
-          <div className={`status-pill stopped ${statusPill} border-border bg-bg-sunken text-fg-muted`}>
-            <span className="h-2 w-2 rounded-[2px] bg-fg-subtle" />
-            已停止
-          </div>
-        )}
+        {/* Failures remain in message context as a persistent alert. Cancelled
+            runs keep any partial formal answer without an extra status block. */}
         {run.status === "failed" && (
-          <div
-            className={`status-pill failed ${statusPill} border-[rgba(181,74,46,0.18)] bg-danger-soft text-danger`}
-          >
-            <Icons.Close size={12} />
+          <InlineStatus tone="error" className="mt-2 w-fit">
             生成失败 · 请稍后重试
-          </div>
+          </InlineStatus>
         )}
       </div>
     </div>

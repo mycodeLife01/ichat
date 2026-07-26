@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
 import { BottomSheet } from "../ui/BottomSheet";
-import { ghostBtn, primaryBtn, sheetItem } from "../ui/classes";
+import {
+  buttonControl,
+  focusRing,
+  messageBubble,
+  mobileActionItem,
+  neutralMenuItem,
+  primaryButton,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
 import { SourceFavicon } from "./SourcesPanel";
-import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
   message: MessageResponse;
@@ -31,9 +37,6 @@ function copy(text: string) {
 // preserves the .msg scroll-margin used by intent-based thread scrolling.
 const msgBase = "msg group flex scroll-mt-[60px] flex-col gap-1.5";
 
-// Edit textarea grows with content up to this cap, then scrolls.
-const EDIT_MAX_HEIGHT = 480;
-
 // Long user messages are clipped to this height with an expand toggle.
 const COLLAPSE_MAX_HEIGHT = 320;
 
@@ -53,6 +56,7 @@ export function Message({
   // `overflowing` is measured from the rendered content.
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
+  const disabledReasonId = useId();
   const contentRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile user messages have no visible action button (no hover on touch);
@@ -70,14 +74,14 @@ export function Message({
     [],
   );
 
-  // Auto-grow the edit textarea to fit its content (same pattern as the
-  // Composer); beyond EDIT_MAX_HEIGHT it scrolls.
+  // Auto-grow the edit textarea to fit its content. The surrounding panel
+  // caps the visible editor height and owns scrolling for long drafts.
   useEffect(() => {
     if (!editing) return;
     const el = editRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, EDIT_MAX_HEIGHT)}px`;
+    el.style.height = `${el.scrollHeight}px`;
   }, [editing, draft]);
 
   // Detect whether the bubble content exceeds the collapse cap. Re-measure on
@@ -118,11 +122,13 @@ export function Message({
     copiedTimer.current = setTimeout(() => setCopied(false), 1500);
   };
 
-  // Mobile sheet rows match the sidebar's conversation menu sheet (sheetItem).
+  // Mobile sheet rows consume the same neutral action-item primitive as the
+  // sidebar and user action sheets.
   const sheetActions = (afterAction: () => void) => (
     <>
       <button
-        className={`${sheetItem} text-fg`}
+        className={`${neutralMenuItem} ${mobileActionItem}`}
+        data-variant="neutral"
         onClick={() => {
           copy(message.content);
           afterAction();
@@ -132,9 +138,11 @@ export function Message({
         复制
       </button>
       <button
-        className={`${sheetItem} text-fg`}
+        className={`${neutralMenuItem} ${mobileActionItem}`}
+        data-variant="neutral"
         disabled={disabled}
         title={mutateDisabledReason ?? undefined}
+        aria-describedby={disabled ? disabledReasonId : undefined}
         onClick={() => {
           mutate();
           afterAction();
@@ -143,6 +151,14 @@ export function Message({
         <MutateIcon size={15} />
         {mutateLabel}
       </button>
+      {mutateDisabledReason && (
+        <p
+          id={disabledReasonId}
+          className="px-5 pt-1 pb-2 text-[13px] leading-5 text-text-muted"
+        >
+          {mutateDisabledReason}
+        </p>
+      )}
     </>
   );
 
@@ -189,7 +205,11 @@ export function Message({
   // hover exists on touch); user actions open via long-press on the bubble.
   const actionBar =
     isMobile && isUser ? (
-      <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)}>
+      <BottomSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        ariaLabel="消息操作"
+      >
         {sheetActions(() => setSheetOpen(false))}
       </BottomSheet>
     ) : (
@@ -209,33 +229,37 @@ export function Message({
     };
     return (
       <div className={`${msgBase} user items-end`}>
-        {/* Full thread width (matches the reading column) so long content has
-            room; the textarea auto-grows, so short content still gets a
-            comfortable editing area via min-h. */}
-        <div className="w-full animate-edit-in rounded-lg border border-border-strong bg-bg-sunken px-3.5 py-2.5">
-          {/* p-[2px] preserves the UA default padding the pre-Tailwind version
-              never reset (preflight zeroes it, shifting text wrapping); inline-block
-              (the default — no `block`) keeps the old baseline gap below the box. */}
-          <textarea
-            autoFocus
-            ref={editRef}
-            className="min-h-[88px] w-full resize-none overflow-y-auto border-none bg-transparent p-[2px] text-[15.5px] leading-[1.55] text-fg outline-none max-[760px]:text-[17px]"
-            style={{ maxHeight: `${EDIT_MAX_HEIGHT}px` }}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                save();
-              }
-              if (event.key === "Escape") cancel();
-            }}
-          />
-          <div className="mt-2 flex justify-end gap-1.5">
-            <button className={ghostBtn} onClick={cancel}>
+        {/* Editing uses a full-width panel rather than stretching the compact
+            message bubble, matching the visual hierarchy of the reference. */}
+        <div className="w-full animate-edit-in rounded-[24px] bg-sunken p-3">
+          <div className="m-2 max-h-[25dvh] overflow-y-auto">
+            <textarea
+              autoFocus
+              ref={editRef}
+              className="block min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[16px] leading-6 text-text-primary outline-none"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  save();
+                }
+                if (event.key === "Escape") cancel();
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
+            <button
+              className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
+              onClick={cancel}
+            >
               取消
             </button>
-            <button className={primaryBtn} onClick={save} disabled={draft.trim() === ""}>
+            <button
+              className={`${primaryButton} h-9 rounded-full px-3 text-[14px] font-medium leading-5`}
+              onClick={save}
+              disabled={draft.trim() === ""}
+            >
               保存
             </button>
           </div>
@@ -249,7 +273,7 @@ export function Message({
     return (
       <div className={`${msgBase} user items-end`}>
         <div
-          className={`max-w-[78%] rounded-[10px] border border-border bg-bg-sunken px-3 py-2 text-[15.5px] leading-[1.55] text-fg max-[760px]:max-w-[86%] max-[760px]:text-[17px]${
+          className={`max-w-[70%] ${messageBubble}${
             isMobile ? " select-none [-webkit-touch-callout:none]" : ""
           }`}
           onTouchStart={isMobile ? startLongPress : undefined}
@@ -263,19 +287,19 @@ export function Message({
           <div className="relative">
             <div
               ref={contentRef}
-              className="whitespace-pre-wrap wrap-anywhere"
+              className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
               style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
             >
               {message.content}
             </div>
             {/* Fade the clipped last line into the bubble background. */}
             {collapsed && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-bg-sunken to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
             )}
           </div>
           {overflowing && (
             <button
-              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-fg-muted transition-colors duration-[120ms] hover:text-fg"
+              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
               type="button"
               aria-expanded={expanded}
               onClick={() => setExpanded(!expanded)}
@@ -297,7 +321,6 @@ export function Message({
   return (
     <div className={`${msgBase} assistant items-stretch`}>
       <div className="min-w-0 flex-1">
-        {message.reasoning && <ThinkingBlock content={message.reasoning} streaming={false} />}
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}
@@ -322,7 +345,7 @@ export function SourcesTrigger({
 }) {
   return (
     <button
-      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-fg-muted transition-colors duration-[120ms] hover:bg-bg-hover hover:text-fg"
+      className={`${focusRing} mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-pill border border-border bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-text-muted transition-colors duration-[120ms] hover:bg-hover hover:text-text-primary max-[760px]:min-h-11`}
       type="button"
       aria-label={`查看 ${sources.length} 个来源`}
       onClick={onClick}
@@ -331,7 +354,7 @@ export function SourcesTrigger({
         {sources.slice(0, 3).map((source) => (
           <span
             key={`${source.id}:${source.url}`}
-            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-full border border-border bg-bg-raised"
+            className="inline-flex h-[18px] w-[18px] items-center justify-center overflow-hidden rounded-pill border border-border bg-surface"
           >
             <SourceFavicon url={source.url} size={12} />
           </span>

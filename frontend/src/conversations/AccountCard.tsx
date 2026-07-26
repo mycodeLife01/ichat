@@ -1,12 +1,10 @@
 import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
-  BadgeCheck,
   Camera,
   ChevronRight,
   KeyRound,
   Mail,
-  MailWarning,
   Trash2,
   UserRound,
   X,
@@ -14,6 +12,18 @@ import {
 
 import { ApiError } from "../api/errors";
 import { Avatar } from "../ui/Avatar";
+import {
+  buttonControl,
+  dangerInteractiveItem,
+  iconControl,
+  inputControl,
+  interactiveItem,
+  primaryButton,
+} from "../ui/classes";
+import { InlineStatus } from "../ui/InlineStatus";
+import { LoadingButtonContent } from "../ui/LoadingButtonContent";
+import { ModalDialog } from "../ui/ModalDialog";
+import type { ToastHandler } from "../ui/state";
 import { AvatarCropper } from "./AvatarCropper";
 
 type AccountCardProps = {
@@ -24,15 +34,20 @@ type AccountCardProps = {
   onUploadAvatar?: (blob: Blob) => Promise<string>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<unknown>;
   onRequestDeletion: (password: string) => Promise<unknown>;
-  onToast: (message: string) => void;
+  onToast: ToastHandler;
 };
 
 type AccountView = "overview" | "password" | "deletion";
+type PasswordErrors = {
+  current?: string;
+  newPassword?: string;
+  form?: string;
+};
 
 const fieldClass =
-  "h-10 w-full rounded-md border border-border-strong bg-bg px-3 text-[13px] text-fg outline-none transition-colors focus:border-fg-muted";
+  `${inputControl} h-10 w-full px-3 text-[13px] outline-none`;
 const primaryClass =
-  "inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-accent px-4 text-[12.5px] font-medium text-accent-fg disabled:opacity-60";
+  `${primaryButton} h-9 shrink-0 px-4 text-[12.5px] font-medium`;
 function AccountActionRow({
   icon,
   title,
@@ -50,21 +65,19 @@ function AccountActionRow({
     <button
       type="button"
       aria-label={title}
-      className={`flex w-full items-center gap-3 px-1 py-3.5 text-left ${
-        danger ? "text-danger" : "text-fg"
-      }`}
+      className={`${danger ? dangerInteractiveItem : interactiveItem} flex w-full items-center gap-3 px-2 py-3.5 text-left`}
       onClick={onClick}
     >
       <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-          danger ? "bg-danger-soft" : "bg-bg-sunken text-fg-muted"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-pill ${
+          danger ? "text-danger" : "bg-sunken text-text-muted"
         }`}
       >
         {icon}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12.5px] font-medium">{title}</span>
-        <span className="mt-0.5 block text-[10.5px] text-fg-subtle">{description}</span>
+        <span className={`mt-0.5 block text-[10.5px] ${danger ? "text-danger" : "text-fg-subtle"}`}>{description}</span>
       </span>
       <ChevronRight size={14} className="text-fg-faint" />
     </button>
@@ -94,11 +107,14 @@ export function AccountCard({
   const [sending, setSending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [passwordErrors, setPasswordErrors] = useState<PasswordErrors>({});
+  const [deletionError, setDeletionError] = useState<string | null>(null);
 
   const chooseAvatar = () => {
     if (!user.emailVerified) {
-      onToast("请先完成邮箱认证后再上传头像");
+      onToast("Verify your email before uploading an avatar.", "warning");
       return;
     }
     inputRef.current?.click();
@@ -107,20 +123,20 @@ export function AccountCard({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setFormError(null);
+    setAvatarError(null);
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setFormError("仅支持 JPEG、PNG 和静态 WebP 图片。");
+      setAvatarError("Only JPEG, PNG, and static WebP images are supported.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setFormError("原图不能超过 10 MiB。");
+      setAvatarError("The source image must not exceed 10 MiB.");
       return;
     }
     if (file.type === "image/webp") {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const signature = new TextDecoder("latin1").decode(bytes);
       if (signature.includes("ANIM") || signature.includes("ANMF")) {
-        setFormError("头像不支持动画 WebP，请选择静态图片。");
+        setAvatarError("Animated WebP images are not supported.");
         return;
       }
     }
@@ -132,37 +148,40 @@ export function AccountCard({
       const bitmap = await createImageBitmap(file);
       const { width, height } = bitmap;
       bitmap.close();
-      if (width < 128 || height < 128) throw new Error("图片至少需要 128×128 像素。");
+      if (width < 128 || height < 128) throw new Error("The image must be at least 128×128 pixels.");
       if (width > 8192 || height > 8192 || width * height > 20_000_000) {
-        throw new Error("图片像素过大，请选择最长边不超过 8192 且总像素不超过 2000 万的图片。");
+        throw new Error("The image must be at most 8192 pixels per side and 20 million pixels total.");
       }
       setCropFile(file);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "图片无法解码，请选择其他图片。");
+      setAvatarError(error instanceof Error ? error.message : "The image could not be decoded.");
     }
   };
 
   const back = () => {
     setView("overview");
-    setFormError(null);
+    setAvatarError(null);
+    setPasswordErrors({});
+    setDeletionError(null);
   };
 
   const saveNickname = async () => {
     const normalized = nickname.trim();
     if (normalized.length < 1 || normalized.length > 50) {
-      setFormError("昵称长度需为 1–50 个字符。");
+      setNicknameError("Nickname must be between 1 and 50 characters.");
       return;
     }
     if (normalized === savedNickname) return;
     setSubmitting(true);
-    setFormError(null);
+    setNicknameError(null);
     try {
       await onUpdateNickname(normalized);
       setNickname(normalized);
       setSavedNickname(normalized);
-      onToast("昵称已更新");
+      onToast("昵称已更新", "success");
     } catch {
-      onToast("昵称保存失败，请重试");
+      setNicknameError("Failed to save nickname. Please try again.");
+      onToast("Failed to save nickname. Please try again.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -173,12 +192,13 @@ export function AccountCard({
     setSending(true);
     try {
       await onResendVerification();
-      onToast("验证邮件已发送");
+      onToast("验证邮件已发送", "success");
     } catch (error) {
       onToast(
         error instanceof ApiError && error.status === 429
-          ? "发送过于频繁，请稍后再试。"
-          : "验证邮件发送失败，请重试。",
+          ? "Too many requests. Please try again later."
+          : "Failed to send the verification email. Please try again.",
+        "error",
       );
     } finally {
       setSending(false);
@@ -187,40 +207,43 @@ export function AccountCard({
 
   const changePassword = async () => {
     if (newPassword.length < 8 || newPassword.length > 128) {
-      setFormError("新密码长度需为 8–128 个字符。");
+      setPasswordErrors({ newPassword: "New password must be between 8 and 128 characters." });
       return;
     }
     setSubmitting(true);
-    setFormError(null);
+    setPasswordErrors({});
     try {
       await onChangePassword(currentPassword, newPassword);
     } catch (error) {
-      setFormError(
-        error instanceof ApiError && error.status === 429
-          ? "尝试次数过多，请稍后再试。"
-          : error instanceof ApiError && error.status === 400
-            ? "当前密码不正确。"
-            : "密码修改失败，请重试。",
-      );
+      if (error instanceof ApiError && error.status === 400) {
+        setPasswordErrors({ current: "Current password is incorrect." });
+      } else {
+        setPasswordErrors({
+          form:
+            error instanceof ApiError && error.status === 429
+              ? "Too many attempts. Please try again later."
+              : "Failed to change password. Please try again.",
+        });
+      }
       setSubmitting(false);
     }
   };
 
   const requestDeletion = async () => {
     setSubmitting(true);
-    setFormError(null);
+    setDeletionError(null);
     try {
       await onRequestDeletion(deletionPassword);
       setDeletionPassword("");
       setNotice("注销确认邮件已发送，请检查当前邮箱。账号尚未注销。");
       setView("overview");
     } catch (error) {
-      setFormError(
+      setDeletionError(
         error instanceof ApiError && error.status === 429
-          ? "请求过于频繁，请稍后再试。"
+          ? "Too many requests. Please try again later."
           : error instanceof ApiError && error.status === 400
-            ? "当前密码不正确。"
-            : "确认邮件发送失败，请重试。",
+            ? "Current password is incorrect."
+            : "Failed to send the confirmation email. Please try again.",
       );
     } finally {
       setSubmitting(false);
@@ -228,18 +251,12 @@ export function AccountCard({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.36)] p-6 backdrop-blur-[1px] max-[760px]:p-2"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalDialog
+      titleId="account-card-title"
+      onClose={onClose}
+      className="w-full max-w-[680px] overflow-hidden"
+      backdropClassName="z-50 p-6 max-[760px]:p-2"
     >
-      <section
-        className="w-full max-w-[680px] overflow-hidden rounded-xl border border-border-strong bg-bg-raised shadow-[0_24px_80px_rgba(20,20,19,0.22)]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="account-card-title"
-      >
         <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
           <div>
             <h2 id="account-card-title" className="text-[16px] font-semibold text-fg">
@@ -249,8 +266,9 @@ export function AccountCard({
           </div>
           <button
             type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-bg-hover hover:text-fg"
+            className={`${iconControl} h-8 w-8 shrink-0`}
             aria-label="关闭账号"
+            data-dialog-initial-focus
             onClick={onClose}
           >
             <X size={16} />
@@ -258,11 +276,7 @@ export function AccountCard({
         </header>
 
         <div className="max-h-[calc(100vh-128px)] overflow-y-auto px-6 py-5 max-[760px]:px-4">
-          {notice && (
-            <div className="mb-4 flex items-center rounded-md border border-[#cce5d2] bg-[#f0f8f2] px-3 py-2 text-[11.5px] text-[#39734a]" role="status">
-              {notice}
-            </div>
-          )}
+          {notice && <InlineStatus tone="success" className="mb-4">{notice}</InlineStatus>}
 
           {view === "overview" && (
             <>
@@ -270,8 +284,12 @@ export function AccountCard({
                 <div className="flex items-center gap-4">
                   <button
                     type="button"
-                    className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-visible rounded-full bg-accent text-lg font-semibold text-accent-fg"
+                    className={`relative flex h-14 w-14 shrink-0 items-center justify-center overflow-visible rounded-pill bg-accent text-lg font-semibold text-accent-foreground ${
+                      avatarError ? "outline-2 outline-error-border" : ""
+                    }`}
                     aria-label="选择头像"
+                    aria-invalid={avatarError != null}
+                    aria-describedby={avatarError ? "account-avatar-error" : undefined}
                     onClick={chooseAvatar}
                   >
                     <Avatar
@@ -280,7 +298,7 @@ export function AccountCard({
                       className="h-full w-full text-lg"
                       imageAlt="头像预览"
                     />
-                    <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-bg-raised bg-accent text-accent-fg">
+                    <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-pill border-2 border-surface bg-accent text-accent-foreground">
                       <Camera size={10} />
                     </span>
                   </button>
@@ -296,9 +314,20 @@ export function AccountCard({
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     aria-label="上传头像图片"
+                    aria-invalid={avatarError != null}
+                    aria-describedby={avatarError ? "account-avatar-error" : undefined}
                     onChange={onFileChange}
                   />
                 </div>
+                {avatarError && (
+                  <InlineStatus
+                    id="account-avatar-error"
+                    tone="error"
+                    className="mt-2 border-0 bg-transparent px-0 py-0"
+                  >
+                    {avatarError}
+                  </InlineStatus>
+                )}
 
                 <form
                   className="mt-4 flex gap-2"
@@ -313,22 +342,37 @@ export function AccountCard({
                     maxLength={50}
                     autoComplete="nickname"
                     aria-label="昵称"
-                    onChange={(event) => setNickname(event.target.value)}
+                    aria-invalid={nicknameError != null}
+                    aria-describedby={nicknameError ? "account-nickname-error" : undefined}
+                    onChange={(event) => {
+                      setNickname(event.target.value);
+                      setNicknameError(null);
+                    }}
                   />
                   <button
                     type="submit"
                     className={primaryClass}
                     disabled={submitting || nickname.trim() === savedNickname}
+                    aria-busy={submitting}
+                    aria-label={submitting ? "正在保存" : "保存"}
                   >
-                    {submitting ? "保存中…" : "保存"}
+                    <LoadingButtonContent loading={submitting} label="保存" />
                   </button>
                 </form>
-                {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+                {nicknameError && (
+                  <InlineStatus
+                    id="account-nickname-error"
+                    tone="error"
+                    className="mt-2 border-0 bg-transparent px-0 py-0"
+                  >
+                    {nicknameError}
+                  </InlineStatus>
+                )}
               </section>
 
               <div className="divide-y divide-border border-y border-border">
                 <div className="flex items-center gap-3 px-1 py-3.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-fg-muted">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-sunken text-text-muted">
                     <UserRound size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -337,29 +381,29 @@ export function AccountCard({
                   </div>
                 </div>
                 <div className="flex items-center gap-3 px-1 py-3.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-fg-muted">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-sunken text-text-muted">
                     <Mail size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12.5px] font-medium text-fg">{user.email}</div>
                     <div className="text-[10.5px] text-fg-subtle">账号邮箱</div>
                   </div>
-                  <span
-                    className={`inline-flex shrink-0 items-center gap-1 text-[11.5px] ${
-                      user.emailVerified ? "text-success" : "text-warning"
-                    }`}
+                  <InlineStatus
+                    tone={user.emailVerified ? "success" : "warning"}
+                    className="shrink-0 border-0 bg-transparent p-0 text-[11.5px]"
                   >
-                    {user.emailVerified ? <BadgeCheck size={13} /> : <MailWarning size={13} />}
                     {user.emailVerified ? "已认证" : "未认证"}
-                  </span>
+                  </InlineStatus>
                   {!user.emailVerified && (
                     <button
                       type="button"
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-accent px-3 text-[12px] font-medium text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-60"
+                      className={`${primaryButton} h-8 shrink-0 px-3 text-[12px] font-medium`}
                       disabled={sending}
+                      aria-busy={sending}
+                      aria-label={sending ? "正在发送认证邮件" : "认证邮箱"}
                       onClick={() => void resend()}
                     >
-                      {sending ? "发送中…" : "认证邮箱"}
+                      <LoadingButtonContent loading={sending} label="认证邮箱" />
                     </button>
                   )}
                 </div>
@@ -368,7 +412,8 @@ export function AccountCard({
                   title="修改密码"
                   description="更新登录密码"
                   onClick={() => {
-                    setFormError(null);
+                    setAvatarError(null);
+                    setPasswordErrors({});
                     setView("password");
                   }}
                 />
@@ -378,7 +423,8 @@ export function AccountCard({
                   description="停用账号并退出所有设备"
                   danger
                   onClick={() => {
-                    setFormError(null);
+                    setAvatarError(null);
+                    setDeletionError(null);
                     setView("deletion");
                   }}
                 />
@@ -393,21 +439,78 @@ export function AccountCard({
                 void changePassword();
               }}
             >
-              <button type="button" className="mb-4 inline-flex items-center gap-1.5 text-[11.5px] text-fg-muted hover:text-fg" onClick={back}>
+              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 text-[11.5px]`} onClick={back}>
                 <ArrowLeft size={13} />账号
               </button>
               <h3 className="text-[15px] font-semibold text-fg">修改密码</h3>
               <p className="mt-1 text-[10.5px] text-fg-subtle">更新后所有设备会退出登录。</p>
               <div className="mt-5 grid grid-cols-2 gap-2 max-[760px]:grid-cols-1">
-                <label className="sr-only" htmlFor="account-current-password">当前密码</label>
-                <input id="account-current-password" className={fieldClass} type="password" autoComplete="current-password" placeholder="当前密码" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-                <label className="sr-only" htmlFor="account-new-password">新密码</label>
-                <input id="account-new-password" className={fieldClass} type="password" autoComplete="new-password" placeholder="新密码（8–128 位）" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                <div>
+                  <label className="sr-only" htmlFor="account-current-password">当前密码</label>
+                  <input
+                    id="account-current-password"
+                    className={fieldClass}
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="当前密码"
+                    value={currentPassword}
+                    aria-invalid={passwordErrors.current != null}
+                    aria-describedby={passwordErrors.current ? "account-current-password-error" : undefined}
+                    onChange={(event) => {
+                      setCurrentPassword(event.target.value);
+                      setPasswordErrors((errors) => ({ ...errors, current: undefined }));
+                    }}
+                  />
+                  {passwordErrors.current && (
+                    <InlineStatus
+                      id="account-current-password-error"
+                      tone="error"
+                      className="mt-2 border-0 bg-transparent px-0 py-0"
+                    >
+                      {passwordErrors.current}
+                    </InlineStatus>
+                  )}
+                </div>
+                <div>
+                  <label className="sr-only" htmlFor="account-new-password">新密码</label>
+                  <input
+                    id="account-new-password"
+                    className={fieldClass}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="新密码（8–128 位）"
+                    value={newPassword}
+                    aria-invalid={passwordErrors.newPassword != null}
+                    aria-describedby={passwordErrors.newPassword ? "account-new-password-error" : undefined}
+                    onChange={(event) => {
+                      setNewPassword(event.target.value);
+                      setPasswordErrors((errors) => ({ ...errors, newPassword: undefined }));
+                    }}
+                  />
+                  {passwordErrors.newPassword && (
+                    <InlineStatus
+                      id="account-new-password-error"
+                      tone="error"
+                      className="mt-2 border-0 bg-transparent px-0 py-0"
+                    >
+                      {passwordErrors.newPassword}
+                    </InlineStatus>
+                  )}
+                </div>
               </div>
-              {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+              {passwordErrors.form && (
+                <InlineStatus tone="error" className="mt-3">
+                  {passwordErrors.form}
+                </InlineStatus>
+              )}
               <div className="mt-4 flex justify-end">
-                <button type="submit" className={primaryClass} disabled={submitting}>
-                  {submitting ? "修改中…" : "修改密码"}
+                <button
+                  type="submit"
+                  className={primaryClass}
+                  disabled={submitting}
+                  aria-busy={submitting}
+                >
+                  <LoadingButtonContent loading={submitting} label="修改密码" />
                 </button>
               </div>
             </form>
@@ -420,38 +523,69 @@ export function AccountCard({
                 void requestDeletion();
               }}
             >
-              <button type="button" className="mb-4 inline-flex items-center gap-1.5 text-[11.5px] text-fg-muted hover:text-fg" onClick={back}>
+              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 text-[11.5px]`} onClick={back}>
                 <ArrowLeft size={13} />账号
               </button>
               <h3 className="text-[15px] font-semibold text-danger">注销账号</h3>
               <p className="mt-1 text-[10.5px] text-fg-muted">确认链接将发送至 {user.email}。点击邮件链接前，账号不会停用。</p>
               <label className="sr-only" htmlFor="account-deletion-password">当前密码</label>
-              <input id="account-deletion-password" className={`${fieldClass} mt-5`} type="password" autoComplete="current-password" placeholder="输入当前密码确认" value={deletionPassword} onChange={(event) => setDeletionPassword(event.target.value)} />
-              {formError && <p className="mt-2 text-[12px] text-danger" role="alert">{formError}</p>}
+              <input
+                id="account-deletion-password"
+                className={`${fieldClass} mt-5`}
+                type="password"
+                autoComplete="current-password"
+                placeholder="输入当前密码确认"
+                value={deletionPassword}
+                aria-invalid={deletionError != null}
+                aria-describedby={deletionError ? "account-deletion-password-error" : undefined}
+                onChange={(event) => {
+                  setDeletionPassword(event.target.value);
+                  setDeletionError(null);
+                }}
+              />
+              {deletionError && (
+                <InlineStatus
+                  id="account-deletion-password-error"
+                  tone="error"
+                  className="mt-2 border-0 bg-transparent px-0 py-0"
+                >
+                  {deletionError}
+                </InlineStatus>
+              )}
               <div className="mt-4 flex justify-end">
-                <button type="submit" className="inline-flex h-9 items-center justify-center rounded-full bg-danger px-4 text-[12.5px] font-medium text-white disabled:opacity-60" disabled={submitting || deletionPassword.length < 8}>
-                  {submitting ? "发送中…" : "发送注销确认邮件"}
+                <button
+                  type="submit"
+                  className={primaryClass}
+                  disabled={submitting || deletionPassword.length < 8}
+                  aria-busy={submitting}
+                >
+                  <LoadingButtonContent loading={submitting} label="发送注销确认邮件" />
                 </button>
               </div>
             </form>
           )}
         </div>
-      </section>
       {cropFile && (
         <AvatarCropper
           file={cropFile}
           onCancel={() => setCropFile(null)}
+          onError={(message) => onToast(message, "error")}
           onConfirm={async (blob) => {
-            if (!onUploadAvatar) throw new Error("头像上传服务暂不可用。");
+            if (!onUploadAvatar) throw new Error("Avatar upload is unavailable.");
             setAvatarStatus("正在处理头像…");
-            const url = await onUploadAvatar(blob);
+            let url: string;
+            try {
+              url = await onUploadAvatar(blob);
+            } catch {
+              throw new Error("Avatar upload failed. Please try again.");
+            }
             setAvatarUrl(url);
             setAvatarStatus("头像已更新");
             setCropFile(null);
-            onToast("头像已更新");
+            onToast("头像已更新", "success");
           }}
         />
       )}
-    </div>
+    </ModalDialog>
   );
 }

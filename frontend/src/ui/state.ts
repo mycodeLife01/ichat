@@ -9,11 +9,15 @@ export type ShareDialogState = {
   conversationId: string;
 };
 
+export type ToastTone = "neutral" | "success" | "error" | "warning";
+export type ToastHandler = (message: string, tone: ToastTone) => void;
+
 // A monotonic id (not the message) keys the Toast component so that triggering
 // the same message twice re-mounts and re-animates it.
 export type ToastState = {
   id: number;
   message: string;
+  tone: ToastTone;
 } | null;
 
 export type UiState = {
@@ -22,6 +26,7 @@ export type UiState = {
   confirmDialog: ConfirmDialogState | null;
   shareDialog: ShareDialogState | null;
   toast: ToastState;
+  toastSequence: number;
 };
 
 export const initialUiState: UiState = {
@@ -30,6 +35,7 @@ export const initialUiState: UiState = {
   confirmDialog: null,
   shareDialog: null,
   toast: null,
+  toastSequence: 0,
 };
 
 export type UiAction =
@@ -40,7 +46,7 @@ export type UiAction =
   | { type: "ui/closeConfirm" }
   | { type: "ui/openShare"; dialog: ShareDialogState }
   | { type: "ui/closeShare" }
-  | { type: "ui/showToast"; message: string }
+  | { type: "ui/showToast"; message: string; tone: ToastTone }
   | { type: "ui/hideToast" };
 
 export function uiReducer(state: UiState, action: AppAction): UiState {
@@ -59,8 +65,14 @@ export function uiReducer(state: UiState, action: AppAction): UiState {
       return { ...state, shareDialog: action.dialog };
     case "ui/closeShare":
       return { ...state, shareDialog: null };
-    case "ui/showToast":
-      return { ...state, toast: { id: (state.toast?.id ?? 0) + 1, message: action.message } };
+    case "ui/showToast": {
+      const id = state.toastSequence + 1;
+      return {
+        ...state,
+        toast: { id, message: action.message, tone: action.tone },
+        toastSequence: id,
+      };
+    }
     case "ui/hideToast":
       return { ...state, toast: null };
     case "app/reset":

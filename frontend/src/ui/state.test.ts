@@ -31,15 +31,35 @@ describe("uiReducer", () => {
   });
 
   it("shows a toast with a monotonic id so repeats re-animate", () => {
-    const first = uiReducer(initialUiState, { type: "ui/showToast", message: "发送失败，请重试" });
-    expect(first.toast).toEqual({ id: 1, message: "发送失败，请重试" });
-    // Same message again must produce a new id (the component remounts on id change).
-    const second = uiReducer(first, { type: "ui/showToast", message: "发送失败，请重试" });
-    expect(second.toast).toEqual({ id: 2, message: "发送失败，请重试" });
+    const first = uiReducer(initialUiState, {
+      type: "ui/showToast",
+      message: "发送失败，请重试",
+      tone: "error",
+    });
+    expect(first.toast).toEqual({ id: 1, message: "发送失败，请重试", tone: "error" });
+    // The same notification still gets a new identity and replay.
+    const second = uiReducer(first, {
+      type: "ui/showToast",
+      message: "发送失败，请重试",
+      tone: "error",
+    });
+    expect(second.toast).toEqual({ id: 2, message: "发送失败，请重试", tone: "error" });
+    // Hiding must not reset the sequence either.
+    const hidden = uiReducer(second, { type: "ui/hideToast" });
+    const third = uiReducer(hidden, {
+      type: "ui/showToast",
+      message: "发送失败，请重试",
+      tone: "error",
+    });
+    expect(third.toast).toEqual({ id: 3, message: "发送失败，请重试", tone: "error" });
   });
 
   it("hides the toast", () => {
-    const shown = uiReducer(initialUiState, { type: "ui/showToast", message: "停止失败，请重试" });
+    const shown = uiReducer(initialUiState, {
+      type: "ui/showToast",
+      message: "停止失败，请重试",
+      tone: "error",
+    });
     const hidden = uiReducer(shown, { type: "ui/hideToast" });
     expect(hidden.toast).toBeNull();
   });
@@ -50,7 +70,11 @@ describe("uiReducer", () => {
   });
 
   it("clears the toast on app/reset", () => {
-    const shown = uiReducer(initialUiState, { type: "ui/showToast", message: "操作失败，请重试" });
+    const shown = uiReducer(initialUiState, {
+      type: "ui/showToast",
+      message: "操作失败，请重试",
+      tone: "error",
+    });
     expect(uiReducer(shown, { type: "app/reset" }).toast).toBeNull();
   });
 });

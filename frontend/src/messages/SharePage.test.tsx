@@ -10,7 +10,7 @@ function servicesWithShare(overrides: Parameters<typeof createFakeServices>[4]) 
 }
 
 describe("SharePage", () => {
-  it("renders a read-only snapshot with reasoning and sources", async () => {
+  it("renders a read-only snapshot without completed reasoning", async () => {
     const services = servicesWithShare({
       getPublic: async () => ({
         title: "Shared chat",
@@ -31,8 +31,20 @@ describe("SharePage", () => {
 
     expect(await screen.findByText("ask something")).toBeInTheDocument();
     expect(screen.getByText("the answer")).toBeInTheDocument();
+    expect(screen.queryByText("let me think")).toBeNull();
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("shows an icon-based loading status while the snapshot is pending", () => {
+    const services = servicesWithShare({
+      getPublic: () => new Promise(() => {}),
+    });
+
+    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    const loading = screen.getByRole("status", { name: "加载中" });
+    expect(loading.querySelector("svg")).not.toBeNull();
   });
 
   it("shows a not-found state when the token is unknown/revoked/expired", async () => {
@@ -44,6 +56,11 @@ describe("SharePage", () => {
 
     renderWithApp(<App />, services, undefined, ["/share/missing"]);
 
-    expect(await screen.findByText("分享不存在或已失效")).toBeInTheDocument();
+    // Inaccessible shares surface as a persistent inline state with an icon,
+    // not a transient notification.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("分享不存在或已失效");
+    expect(alert.querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "前往 iChat" })).toBeInTheDocument();
   });
 });

@@ -312,6 +312,58 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
+  it("shows the optimistic turn while the send API is pending", async () => {
+    const user = userEvent.setup();
+    const draft: ConversationResponse = {
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const sendMessage = vi.fn(
+      () => new Promise<SendMessageResponse>(() => {}),
+    );
+    const services = createFakeServices(
+      {},
+      { list: async () => [], create: async () => draft, sendMessage },
+    );
+
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("你好")).toBeInTheDocument();
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+    const submitting = screen.getByRole("button", { name: "发送中" });
+    expect(submitting).toBeDisabled();
+    expect(submitting).toHaveAttribute("aria-busy", "true");
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+  });
+
+  it("restores the submitted text when sending fails", async () => {
+    const user = userEvent.setup();
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [],
+        create: async () => ({
+          id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+        }),
+        sendMessage: async () => {
+          throw new Error("network");
+        },
+      },
+    );
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "请再试一次");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("发送失败，请重试");
+    await waitFor(() => expect(textarea).toHaveValue("请再试一次"));
+    expect(screen.queryByText("正在思考")).toBeNull();
+  });
+
   it("swaps the send button for the demo stop button while streaming", async () => {
     const user = userEvent.setup();
 
@@ -393,7 +445,7 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services);
 
     const textarea = await screen.findByPlaceholderText("有问题，尽管问");
     await user.type(textarea, "你好");
@@ -401,11 +453,12 @@ describe("AppShell", () => {
 
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
-    // Terminal arrived: the partial stays with its pill, and the composer is
-    // usable again — not stuck on a disabled "停止中" button.
+    // Terminal arrived: the partial stays without a stopped-status block, and
+    // the composer is usable again — not stuck on a disabled "停止中" button.
     await waitFor(() =>
-      expect(container.querySelector(".status-pill.stopped")).toBeTruthy(),
+      expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument(),
     );
+    expect(screen.queryByText("已停止")).toBeNull();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
@@ -433,7 +486,7 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(
+    renderWithApp(
       <AppShell />,
       services,
       undefined,
@@ -441,8 +494,8 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("写到一半")).toBeInTheDocument();
-    expect(screen.getByText("已停止")).toBeInTheDocument();
-    expect(container.querySelector(".status-pill.stopped")).toBeTruthy();
+    expect(screen.queryByText("已停止")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
     expect(streamEvents).not.toHaveBeenCalled();
   });
 
@@ -651,7 +704,7 @@ describe("AppShell", () => {
       },
     );
 
-    const { container } = renderWithApp(<AppShell />, services);
+    renderWithApp(<AppShell />, services);
 
     const textarea = await screen.findByPlaceholderText("有问题，尽管问");
     await user.type(textarea, "你好");
@@ -659,8 +712,9 @@ describe("AppShell", () => {
     await user.click(await screen.findByRole("button", { name: "停止生成" }));
 
     await waitFor(() =>
-      expect(container.querySelector(".status-pill.stopped")).toBeTruthy(),
+      expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument(),
     );
+    expect(screen.queryByText("已停止")).toBeNull();
     // The run is terminal: editing the user message must be allowed again.
     const sentMsg = screen.getByText("你好").closest(".msg") as HTMLElement;
     expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();
@@ -739,7 +793,9 @@ describe("AppShell", () => {
     await user.type(textarea, "你好");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast).toHaveTextContent("发送失败，请重试");
+    expect(toast).toHaveAttribute("data-tone", "error");
+    expect(toast.querySelector('[data-toast-icon="error"]')).toBeInTheDocument();
   });
 });

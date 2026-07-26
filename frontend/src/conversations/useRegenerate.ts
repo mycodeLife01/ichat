@@ -35,7 +35,7 @@ export function useRegenerate(start: StartStream) {
         // Keep the current view usable (e.g. a 409 active-run race) and surface a
         // Chinese toast.
         console.error("regenerate failed", error);
-        dispatch({ type: "ui/showToast", message: "操作失败，请重试" });
+        dispatch({ type: "ui/showToast", message: "操作失败，请重试", tone: "error" });
       }
     },
     [dispatch, conversationApi, start],

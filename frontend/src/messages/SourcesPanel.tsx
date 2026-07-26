@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { MessageSource } from "../api/types";
+import { iconControl, interactiveItem } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { domainOf } from "./sourceUtils";
 
@@ -20,7 +21,7 @@ export function SourceFavicon({ url, size = 16 }: { url: string; size?: number }
   const [failed, setFailed] = useState(false);
   const domain = domainOf(url);
   if (failed || !domain) {
-    return <Icons.Globe size={size} className="shrink-0 text-fg-subtle" />;
+    return <Icons.Globe size={size} className="shrink-0 text-text-faint" />;
   }
   return (
     <img
@@ -29,7 +30,7 @@ export function SourceFavicon({ url, size = 16 }: { url: string; size?: number }
       alt=""
       width={size}
       height={size}
-      className="shrink-0 rounded-[4px]"
+      className="shrink-0 rounded-detail"
       onError={() => setFailed(true)}
     />
   );
@@ -46,11 +47,11 @@ export function SourcesPanel({
   const panel = (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center justify-between px-4 pt-3.5 pb-2.5">
-        <div className="text-[14px] font-semibold text-fg">
-          来源 <span className="font-normal text-fg-subtle">· {sources.length}</span>
+        <div className="text-[14px] font-semibold text-text-primary">
+          来源 <span className="font-normal text-text-faint">· {sources.length}</span>
         </div>
         <button
-          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-none bg-transparent p-0 text-fg-muted transition-[background,color] duration-[120ms] hover:bg-bg-hover hover:text-fg"
+          className={`${iconControl} h-7 w-7 max-[760px]:min-h-11 max-[760px]:min-w-11`}
           type="button"
           aria-label="关闭来源"
           onClick={onClose}
@@ -62,20 +63,20 @@ export function SourcesPanel({
         {sources.map((source) => (
           <a
             key={`${source.id}:${source.url}`}
-            className="block rounded-lg px-2 py-2.5 no-underline transition-colors duration-[120ms] hover:bg-bg-hover"
+            className={`${interactiveItem} block px-2 py-2.5 no-underline`}
             href={source.url}
             target="_blank"
             rel="noreferrer"
           >
-            <div className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+            <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
               <SourceFavicon url={source.url} size={16} />
               <span className="truncate">{domainOf(source.url)}</span>
             </div>
-            <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-fg">
+            <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-text-primary">
               {source.title}
             </div>
             {source.snippet && (
-              <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-[1.5] text-fg-muted">
+              <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-[1.5] text-text-muted">
                 {source.snippet}
               </div>
             )}
@@ -92,14 +93,14 @@ export function SourcesPanel({
     return (
       <>
         <div
-          className={`scrim fixed inset-0 z-[29] bg-[rgba(20,20,19,0.32)] transition-opacity duration-200 ${
+          className={`scrim fixed inset-0 z-[29] bg-overlay transition-opacity duration-200 ${
             open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
           }`}
           onClick={onClose}
           aria-hidden="true"
         />
         <aside
-          className={`sources-panel fixed inset-y-0 right-0 z-30 w-[min(86vw,360px)] border-l border-border bg-bg-raised transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          className={`sources-panel fixed inset-y-0 right-0 z-30 w-[min(86vw,360px)] border-l border-border bg-surface transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
             open ? "open translate-x-0" : "translate-x-full"
           }`}
         >
@@ -111,7 +112,7 @@ export function SourcesPanel({
 
   return (
     <aside
-      className={`sources-panel shrink-0 overflow-hidden bg-bg transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
+      className={`sources-panel shrink-0 overflow-hidden bg-canvas transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
         open ? "open w-[340px] border-l border-border" : "w-0"
       }`}
     >

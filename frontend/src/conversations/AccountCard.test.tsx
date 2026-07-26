@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,19 @@ describe("AccountCard", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("moves focus into the account dialog and closes it with Escape", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    render(<AccountCard user={verifiedUser} {...props} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "关闭账号" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("shows verified account details without a resend action", () => {
     render(
       <AccountCard
@@ -50,7 +63,25 @@ describe("AccountCard", () => {
     );
 
     expect(screen.getByText("已认证")).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("已认证");
+    expect(status).toHaveAttribute("data-tone", "success");
+    expect(status.querySelector("svg")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "认证邮箱" })).toBeNull();
+  });
+
+  it("presents an unverified email as a warning fact", () => {
+    render(
+      <AccountCard
+        user={{ ...verifiedUser, emailVerified: false }}
+        {...actions()}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("未认证");
+    expect(status).toHaveAttribute("data-tone", "warning");
+    expect(status.querySelector("svg")).not.toBeNull();
   });
 
   it("shows username as a read-only field before the account email", () => {
@@ -83,6 +114,24 @@ describe("AccountCard", () => {
     click.mockRestore();
   });
 
+  it("classifies the unverified avatar restriction as a warning", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    render(
+      <AccountCard
+        user={{ ...verifiedUser, emailVerified: false }}
+        {...props}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "选择头像" }));
+
+    expect(props.onToast).toHaveBeenCalledWith(
+      "Verify your email before uploading an avatar.",
+      "warning",
+    );
+  });
+
   it("opens the cropper after selecting a supported image", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 512, height: 512, close: vi.fn() })));
@@ -95,6 +144,64 @@ describe("AccountCard", () => {
 
     expect(await screen.findByRole("dialog", { name: "裁剪头像" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "缩放" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "取消裁剪" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "裁剪头像" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "账号" })).toBeInTheDocument();
+  });
+
+  it("associates avatar validation failures with the file field", () => {
+    render(<AccountCard user={verifiedUser} {...actions()} />);
+    const input = screen.getByLabelText("上传头像图片");
+    const file = new File(["avatar"], "avatar.gif", { type: "image/gif" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription("Only JPEG, PNG, and static WebP images are supported.");
+    expect(screen.getByRole("button", { name: "选择头像" })).toHaveAccessibleDescription(
+      "Only JPEG, PNG, and static WebP images are supported.",
+    );
+  });
+
+  it("keeps avatar upload failures inline and reports an error toast", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    const onUploadAvatar = vi.fn(async () => {
+      throw new Error("头像上传失败，请重试。");
+    });
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 512, height: 512, close: vi.fn() })));
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:avatar") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      clearRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    const toBlob = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => {
+      callback(new Blob(["avatar"], { type: "image/webp" }));
+    });
+    render(
+      <AccountCard
+        user={verifiedUser}
+        {...props}
+        onUploadAvatar={onUploadAvatar}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText("上传头像图片"),
+      new File(["avatar"], "avatar.png", { type: "image/png" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "确认并上传" }));
+
+    expect(screen.getByRole("slider", { name: "缩放" })).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByRole("alert")).toHaveTextContent("Avatar upload failed. Please try again.");
+    expect(props.onToast).toHaveBeenCalledWith("Avatar upload failed. Please try again.", "error");
+
+    getContext.mockRestore();
+    toBlob.mockRestore();
   });
 
   it("reports verification success and cooldown failures through the global toast", async () => {
@@ -113,9 +220,8 @@ describe("AccountCard", () => {
     );
 
     const verificationButton = screen.getByRole("button", { name: "认证邮箱" });
-    expect(verificationButton).toHaveClass("bg-accent", "text-accent-fg");
     await user.click(verificationButton);
-    expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送");
+    expect(props.onToast).toHaveBeenCalledWith("验证邮件已发送", "success");
 
     rerender(
       <AccountCard
@@ -125,7 +231,10 @@ describe("AccountCard", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "认证邮箱" }));
-    expect(props.onToast).toHaveBeenCalledWith("发送过于频繁，请稍后再试。");
+    expect(props.onToast).toHaveBeenCalledWith(
+      "Too many requests. Please try again later.",
+      "error",
+    );
   });
 
   it("updates the nickname directly from the account overview", async () => {
@@ -139,7 +248,38 @@ describe("AccountCard", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(props.onUpdateNickname).toHaveBeenCalledWith("Alice Cooper");
-    expect(props.onToast).toHaveBeenCalledWith("昵称已更新");
+    expect(props.onToast).toHaveBeenCalledWith("昵称已更新", "success");
+  });
+
+  it("associates nickname validation failures with the nickname field", async () => {
+    const user = userEvent.setup();
+    render(<AccountCard user={verifiedUser} {...actions()} />);
+
+    const input = screen.getByRole("textbox", { name: "昵称" });
+    await user.clear(input);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription("Nickname must be between 1 and 50 characters.");
+  });
+
+  it("classifies nickname update failures as errors", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    props.onUpdateNickname.mockRejectedValueOnce(new Error("network"));
+    render(<AccountCard user={verifiedUser} {...props} />);
+
+    const input = screen.getByLabelText("昵称");
+    await user.clear(input);
+    await user.type(input, "Alice Cooper");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(props.onToast).toHaveBeenCalledWith(
+      "Failed to save nickname. Please try again.",
+      "error",
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription("Failed to save nickname. Please try again.");
   });
 
   it("does not request a nickname update when the trimmed value is unchanged", async () => {
@@ -163,14 +303,34 @@ describe("AccountCard", () => {
 
     await user.click(screen.getByRole("button", { name: "修改密码" }));
     await user.type(screen.getByLabelText("当前密码"), "old-password");
-    await user.type(screen.getByLabelText("新密码"), "short");
+    const newPassword = screen.getByLabelText("新密码");
+    await user.type(newPassword, "short");
     await user.click(screen.getByRole("button", { name: "修改密码" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("8–128");
+    expect(newPassword).toHaveAttribute("aria-invalid", "true");
+    expect(newPassword).toHaveAccessibleDescription(
+      "New password must be between 8 and 128 characters.",
+    );
 
-    await user.clear(screen.getByLabelText("新密码"));
-    await user.type(screen.getByLabelText("新密码"), "new-password");
+    await user.clear(newPassword);
+    await user.type(newPassword, "new-password");
     await user.click(screen.getByRole("button", { name: "修改密码" }));
     expect(props.onChangePassword).toHaveBeenCalledWith("old-password", "new-password");
+  });
+
+  it("associates an incorrect current password with its field", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    props.onChangePassword.mockRejectedValueOnce(new ApiError({ status: 400 }));
+    render(<AccountCard user={verifiedUser} {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "修改密码" }));
+    const currentPassword = screen.getByLabelText("当前密码");
+    await user.type(currentPassword, "old-password");
+    await user.type(screen.getByLabelText("新密码"), "new-password");
+    await user.click(screen.getByRole("button", { name: "修改密码" }));
+
+    expect(currentPassword).toHaveAttribute("aria-invalid", "true");
+    expect(currentPassword).toHaveAccessibleDescription("Current password is incorrect.");
   });
 
   it("requests a deletion email without claiming the account is deleted", async () => {
@@ -186,5 +346,23 @@ describe("AccountCard", () => {
     expect(
       await screen.findByText("注销确认邮件已发送，请检查当前邮箱。账号尚未注销。"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps deletion failures beside the password field and allows cancelling", async () => {
+    const user = userEvent.setup();
+    const props = actions();
+    props.onRequestDeletion.mockRejectedValueOnce(new ApiError({ status: 400 }));
+    render(<AccountCard user={verifiedUser} {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "注销账号" }));
+    const password = screen.getByLabelText("当前密码");
+    await user.type(password, "old-password");
+    await user.click(screen.getByRole("button", { name: "发送注销确认邮件" }));
+
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAccessibleDescription("Current password is incorrect.");
+
+    await user.click(screen.getByRole("button", { name: "账号" }));
+    expect(screen.getByRole("button", { name: "注销账号" })).toBeInTheDocument();
   });
 });

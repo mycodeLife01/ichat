@@ -57,10 +57,49 @@ function baseProps() {
 }
 
 describe("Sidebar", () => {
-  it("groups conversations and renders rows", () => {
+  it("renders one chat section and exposes the selected conversation", () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    const older = new Date(Date.now() - 172_800_000).toISOString();
+
+    render(
+      <Sidebar
+        {...baseProps()}
+        items={[
+          makeConversation("1", "今天的对话", today),
+          makeConversation("2", "昨天的对话", yesterday),
+          makeConversation("3", "更早的对话", older),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("聊天")).toBeInTheDocument();
+    expect(screen.queryByText("今天")).toBeNull();
+    expect(screen.queryByText("昨天")).toBeNull();
+    expect(screen.queryByText("更早")).toBeNull();
+
+    expect(screen.getByRole("button", { name: "今天的对话" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("button", { name: "昨天的对话" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("distinguishes the chat section label from compact history rows", () => {
     render(<Sidebar {...baseProps()} />);
-    expect(screen.getByText("今天")).toBeInTheDocument();
-    expect(screen.getByText("今天的对话")).toBeInTheDocument();
+
+    expect(screen.getByText("聊天")).toHaveClass(
+      "text-[14px]",
+      "font-semibold",
+      "leading-5",
+    );
+    expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
+      "text-[14px]",
+      "font-normal",
+      "leading-5",
+    );
+    expect(screen.getByTestId("conversation-history")).not.toHaveClass("gap-px");
   });
 
   it("renders a title skeleton for a title-pending row", () => {
@@ -91,7 +130,7 @@ describe("Sidebar", () => {
     render(<Sidebar {...props} />);
 
     await user.click(screen.getByRole("button", { name: "更多" }));
-    await user.click(screen.getByRole("button", { name: "重命名" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
     const input = screen.getByDisplayValue("今天的对话");
     await user.clear(input);
     await user.type(input, "新名字{Enter}");
@@ -104,31 +143,79 @@ describe("Sidebar", () => {
     const user = userEvent.setup();
     render(<Sidebar {...props} />);
 
+    const row = screen.getByText("今天的对话").closest(".history-row");
+    expect(row).not.toBeNull();
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 52,
+        height: 32,
+        left: 10,
+        right: 270,
+        top: 20,
+        width: 260,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+      }),
+    });
+
     await user.click(screen.getByRole("button", { name: "更多" }));
-    await user.click(screen.getByRole("button", { name: "删除对话" }));
+
+    const menu = screen.getByRole("menu", { name: "会话操作" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu).toHaveStyle({ left: "226px", top: "48px" });
+
+    const actions = within(menu).getAllByRole("menuitem");
+    expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
+    expect(actions[0]).toHaveAttribute("data-variant", "neutral");
+    expect(actions[2]).toHaveAttribute("data-variant", "danger");
+
+    await user.click(within(menu).getByRole("menuitem", { name: "删除" }));
 
     expect(props.onRequestDelete).toHaveBeenCalledWith("1");
+  });
+
+  it("closes the desktop conversation menu on Escape and outside click", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} />);
+
+    const trigger = screen.getByRole("button", { name: "更多" });
+    await user.click(trigger);
+    expect(screen.getByRole("menu", { name: "会话操作" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "会话操作" })).toBeNull();
+
+    await user.click(trigger);
+    expect(screen.getByRole("menu", { name: "会话操作" })).toBeInTheDocument();
+    await user.click(document.body);
+    expect(screen.queryByRole("menu", { name: "会话操作" })).toBeNull();
   });
 
   it("mobile: opens a bottom sheet with rename / delete", async () => {
     const props = baseProps();
     const user = userEvent.setup();
-    render(<Sidebar {...props} isMobile />);
+    render(<Sidebar {...props} isMobile mobileOpen />);
 
     await user.click(screen.getByRole("button", { name: "更多" }));
     // The actions live in a bottom sheet on mobile, not the desktop dropdown.
     // The sheet is portaled to <body>, so query the document, not the container.
-    expect(document.querySelector(".sheet")).not.toBeNull();
+    const sheet = screen.getByRole("dialog", { name: "会话操作" });
+    expect(sheet).toBeInTheDocument();
     expect(document.querySelector(".history-menu")).toBeNull();
+    const actions = within(sheet).getAllByRole("button");
+    expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
+    expect(actions[2]).toHaveAttribute("data-variant", "danger");
 
-    await user.click(screen.getByRole("button", { name: "删除对话" }));
+    await user.click(within(sheet).getByRole("button", { name: "删除" }));
     expect(props.onRequestDelete).toHaveBeenCalledWith("1");
   });
 
   it("mobile: rename from the sheet enters in-place editing", async () => {
     const props = baseProps();
     const user = userEvent.setup();
-    render(<Sidebar {...props} isMobile />);
+    render(<Sidebar {...props} isMobile mobileOpen />);
 
     await user.click(screen.getByRole("button", { name: "更多" }));
     await user.click(screen.getByRole("button", { name: "重命名" }));
@@ -160,10 +247,13 @@ describe("Sidebar", () => {
     expect(within(trigger).getByText("alice")).toBeInTheDocument();
     expect(within(trigger).getByText("Pro")).toBeInTheDocument();
     expect(within(trigger).queryByText("alice-login")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
 
     const menu = screen.getByRole("menu", { name: "个人中心" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(within(menu).getByText("alice")).toBeInTheDocument();
     expect(within(menu).getByText("a@b.com")).toBeInTheDocument();
     expect(within(menu).queryByText("用户名")).toBeNull();
@@ -171,9 +261,44 @@ describe("Sidebar", () => {
     expect(
       within(menu).queryByRole("button", { name: /alice.*a@b\.com/i }),
     ).toBeNull();
-    expect(within(menu).getByRole("menuitem", { name: "账号" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "我的分享" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+    const accountItem = within(menu).getByRole("menuitem", { name: "账号" });
+    const sharesItem = within(menu).getByRole("menuitem", { name: "我的分享" });
+    const logoutItem = within(menu).getByRole("menuitem", { name: "退出登录" });
+    expect(accountItem).toHaveAttribute("data-variant", "neutral");
+    expect(sharesItem).toHaveAttribute("data-variant", "neutral");
+    expect(logoutItem).toHaveAttribute("data-variant", "danger");
+  });
+
+  it("mobile: opens the personal actions in a bottom sheet", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} isMobile mobileOpen />);
+
+    await user.click(screen.getByRole("button", { name: "打开个人中心" }));
+
+    const sheet = screen.getByRole("dialog", { name: "个人中心" });
+    expect(within(sheet).getByRole("button", { name: "账号" })).toHaveAttribute(
+      "data-variant",
+      "neutral",
+    );
+    expect(within(sheet).getByRole("button", { name: "我的分享" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "退出登录" })).toHaveAttribute(
+      "data-variant",
+      "danger",
+    );
+
+    await user.click(within(sheet).getByRole("button", { name: "账号" }));
+    expect(screen.getByRole("dialog", { name: "账号" })).toBeInTheDocument();
+  });
+
+  it("mobile: removes the closed drawer controls from the accessibility tree", () => {
+    render(<Sidebar {...baseProps()} isMobile mobileOpen={false} />);
+
+    expect(screen.queryByRole("button", { name: "今天的对话" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开个人中心" })).toBeNull();
+    expect(screen.getByRole("complementary", { hidden: true })).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("closes the user menu when pressing outside it", async () => {

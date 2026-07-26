@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { msgAction } from "../ui/classes";
+import { iconControl } from "../ui/classes";
 
 type MessageActionProps = {
   // Accessible name of the action and the text shown in the hover dropdown.
@@ -38,7 +38,7 @@ export function MessageAction({
       onMouseLeave={() => setShowTip(false)}
     >
       <button
-        className={`${msgAction} p-[5px]`}
+        className={`${iconControl} p-[5px] max-[760px]:min-h-11 max-[760px]:min-w-11`}
         aria-label={label}
         disabled={disabled}
         onClick={() => {
@@ -49,7 +49,7 @@ export function MessageAction({
         {icon}
       </button>
       {showTip && (
-        <span className="pointer-events-none absolute top-[calc(100%+4px)] left-1/2 z-20 [transform:translateX(-50%)] rounded-sm bg-fg px-2 py-[3px] text-[11.5px] leading-[1.4] whitespace-nowrap text-bg">
+        <span className="pointer-events-none absolute top-[calc(100%+4px)] left-1/2 z-20 [transform:translateX(-50%)] rounded-detail bg-accent px-2 py-[3px] text-[11.5px] leading-[1.4] whitespace-nowrap text-accent-foreground">
           {tip}
         </span>
       )}

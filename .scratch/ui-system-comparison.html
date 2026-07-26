@@ -1,0 +1,1785 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iChat UI 系统改造对比</title>
+  <style>
+    /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4
+     * Component-system preview · modern-minimal · neutral palette
+     * states: default · hover · focus · active · disabled · loading · error · success
+     * contrast: pass
+     */
+    :root {
+      color-scheme: light;
+      --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+      --page-canvas: #f6f6f4;
+      --page-grid: rgba(13, 13, 13, 0.035);
+      --page-ink: #0d0d0d;
+      --page-muted: #676767;
+      --page-faint: #8b8b8b;
+      --page-border: rgba(13, 13, 13, 0.11);
+      --page-border-strong: rgba(13, 13, 13, 0.18);
+      --page-raised: #ffffff;
+      --page-chip: #eeeeec;
+      --page-focus: #2d68c4;
+      --page-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+
+      --before-canvas: #fbfbfa;
+      --before-sunken: #f4f3f0;
+      --before-raised: #ffffff;
+      --before-hover: rgba(20, 20, 19, 0.04);
+      --before-active: rgba(20, 20, 19, 0.07);
+      --before-ink: #1a1a19;
+      --before-muted: #6b6a66;
+      --before-faint: #95938e;
+      --before-border: rgba(20, 20, 19, 0.08);
+      --before-border-strong: rgba(20, 20, 19, 0.14);
+      --before-danger: #b54a2e;
+      --before-danger-soft: rgba(181, 74, 46, 0.08);
+      --before-success-ink: #39734a;
+      --before-success-bg: #f0f8f2;
+      --before-success-border: #cce5d2;
+      --before-toast-bg: #1a1a19;
+      --before-toast-ink: #fbfbfa;
+      --before-shadow-popover: 0 5px 18px rgba(20, 20, 19, 0.14);
+
+      --after-canvas: #ffffff;
+      --after-surface-subtle: #f7f7f7;
+      --after-surface-hover: #f5f5f5;
+      --after-surface-selected: #f3f3f3;
+      --after-surface-raised: #ffffff;
+      --after-ink: #0d0d0d;
+      --after-muted: #5d5d67;
+      --after-faint: #8e8e99;
+      --after-border: rgba(13, 13, 13, 0.09);
+      --after-border-strong: rgba(13, 13, 13, 0.15);
+      --after-accent: rgba(13, 13, 13, 0.9);
+      --after-accent-ink: #ffffff;
+      --after-focus: #2d68c4;
+      --after-danger: #b22f29;
+      --after-danger-soft: #fce2e0;
+      --after-danger-border: rgba(178, 47, 41, 0.22);
+      --after-success: #39734a;
+      --after-success-soft: #f0f8f2;
+      --after-success-border: #cce5d2;
+      --after-warning: #7a5a12;
+      --after-warning-soft: #faf4df;
+      --after-warning-border: #eadca9;
+      --after-shadow-popover: 0 5px 18px rgba(0, 0, 0, 0.14);
+      --after-shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.18),
+        0 4px 16px rgba(0, 0, 0, 0.08);
+      --after-shadow-composer: 0 4px 16px rgba(0, 0, 0, 0.05);
+      --after-backdrop: rgba(13, 13, 13, 0.42);
+
+      --radius-detail: 4px;
+      --radius-control: 8px;
+      --radius-item: 10px;
+      --radius-popover: 14px;
+      --radius-card: 16px;
+      --radius-dialog: 20px;
+      --radius-composer: 28px;
+      --radius-pill: 999px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100%;
+      overflow-x: clip;
+      background: var(--page-canvas);
+      color: var(--page-ink);
+      font-family: var(--font-sans);
+    }
+
+    body {
+      background-image:
+        linear-gradient(to right, var(--page-grid) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--page-grid) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      white-space: nowrap;
+    }
+
+    button:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 2px solid var(--page-focus);
+      outline-offset: 2px;
+    }
+
+    .page {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 28px 28px 64px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--page-muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 850px;
+      margin-bottom: 10px;
+      font-size: clamp(28px, 4vw, 48px);
+      font-style: normal;
+      font-weight: 650;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      overflow-wrap: anywhere;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin-bottom: 0;
+      color: var(--page-muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .segmented {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-pill);
+      background: var(--page-raised);
+    }
+
+    .view-button,
+    .demo-button {
+      min-height: 40px;
+      border: 0;
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+    }
+
+    .view-button {
+      padding: 0 14px;
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--page-muted);
+      font-size: 13px;
+    }
+
+    .view-button[aria-pressed="true"] {
+      background: var(--page-ink);
+      color: var(--page-raised);
+    }
+
+    .view-button:active,
+    .demo-button:active {
+      transform: translateY(1px);
+    }
+
+    .demo-button {
+      padding: 0 15px;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-control);
+      background: var(--page-raised);
+      color: var(--page-ink);
+      font-size: 13px;
+    }
+
+    @media (hover: hover) {
+      .view-button:hover:not([aria-pressed="true"]),
+      .demo-button:hover {
+        background: var(--page-chip);
+      }
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-card);
+      background: var(--page-border);
+      box-shadow: var(--page-shadow);
+    }
+
+    .summary-item {
+      min-width: 0;
+      padding: 15px 17px;
+      background: var(--page-raised);
+    }
+
+    .summary-value {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+    }
+
+    .summary-label {
+      color: var(--page-muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-dialog);
+      background: var(--page-raised);
+      box-shadow: var(--page-shadow);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 18px;
+    }
+
+    .section-number {
+      margin-bottom: 7px;
+      color: var(--page-faint);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    h2 {
+      margin-bottom: 6px;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: -0.025em;
+    }
+
+    .section-note {
+      max-width: 680px;
+      margin-bottom: 0;
+      color: var(--page-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .rule-chip {
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      border-radius: var(--radius-pill);
+      background: var(--page-chip);
+      color: var(--page-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .lane {
+      min-width: 0;
+      overflow: clip;
+      border: 1px solid var(--page-border);
+      background: var(--page-raised);
+    }
+
+    .lane.before {
+      border-radius: 12px;
+      color: var(--before-ink);
+    }
+
+    .lane.after {
+      border-radius: var(--radius-card);
+      color: var(--after-ink);
+    }
+
+    .lane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 48px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--page-border);
+      background: var(--page-raised);
+    }
+
+    .lane-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .lane-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-pill);
+      background: var(--before-muted);
+    }
+
+    .after .lane-dot {
+      background: var(--after-ink);
+    }
+
+    .lane-caption {
+      color: var(--page-faint);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .lane-body {
+      min-height: 220px;
+      padding: 18px;
+      background: var(--before-canvas);
+    }
+
+    .after .lane-body {
+      background: var(--after-canvas);
+    }
+
+    body[data-view="before"] .lane.after,
+    body[data-view="after"] .lane.before {
+      display: none;
+    }
+
+    body[data-view="before"] .compare-grid,
+    body[data-view="after"] .compare-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .radius-chaos {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 10px;
+      padding-top: 12px;
+    }
+
+    .chaos-sample,
+    .radius-sample {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 88px;
+      border: 1px solid var(--before-border-strong);
+      background: var(--before-raised);
+      color: var(--before-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .chaos-sample:nth-child(1) {
+      height: 42px;
+      border-radius: 4px;
+    }
+
+    .chaos-sample:nth-child(2) {
+      height: 50px;
+      border-radius: 6px;
+    }
+
+    .chaos-sample:nth-child(3) {
+      height: 58px;
+      border-radius: 10px;
+    }
+
+    .chaos-sample:nth-child(4) {
+      height: 66px;
+      border-radius: 12px;
+    }
+
+    .chaos-sample:nth-child(5) {
+      height: 74px;
+      border-radius: 18px;
+    }
+
+    .chaos-note {
+      margin: 18px 0 0;
+      color: var(--before-muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .radius-scale {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .radius-token {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--after-border);
+      background: var(--after-surface-raised);
+    }
+
+    .radius-token:nth-child(1) {
+      border-radius: var(--radius-detail);
+    }
+
+    .radius-token:nth-child(2) {
+      border-radius: var(--radius-control);
+    }
+
+    .radius-token:nth-child(3) {
+      border-radius: var(--radius-item);
+    }
+
+    .radius-token:nth-child(4) {
+      border-radius: var(--radius-popover);
+    }
+
+    .radius-token:nth-child(5) {
+      border-radius: var(--radius-card);
+    }
+
+    .radius-token:nth-child(6) {
+      border-radius: var(--radius-dialog);
+    }
+
+    .radius-token:nth-child(7) {
+      border-radius: var(--radius-composer);
+    }
+
+    .radius-token:nth-child(8) {
+      border-radius: var(--radius-pill);
+    }
+
+    .token-name {
+      display: block;
+      overflow: hidden;
+      margin-bottom: 8px;
+      color: var(--after-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .token-value {
+      display: block;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .sidebar-stage {
+      display: grid;
+      grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.55fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .sidebar-mini {
+      min-height: 310px;
+      padding: 10px;
+      border-right: 1px solid var(--before-border);
+      background: var(--before-raised);
+    }
+
+    .after .sidebar-mini {
+      border-color: var(--after-border);
+      background: var(--after-surface-raised);
+    }
+
+    .mini-brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 42px;
+      margin-bottom: 8px;
+      padding: 0 8px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .icon-square {
+      display: inline-grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--before-muted);
+    }
+
+    .after .icon-square {
+      border-radius: var(--radius-control);
+      color: var(--after-muted);
+    }
+
+    .sidebar-label {
+      margin: 14px 8px 6px;
+      color: var(--before-faint);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .after .sidebar-label {
+      color: var(--after-faint);
+    }
+
+    .chat-row {
+      display: flex;
+      width: 100%;
+      min-height: 38px;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: default;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .before .chat-row {
+      border-radius: 10px;
+      padding: 0 9px;
+    }
+
+    .after .chat-row {
+      border-radius: var(--radius-item);
+      padding: 0 10px;
+    }
+
+    .chat-row.selected {
+      background: var(--before-active);
+      font-weight: 650;
+    }
+
+    .after .chat-row.selected {
+      background: var(--after-surface-selected);
+    }
+
+    .chat-row .title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dots {
+      color: var(--before-muted);
+      letter-spacing: 1px;
+    }
+
+    .after .dots {
+      color: var(--after-muted);
+    }
+
+    .user-row {
+      display: flex;
+      min-height: 46px;
+      align-items: center;
+      gap: 9px;
+      margin-top: 18px;
+      padding: 0 9px;
+      border-radius: 6px;
+      background: var(--before-hover);
+      font-size: 12px;
+    }
+
+    .after .user-row {
+      border-radius: var(--radius-item);
+      background: var(--after-surface-hover);
+    }
+
+    .avatar {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: var(--radius-pill);
+      background: var(--after-accent);
+      color: var(--after-accent-ink);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .popover-mini {
+      padding: 6px;
+      border: 1px solid var(--before-border-strong);
+      border-radius: 14px;
+      background: var(--before-raised);
+      box-shadow: var(--before-shadow-popover);
+    }
+
+    .after .popover-mini {
+      border-color: var(--after-border-strong);
+      border-radius: var(--radius-popover);
+      background: var(--after-surface-raised);
+      box-shadow: var(--after-shadow-popover);
+    }
+
+    .menu-row {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px;
+      border-radius: 6px;
+      color: var(--before-ink);
+      font-size: 13px;
+    }
+
+    .after .menu-row {
+      border-radius: var(--radius-item);
+      color: var(--after-ink);
+    }
+
+    .menu-row.is-hover {
+      background: var(--before-hover);
+    }
+
+    .after .menu-row.is-hover {
+      background: var(--after-surface-hover);
+    }
+
+    .menu-row.danger {
+      color: var(--before-danger);
+    }
+
+    .after .menu-row.danger {
+      color: var(--after-danger);
+    }
+
+    .after .menu-row.danger.is-hover {
+      background: var(--after-danger-soft);
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .state-cell {
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .state-name {
+      color: var(--page-faint);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .sample-button {
+      position: relative;
+      display: inline-flex;
+      min-width: 0;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 13px;
+      border: 1px solid var(--before-border-strong);
+      border-radius: 6px;
+      background: var(--before-raised);
+      color: var(--before-ink);
+      font-size: 12px;
+      font-weight: 550;
+    }
+
+    .before .sample-button.is-hover {
+      background: var(--before-hover);
+    }
+
+    .before .sample-button.is-focus {
+      border-color: var(--before-muted);
+    }
+
+    .before .sample-button.is-active {
+      background: var(--before-active);
+    }
+
+    .before .sample-button.is-disabled {
+      opacity: 0.55;
+    }
+
+    .before .sample-button.is-loading,
+    .before .sample-button.is-error,
+    .before .sample-button.is-success {
+      background: var(--before-toast-bg);
+      color: var(--before-toast-ink);
+    }
+
+    .after .sample-button {
+      border-color: var(--after-border-strong);
+      border-radius: var(--radius-control);
+      background: var(--after-surface-raised);
+      color: var(--after-ink);
+    }
+
+    .after .sample-button.is-hover {
+      background: var(--after-surface-hover);
+    }
+
+    .after .sample-button.is-focus {
+      outline: 2px solid var(--after-focus);
+      outline-offset: 2px;
+    }
+
+    .after .sample-button.is-active {
+      background: var(--after-surface-selected);
+      transform: translateY(1px);
+    }
+
+    .after .sample-button.is-disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .after .sample-button.is-loading {
+      background: var(--after-surface-subtle);
+      color: var(--after-muted);
+    }
+
+    .after .sample-button.is-error {
+      border-color: var(--after-danger-border);
+      background: var(--after-danger-soft);
+      color: var(--after-danger);
+    }
+
+    .after .sample-button.is-success {
+      border-color: var(--after-success-border);
+      background: var(--after-success-soft);
+      color: var(--after-success);
+    }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: var(--radius-pill);
+      animation: spin 700ms linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    .status-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .before-toast,
+    .status-notice,
+    .after-toast {
+      display: flex;
+      min-height: 42px;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 12px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .before-toast {
+      border-radius: 6px;
+      background: var(--before-toast-bg);
+      color: var(--before-toast-ink);
+    }
+
+    .status-pair {
+      display: grid;
+      grid-template-columns: 80px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-use {
+      color: var(--page-faint);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .after-toast {
+      border-radius: var(--radius-control);
+      background: var(--after-accent);
+      color: var(--after-accent-ink);
+    }
+
+    .status-notice {
+      border: 1px solid var(--after-border);
+      border-radius: var(--radius-control);
+      background: var(--after-surface-subtle);
+      color: var(--after-muted);
+    }
+
+    .status-notice.success {
+      border-color: var(--after-success-border);
+      background: var(--after-success-soft);
+      color: var(--after-success);
+    }
+
+    .status-notice.error {
+      border-color: var(--after-danger-border);
+      background: var(--after-danger-soft);
+      color: var(--after-danger);
+    }
+
+    .status-notice.warning {
+      border-color: var(--after-warning-border);
+      background: var(--after-warning-soft);
+      color: var(--after-warning);
+    }
+
+    .status-icon {
+      display: inline-grid;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .surface-stage {
+      display: grid;
+      gap: 16px;
+    }
+
+    .surface-row {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr);
+      align-items: center;
+      gap: 12px;
+    }
+
+    .surface-label {
+      color: var(--page-faint);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .surface-shape {
+      min-width: 0;
+      border: 1px solid var(--before-border-strong);
+      background: var(--before-raised);
+      color: var(--before-muted);
+      font-size: 11px;
+    }
+
+    .before .surface-shape.popover {
+      padding: 12px;
+      border-radius: 14px;
+    }
+
+    .before .surface-shape.card {
+      padding: 14px;
+      border-radius: 12px;
+    }
+
+    .before .surface-shape.dialog {
+      padding: 16px;
+      border-radius: 10px;
+    }
+
+    .before .surface-shape.composer {
+      min-height: 54px;
+      padding: 14px 18px;
+      border-radius: 18px;
+    }
+
+    .after .surface-shape {
+      border-color: var(--after-border-strong);
+      background: var(--after-surface-raised);
+      color: var(--after-muted);
+    }
+
+    .after .surface-shape.popover {
+      padding: 12px;
+      border-radius: var(--radius-popover);
+      box-shadow: var(--after-shadow-popover);
+    }
+
+    .after .surface-shape.card {
+      padding: 14px;
+      border-radius: var(--radius-card);
+    }
+
+    .after .surface-shape.dialog {
+      padding: 16px;
+      border-radius: var(--radius-dialog);
+      box-shadow: var(--after-shadow-dialog);
+    }
+
+    .after .surface-shape.composer {
+      min-height: 58px;
+      padding: 16px 20px;
+      border-radius: var(--radius-composer);
+      box-shadow: var(--after-shadow-composer);
+    }
+
+    .composer-inner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .composer-placeholder {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      color: inherit;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .send-button {
+      display: inline-grid;
+      width: 32px;
+      height: 32px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 0;
+      border-radius: var(--radius-pill);
+      background: var(--after-accent);
+      color: var(--after-accent-ink);
+    }
+
+    .logic-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-card);
+      font-size: 12px;
+    }
+
+    .logic-table th,
+    .logic-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--page-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .logic-table th {
+      background: var(--page-chip);
+      color: var(--page-muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .logic-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .tone-tag {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      padding: 0 9px;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .tone-tag.neutral {
+      background: var(--after-surface-selected);
+      color: var(--after-ink);
+    }
+
+    .tone-tag.success {
+      background: var(--after-success-soft);
+      color: var(--after-success);
+    }
+
+    .tone-tag.error {
+      background: var(--after-danger-soft);
+      color: var(--after-danger);
+    }
+
+    .tone-tag.warning {
+      background: var(--after-warning-soft);
+      color: var(--after-warning);
+    }
+
+    .migration-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .migration-group {
+      padding: 14px;
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-card);
+      background: var(--page-raised);
+    }
+
+    .migration-group h3 {
+      margin-bottom: 9px;
+      font-size: 13px;
+    }
+
+    .migration-group p {
+      margin-bottom: 0;
+      color: var(--page-muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .file-list {
+      margin: 9px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .file-list li {
+      margin-top: 5px;
+      color: var(--page-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+
+    .live-toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      display: flex;
+      max-width: min(360px, calc(100vw - 32px));
+      min-height: 44px;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 14px;
+      border-radius: var(--radius-control);
+      background: var(--after-accent);
+      color: var(--after-accent-ink);
+      box-shadow: var(--after-shadow-popover);
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(8px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .live-toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .live-toast.error {
+      border: 1px solid var(--after-danger-border);
+      background: var(--after-danger-soft);
+      color: var(--after-danger);
+    }
+
+    dialog {
+      position: fixed;
+      inset: 0;
+      width: min(440px, calc(100vw - 32px));
+      height: fit-content;
+      max-height: min(80vh, 640px);
+      margin: auto;
+      padding: 0;
+      overflow: clip;
+      border: 1px solid var(--after-border-strong);
+      border-radius: var(--radius-dialog);
+      background: var(--after-surface-raised);
+      color: var(--after-ink);
+      box-shadow: var(--after-shadow-dialog);
+    }
+
+    dialog::backdrop {
+      background: var(--after-backdrop);
+    }
+
+    .dialog-content {
+      padding: 22px;
+    }
+
+    .dialog-content h2 {
+      margin-bottom: 7px;
+      font-size: 18px;
+    }
+
+    .dialog-content p {
+      margin-bottom: 20px;
+      color: var(--after-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .dialog-action {
+      min-height: 40px;
+      padding: 0 15px;
+      border: 0;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dialog-action.secondary {
+      background: var(--after-surface-hover);
+      color: var(--after-ink);
+    }
+
+    .dialog-action.danger {
+      background: var(--after-danger);
+      color: var(--after-accent-ink);
+    }
+
+    .footer-note {
+      margin: 18px 0 0;
+      color: var(--page-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+      }
+
+      .summary-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .migration-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        padding: 18px 14px 48px;
+      }
+
+      .section {
+        padding: 16px;
+        border-radius: var(--radius-card);
+      }
+
+      .section-head {
+        display: block;
+      }
+
+      .rule-chip {
+        display: inline-block;
+        margin-top: 10px;
+      }
+
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .radius-scale {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .sidebar-stage {
+        grid-template-columns: 1fr;
+      }
+
+      .state-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .logic-table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .summary-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .view-button,
+      .demo-button {
+        width: 100%;
+      }
+
+      .radius-scale {
+        grid-template-columns: 1fr;
+      }
+
+      .surface-row {
+        grid-template-columns: 1fr;
+      }
+
+      .state-cell,
+      .status-pair {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body data-view="both">
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">iChat / UI SYSTEM MIGRATION PREVIEW</p>
+        <h1>从“每个组件自己决定”到“按语义共享一套规则”</h1>
+        <p class="lede">
+          这个临时页面不是新视觉稿，而是改造任务的可视化合同：左边还原当前项目中常见的组合方式，
+          右边展示采用 ChatGPT 式层级逻辑后的统一结果。
+        </p>
+      </div>
+      <div class="toolbar" aria-label="预览控制">
+        <div class="segmented" aria-label="对比视图">
+          <button class="view-button" type="button" data-view-button="both" aria-pressed="true">并排</button>
+          <button class="view-button" type="button" data-view-button="before" aria-pressed="false">仅改造前</button>
+          <button class="view-button" type="button" data-view-button="after" aria-pressed="false">仅改造后</button>
+        </div>
+        <button class="demo-button" type="button" data-toast="success">触发成功反馈</button>
+        <button class="demo-button" type="button" data-toast="error">触发失败反馈</button>
+        <button class="demo-button" type="button" data-open-dialog>打开危险确认</button>
+      </div>
+    </header>
+
+    <section class="summary-strip" aria-label="审计摘要">
+      <div class="summary-item">
+        <span class="summary-value">100</span>
+        <span class="summary-label">处生产圆角声明</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-value">12</span>
+        <span class="summary-label">种现有 Tailwind 写法</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-value">8</span>
+        <span class="summary-label">个建议语义圆角层级</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-value">4</span>
+        <span class="summary-label">种明确状态语义</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">01 / RADIUS HIERARCHY</div>
+          <h2>圆角从数字集合变成组件层级</h2>
+          <p class="section-note">
+            统一并不等于所有组件一个圆角。改造后由组件角色决定：交互行小、浮层中等、模态和核心输入面更大。
+          </p>
+        </div>
+        <span class="rule-chip">detail → control → item → surface</span>
+      </div>
+      <div class="compare-grid">
+        <article class="lane before">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造前</span>
+            <span class="lane-caption">numeric choice</span>
+          </div>
+          <div class="lane-body">
+            <div class="radius-chaos" aria-label="当前圆角示例">
+              <div class="chaos-sample">4px</div>
+              <div class="chaos-sample">6px</div>
+              <div class="chaos-sample">10px</div>
+              <div class="chaos-sample">12px</div>
+              <div class="chaos-sample">18px</div>
+            </div>
+            <p class="chaos-note">
+              同样是按钮、卡片或弹窗，组件根据局部视觉自行选择
+              <code>rounded-md / lg / xl / [18px]</code>，层级关系不稳定。
+            </p>
+          </div>
+        </article>
+
+        <article class="lane after">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造后</span>
+            <span class="lane-caption">semantic role</span>
+          </div>
+          <div class="lane-body">
+            <div class="radius-scale" aria-label="建议圆角令牌">
+              <div class="radius-token"><span class="token-name">detail</span><span class="token-value">4px</span></div>
+              <div class="radius-token"><span class="token-name">control</span><span class="token-value">8px</span></div>
+              <div class="radius-token"><span class="token-name">item</span><span class="token-value">10px</span></div>
+              <div class="radius-token"><span class="token-name">popover</span><span class="token-value">14px</span></div>
+              <div class="radius-token"><span class="token-name">card</span><span class="token-value">16px</span></div>
+              <div class="radius-token"><span class="token-name">dialog</span><span class="token-value">20px</span></div>
+              <div class="radius-token"><span class="token-name">composer</span><span class="token-value">28px</span></div>
+              <div class="radius-token"><span class="token-name">pill</span><span class="token-value">999px</span></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">02 / SIDEBAR & MENUS</div>
+          <h2>同一个交互家族共享同一套表面</h2>
+          <p class="section-note">
+            会话 item、用户区域、Dropdown item 的圆角与 hover 统一；Dropdown 容器保持更高一级的浮层圆角。
+          </p>
+        </div>
+        <span class="rule-chip">item 10px / popover 14px</span>
+      </div>
+      <div class="compare-grid">
+        <article class="lane before">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造前</span>
+            <span class="lane-caption">partially shared</span>
+          </div>
+          <div class="lane-body">
+            <div class="sidebar-stage">
+              <div class="sidebar-mini">
+                <div class="mini-brand">iChat <button class="icon-square" type="button" aria-label="切换侧边栏">◧</button></div>
+                <div class="sidebar-label">聊天</div>
+                <button class="chat-row selected" type="button">
+                  <span class="title">PowerShell 设置环境变量</span><span class="dots">•••</span>
+                </button>
+                <button class="chat-row" type="button"><span class="title">冷萃 vs 美式</span></button>
+                <button class="chat-row" type="button"><span class="title">iOS 视频播放器推荐</span></button>
+                <div class="user-row"><span class="avatar">M</span><span>Moriri<br><small>Plus</small></span></div>
+              </div>
+              <div class="popover-mini" aria-label="当前菜单">
+                <div class="menu-row is-hover"><span>↥</span><span>分享</span></div>
+                <div class="menu-row"><span>✎</span><span>重命名</span></div>
+                <div class="menu-row"><span>□</span><span>移至项目</span></div>
+                <div class="menu-row"><span>♧</span><span>置顶聊天</span></div>
+                <div class="menu-row danger"><span>⌫</span><span>删除</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="lane after">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造后</span>
+            <span class="lane-caption">one interaction family</span>
+          </div>
+          <div class="lane-body">
+            <div class="sidebar-stage">
+              <div class="sidebar-mini">
+                <div class="mini-brand">iChat <button class="icon-square" type="button" aria-label="切换侧边栏">◧</button></div>
+                <div class="sidebar-label">聊天</div>
+                <button class="chat-row selected" type="button">
+                  <span class="title">PowerShell 设置环境变量</span><span class="dots">•••</span>
+                </button>
+                <button class="chat-row" type="button"><span class="title">冷萃 vs 美式</span></button>
+                <button class="chat-row" type="button"><span class="title">iOS 视频播放器推荐</span></button>
+                <div class="user-row"><span class="avatar">M</span><span>Moriri<br><small>Plus</small></span></div>
+              </div>
+              <div class="popover-mini" aria-label="统一后菜单">
+                <div class="menu-row is-hover"><span>↥</span><span>分享</span></div>
+                <div class="menu-row"><span>✎</span><span>重命名</span></div>
+                <div class="menu-row"><span>□</span><span>移至项目</span></div>
+                <div class="menu-row"><span>♧</span><span>置顶聊天</span></div>
+                <div class="menu-row danger is-hover"><span>⌫</span><span>删除</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">03 / INTERACTION STATES</div>
+          <h2>控件状态不再只靠 opacity 或一处颜色变化</h2>
+          <p class="section-note">
+            改造后明确 default、hover、focus、active、disabled、loading、error、success 八种状态，并保证几何尺寸不变。
+          </p>
+        </div>
+        <span class="rule-chip">8 states / no layout shift</span>
+      </div>
+      <div class="compare-grid">
+        <article class="lane before">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造前</span>
+            <span class="lane-caption">state ambiguity</span>
+          </div>
+          <div class="lane-body">
+            <div class="state-grid">
+              <div class="state-cell"><span class="state-name">default</span><span class="sample-button">保存</span></div>
+              <div class="state-cell"><span class="state-name">hover</span><span class="sample-button is-hover">保存</span></div>
+              <div class="state-cell"><span class="state-name">focus</span><span class="sample-button is-focus">保存</span></div>
+              <div class="state-cell"><span class="state-name">active</span><span class="sample-button is-active">保存</span></div>
+              <div class="state-cell"><span class="state-name">disabled</span><span class="sample-button is-disabled">保存</span></div>
+              <div class="state-cell"><span class="state-name">loading</span><span class="sample-button is-loading">保存中…</span></div>
+              <div class="state-cell"><span class="state-name">error</span><span class="sample-button is-error">保存失败</span></div>
+              <div class="state-cell"><span class="state-name">success</span><span class="sample-button is-success">已保存</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="lane after">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造后</span>
+            <span class="lane-caption">explicit state channels</span>
+          </div>
+          <div class="lane-body">
+            <div class="state-grid">
+              <div class="state-cell"><span class="state-name">default</span><span class="sample-button">保存</span></div>
+              <div class="state-cell"><span class="state-name">hover</span><span class="sample-button is-hover">保存</span></div>
+              <div class="state-cell"><span class="state-name">focus</span><span class="sample-button is-focus">保存</span></div>
+              <div class="state-cell"><span class="state-name">active</span><span class="sample-button is-active">保存</span></div>
+              <div class="state-cell"><span class="state-name">disabled</span><span class="sample-button is-disabled" aria-disabled="true">不可用</span></div>
+              <div class="state-cell"><span class="state-name">loading</span><span class="sample-button is-loading"><span class="spinner"></span>保存中</span></div>
+              <div class="state-cell"><span class="state-name">error</span><span class="sample-button is-error"><span>!</span>重试</span></div>
+              <div class="state-cell"><span class="state-name">success</span><span class="sample-button is-success"><span>✓</span>已保存</span></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">04 / STATUS SEMANTICS</div>
+          <h2>普通、成功、失败按影响范围选择表达</h2>
+          <p class="section-note">
+            ChatGPT 式逻辑的关键是克制：短暂成功保持中性，只有持续状态使用绿色；红色集中在失败和不可逆操作。
+          </p>
+        </div>
+        <span class="rule-chip">neutral first / semantic when needed</span>
+      </div>
+      <div class="compare-grid">
+        <article class="lane before">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造前</span>
+            <span class="lane-caption">message-only toast</span>
+          </div>
+          <div class="lane-body">
+            <div class="status-stack">
+              <div class="before-toast"><span>链接已复制</span></div>
+              <div class="before-toast"><span>复制失败</span></div>
+              <div class="before-toast"><span>昵称已更新</span></div>
+              <div class="before-toast"><span>昵称保存失败，请重试</span></div>
+            </div>
+            <p class="chaos-note">成功和失败进入同一个黑色 Toast，视觉、图标和可访问性角色完全相同。</p>
+          </div>
+        </article>
+
+        <article class="lane after">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造后</span>
+            <span class="lane-caption">tone + scope</span>
+          </div>
+          <div class="lane-body">
+            <div class="status-stack">
+              <div class="status-pair">
+                <span class="status-use">短暂成功</span>
+                <div class="after-toast"><span class="status-icon">✓</span><span>链接已复制</span></div>
+              </div>
+              <div class="status-pair">
+                <span class="status-use">持续成功</span>
+                <div class="status-notice success"><span class="status-icon">✓</span><span>邮箱已验证</span></div>
+              </div>
+              <div class="status-pair">
+                <span class="status-use">操作失败</span>
+                <div class="status-notice error"><span class="status-icon">!</span><span>复制失败，请重试</span></div>
+              </div>
+              <div class="status-pair">
+                <span class="status-use">需要注意</span>
+                <div class="status-notice warning"><span class="status-icon">!</span><span>邮箱尚未验证</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">05 / SURFACE LEVELS</div>
+          <h2>浮层、卡片、Dialog 和 Composer 形成稳定深度</h2>
+          <p class="section-note">
+            容器越独立、越接近核心操作，圆角和阴影层级越高；内部 item 始终低于它的父容器。
+          </p>
+        </div>
+        <span class="rule-chip">child radius &lt; parent radius</span>
+      </div>
+      <div class="compare-grid">
+        <article class="lane before">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造前</span>
+            <span class="lane-caption">local decisions</span>
+          </div>
+          <div class="lane-body surface-stage">
+            <div class="surface-row"><span class="surface-label">Popover</span><div class="surface-shape popover">14px · 菜单</div></div>
+            <div class="surface-row"><span class="surface-label">Card</span><div class="surface-shape card">12px · 账号卡片</div></div>
+            <div class="surface-row"><span class="surface-label">Dialog</span><div class="surface-shape dialog">10px · 确认弹窗</div></div>
+            <div class="surface-row">
+              <span class="surface-label">Composer</span>
+              <div class="surface-shape composer">
+                <div class="composer-inner"><span class="composer-placeholder">有问题，尽管问</span><span class="send-button">↑</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="lane after">
+          <div class="lane-head">
+            <span class="lane-title"><span class="lane-dot"></span>改造后</span>
+            <span class="lane-caption">depth hierarchy</span>
+          </div>
+          <div class="lane-body surface-stage">
+            <div class="surface-row"><span class="surface-label">Popover</span><div class="surface-shape popover">14px · 轻量浮层</div></div>
+            <div class="surface-row"><span class="surface-label">Card</span><div class="surface-shape card">16px · 独立内容面</div></div>
+            <div class="surface-row"><span class="surface-label">Dialog</span><div class="surface-shape dialog">20px · 模态操作面</div></div>
+            <div class="surface-row">
+              <span class="surface-label">Composer</span>
+              <div class="surface-shape composer">
+                <div class="composer-inner"><span class="composer-placeholder">有问题，尽管问</span><span class="send-button">↑</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">06 / DECISION TABLE</div>
+          <h2>颜色选择由“发生了什么”决定</h2>
+          <p class="section-note">开发时先判断状态语义和影响范围，再选择组件；不允许业务组件直接挑一个绿色或红色。</p>
+        </div>
+      </div>
+      <table class="logic-table">
+        <thead>
+          <tr>
+            <th>语义</th>
+            <th>典型事件</th>
+            <th>默认组件</th>
+            <th>视觉规则</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tone-tag neutral">普通</span></td>
+            <td>选中、hover、加载完成</td>
+            <td>灰阶 surface / neutral toast</td>
+            <td>不使用成功色；选中不等于成功</td>
+          </tr>
+          <tr>
+            <td><span class="tone-tag success">成功</span></td>
+            <td>复制成功、保存成功、邮箱已验证</td>
+            <td>短暂操作用中性 Toast；持续状态用 success notice</td>
+            <td>Check 图标始终存在，绿色只用于值得保留的状态</td>
+          </tr>
+          <tr>
+            <td><span class="tone-tag error">失败</span></td>
+            <td>字段错误、请求失败、生成失败</td>
+            <td>Inline error / error toast / process notice</td>
+            <td>文字＋图标＋文案，不依赖颜色单通道</td>
+          </tr>
+          <tr>
+            <td><span class="tone-tag warning">提醒</span></td>
+            <td>邮箱未验证、存在风险但尚未失败</td>
+            <td>Persistent warning notice</td>
+            <td>与 danger 分离，不使用删除红</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-number">07 / MIGRATION MAP</div>
+          <h2>改造会落到哪些组件</h2>
+          <p class="section-note">建议先改基础设施，再迁移高频交互面，最后收口业务页面中的局部样式。</p>
+        </div>
+      </div>
+      <div class="migration-grid">
+        <article class="migration-group">
+          <h3>第一层 · 令牌与状态模型</h3>
+          <p>建立圆角、颜色、阴影、遮罩令牌；Toast action 增加 tone。</p>
+          <ul class="file-list">
+            <li>styles/global.css</li>
+            <li>ui/classes.ts</li>
+            <li>ui/state.ts</li>
+            <li>ui/Toast.tsx</li>
+          </ul>
+        </article>
+        <article class="migration-group">
+          <h3>第二层 · 高频共享组件</h3>
+          <p>统一侧边栏、菜单、Composer、Dialog、BottomSheet 的交互表面。</p>
+          <ul class="file-list">
+            <li>conversations/Sidebar.tsx</li>
+            <li>conversations/UserMenu.tsx</li>
+            <li>ui/Composer.tsx</li>
+            <li>ui/ConfirmDialog.tsx</li>
+            <li>ui/BottomSheet.tsx</li>
+          </ul>
+        </article>
+        <article class="migration-group">
+          <h3>第三层 · 业务状态收口</h3>
+          <p>迁移账号、分享、认证和消息状态，移除硬编码颜色与重复圆角。</p>
+          <ul class="file-list">
+            <li>conversations/AccountCard.tsx</li>
+            <li>conversations/MySharesCard.tsx</li>
+            <li>ui/ShareDialog.tsx</li>
+            <li>messages/StreamingMessage.tsx</li>
+            <li>auth/*.tsx</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      此页面是临时视觉说明，不代表生产代码已经完成迁移。建议确认这套层级后，再进入实际组件改造。
+    </p>
+  </main>
+
+  <div class="live-toast" role="status" aria-live="polite" data-live-toast>
+    <span class="status-icon" data-live-toast-icon>✓</span>
+    <span data-live-toast-message>链接已复制</span>
+  </div>
+
+  <dialog aria-labelledby="danger-dialog-title" data-danger-dialog>
+    <div class="dialog-content">
+      <h2 id="danger-dialog-title">删除对话？</h2>
+      <p>此对话及其全部消息将永久删除，无法恢复。实心红色只出现在这类最终、不可逆的确认操作上。</p>
+      <div class="dialog-actions">
+        <button class="dialog-action secondary" type="button" data-close-dialog>取消</button>
+        <button class="dialog-action danger" type="button" data-confirm-dialog>删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const viewButtons = document.querySelectorAll("[data-view-button]");
+    const toast = document.querySelector("[data-live-toast]");
+    const toastIcon = document.querySelector("[data-live-toast-icon]");
+    const toastMessage = document.querySelector("[data-live-toast-message]");
+    const dialog = document.querySelector("[data-danger-dialog]");
+    let toastTimer;
+
+    viewButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        document.body.dataset.view = button.dataset.viewButton;
+        viewButtons.forEach((candidate) => {
+          candidate.setAttribute("aria-pressed", String(candidate === button));
+        });
+      });
+    });
+
+    function showToast(tone) {
+      window.clearTimeout(toastTimer);
+      const isError = tone === "error";
+      toast.classList.toggle("error", isError);
+      toast.setAttribute("role", isError ? "alert" : "status");
+      toastIcon.textContent = isError ? "!" : "✓";
+      toastMessage.textContent = isError ? "复制失败，请重试" : "链接已复制";
+      toast.classList.add("visible");
+      toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 2600);
+    }
+
+    document.querySelectorAll("[data-toast]").forEach((button) => {
+      button.addEventListener("click", () => showToast(button.dataset.toast));
+    });
+
+    document.querySelector("[data-open-dialog]").addEventListener("click", () => {
+      dialog.showModal();
+      dialog.querySelector("[data-close-dialog]").focus();
+    });
+
+    document.querySelector("[data-close-dialog]").addEventListener("click", () => dialog.close());
+    document.querySelector("[data-confirm-dialog]").addEventListener("click", () => {
+      dialog.close();
+      showToast("success");
+    });
+
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  </script>
+</body>
+</html>

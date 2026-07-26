@@ -45,10 +45,11 @@ describe("Message", () => {
     expect(screen.getByText("你好")).toBeInTheDocument();
   });
 
-  it("renders assistant markdown and thinking", () => {
+  it("renders only the formal assistant reply after completion", () => {
     render(<Message message={assistantMessage} />);
     expect(screen.getByText("回答")).toBeInTheDocument(); // bold rendered
-    expect(screen.getByText("已思考")).toBeInTheDocument();
+    expect(screen.queryByText("我的推理")).toBeNull();
+    expect(screen.queryByText("已思考")).toBeNull();
   });
 
   it("shows a sources trigger that opens the sources panel", async () => {
@@ -276,7 +277,9 @@ describe("Message", () => {
     longPress(screen.getByText("你好"));
     const editBtn = screen.getByRole("button", { name: /编辑并重发/ });
     expect(editBtn).toBeDisabled();
-    expect(editBtn).toHaveAttribute("title", reason);
+    const reasonText = screen.getByText(reason);
+    expect(reasonText).toBeVisible();
+    expect(editBtn).toHaveAccessibleDescription(reason);
     expect(screen.getByRole("button", { name: /复制/ })).toBeEnabled();
   });
 

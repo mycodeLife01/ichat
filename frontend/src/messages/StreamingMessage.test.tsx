@@ -19,6 +19,11 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
 }
 
 describe("StreamingMessage", () => {
+  it("shows 正在思考 before the first stream event arrives", () => {
+    render(<StreamingMessage run={run({ status: "started" })} />);
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
+
   it("renders streamed body text in a .body.md block", () => {
     const { container } = render(
       <StreamingMessage run={run({ draftText: "Hello world", status: "streaming" })} />,
@@ -27,9 +32,20 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".body.md")).toBeTruthy();
   });
 
-  it("renders the reasoning block", () => {
+  it("renders the reasoning block only before the formal answer starts", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByText("在想")).toBeInTheDocument();
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
+
+  it("hides reasoning after the formal answer starts", () => {
+    render(
+      <StreamingMessage
+        run={run({ draftText: "正式回答", draftReasoning: "不再展示", status: "streaming" })}
+      />,
+    );
+    expect(screen.getByText("正式回答")).toBeInTheDocument();
+    expect(screen.queryByText("不再展示")).toBeNull();
   });
 
   it("surfaces web search phases in the collapsible header and shows no preview box", () => {
@@ -72,19 +88,22 @@ describe("StreamingMessage", () => {
     expect(screen.queryByText("[1] Release notes")).toBeNull();
   });
 
-  it("shows the failed status-pill (demo copy)", () => {
+  it("shows a persistent error status for a failed run (icon + copy, alert role)", () => {
     const { container } = render(
       <StreamingMessage run={run({ draftText: "部分", status: "failed" })} />,
     );
-    expect(container.querySelector(".status-pill.failed")).toBeTruthy();
-    expect(screen.getByText("生成失败 · 请稍后重试")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("生成失败 · 请稍后重试");
+    expect(alert).toHaveAttribute("data-tone", "error");
+    // Color is not the only channel: an icon accompanies the copy.
+    expect(container.querySelector('[data-status-icon="error"]')).toBeTruthy();
+    // The partial draft stays readable next to the status.
+    expect(screen.getByText("部分")).toBeInTheDocument();
   });
 
-  it("shows the stopped status-pill (demo copy)", () => {
-    const { container } = render(
-      <StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />,
-    );
-    expect(container.querySelector(".status-pill.stopped")).toBeTruthy();
-    expect(screen.getByText("已停止")).toBeInTheDocument();
+  it("keeps the partial answer without a status block for a cancelled run", () => {
+    render(<StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />);
+    expect(screen.getByText("部分")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

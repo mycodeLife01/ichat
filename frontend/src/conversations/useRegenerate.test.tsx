@@ -135,6 +135,9 @@ describe("useRegenerate", () => {
       await result.current.regenerate("2");
     });
 
-    expect(result.current.ui.toast?.message).toBe("操作失败，请重试");
+    expect(result.current.ui.toast).toMatchObject({
+      message: "操作失败，请重试",
+      tone: "error",
+    });
   });
 });

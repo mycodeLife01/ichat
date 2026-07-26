@@ -1,4 +1,7 @@
-import { ghostBtn, primaryBtn } from "./classes";
+import { useId } from "react";
+
+import { buttonControl, primaryButton, solidDangerButton } from "./classes";
+import { ModalDialog } from "./ModalDialog";
 
 type ConfirmDialogProps = {
   title: string;
@@ -17,30 +20,36 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const titleId = useId();
+  const bodyId = useId();
+
   return (
-    <div
-      className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.4)] p-6"
-      onClick={onCancel}
+    <ModalDialog
+      role={destructive ? "alertdialog" : "dialog"}
+      titleId={titleId}
+      descriptionId={bodyId}
+      onClose={onCancel}
+      className="w-full max-w-[360px] p-[22px]"
     >
-      <div
-        className="dialog w-full max-w-[360px] rounded-lg border border-border-strong bg-bg-raised p-[22px]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h3 className="mb-2 text-[15px] font-semibold">{title}</h3>
-        <p className="mb-5 text-[13.5px] leading-[1.6] text-fg-muted">{body}</p>
-        <div className="flex justify-end gap-2">
-          <button className={ghostBtn} onClick={onCancel}>
-            取消
-          </button>
-          <button
-            className={primaryBtn}
-            style={destructive ? { background: "var(--color-danger)" } : undefined}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+      <h3 id={titleId} className="mb-2 text-[15px] font-semibold">{title}</h3>
+      <p id={bodyId} className="mb-5 text-[13.5px] leading-[1.6] text-text-muted">{body}</p>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          className={`${buttonControl} h-9 px-3.5 text-[13px]`}
+          data-dialog-initial-focus={destructive ? "" : undefined}
+          onClick={onCancel}
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          className={`${destructive ? solidDangerButton : primaryButton} h-9 px-3.5 text-[13px] font-medium`}
+          onClick={onConfirm}
+        >
+          {confirmLabel}
+        </button>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

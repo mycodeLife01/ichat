@@ -39,11 +39,41 @@ describe("activeRunReducer", () => {
     expect(b?.status).toBe("streaming");
   });
 
-  it("sets terminal status but keeps drafts", () => {
-    const streaming = activeRunReducer(started, { type: "run/textDelta", seq: 1, text: "x" });
+  it("clears reasoning and tool state when the formal answer starts", () => {
+    const reasoning = activeRunReducer(started, {
+      type: "run/reasoningDelta", seq: 1, text: "想法",
+    });
+    const withTool = activeRunReducer(reasoning, {
+      type: "run/toolState",
+      seq: 2,
+      toolState: {
+        status: "running",
+        tool_name: "web_search",
+        query: "query",
+        message: null,
+        result_count: null,
+        sources: [],
+      },
+    });
+    const next = activeRunReducer(withTool, {
+      type: "run/textDelta", seq: 3, text: "正文",
+    });
+    expect(next?.draftText).toBe("正文");
+    expect(next?.draftReasoning).toBe("");
+    expect(next?.toolState).toBeNull();
+  });
+
+  it("sets terminal status, keeps the formal draft, and clears reasoning", () => {
+    const reasoning = activeRunReducer(started, {
+      type: "run/reasoningDelta", seq: 1, text: "想法",
+    });
+    const streaming = activeRunReducer(reasoning, {
+      type: "run/textDelta", seq: 2, text: "x",
+    });
     const failed = activeRunReducer(streaming, { type: "run/terminal", status: "failed" });
     expect(failed?.status).toBe("failed");
     expect(failed?.draftText).toBe("x");
+    expect(failed?.draftReasoning).toBe("");
   });
 
   it("marks cancel requested", () => {
@@ -83,7 +113,7 @@ describe("activeRunReducer", () => {
     expect(activeRunReducer(null, { type: "run/cancelRequested" })).toBeNull();
   });
 
-  it("restores a run from server state", () => {
+  it("restores a run with a formal draft without completed reasoning", () => {
     const next = activeRunReducer(null, {
       type: "run/restored",
       runId: "100",
@@ -98,11 +128,24 @@ describe("activeRunReducer", () => {
       conversationId: "10",
       latestSeq: 5,
       draftText: "Hel",
-      draftReasoning: "想",
+      draftReasoning: "",
       toolState: null,
       status: "streaming",
       cancelRequested: false,
     });
+  });
+
+  it("restores active reasoning when no formal answer exists yet", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: "100",
+      conversationId: "10",
+      latestSeq: 5,
+      draftText: "",
+      draftReasoning: "想",
+      status: "streaming",
+    });
+    expect(next?.draftReasoning).toBe("想");
   });
 
   it("marks cancelRequested when restoring a cancelling run", () => {

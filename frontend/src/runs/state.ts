@@ -56,7 +56,10 @@ export function activeRunReducer(
       if (state === null) return state;
       return {
         ...state,
-        draftReasoning: state.draftReasoning + action.text,
+        // Once the formal answer starts, reasoning is no longer retained in
+        // frontend state even if a late/replayed reasoning event arrives.
+        draftReasoning:
+          state.draftText === "" ? state.draftReasoning + action.text : "",
         latestSeq: action.seq,
         // Deltas keep arriving while a cancel is in flight; don't let them
         // flip "cancelling" back to "streaming" (re-enabling the stop button).
@@ -67,6 +70,8 @@ export function activeRunReducer(
       return {
         ...state,
         draftText: state.draftText + action.text,
+        draftReasoning: "",
+        toolState: null,
         latestSeq: action.seq,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
@@ -75,23 +80,34 @@ export function activeRunReducer(
       return {
         ...state,
         latestSeq: action.seq,
-        toolState: action.toolState ?? null,
+        toolState: state.draftText === "" ? (action.toolState ?? null) : null,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
     case "run/terminal":
       if (state === null) return state;
-      return { ...state, status: action.status };
-    case "run/restored":
+      return {
+        ...state,
+        draftReasoning: "",
+        toolState: null,
+        status: action.status,
+      };
+    case "run/restored": {
+      const keepThinking =
+        action.draftText === "" &&
+        action.status !== "succeeded" &&
+        action.status !== "failed" &&
+        action.status !== "cancelled";
       return {
         runId: action.runId,
         conversationId: action.conversationId,
         latestSeq: action.latestSeq,
         draftText: action.draftText,
-        draftReasoning: action.draftReasoning,
-        toolState: action.toolState ?? null,
+        draftReasoning: keepThinking ? action.draftReasoning : "",
+        toolState: keepThinking ? (action.toolState ?? null) : null,
         status: action.status,
         cancelRequested: action.status === "cancelling",
       };
+    }
     case "run/cancelRequested":
       if (state === null) return state;
       return { ...state, cancelRequested: true, status: "cancelling" };

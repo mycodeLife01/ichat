@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -50,12 +50,30 @@ describe("Composer", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("does not send on Enter while an IME composition is active", () => {
+    const onSend = vi.fn();
+    renderComposer({ value: "nihao", onSend });
+    fireEvent.keyDown(screen.getByPlaceholderText("有问题，尽管问"), {
+      key: "Enter",
+      isComposing: true,
+    });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("clicking send calls onSend", async () => {
     const onSend = vi.fn();
     const user = userEvent.setup();
     renderComposer({ value: "hi", onSend });
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(onSend).toHaveBeenCalled();
+  });
+
+  it("shows a disabled busy send action while submitting", () => {
+    renderComposer({ state: "submitting" });
+    const submitting = screen.getByRole("button", { name: "发送中" });
+    expect(submitting).toBeDisabled();
+    expect(submitting).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("button", { name: "停止生成" })).toBeNull();
   });
 
   it("shows the stop button while streaming and calls onStop", async () => {
@@ -69,30 +87,36 @@ describe("Composer", () => {
     expect(onStop).toHaveBeenCalled();
   });
 
-  it("disables the stop button while stopping", () => {
+  it("disables the stop button and marks it busy while stopping", () => {
     renderComposer({ value: "hi", state: "stopping" });
-    expect(screen.getByRole("button", { name: "停止中" })).toBeDisabled();
+    const stopping = screen.getByRole("button", { name: "停止中" });
+    expect(stopping).toBeDisabled();
+    expect(stopping).toHaveAttribute("aria-busy", "true");
   });
 
   it("shows the current thinking level on the trigger button", () => {
     renderComposer({ thinkingLevel: "max" });
-    expect(screen.getByRole("button", { name: "智能水平" })).toHaveTextContent("Max");
+    expect(screen.getByRole("button", { name: "智能水平" })).toHaveTextContent("极致");
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("opens the level menu with Fast/High/Max and checks the current one", async () => {
+  it("opens the level menu with Chinese labels and checks the current one", async () => {
     const user = userEvent.setup();
     renderComposer({ thinkingLevel: "high" });
 
-    await user.click(screen.getByRole("button", { name: "智能水平" }));
+    const trigger = screen.getByRole("button", { name: "智能水平" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
 
+    expect(screen.getByRole("menu", { name: "智能水平" })).toBeInTheDocument();
     const options = screen.getAllByRole("menuitemradio");
-    expect(options.map((o) => o.textContent)).toEqual(["Fast", "High", "Max"]);
-    expect(screen.getByRole("menuitemradio", { name: "High" })).toHaveAttribute(
+    expect(options.map((o) => o.textContent)).toEqual(["快速", "高", "极致"]);
+    expect(screen.getByRole("menuitemradio", { name: "高" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    expect(screen.getByRole("menuitemradio", { name: "Fast" })).toHaveAttribute(
+    expect(screen.getByRole("menuitemradio", { name: "快速" })).toHaveAttribute(
       "aria-checked",
       "false",
     );
@@ -104,10 +128,15 @@ describe("Composer", () => {
     renderComposer({ thinkingLevel: "fast", onThinkingLevelChange });
 
     await user.click(screen.getByRole("button", { name: "智能水平" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Max" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "极致" }));
 
     expect(onThinkingLevelChange).toHaveBeenCalledWith("max");
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("does not show a voice input button", () => {
+    renderComposer();
+    expect(screen.queryByRole("button", { name: "语音输入" })).toBeNull();
   });
 
   it("toggles the web search tool and disables it when unavailable", async () => {
@@ -135,6 +164,18 @@ describe("Composer", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "智能搜索" })).toBeDisabled();
+  });
+
+  it("exposes the web search toggle as pressed while enabled", () => {
+    renderComposer({ webSearchEnabled: true });
+    const searchButton = screen.getByRole("button", { name: "智能搜索" });
+    expect(searchButton).toHaveAttribute("aria-pressed", "true");
+    expect(searchButton).toHaveClass(
+      "border-search-border",
+      "bg-search-soft",
+      "text-search-foreground",
+      "hover:bg-search-soft-hover",
+    );
   });
 
   it("closes the level menu when clicking outside", async () => {
