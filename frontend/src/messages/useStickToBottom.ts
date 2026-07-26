@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 type Metrics = { scrollHeight: number; scrollTop: number; clientHeight: number };
 
@@ -44,7 +44,7 @@ export function useStickToBottom<T extends HTMLElement>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const force = forceKey !== lastForceKey.current;

@@ -9,10 +9,7 @@ import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
 import { MessageThread } from "../messages/MessageThread";
 import { SourcesPanel } from "../messages/SourcesPanel";
-import {
-  PendingAssistantMessage,
-  StreamingMessage,
-} from "../messages/StreamingMessage";
+import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
@@ -115,13 +112,14 @@ export function AppShell() {
   // The id of the newest user message in the thread; advances on send and on
   // edit-and-regenerate (the edited message is re-created with a new id).
   const lastUserMessageId = detail.messages.filter((m) => m.role === "user").at(-1)?.id;
+  // Reasoning/tool deltas intentionally do not drive bottom-sticking: expanding
+  // that status block would move its header on every chunk. Formal answer text
+  // still follows the stream, and failures scroll their persistent alert in.
   const threadRef = useStickToBottom<HTMLDivElement>(
     [
       detail.messages.length,
       activeRun?.draftText,
-      activeRun?.draftReasoning,
-      activeRun?.toolState,
-      activeRun?.status,
+      activeRun?.status === "failed",
       pendingSubmission?.content,
     ],
     // Jump to the bottom unconditionally when entering a conversation or when
@@ -365,6 +363,11 @@ export function AppShell() {
           ONLY when a brand-new conversation sends its first message. */}
       <main
         className={`main relative flex min-w-0 flex-1 flex-col${animateComposer ? " composer-animate" : ""}`}
+        onTransitionEnd={(event) => {
+          if (event.propertyName === "flex-grow") {
+            setAnimateComposer(false);
+          }
+        }}
       >
         <VerifyEmailBanner />
         <Topbar
@@ -395,10 +398,9 @@ export function AppShell() {
               onRegenerate={(id) => void regenerate(id)}
               onShowSources={showSources}
             >
-              {pendingMessage ? (
-                <PendingAssistantMessage />
-              ) : activeRun && activeRun.conversationId === selectedId ? (
-                <StreamingMessage run={activeRun} />
+              {pendingMessage ||
+              (activeRun && activeRun.conversationId === selectedId) ? (
+                <StreamingMessage run={pendingMessage ? null : activeRun} />
               ) : null}
             </MessageThread>
           )}

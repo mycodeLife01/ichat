@@ -3,29 +3,21 @@ import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
-type StreamingMessageProps = { run: NonNullable<ActiveRunState> };
-
-export function PendingAssistantMessage() {
-  return (
-    <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
-      <div className="min-w-0 flex-1">
-        <ThinkingBlock content="" streaming />
-      </div>
-    </div>
-  );
-}
+type StreamingMessageProps = { run: ActiveRunState };
 
 export function StreamingMessage({ run }: StreamingMessageProps) {
   const isStreaming =
+    run === null ||
     run.status === "queued" ||
     run.status === "started" ||
     run.status === "streaming" ||
     run.status === "cancelling";
-  const thinking = isStreaming && run.draftText === "";
+  const draftText = run?.draftText ?? "";
+  const thinking = isStreaming && draftText === "";
 
   // While a web_search tool call is in flight, the collapsible header label
   // takes over the thinking copy: 正在搜索… → 已找到 n 个来源 (no preview box).
-  const toolLabel = run.toolState ? labelForToolState(run.toolState) : undefined;
+  const toolLabel = run?.toolState ? labelForToolState(run.toolState) : undefined;
   const showThinking = thinking;
 
   return (
@@ -33,15 +25,15 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
       <div className="min-w-0 flex-1">
         {showThinking && (
           <ThinkingBlock
-            content={run.draftReasoning}
+            content={run?.draftReasoning ?? ""}
             streaming={thinking}
             label={toolLabel}
           />
         )}
-        <Markdown content={run.draftText} streaming />
+        <Markdown content={draftText} streaming />
         {/* Failures remain in message context as a persistent alert. Cancelled
             runs keep any partial formal answer without an extra status block. */}
-        {run.status === "failed" && (
+        {run?.status === "failed" && (
           <InlineStatus tone="error" className="mt-2 w-fit">
             生成失败 · 请稍后重试
           </InlineStatus>

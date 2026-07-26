@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -59,6 +60,26 @@ describe("useStickToBottom", () => {
     const { el, rerender } = setup();
     rerender({ deps: [3], key: undefined });
     expect(el.scrollTop).toBe(1000);
+  });
+
+  it("sticks before the updated thread can paint", () => {
+    const observedDuringLayout: number[] = [];
+    const hook = renderHook(
+      ({ deps }) => {
+        const ref = useStickToBottom<HTMLElement>(deps);
+        useLayoutEffect(() => {
+          if (ref.current) observedDuringLayout.push(ref.current.scrollTop);
+        }, [deps, ref]);
+        return ref;
+      },
+      { initialProps: { deps: [1] as unknown[] } },
+    );
+    const { el } = fakeEl(900);
+    hook.result.current.current = el;
+
+    hook.rerender({ deps: [2] });
+
+    expect(observedDuringLayout.at(-1)).toBe(1000);
   });
 
   it("unpins as soon as the user scrolls up, even within the near-bottom threshold", () => {

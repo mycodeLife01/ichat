@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -276,6 +276,9 @@ describe("AppShell", () => {
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
+    const sendMessage = vi.fn()
+      .mockResolvedValueOnce(sent)
+      .mockImplementationOnce(() => new Promise<SendMessageResponse>(() => {}));
     const serverDetail: ConversationDetailResponse = {
       ...draft, activated_at: "t", title: "新对话",
       messages: [userMessage, assistantMessage],
@@ -287,7 +290,7 @@ describe("AppShell", () => {
         list: async () => [],
         create: async () => draft,
         detail: async () => serverDetail,
-        sendMessage: async () => sent,
+        sendMessage,
       },
       {
         streamEvents: () =>
@@ -310,6 +313,15 @@ describe("AppShell", () => {
     expect(screen.getByText("你好")).toBeInTheDocument();
     // Back to idle: send button returns.
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
+    const transitionEnd = new Event("transitionend", { bubbles: true });
+    Object.defineProperty(transitionEnd, "propertyName", { value: "flex-grow" });
+    fireEvent(screen.getByRole("main"), transitionEnd);
+
+    await user.type(textarea, "第二条");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const thinking = await screen.findByText("正在思考");
+    expect(thinking.closest("main")).not.toHaveClass("composer-animate");
   });
 
   it("shows the optimistic turn while the send API is pending", async () => {
@@ -337,6 +349,46 @@ describe("AppShell", () => {
     expect(submitting).toBeDisabled();
     expect(submitting).toHaveAttribute("aria-busy", "true");
     await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+  });
+
+  it("preserves the thinking status node when the pending submission becomes a run", async () => {
+    const user = userEvent.setup();
+    const draft: ConversationResponse = {
+      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
+    };
+    const userMessage: MessageResponse = {
+      id: "1", conversation_id: "77", run_id: "100", role: "user",
+      content: "你好", reasoning: null, position: 1, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    let resolveSend: ((value: SendMessageResponse) => void) | undefined;
+    const sendMessage = vi.fn(
+      () =>
+        new Promise<SendMessageResponse>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    const services = createFakeServices(
+      {},
+      { list: async () => [], create: async () => draft, sendMessage },
+      { streamEvents: () => fakeStream([]) },
+    );
+
+    renderWithApp(<AppShell />, services);
+
+    const textarea = await screen.findByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "你好");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    const pendingThinking = await screen.findByText("正在思考");
+
+    expect(resolveSend).toBeDefined();
+    resolveSend?.({ message: userMessage, run });
+    await screen.findByRole("button", { name: "停止生成" });
+
+    expect(screen.getByText("正在思考")).toBe(pendingThinking);
   });
 
   it("restores the submitted text when sending fails", async () => {
@@ -771,6 +823,77 @@ describe("AppShell", () => {
 
     await screen.findByText("新问题");
     await waitFor(() => expect(region.scrollTop).toBe(1000));
+  });
+
+  it("keeps the thinking label stable while reasoning grows", async () => {
+    const titled = { ...conversationResponse, title: "对话A" };
+    const oldUser: MessageResponse = {
+      id: "1", conversation_id: titled.id, run_id: "99", role: "user",
+      content: "旧问题", reasoning: null, position: 1, created_at: "t",
+    };
+    const oldAssistant: MessageResponse = {
+      id: "2", conversation_id: titled.id, run_id: "99", role: "assistant",
+      content: "旧答案", reasoning: null, position: 2, created_at: "t",
+    };
+    const newUser: MessageResponse = {
+      id: "3", conversation_id: titled.id, run_id: "100", role: "user",
+      content: "新问题", reasoning: null, position: 3, created_at: "t",
+    };
+    const run: RunResponse = {
+      id: "100", conversation_id: titled.id, user_message_id: "3", status: "streaming",
+      provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
+    };
+    let releaseReasoning = () => {};
+    const reasoningReady = new Promise<void>((resolve) => {
+      releaseReasoning = resolve;
+    });
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [titled],
+        detail: async () => ({ ...titled, messages: [oldUser, oldAssistant] }),
+        sendMessage: async () => ({ message: newUser, run }),
+      },
+      {
+        streamEvents: async function* () {
+          await reasoningReady;
+          const data = {
+            ...reasoningDeltaEvent,
+            seq: 1,
+            payload: { text: "新增推理" },
+          };
+          yield { seq: data.seq, type: data.type, data };
+          await new Promise(() => {});
+        },
+      },
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithApp(
+      <AppShell />,
+      services,
+      undefined,
+      [`/c/${conversationResponse.id}`],
+    );
+
+    await screen.findByText("旧答案");
+    const region = container.querySelector(".thread-region") as HTMLElement;
+    let scrollHeight = 1000;
+    Object.defineProperty(region, "scrollHeight", {
+      get: () => scrollHeight,
+      configurable: true,
+    });
+
+    const textarea = screen.getByPlaceholderText("有问题，尽管问");
+    await user.type(textarea, "新问题");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByText("正在思考");
+    await waitFor(() => expect(region.scrollTop).toBe(1000));
+
+    scrollHeight = 1200;
+    releaseReasoning();
+    await screen.findByText("新增推理");
+
+    expect(region.scrollTop).toBe(1000);
   });
 
   it("surfaces a toast when sending fails", async () => {
