@@ -29,6 +29,41 @@ describe("BottomSheet", () => {
     expect(document.querySelector(".sheet-handle")).not.toBeNull();
   });
 
+  it("keeps the backdrop color stable while the sheet enters", () => {
+    render(
+      <BottomSheet open onClose={() => {}} ariaLabel="消息操作">
+        <button>复制</button>
+      </BottomSheet>,
+    );
+
+    const backdrop = document.querySelector(".sheet-backdrop");
+    const scrim = document.querySelector(".sheet-scrim");
+    const sheet = document.querySelector(".sheet");
+    expect(scrim).toHaveClass("bg-overlay");
+    expect(scrim?.parentElement).toBe(backdrop);
+    expect(sheet?.parentElement).toBe(backdrop);
+    expect(scrim).not.toBe(sheet);
+    expect(scrim?.className).not.toMatch(
+      /transition-(?:colors|opacity)|animate-/,
+    );
+  });
+
+  it("can keep a click-blocking backdrop transparent over an existing scrim", () => {
+    render(
+      <BottomSheet
+        open
+        onClose={() => {}}
+        ariaLabel="消息操作"
+        dimBackground={false}
+      >
+        <button>复制</button>
+      </BottomSheet>,
+    );
+
+    expect(document.querySelector(".sheet-scrim")).toHaveClass("bg-transparent");
+    expect(document.querySelector(".sheet-scrim")).not.toHaveClass("bg-overlay");
+  });
+
   it("closes when the backdrop is clicked", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
@@ -37,7 +72,7 @@ describe("BottomSheet", () => {
         <button>复制</button>
       </BottomSheet>,
     );
-    await user.click(document.querySelector(".sheet-backdrop")!);
+    await user.click(document.querySelector(".sheet-scrim")!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -82,7 +117,7 @@ describe("BottomSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("moves focus into the sheet and traps Tab navigation", async () => {
+  it("focuses the sheet without preselecting an action and traps Tab navigation", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
       <>
@@ -94,6 +129,9 @@ describe("BottomSheet", () => {
       </>,
     );
 
+    expect(screen.getByRole("dialog", { name: "消息操作" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "复制" })).not.toHaveFocus();
+    await user.tab();
     expect(screen.getByRole("button", { name: "复制" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "编辑" })).toHaveFocus();

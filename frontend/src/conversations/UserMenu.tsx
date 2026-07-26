@@ -246,6 +246,7 @@ export function UserMenu({
             triggerRef.current?.focus();
           }}
           ariaLabel="个人中心"
+          dimBackground={false}
         >
           {renderMenuContent("mobile")}
         </BottomSheet>

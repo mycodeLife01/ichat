@@ -6,6 +6,8 @@ type BottomSheetProps = {
   onClose: () => void;
   ariaLabel: string;
   children: ReactNode;
+  // A sheet opened above an already-dimmed drawer keeps only its click layer.
+  dimBackground?: boolean;
 };
 
 const focusableSelector = [
@@ -22,7 +24,13 @@ const focusableSelector = [
 // Portaled to <body> so the fixed-position backdrop spans the full viewport even
 // when opened from a transformed ancestor (e.g. the open mobile sidebar, whose
 // translateX would otherwise become the containing block and clamp its width).
-export function BottomSheet({ open, onClose, ariaLabel, children }: BottomSheetProps) {
+export function BottomSheet({
+  open,
+  onClose,
+  ariaLabel,
+  children,
+  dimBackground = true,
+}: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -39,7 +47,7 @@ export function BottomSheet({ open, onClose, ariaLabel, children }: BottomSheetP
         panel?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
       ).filter((element) => element.getAttribute("aria-hidden") !== "true");
 
-    (focusableElements()[0] ?? panel)?.focus({ preventScroll: true });
+    panel?.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -58,12 +66,19 @@ export function BottomSheet({ open, onClose, ariaLabel, children }: BottomSheetP
 
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          document.activeElement === panel ||
+          !panel?.contains(document.activeElement))
+      ) {
         event.preventDefault();
         last.focus();
       } else if (
         !event.shiftKey &&
-        (document.activeElement === last || !panel?.contains(document.activeElement))
+        (document.activeElement === last ||
+          document.activeElement === panel ||
+          !panel?.contains(document.activeElement))
       ) {
         event.preventDefault();
         first.focus();
@@ -84,12 +99,18 @@ export function BottomSheet({ open, onClose, ariaLabel, children }: BottomSheetP
   if (!open) return null;
   return createPortal(
     <div
-      className="sheet-backdrop fixed inset-0 z-40 flex items-end justify-center overflow-x-hidden bg-overlay"
-      onClick={onClose}
+      className="sheet-backdrop fixed inset-0 z-40 isolate flex items-end justify-center overflow-x-hidden"
     >
       <div
+        className={`sheet-scrim absolute inset-0 ${
+          dimBackground ? "bg-overlay" : "bg-transparent"
+        }`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
         ref={panelRef}
-        className="sheet max-h-[calc(100dvh-8px)] w-full max-w-[480px] animate-sheet-in overflow-x-hidden overflow-y-auto rounded-t-card border border-b-0 border-border-strong bg-surface px-2 pt-2 shadow-dialog pb-[max(16px,env(safe-area-inset-bottom))]"
+        className="sheet relative z-10 max-h-[calc(100dvh-8px)] w-full max-w-[480px] animate-sheet-in overflow-x-hidden overflow-y-auto rounded-t-card border border-b-0 border-border-strong bg-surface px-2 pt-2 shadow-dialog outline-none pb-[max(16px,env(safe-area-inset-bottom))]"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

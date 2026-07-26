@@ -168,6 +168,7 @@ export function Message({
   // doesn't remount a node under the cursor (which would re-open the dropdown).
   // The bar reveals on message hover/focus via the parent `group`; the
   // assistant bar is always visible (resident).
+  const compactResidentActions = isMobile && !isUser;
   const actionsBase =
     "msg-actions mt-1 flex gap-0.5 transition-opacity duration-[120ms] " +
     "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
@@ -190,12 +191,14 @@ export function Message({
           </span>
         }
         onClick={handleCopy}
+        compact={compactResidentActions}
       />
       <MessageAction
         label={mutateLabel}
         icon={<MutateIcon size={18} />}
         onClick={mutate}
         disabled={disabled}
+        compact={compactResidentActions}
         disabledReason={mutateDisabledReason}
       />
     </div>

@@ -12,6 +12,8 @@ type MessageActionProps = {
   icon: ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  // Keeps resident mobile actions visually compact while preserving 44px height.
+  compact?: boolean;
   // Shown in the dropdown instead of the label while disabled (e.g. an active-run
   // reason). Falls back to the label when omitted.
   disabledReason?: string | null;
@@ -26,6 +28,7 @@ export function MessageAction({
   icon,
   onClick,
   disabled = false,
+  compact = false,
   disabledReason = null,
 }: MessageActionProps) {
   const [showTip, setShowTip] = useState(false);
@@ -38,7 +41,11 @@ export function MessageAction({
       onMouseLeave={() => setShowTip(false)}
     >
       <button
-        className={`${iconControl} p-[5px] max-[760px]:min-h-11 max-[760px]:min-w-11`}
+        className={`${iconControl} ${
+          compact
+            ? "h-11 w-7 p-0"
+            : "p-[5px] max-[760px]:min-h-11 max-[760px]:min-w-11"
+        }`}
         aria-label={label}
         disabled={disabled}
         onClick={() => {

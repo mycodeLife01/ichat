@@ -1,6 +1,13 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 /* Hallmark · component: sidebar · genre: modern-minimal · system: existing warm-neutral tokens */
-import { useEffect, useState, type ReactNode, type UIEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type UIEvent,
+} from "react";
 import { createPortal } from "react-dom";
 
 import type { ConversationResponse, UserShareResponse } from "../api/types";
@@ -102,6 +109,8 @@ export function Sidebar({
 }: SidebarProps) {
   const [renameId, setRenameId] = useState<string | null>(null);
   const [menu, setMenu] = useState<ConversationMenu | null>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const lastAutoLoadItemCountRef = useRef<number | null>(null);
 
   useEffect(() => {
     const closeMenu = () => setMenu(null);
@@ -119,16 +128,54 @@ export function Sidebar({
     };
   }, []);
 
-  const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
-    setMenu(null);
-    if (!hasMore || isLoadingMore) return;
-    const element = event.currentTarget;
+  const requestNextPageIfNeeded = useCallback((
+    element: HTMLDivElement,
+    automatic = false,
+  ) => {
+    if (items.length === 0 || !hasMore || isLoadingMore) return;
     const distanceToBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight;
     if (distanceToBottom <= 48) {
+      if (
+        automatic &&
+        lastAutoLoadItemCountRef.current === items.length
+      ) {
+        return;
+      }
+      if (automatic) {
+        lastAutoLoadItemCountRef.current = items.length;
+      }
       onLoadMore();
     }
+  }, [hasMore, isLoadingMore, items.length, onLoadMore]);
+
+  const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
+    setMenu(null);
+    requestNextPageIfNeeded(event.currentTarget);
   };
+
+  useEffect(() => {
+    const element = historyRef.current;
+    const visible = isMobile ? mobileOpen : !collapsed;
+    if (!element || !visible) return;
+
+    const measure = () => requestNextPageIfNeeded(element, true);
+    measure();
+    window.addEventListener("resize", measure);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [
+    collapsed,
+    isMobile,
+    items.length,
+    mobileOpen,
+    requestNextPageIfNeeded,
+  ]);
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
@@ -323,6 +370,7 @@ export function Sidebar({
             open={menuOpen}
             onClose={() => setMenu(null)}
             ariaLabel="会话操作"
+            dimBackground={false}
           >
             {renderRowActions("mobile")}
           </BottomSheet>
@@ -370,6 +418,7 @@ export function Sidebar({
           {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
               against the sidebar's right border; rows keep their position. */}
           <div
+            ref={historyRef}
             className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
             data-testid="conversation-history"
             onScroll={handleHistoryScroll}
@@ -405,7 +454,7 @@ export function Sidebar({
       </aside>
       {isMobile && (
         <div
-          className={`scrim fixed inset-0 z-[29] bg-overlay transition-opacity duration-200 ${
+          className={`scrim fixed inset-0 z-[29] bg-overlay ${
             mobileOpen ? "show pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
           }`}
           onClick={onCloseMobile}

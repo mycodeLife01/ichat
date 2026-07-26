@@ -228,6 +228,7 @@ describe("Message", () => {
     expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
     longPress(screen.getByText("你好"));
     expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
+    expect(document.querySelector(".sheet-scrim")).toHaveClass("bg-overlay");
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
@@ -268,6 +269,16 @@ describe("Message", () => {
     expect(screen.queryByRole("button", { name: /更多/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
     expect(onRegenerate).toHaveBeenCalledWith(assistantMessage.id);
+  });
+
+  it("mobile: keeps the resident assistant shortcuts compact", () => {
+    const { container } = render(<Message message={assistantMessage} isMobile />);
+
+    const actionBar = container.querySelector(".msg-actions");
+    expect(actionBar).toHaveClass("gap-0.5");
+    for (const action of screen.getAllByRole("button")) {
+      expect(action).toHaveClass("w-7");
+    }
   });
 
   it("mobile: disables the mutate action in the sheet with a reason", async () => {

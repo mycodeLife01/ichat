@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -204,6 +204,7 @@ describe("Sidebar", () => {
     const sheet = screen.getByRole("dialog", { name: "会话操作" });
     expect(sheet).toBeInTheDocument();
     expect(document.querySelector(".history-menu")).toBeNull();
+    expect(document.querySelector(".sheet-scrim")).toHaveClass("bg-transparent");
     const actions = within(sheet).getAllByRole("button");
     expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
     expect(actions[2]).toHaveAttribute("data-variant", "danger");
@@ -237,6 +238,26 @@ describe("Sidebar", () => {
     fireEvent.scroll(history);
 
     expect(props.onLoadMore).toHaveBeenCalled();
+  });
+
+  it("desktop: automatically fills another page when history does not overflow", async () => {
+    const props = { ...baseProps(), hasMore: true };
+    render(<Sidebar {...props} />);
+    const history = screen.getByTestId("conversation-history");
+    Object.defineProperty(history, "scrollHeight", { value: 400, configurable: true });
+    Object.defineProperty(history, "clientHeight", { value: 400, configurable: true });
+
+    window.dispatchEvent(new Event("resize"));
+
+    await waitFor(() => expect(props.onLoadMore).toHaveBeenCalledTimes(1));
+  });
+
+  it("mobile: keeps the drawer scrim color stable while opening", () => {
+    render(<Sidebar {...baseProps()} isMobile mobileOpen />);
+
+    expect(document.querySelector(".scrim")?.className).not.toMatch(
+      /transition-(?:colors|opacity)|animate-/,
+    );
   });
 
   it("keeps username out of the user menu", async () => {
@@ -276,6 +297,7 @@ describe("Sidebar", () => {
     await user.click(screen.getByRole("button", { name: "打开个人中心" }));
 
     const sheet = screen.getByRole("dialog", { name: "个人中心" });
+    expect(document.querySelector(".sheet-scrim")).toHaveClass("bg-transparent");
     expect(within(sheet).getByRole("button", { name: "账号" })).toHaveAttribute(
       "data-variant",
       "neutral",
