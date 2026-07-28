@@ -43,6 +43,10 @@ export function createFakeConversationApi(
   return {
     list: async () => [],
     create: async () => conversationResponse,
+    createWithMessage: async () => ({
+      conversation: conversationResponse,
+      ...sendMessageResponse,
+    }),
     detail: async () => conversationDetailResponse,
     rename: async () => conversationResponse,
     remove: async () => ({ status: "ok" }),

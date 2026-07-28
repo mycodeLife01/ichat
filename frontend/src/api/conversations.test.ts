@@ -42,6 +42,26 @@ describe("conversationApi", () => {
     });
   });
 
+  it("creates a conversation and first message in one request", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValue({
+      conversation: conversationResponse,
+      ...sendMessageResponse,
+    });
+    const api = createConversationApi(client);
+
+    await api.createWithMessage("Hello", { thinking_enabled: true }, "Draft");
+
+    expect(client.request).toHaveBeenCalledWith("/conversations/with-message", {
+      method: "POST",
+      body: {
+        title: "Draft",
+        content: "Hello",
+        thinking_enabled: true,
+      },
+    });
+  });
+
   it("loads conversation detail", async () => {
     const client = mockClient();
     vi.mocked(client.request).mockResolvedValue(conversationDetailResponse);

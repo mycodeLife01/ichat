@@ -6,6 +6,8 @@ from pydantic import ValidationError
 
 from app.schemas.conversations import (
     ConversationCreateRequest,
+    ConversationCreateWithMessageRequest,
+    ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationRenameRequest,
     ConversationResponse,
@@ -42,6 +44,18 @@ def test_message_create_request_preserves_non_blank_content() -> None:
 def test_message_create_request_rejects_blank_content() -> None:
     with pytest.raises(ValidationError):
         MessageCreateRequest(content=" \n\t ")
+
+
+def test_conversation_create_with_message_request_normalizes_fields() -> None:
+    request = ConversationCreateWithMessageRequest(
+        title="  Project chat  ",
+        content="  hello\n",
+        thinking_enabled=True,
+    )
+
+    assert request.title == "Project chat"
+    assert request.content == "  hello\n"
+    assert request.thinking_enabled is True
 
 
 def test_conversation_detail_response_contains_visible_messages() -> None:
@@ -115,3 +129,16 @@ def test_send_message_response_contains_message_and_run() -> None:
 
     assert response.message.id == message_id
     assert response.run.status == "queued"
+
+    create_response = ConversationCreateWithMessageResponse(
+        conversation=ConversationResponse(
+            id=conversation_id,
+            title=None,
+            activated_at=None,
+            created_at=now,
+            updated_at=now,
+        ),
+        message=message,
+        run=run,
+    )
+    assert create_response.conversation.id == conversation_id

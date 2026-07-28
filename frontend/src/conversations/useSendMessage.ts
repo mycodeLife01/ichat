@@ -31,13 +31,22 @@ export function useSendMessage(
 
       try {
         if (targetId == null) {
-          const convo = await conversationApi.create();
+          const { conversation: convo, message, run } =
+            await conversationApi.createWithMessage(trimmed, runOptions);
           targetId = convo.id;
           dispatch({ type: "submission/targeted", conversationId: convo.id });
-          dispatch({ type: "conversations/detailLoaded", conversation: convo, messages: [] });
+          dispatch({
+            type: "conversations/detailLoaded",
+            conversation: convo,
+            messages: [message],
+          });
           dispatch({ type: "conversations/selected", id: convo.id });
           dispatch({ type: "conversations/draftCreated", id: convo.id });
+          dispatch({ type: "run/started", runId: run.id, conversationId: convo.id });
+          dispatch({ type: "submission/cleared" });
           selectionStore.save(convo.id);
+          void start(run.id, convo.id, 0);
+          return true;
         }
 
         const { message, run } = await conversationApi.sendMessage(

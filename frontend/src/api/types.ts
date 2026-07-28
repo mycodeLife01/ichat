@@ -87,6 +87,10 @@ export type SendMessageResponse = {
   run: RunResponse;
 };
 
+export type ConversationCreateWithMessageResponse = SendMessageResponse & {
+  conversation: ConversationResponse;
+};
+
 export type RunEventType =
   | "run_started"
   | "text_delta"

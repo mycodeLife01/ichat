@@ -53,6 +53,18 @@ class MessageCreateRequest(RunOptionsRequest):
         return value
 
 
+class ConversationCreateWithMessageRequest(MessageCreateRequest):
+    title: str | None = Field(default=None, max_length=255)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
+
+
 class ConversationResponse(BaseModel):
     id: uuid.UUID = Field(validation_alias="public_id")
     title: str | None
@@ -104,3 +116,7 @@ class ConversationDetailResponse(ConversationResponse):
 class SendMessageResponse(BaseModel):
     message: MessageResponse
     run: RunResponse
+
+
+class ConversationCreateWithMessageResponse(SendMessageResponse):
+    conversation: ConversationResponse
