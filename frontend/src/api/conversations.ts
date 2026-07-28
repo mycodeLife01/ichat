@@ -2,6 +2,7 @@ import { getDefaultApiClient, type ApiClient } from "./client";
 import type { RunOptionsRequest } from "../runs/thinkingLevel";
 import type {
   CommandStatusResponse,
+  ConversationCreateWithMessageResponse,
   ConversationDetailResponse,
   ConversationResponse,
   SendMessageResponse,
@@ -29,6 +30,19 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         method: "POST",
         body: { title: title ?? null },
       });
+    },
+    createWithMessage(
+      content: string,
+      options?: RunOptionsRequest,
+      title?: string,
+    ): Promise<ConversationCreateWithMessageResponse> {
+      return resolveClient().request<ConversationCreateWithMessageResponse>(
+        "/conversations/with-message",
+        {
+          method: "POST",
+          body: { title: title ?? null, content, ...options },
+        },
+      );
     },
     detail(conversationId: string): Promise<ConversationDetailResponse> {
       return resolveClient().request<ConversationDetailResponse>(

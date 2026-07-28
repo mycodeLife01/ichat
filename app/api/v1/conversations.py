@@ -11,6 +11,8 @@ from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.conversations import (
     ConversationCreateRequest,
+    ConversationCreateWithMessageRequest,
+    ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationRenameRequest,
     ConversationResponse,
@@ -23,6 +25,7 @@ from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
 from app.services.auth.dependencies import get_current_user
 from app.services.conversations.service import (
     create_conversation,
+    create_conversation_with_message,
     delete_conversation,
     edit_user_message_and_regenerate,
     get_conversation_detail,
@@ -137,6 +140,36 @@ async def create_conversation_route(
     )
     await session.commit()
     return SuccessResponse(data=conversation)
+
+
+@router.post(
+    "/with-message",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SuccessResponse[ConversationCreateWithMessageResponse],
+)
+async def create_conversation_with_message_route(
+    request: ConversationCreateWithMessageRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    run_queued_publisher: Annotated[
+        RunQueuedPublisher | None,
+        Depends(_get_run_queued_publisher),
+    ],
+) -> SuccessResponse[ConversationCreateWithMessageResponse]:
+    result = await create_conversation_with_message(
+        session,
+        user=current_user,
+        title=request.title,
+        content=request.content,
+        provider_name="deepseek",
+        provider_model=settings.deepseek_model,
+        provider_options=resolve_provider_options(settings, request, content=request.content),
+    )
+    internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
+    await session.commit()
+    await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
+    return SuccessResponse(data=result)
 
 
 @router.get(

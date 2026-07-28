@@ -13,6 +13,7 @@ from app.models.run import Run
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.conversations import (
+    ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationResponse,
     MessageResponse,
@@ -86,10 +87,20 @@ async def create_conversation(
     user: User,
     title: str | None,
 ) -> ConversationResponse:
+    conversation = await _create_conversation_model(session, user=user, title=title)
+    return conversation_response(conversation)
+
+
+async def _create_conversation_model(
+    session: AsyncSession,
+    *,
+    user: User,
+    title: str | None,
+) -> Conversation:
     conversation = Conversation(user_id=user.id, title=normalize_optional_title(title))
     session.add(conversation)
     await session.flush()
-    return conversation_response(conversation)
+    return conversation
 
 
 async def list_conversations(
@@ -210,6 +221,55 @@ async def submit_user_message(
         user=user,
         public_id=conversation_public_id,
     )
+    return await _submit_user_message_to_conversation(
+        session,
+        conversation=conversation,
+        content=content,
+        provider_name=provider_name,
+        provider_model=provider_model,
+        provider_options=provider_options,
+        system_prompt_snapshot=system_prompt_snapshot,
+    )
+
+
+async def create_conversation_with_message(
+    session: AsyncSession,
+    *,
+    user: User,
+    title: str | None,
+    content: str,
+    provider_name: str,
+    provider_model: str,
+    provider_options: dict[str, Any] | None = None,
+    system_prompt_snapshot: str | None = None,
+) -> ConversationCreateWithMessageResponse:
+    conversation = await _create_conversation_model(session, user=user, title=title)
+    submitted = await _submit_user_message_to_conversation(
+        session,
+        conversation=conversation,
+        content=content,
+        provider_name=provider_name,
+        provider_model=provider_model,
+        provider_options=provider_options,
+        system_prompt_snapshot=system_prompt_snapshot,
+    )
+    return ConversationCreateWithMessageResponse(
+        conversation=conversation_response(conversation),
+        message=submitted.message,
+        run=submitted.run,
+    )
+
+
+async def _submit_user_message_to_conversation(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    content: str,
+    provider_name: str,
+    provider_model: str,
+    provider_options: dict[str, Any] | None = None,
+    system_prompt_snapshot: str | None = None,
+) -> SendMessageResponse:
     await ensure_no_active_run(session, conversation_id=conversation.id)
     next_position = await get_next_message_position(session, conversation_id=conversation.id)
 

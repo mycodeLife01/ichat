@@ -54,18 +54,23 @@ describe("useSendMessage", () => {
     const start = vi.fn();
     const create = vi.fn(async () => draft);
     const sendMessage = vi.fn(async () => sendMessageResponse);
-    const services = createFakeServices({}, { create, sendMessage });
+    const createWithMessage = vi.fn(async () => ({
+      conversation: draft,
+      ...sendMessageResponse,
+    }));
+    const services = createFakeServices({}, { create, createWithMessage, sendMessage });
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
     await act(async () => {
       await result.current.send("你好");
     });
 
-    expect(create).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith("77", "你好", {
+    expect(create).not.toHaveBeenCalled();
+    expect(createWithMessage).toHaveBeenCalledWith("你好", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(result.current.conversationIndex.selectedId).toBe("77");
     expect(result.current.conversationIndex.draftId).toBe("77");
     expect(selectionStore.read()).toBe("77");
@@ -194,11 +199,10 @@ describe("useSendMessage", () => {
 
   it("keeps state usable when sendMessage rejects", async () => {
     const start = vi.fn();
-    const create = vi.fn(async () => draft);
-    const sendMessage = vi.fn(async () => {
+    const createWithMessage = vi.fn(async () => {
       throw new Error("network");
     });
-    const services = createFakeServices({}, { create, sendMessage });
+    const services = createFakeServices({}, { createWithMessage });
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
     let sent: boolean | undefined;
@@ -206,7 +210,7 @@ describe("useSendMessage", () => {
       sent = await result.current.send("会失败");
     });
 
-    expect(sendMessage).toHaveBeenCalled();
+    expect(createWithMessage).toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
     expect(sent).toBe(false);
     expect(result.current.pendingSubmission).toBeNull();
@@ -215,11 +219,10 @@ describe("useSendMessage", () => {
 
   it("shows a toast when sendMessage rejects", async () => {
     const start = vi.fn();
-    const create = vi.fn(async () => draft);
-    const sendMessage = vi.fn(async () => {
+    const createWithMessage = vi.fn(async () => {
       throw new Error("network");
     });
-    const services = createFakeServices({}, { create, sendMessage });
+    const services = createFakeServices({}, { createWithMessage });
     const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
 
     await act(async () => {

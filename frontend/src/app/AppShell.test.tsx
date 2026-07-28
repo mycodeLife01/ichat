@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/errors";
 import type {
   AuthUserResponse,
+  ConversationCreateWithMessageResponse,
   ConversationDetailResponse,
   ConversationResponse,
   MessageResponse,
@@ -34,6 +35,13 @@ function LocationProbe() {
 function NavigateProbe({ to }: { to: string }) {
   const navigate = useNavigate();
   return <button onClick={() => navigate(to)}>Go invalid</button>;
+}
+
+function createWithMessageResponse(
+  conversation: ConversationResponse,
+  sent: SendMessageResponse,
+): ConversationCreateWithMessageResponse {
+  return { conversation, ...sent };
 }
 
 describe("AppShell", () => {
@@ -178,8 +186,9 @@ describe("AppShell", () => {
       id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
-    const create = vi.fn(async () => draft);
-    const sendMessage = vi.fn(async () => ({ message: userMessage, run }));
+    const createWithMessage = vi.fn(async () =>
+      createWithMessageResponse(draft, { message: userMessage, run }),
+    );
     const detail = vi.fn(async (id: string) => {
       if (id === conversationResponse.id) {
         return {
@@ -194,8 +203,7 @@ describe("AppShell", () => {
       {
         list: async () => [conversationResponse],
         detail,
-        create,
-        sendMessage,
+        createWithMessage,
       },
       { streamEvents: () => fakeStream([]) },
     );
@@ -222,8 +230,7 @@ describe("AppShell", () => {
     await user.type(textarea, "你好");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(create).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith("77", "你好", {
+    expect(createWithMessage).toHaveBeenCalledWith("你好", {
       thinking_enabled: false,
       web_search_enabled: false,
     });
@@ -276,9 +283,10 @@ describe("AppShell", () => {
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
     const sent: SendMessageResponse = { message: userMessage, run };
-    const sendMessage = vi.fn()
-      .mockResolvedValueOnce(sent)
-      .mockImplementationOnce(() => new Promise<SendMessageResponse>(() => {}));
+    const createWithMessage = vi.fn(async () => createWithMessageResponse(draft, sent));
+    const sendMessage = vi.fn(
+      () => new Promise<SendMessageResponse>(() => {}),
+    );
     const serverDetail: ConversationDetailResponse = {
       ...draft, activated_at: "t", title: "新对话",
       messages: [userMessage, assistantMessage],
@@ -288,7 +296,7 @@ describe("AppShell", () => {
       {},
       {
         list: async () => [],
-        create: async () => draft,
+        createWithMessage,
         detail: async () => serverDetail,
         sendMessage,
       },
@@ -326,15 +334,12 @@ describe("AppShell", () => {
 
   it("shows the optimistic turn while the send API is pending", async () => {
     const user = userEvent.setup();
-    const draft: ConversationResponse = {
-      id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
-    };
-    const sendMessage = vi.fn(
-      () => new Promise<SendMessageResponse>(() => {}),
+    const createWithMessage = vi.fn(
+      () => new Promise<ConversationCreateWithMessageResponse>(() => {}),
     );
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage },
+      { list: async () => [], createWithMessage },
     );
 
     renderWithApp(<AppShell />, services);
@@ -348,7 +353,7 @@ describe("AppShell", () => {
     const submitting = screen.getByRole("button", { name: "发送中" });
     expect(submitting).toBeDisabled();
     expect(submitting).toHaveAttribute("aria-busy", "true");
-    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+    await waitFor(() => expect(createWithMessage).toHaveBeenCalledOnce());
   });
 
   it("preserves the thinking status node when the pending submission becomes a run", async () => {
@@ -364,16 +369,16 @@ describe("AppShell", () => {
       id: "100", conversation_id: "77", user_message_id: "1", status: "streaming",
       provider_name: "deepseek", provider_model: "deepseek-chat", created_at: "t",
     };
-    let resolveSend: ((value: SendMessageResponse) => void) | undefined;
-    const sendMessage = vi.fn(
+    let resolveSend: ((value: ConversationCreateWithMessageResponse) => void) | undefined;
+    const createWithMessage = vi.fn(
       () =>
-        new Promise<SendMessageResponse>((resolve) => {
+        new Promise<ConversationCreateWithMessageResponse>((resolve) => {
           resolveSend = resolve;
         }),
     );
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage },
+      { list: async () => [], createWithMessage },
       { streamEvents: () => fakeStream([]) },
     );
 
@@ -385,7 +390,7 @@ describe("AppShell", () => {
     const pendingThinking = await screen.findByText("正在思考");
 
     expect(resolveSend).toBeDefined();
-    resolveSend?.({ message: userMessage, run });
+    resolveSend?.(createWithMessageResponse(draft, { message: userMessage, run }));
     await screen.findByRole("button", { name: "停止生成" });
 
     expect(screen.getByText("正在思考")).toBe(pendingThinking);
@@ -397,10 +402,7 @@ describe("AppShell", () => {
       {},
       {
         list: async () => [],
-        create: async () => ({
-          id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
-        }),
-        sendMessage: async () => {
+        createWithMessage: async () => {
           throw new Error("network");
         },
       },
@@ -434,7 +436,10 @@ describe("AppShell", () => {
 
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage: async () => sent },
+      {
+        list: async () => [],
+        createWithMessage: async () => createWithMessageResponse(draft, sent),
+      },
       {
         // No terminal event: the run stays "streaming", so the stop button is stable.
         streamEvents: () =>
@@ -487,7 +492,10 @@ describe("AppShell", () => {
     }
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage: async () => sent },
+      {
+        list: async () => [],
+        createWithMessage: async () => createWithMessageResponse(draft, sent),
+      },
       {
         streamEvents: () => stream(),
         cancel: async () => {
@@ -696,7 +704,11 @@ describe("AppShell", () => {
     };
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage: async () => ({ message: userMessage, run }) },
+      {
+        list: async () => [],
+        createWithMessage: async () =>
+          createWithMessageResponse(draft, { message: userMessage, run }),
+      },
       { streamEvents: () => fakeStream([{ ...textDeltaEvent, seq: 1, payload: { text: "正在回答" } }]) }, // no terminal: stays streaming
     );
     const user = userEvent.setup();
@@ -746,7 +758,10 @@ describe("AppShell", () => {
     }
     const services = createFakeServices(
       {},
-      { list: async () => [], create: async () => draft, sendMessage: async () => sent },
+      {
+        list: async () => [],
+        createWithMessage: async () => createWithMessageResponse(draft, sent),
+      },
       {
         streamEvents: () => stream(),
         cancel: async () => {
@@ -901,10 +916,7 @@ describe("AppShell", () => {
       {},
       {
         list: async () => [],
-        create: async () => ({
-          id: "77", title: null, activated_at: null, created_at: "t", updated_at: "t",
-        }),
-        sendMessage: async () => {
+        createWithMessage: async () => {
           throw new Error("network");
         },
       },

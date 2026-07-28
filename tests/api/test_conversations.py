@@ -296,6 +296,67 @@ async def test_send_message_creates_user_message_and_queued_run(
         assert run_queued_publisher.published == [run.id]
 
 
+async def test_create_conversation_with_message_creates_all_records_and_queues_run(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    run_queued_publisher: RecordingRunQueuedPublisher,
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-first-message-api",
+        email=f"alice-first-message@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    response = await client.post(
+        "/api/v1/conversations/with-message",
+        json={
+            "title": "  Project chat  ",
+            "content": "Hello",
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()["data"]
+    assert data["conversation"]["title"] == "Project chat"
+    assert data["conversation"]["activated_at"] is None
+    assert data["message"]["conversation_id"] == data["conversation"]["id"]
+    assert data["message"]["content"] == "Hello"
+    assert data["message"]["position"] == 1
+    assert data["message"]["run_id"] == data["run"]["id"]
+    assert data["run"]["conversation_id"] == data["conversation"]["id"]
+    assert data["run"]["status"] == "queued"
+
+    async with session_factory() as session:
+        conversation = await session.scalar(
+            select(Conversation).where(
+                Conversation.public_id == uuid.UUID(data["conversation"]["id"])
+            )
+        )
+        message = await session.scalar(
+            select(Message).where(Message.public_id == uuid.UUID(data["message"]["id"]))
+        )
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(data["run"]["id"]))
+        )
+        assert conversation is not None
+        assert message is not None
+        assert run is not None
+        assert message.conversation_id == conversation.id
+        assert run.conversation_id == conversation.id
+        assert run.user_message_id == message.id
+        assert run.provider_options == {
+            "thinking_enabled": True,
+            "reasoning_effort": "max",
+            "web_search_enabled": False,
+            "web_search_suppressed_by_user": False,
+        }
+        assert run_queued_publisher.published == [run.id]
+
+
 async def test_send_message_with_thinking_override_persists_provider_options(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],
