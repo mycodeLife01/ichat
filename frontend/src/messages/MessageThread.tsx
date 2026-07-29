@@ -49,6 +49,10 @@ export function MessageThread({
           >
             {pendingMessage}
           </div>
+          {/* Reserve the height of the desktop action bar (28px button + mt-1)
+              so the server-confirmed message doesn't grow taller and push the
+              thinking status down. Mobile user messages have no inline bar. */}
+          {!isMobile && <div className="msg-actions mt-1 h-7" aria-hidden="true" />}
         </div>
       )}
       {children}
