@@ -28,6 +28,20 @@ describe("MessageThread", () => {
     expect(screen.queryByRole("button", { name: /复制|编辑并重发/ })).toBeNull();
   });
 
+  it("reserves action-bar height under the pending bubble on desktop only", () => {
+    const { container, rerender } = render(
+      <MessageThread messages={[]} pendingMessage="刚刚发送的问题" />,
+    );
+    expect(
+      container.querySelector('[data-state="pending"] .msg-actions'),
+    ).not.toBeNull();
+
+    rerender(<MessageThread messages={[]} pendingMessage="刚刚发送的问题" isMobile />);
+    expect(
+      container.querySelector('[data-state="pending"] .msg-actions'),
+    ).toBeNull();
+  });
+
   it("passes isMobile down: assistant actions resident, user actions behind long-press", () => {
     render(<MessageThread messages={messages} isMobile />);
     // The assistant bar renders resident copy/regenerate; the user message
