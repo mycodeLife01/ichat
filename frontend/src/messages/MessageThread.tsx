@@ -25,8 +25,11 @@ export function MessageThread({
   onShowSources,
   children,
 }: MessageThreadProps) {
+  // Horizontal geometry mirrors the composer (px-8 gutter outside a
+  // --reading-width box, px-4 on mobile): the max-width absorbs the gutter so
+  // the content edges line up with the composer surface.
   return (
-    <div className="thread-inner mx-auto flex w-full max-w-[var(--reading-width)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:px-[18px] max-[760px]:pt-6 max-[760px]:pb-[18px]">
+    <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--reading-width)+4rem)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:px-4 max-[760px]:pt-6 max-[760px]:pb-[18px]">
       {messages.map((message) => (
         <Message
           key={message.id}
