@@ -231,8 +231,10 @@ describe("AppShell", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(createWithMessage).toHaveBeenCalledWith("你好", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
+      model: "deepseek-v4-flash",
     });
   });
 
@@ -641,8 +643,10 @@ describe("AppShell", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, "1", "新问题", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
+      model: "deepseek-v4-flash",
     });
     // Old answer truncated away; the regenerated answer streams in and replaces.
     expect(await screen.findByText("新答案")).toBeInTheDocument();
@@ -683,8 +687,10 @@ describe("AppShell", () => {
     await user.click(screen.getByRole("button", { name: /重新生成/ }));
 
     expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, "2", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
+      model: "deepseek-v4-flash",
     });
     expect(await screen.findByText("第二版答案")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("第一版答案")).toBeNull());

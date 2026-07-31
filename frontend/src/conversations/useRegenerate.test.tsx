@@ -44,7 +44,8 @@ describe("useRegenerate", () => {
     });
 
     expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, "501", "改写", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
     });
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);
@@ -70,7 +71,8 @@ describe("useRegenerate", () => {
     });
 
     expect(regenerate).toHaveBeenCalledWith(conversationResponse.id, "2", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
     });
     expect(detail).toHaveBeenCalledWith(conversationResponse.id);

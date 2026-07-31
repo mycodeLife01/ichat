@@ -14,12 +14,42 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     onSend: noop,
     onStop: noop,
     state: "idle",
-    thinkingLevel: "fast",
+    thinkingLevel: "low",
     onThinkingLevelChange: noop,
     ...overrides,
   };
   return render(<Composer {...props} />);
 }
+
+const FLASH = {
+  id: "deepseek-v4-flash",
+  provider: "deepseek",
+  label: "deepseek-v4-flash",
+  thinking_levels: ["low", "high", "max"],
+  default: true,
+};
+const PRO = {
+  id: "deepseek-v4-pro",
+  provider: "deepseek",
+  label: "deepseek-v4-pro",
+  thinking_levels: ["high", "max"],
+  default: false,
+};
+const LUNA = {
+  id: "openai/gpt-5.6-luna",
+  provider: "openai",
+  label: "gpt-5.6-luna",
+  thinking_levels: ["low", "medium", "high", "xhigh", "max"],
+  default: false,
+};
+const NO_THINKING = {
+  id: "gpt-4.1-mini",
+  provider: "openai",
+  label: "gpt-4.1-mini",
+  thinking_levels: [] as string[],
+  default: false,
+};
+const MODELS = [FLASH, PRO, LUNA, NO_THINKING];
 
 describe("Composer", () => {
   it("disables send when empty (idle)", () => {
@@ -94,46 +124,6 @@ describe("Composer", () => {
     expect(stopping).toHaveAttribute("aria-busy", "true");
   });
 
-  it("shows the current thinking level on the trigger button", () => {
-    renderComposer({ thinkingLevel: "max" });
-    expect(screen.getByRole("button", { name: "智能水平" })).toHaveTextContent("极致");
-    expect(screen.queryByRole("menu")).toBeNull();
-  });
-
-  it("opens the level menu with Chinese labels and checks the current one", async () => {
-    const user = userEvent.setup();
-    renderComposer({ thinkingLevel: "high" });
-
-    const trigger = screen.getByRole("button", { name: "智能水平" });
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await user.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-
-    expect(screen.getByRole("menu", { name: "智能水平" })).toBeInTheDocument();
-    const options = screen.getAllByRole("menuitemradio");
-    expect(options.map((o) => o.textContent)).toEqual(["快速", "高", "极致"]);
-    expect(screen.getByRole("menuitemradio", { name: "高" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(screen.getByRole("menuitemradio", { name: "快速" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-  });
-
-  it("selecting a level notifies and closes the menu", async () => {
-    const onThinkingLevelChange = vi.fn();
-    const user = userEvent.setup();
-    renderComposer({ thinkingLevel: "fast", onThinkingLevelChange });
-
-    await user.click(screen.getByRole("button", { name: "智能水平" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "极致" }));
-
-    expect(onThinkingLevelChange).toHaveBeenCalledWith("max");
-    expect(screen.queryByRole("menu")).toBeNull();
-  });
-
   it("does not show a voice input button", () => {
     renderComposer();
     expect(screen.queryByRole("button", { name: "语音输入" })).toBeNull();
@@ -156,7 +146,7 @@ describe("Composer", () => {
         onSend={noop}
         onStop={noop}
         state="idle"
-        thinkingLevel="fast"
+        thinkingLevel="low"
         onThinkingLevelChange={noop}
         webSearchEnabled
         webSearchAvailable={false}
@@ -178,11 +168,135 @@ describe("Composer", () => {
     );
   });
 
-  it("closes the level menu when clicking outside", async () => {
-    const user = userEvent.setup();
-    renderComposer();
+  it("shows the model label and thinking level on the picker trigger", () => {
+    renderComposer({ models: MODELS, model: FLASH.id, thinkingLevel: "max" });
+    expect(
+      screen.getByRole("button", { name: "模型与思考强度" }),
+    ).toHaveTextContent("deepseek-v4-flash 极致");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 
-    await user.click(screen.getByRole("button", { name: "智能水平" }));
+  it("shows only the thinking level before capabilities load", () => {
+    renderComposer({ thinkingLevel: "high" });
+    expect(screen.getByRole("button", { name: "模型与思考强度" })).toHaveTextContent("高");
+  });
+
+  it("opens a root menu with model and thinking rows showing current values", async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: LUNA.id, thinkingLevel: "xhigh" });
+
+    const trigger = screen.getByRole("button", { name: "模型与思考强度" });
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    const modelRow = screen.getByRole("menuitem", { name: /^模型/ });
+    expect(modelRow).toHaveTextContent("gpt-5.6-luna");
+    const levelRow = screen.getByRole("menuitem", { name: /^思考强度/ });
+    expect(levelRow).toHaveTextContent("超高");
+  });
+
+  it("selects a model from the model submenu without the vendor prefix", async () => {
+    const onModelChange = vi.fn();
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: FLASH.id, onModelChange });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("menuitem", { name: /^模型/ }));
+
+    const luna = screen.getByRole("menuitemradio", { name: "gpt-5.6-luna" });
+    expect(luna).toHaveTextContent("gpt-5.6-luna");
+    expect(
+      screen.getByRole("menuitemradio", { name: "deepseek-v4-flash" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    await user.click(luna);
+    expect(onModelChange).toHaveBeenCalledWith("openai/gpt-5.6-luna");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("limits thinking levels to the selected model's tiers", async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: PRO.id, thinkingLevel: "high" });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
+
+    const options = screen.getAllByRole("menuitemradio");
+    expect(options.map((option) => option.textContent)).toEqual(["高", "极致"]);
+  });
+
+  it("offers all five tiers for gpt models and notifies on selection", async () => {
+    const onThinkingLevelChange = vi.fn();
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS,
+      model: LUNA.id,
+      thinkingLevel: "low",
+      onThinkingLevelChange,
+    });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
+
+    const options = screen.getAllByRole("menuitemradio");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "快速",
+      "中",
+      "高",
+      "超高",
+      "极致",
+    ]);
+
+    await user.click(screen.getByRole("menuitemradio", { name: "超高" }));
+    expect(onThinkingLevelChange).toHaveBeenCalledWith("xhigh");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("clamps an out-of-range level onto the model's tiers for display", () => {
+    renderComposer({ models: MODELS, model: PRO.id, thinkingLevel: "low" });
+    expect(
+      screen.getByRole("button", { name: "模型与思考强度" }),
+    ).toHaveTextContent("deepseek-v4-pro 高");
+  });
+
+  it("hides the thinking row for models without thinking tiers", async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: NO_THINKING.id });
+
+    const trigger = screen.getByRole("button", { name: "模型与思考强度" });
+    expect(trigger).toHaveTextContent("gpt-4.1-mini");
+    await user.click(trigger);
+
+    expect(screen.getByRole("menuitem", { name: /^模型/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^思考强度/ })).toBeNull();
+  });
+
+  it("keeps the root rows visible while a submenu is flown out", async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: FLASH.id });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    const modelRow = screen.getByRole("menuitem", { name: /^模型/ });
+    await user.click(modelRow);
+
+    // Both root rows stay in place beside the flyout options.
+    expect(modelRow).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("menuitem", { name: /^思考强度/ })).toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "模型" })).toBeInTheDocument();
+
+    // Tapping the row again folds the flyout; tapping the other row swaps it.
+    await user.click(modelRow);
+    expect(screen.queryByRole("menu", { name: "模型" })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
+    expect(screen.getByRole("menu", { name: "思考强度" })).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "模型" })).toBeNull();
+  });
+
+  it("closes the picker when clicking outside", async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, model: FLASH.id });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.click(screen.getByPlaceholderText("有问题，尽管问"));

@@ -13,7 +13,12 @@ import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
 import { useRunRecovery } from "../runs/useRunRecovery";
 import { useRunStream } from "../runs/useRunStream";
-import { thinkingLevelStore, type ThinkingLevel } from "../runs/thinkingLevel";
+import { modelPreferenceStore } from "../runs/modelPreference";
+import {
+  clampThinkingLevel,
+  thinkingLevelStore,
+  type ThinkingLevel,
+} from "../runs/thinkingLevel";
 import { webSearchPreferenceStore } from "../runs/webSearchPreference";
 import { useAuthSession } from "../auth/useAuthSession";
 import { tokenStore } from "../auth/tokenStore";
@@ -25,7 +30,7 @@ import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import type { ToastHandler } from "../ui/state";
 import { useAppActions, useAppState } from "./context";
-import type { MessageSource } from "../api/types";
+import type { ChatModelCapability, MessageSource } from "../api/types";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -80,6 +85,10 @@ export function AppShell() {
     webSearchPreferenceStore.read(),
   );
   const [webSearchAvailable, setWebSearchAvailable] = useState(false);
+  // Selectable chat models arrive with capabilities; the persisted choice only
+  // applies while the server still offers it (modelPreferenceStore.resolve()).
+  const [models, setModels] = useState<ChatModelCapability[]>([]);
+  const [modelId, setModelId] = useState<string | null>(null);
   const onThinkingLevelChange = (level: ThinkingLevel) => {
     thinkingLevelStore.save(level);
     setThinkingLevel(level);
@@ -87,6 +96,18 @@ export function AppShell() {
   const onWebSearchEnabledChange = (enabled: boolean) => {
     webSearchPreferenceStore.save(enabled);
     setWebSearchEnabled(enabled);
+  };
+  const onModelChange = (id: string) => {
+    modelPreferenceStore.save(id);
+    setModelId(id);
+    // Snap the persisted thinking level onto the new model's tiers so the
+    // pill never shows a level the model cannot run.
+    const entry = modelPreferenceStore.available().find((m) => m.id === id);
+    if (entry && entry.thinking_levels.length > 0) {
+      const clamped = clampThinkingLevel(thinkingLevelStore.read(), entry.thinking_levels);
+      thinkingLevelStore.save(clamped);
+      setThinkingLevel(clamped);
+    }
   };
   // Gates the center → bottom composer transition. Only true while a brand-new
   // conversation sends its first message; navigating to an existing conversation
@@ -205,9 +226,13 @@ export function AppShell() {
         const capabilities = await services.capabilitiesApi.get();
         webSearchPreferenceStore.setCapability(capabilities.web_search.enabled);
         setWebSearchAvailable(capabilities.web_search.enabled);
+        modelPreferenceStore.setAvailable(capabilities.models);
+        setModels(capabilities.models);
+        setModelId(modelPreferenceStore.resolve()?.id ?? null);
       } catch {
         webSearchPreferenceStore.setCapability(false);
         setWebSearchAvailable(false);
+        modelPreferenceStore.setAvailable([]);
       }
       if (!active) return;
       setRouterReady(true);
@@ -430,6 +455,9 @@ export function AppShell() {
             webSearchEnabled={webSearchEnabled}
             webSearchAvailable={webSearchAvailable}
             onWebSearchEnabledChange={onWebSearchEnabledChange}
+            models={models}
+            model={modelId}
+            onModelChange={onModelChange}
           />
         </div>
         <div

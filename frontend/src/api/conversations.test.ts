@@ -50,7 +50,11 @@ describe("conversationApi", () => {
     });
     const api = createConversationApi(client);
 
-    await api.createWithMessage("Hello", { thinking_enabled: true }, "Draft");
+    await api.createWithMessage(
+      "Hello",
+      { thinking_enabled: true, reasoning_effort: "low" },
+      "Draft",
+    );
 
     expect(client.request).toHaveBeenCalledWith("/conversations/with-message", {
       method: "POST",
@@ -58,6 +62,7 @@ describe("conversationApi", () => {
         title: "Draft",
         content: "Hello",
         thinking_enabled: true,
+        reasoning_effort: "low",
       },
     });
   });
@@ -124,7 +129,10 @@ describe("conversationApi", () => {
 
     await api.sendMessage("10", "Hello", options);
     await api.editAndRegenerate("10", "501", "Edited", options);
-    await api.regenerate("10", "502", { thinking_enabled: false });
+    await api.regenerate("10", "502", {
+      thinking_enabled: true,
+      reasoning_effort: "high",
+    });
 
     expect(client.request).toHaveBeenNthCalledWith(
       1,
@@ -145,7 +153,7 @@ describe("conversationApi", () => {
     expect(client.request).toHaveBeenNthCalledWith(
       3,
       "/conversations/10/messages/502/regenerate",
-      { method: "POST", body: { thinking_enabled: false } },
+      { method: "POST", body: { thinking_enabled: true, reasoning_effort: "high" } },
     );
   });
 });

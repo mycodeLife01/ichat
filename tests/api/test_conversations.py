@@ -271,7 +271,7 @@ async def test_send_message_creates_user_message_and_queued_run(
     assert data["message"]["run_id"] == data["run"]["id"]
     assert data["run"]["status"] == "queued"
     assert data["run"]["provider_name"] == "deepseek"
-    assert data["run"]["provider_model"] == "deepseek-test"
+    assert data["run"]["provider_model"] == "deepseek-v4-flash"
     assert second_message_response.status_code == status.HTTP_409_CONFLICT
     assert second_message_response.json() == {"detail": "Active run already exists"}
     assert detail_response.json()["data"]["messages"][0]["content"] == "Hello"
@@ -647,12 +647,123 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
 ) -> None:
     monkeypatch.setenv("WEB_SEARCH_ENABLED", "true")
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
+    # Pin the model catalog: a developer .env may configure OpenAI models.
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_MODELS", "deepseek-v4-flash,deepseek-v4-pro")
     get_settings.cache_clear()
 
     response = await client.get("/api/v1/capabilities")
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json()["data"] == {"web_search": {"enabled": True}}
+    assert response.json()["data"] == {
+        "web_search": {"enabled": True},
+        "models": [
+            {
+                "id": "deepseek-v4-flash",
+                "provider": "deepseek",
+                "label": "deepseek-v4-flash",
+                "thinking_levels": ["low", "high", "max"],
+                "default": True,
+            },
+            {
+                "id": "deepseek-v4-pro",
+                "provider": "deepseek",
+                "label": "deepseek-v4-pro",
+                "thinking_levels": ["high", "max"],
+                "default": False,
+            },
+        ],
+    }
+
+
+async def test_capabilities_lists_openai_models_when_configured(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODELS", "openai/gpt-5.6-luna")
+    monkeypatch.setenv("DEEPSEEK_MODELS", "deepseek-v4-flash,deepseek-v4-pro")
+    get_settings.cache_clear()
+
+    response = await client.get("/api/v1/capabilities")
+
+    assert response.status_code == status.HTTP_200_OK
+    models = response.json()["data"]["models"]
+    assert [m["id"] for m in models] == [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "openai/gpt-5.6-luna",
+    ]
+    assert models[2] == {
+        "id": "openai/gpt-5.6-luna",
+        "provider": "openai",
+        "label": "gpt-5.6-luna",
+        "thinking_levels": ["low", "medium", "high", "xhigh", "max"],
+        "default": False,
+    }
+
+
+async def test_send_message_with_model_persists_openai_provider(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODELS", "gpt-5-mini")
+    get_settings.cache_clear()
+
+    alice = await register_user(
+        client,
+        username="alice-model-api",
+        email=f"alice-model@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+
+    message_response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "Hello", "model": "gpt-5-mini"},
+        headers=headers,
+    )
+
+    assert message_response.status_code == status.HTTP_201_CREATED
+    run_data = message_response.json()["data"]["run"]
+    assert run_data["provider_name"] == "openai"
+    assert run_data["provider_model"] == "gpt-5-mini"
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(run_data["id"]))
+        )
+        assert run is not None
+        assert run.provider_name == "openai"
+        assert run.provider_model == "gpt-5-mini"
+
+
+async def test_send_message_rejects_unknown_model(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODELS", "gpt-5-mini")
+    get_settings.cache_clear()
+
+    alice = await register_user(
+        client,
+        username="alice-bad-model",
+        email=f"alice-bad-model@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    create_response = await client.post("/api/v1/conversations", json={}, headers=headers)
+    conversation_id = create_response.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "Hello", "model": "gpt-imaginary"},
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 async def test_edit_and_regenerate_rejects_cross_user(

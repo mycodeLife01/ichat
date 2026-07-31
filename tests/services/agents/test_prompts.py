@@ -13,7 +13,7 @@ def _settings(override: str) -> Settings:
 def test_uses_bundled_base_prompt_when_no_override() -> None:
     prompt = build_system_prompt(settings=_settings(""), web_search_enabled=False, now=_NOW)
     assert prompt == bundled_base_prompt()
-    assert "AI assistant" in prompt
+    assert "iChat" in prompt
 
 
 def test_override_replaces_bundled_base_prompt() -> None:

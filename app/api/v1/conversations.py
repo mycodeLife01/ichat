@@ -22,6 +22,7 @@ from app.schemas.conversations import (
 )
 from app.schemas.responses import SuccessResponse
 from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
+from app.services.agents.catalog import ChatModel, resolve_chat_model
 from app.services.auth.dependencies import get_current_user
 from app.services.conversations.service import (
     create_conversation,
@@ -88,6 +89,17 @@ _WEB_SEARCH_NEGATION_MARKERS = (
 def user_suppresses_web_search(content: str) -> bool:
     normalized = content.lower()
     return any(marker in normalized for marker in _WEB_SEARCH_NEGATION_MARKERS)
+
+
+def resolve_chat_selection(
+    settings: Settings, request: RunOptionsRequest | None
+) -> ChatModel:
+    """Validate the request's optional ``model`` against the catalog.
+
+    Raises a 422 ``AppError`` for models the server does not offer, so a run is
+    only ever persisted with a (provider, model) pair the worker can execute.
+    """
+    return resolve_chat_model(settings, request.model if request is not None else None)
 
 
 def resolve_provider_options(
@@ -157,13 +169,14 @@ async def create_conversation_with_message_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[ConversationCreateWithMessageResponse]:
+    chat_model = resolve_chat_selection(settings, request)
     result = await create_conversation_with_message(
         session,
         user=current_user,
         title=request.title,
         content=request.content,
-        provider_name="deepseek",
-        provider_model=settings.deepseek_model,
+        provider_name=chat_model.provider_name,
+        provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
@@ -264,13 +277,14 @@ async def send_message_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[SendMessageResponse]:
+    chat_model = resolve_chat_selection(settings, request)
     result = await submit_user_message(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
         content=request.content,
-        provider_name="deepseek",
-        provider_model=settings.deepseek_model,
+        provider_name=chat_model.provider_name,
+        provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
@@ -297,14 +311,15 @@ async def edit_and_regenerate_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[SendMessageResponse]:
+    chat_model = resolve_chat_selection(settings, request)
     result = await edit_user_message_and_regenerate(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
         message_public_id=message_id,
         new_content=request.content,
-        provider_name="deepseek",
-        provider_model=settings.deepseek_model,
+        provider_name=chat_model.provider_name,
+        provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
@@ -331,13 +346,14 @@ async def regenerate_route(
     ],
     request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
+    chat_model = resolve_chat_selection(settings, request)
     result = await regenerate_from_message(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
         message_public_id=message_id,
-        provider_name="deepseek",
-        provider_model=settings.deepseek_model,
+        provider_name=chat_model.provider_name,
+        provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request),
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)

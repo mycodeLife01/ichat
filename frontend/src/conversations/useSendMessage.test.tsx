@@ -67,7 +67,8 @@ describe("useSendMessage", () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(createWithMessage).toHaveBeenCalledWith("你好", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
     });
     expect(sendMessage).not.toHaveBeenCalled();
@@ -96,7 +97,8 @@ describe("useSendMessage", () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith("55", "世界", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
     });
     expect(result.current.conversationDetail.messages.at(-1)).toEqual(
@@ -168,7 +170,8 @@ describe("useSendMessage", () => {
     });
 
     expect(sendMessage).toHaveBeenCalledWith("55", "查一下最新版本", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: true,
     });
 
@@ -178,7 +181,8 @@ describe("useSendMessage", () => {
     });
 
     expect(sendMessage).toHaveBeenLastCalledWith("55", "再查一下", {
-      thinking_enabled: false,
+      thinking_enabled: true,
+      reasoning_effort: "low",
       web_search_enabled: false,
     });
   });
