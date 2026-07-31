@@ -846,7 +846,7 @@ describe("AppShell", () => {
     await waitFor(() => expect(region.scrollTop).toBe(1000));
   });
 
-  it("keeps the thinking label stable while reasoning grows", async () => {
+  it("keeps scroll pinned while reasoning rolls into the thinking header", async () => {
     const titled = { ...conversationResponse, title: "对话A" };
     const oldUser: MessageResponse = {
       id: "1", conversation_id: titled.id, run_id: "99", role: "user",
@@ -912,7 +912,9 @@ describe("AppShell", () => {
 
     scrollHeight = 1200;
     releaseReasoning();
-    await screen.findByText("新增推理");
+    // The delta lands in the collapsed header (and the hidden body), so match
+    // the header button rather than a unique text node.
+    await screen.findByRole("button", { name: /新增推理/ });
 
     expect(region.scrollTop).toBe(1000);
   });
