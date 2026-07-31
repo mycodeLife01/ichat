@@ -8,6 +8,7 @@ place ``Settings`` meets a kernel provider — the kernel itself never imports
 
 from app.agent.provider import Provider
 from app.agent.providers.deepseek import DeepSeekProvider
+from app.agent.providers.openai import OpenAIProvider
 from app.core.config import Settings
 
 
@@ -24,5 +25,10 @@ def resolve_provider(name: str, *, settings: Settings) -> Provider:
             base_url=settings.deepseek_base_url,
             default_thinking_enabled=settings.deepseek_thinking_enabled,
             default_reasoning_effort=settings.deepseek_reasoning_effort,
+        )
+    if name == "openai":
+        return OpenAIProvider(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
         )
     raise UnknownProviderError(name)

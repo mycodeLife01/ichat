@@ -1,6 +1,7 @@
 import type { ActiveRunState } from "../runs/state";
 import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
+import { reasoningPreview } from "./reasoningPreview";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 type StreamingMessageProps = { run: ActiveRunState };
@@ -15,9 +16,15 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   const draftText = run?.draftText ?? "";
   const thinking = isStreaming && draftText === "";
 
-  // While a web_search tool call is in flight, the collapsible header label
-  // takes over the thinking copy: 正在搜索… → 已找到 n 个来源 (no preview box).
-  const toolLabel = run?.toolState ? labelForToolState(run.toolState) : undefined;
+  // Header ownership: a running web_search always owns the label (正在搜索…).
+  // Once the call finishes, its result label (已找到 n 个来源) only holds until
+  // reasoning text exists — reasoning streamed around tool calls would
+  // otherwise stay hidden behind a stale tool label for the whole phase.
+  const toolState = run?.toolState;
+  const toolLabel = toolState ? labelForToolState(toolState) : undefined;
+  const hasReasoningPreview = reasoningPreview(run?.draftReasoning ?? "") !== "";
+  const label =
+    toolState?.status === "running" || !hasReasoningPreview ? toolLabel : undefined;
   const showThinking = thinking;
 
   return (
@@ -27,7 +34,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           <ThinkingBlock
             content={run?.draftReasoning ?? ""}
             streaming={thinking}
-            label={toolLabel}
+            label={label}
           />
         )}
         <Markdown content={draftText} streaming />

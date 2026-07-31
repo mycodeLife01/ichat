@@ -32,10 +32,10 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".body.md")).toBeTruthy();
   });
 
-  it("renders the reasoning block only before the formal answer starts", () => {
+  it("rolls streamed reasoning into the header before the formal answer starts", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
-    expect(screen.getByText("在想")).toBeInTheDocument();
-    expect(screen.getByText("正在思考")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /在想/ })).toBeInTheDocument();
+    expect(screen.queryByText("正在思考")).toBeNull();
   });
 
   it("hides reasoning after the formal answer starts", () => {
@@ -86,6 +86,45 @@ describe("StreamingMessage", () => {
     );
     expect(screen.getByText("已找到 2 个来源")).toBeInTheDocument();
     expect(screen.queryByText("[1] Release notes")).toBeNull();
+  });
+
+  it("lets reasoning take the header back after a tool call succeeds", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          draftReasoning: "**分析来源**\n\n正在核对",
+          toolState: {
+            status: "succeeded",
+            tool_name: "web_search",
+            query: "q",
+            message: null,
+            result_count: 5,
+            sources: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /分析来源/ })).toBeInTheDocument();
+    expect(screen.queryByText("已找到 5 个来源")).toBeNull();
+  });
+
+  it("keeps the running tool label above earlier reasoning", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          draftReasoning: "**先想一下**",
+          toolState: {
+            status: "running",
+            tool_name: "web_search",
+            query: "q",
+            message: null,
+            result_count: null,
+            sources: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("正在搜索 q")).toBeInTheDocument();
   });
 
   it("shows a persistent error status for a failed run (icon + copy, alert role)", () => {

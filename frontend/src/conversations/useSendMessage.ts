@@ -1,8 +1,7 @@
 import { useCallback } from "react";
 
 import { useAppActions } from "../app/context";
-import { thinkingLevelStore, toRunOptions } from "../runs/thinkingLevel";
-import { webSearchPreferenceStore } from "../runs/webSearchPreference";
+import { currentRunOptions } from "../runs/runOptions";
 import { selectionStore } from "./selectionStore";
 
 // `start` is injected by AppShell (which owns the single useRunStream instance),
@@ -19,10 +18,7 @@ export function useSendMessage(
       if (trimmed === "" || stateRef.current.pendingSubmission !== null) return false;
 
       let targetId = stateRef.current.conversationIndex.selectedId;
-      const runOptions = toRunOptions(
-        thinkingLevelStore.read(),
-        webSearchPreferenceStore.requestEnabled(),
-      );
+      const runOptions = currentRunOptions();
       dispatch({
         type: "submission/started",
         content: trimmed,

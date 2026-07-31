@@ -140,10 +140,19 @@ export type RunToolState = {
   sources: RunToolSource[];
 };
 
+export type ChatModelCapability = {
+  id: string;
+  provider: string;
+  label: string;
+  thinking_levels: string[];
+  default: boolean;
+};
+
 export type CapabilitiesResponse = {
   web_search: {
     enabled: boolean;
   };
+  models: ChatModelCapability[];
 };
 
 // --- Conversation sharing (read-only snapshots) ---

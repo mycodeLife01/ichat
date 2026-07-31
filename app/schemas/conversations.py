@@ -35,11 +35,14 @@ class RunOptionsRequest(BaseModel):
     """Per-request overrides for provider thinking behavior.
 
     A ``None`` field means "use the server default from env config".
+    ``model`` picks the chat model for this run; it must be one of the ids the
+    capabilities endpoint lists, and ``None`` selects the catalog default.
     """
 
     thinking_enabled: bool | None = None
     reasoning_effort: ReasoningEffort | None = None
     web_search_enabled: bool | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class MessageCreateRequest(RunOptionsRequest):

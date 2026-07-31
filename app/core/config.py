@@ -13,8 +13,17 @@ class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
+    # Comma-separated allowlist of selectable DeepSeek chat models. Thinking
+    # levels are derived from the model name ("-pro" models omit the low tiers).
+    deepseek_models: str = "deepseek-v4-flash,deepseek-v4-pro"
     deepseek_thinking_enabled: bool
     deepseek_reasoning_effort: str = "high"
+    # OpenAI provider is optional: an empty api key hides its models from the
+    # chat-model catalog. openai_models is a comma-separated allowlist of
+    # selectable chat models.
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_models: str = "gpt-5-mini"
     # Optional override for the assistant's base system prompt. Empty (default)
     # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
@@ -159,6 +168,8 @@ class Settings(BaseSettings):
     def validate_external_services(self) -> Self:
         # Only enforce provider credentials when the integration is active, so
         # fake/disabled integrations can boot in dev and CI without secrets.
+        if self.summary_provider_name == "openai" and not self.openai_api_key.strip():
+            raise ValueError("summary_provider_name=openai requires non-empty: openai_api_key")
         if self.email_provider == "postmark":
             missing = [
                 name
@@ -212,6 +223,18 @@ class Settings(BaseSettings):
     @property
     def web_search_available(self) -> bool:
         return self.web_search_enabled and bool(self.tavily_api_key.strip())
+
+    @property
+    def openai_available(self) -> bool:
+        return bool(self.openai_api_key.strip())
+
+    @property
+    def openai_models_list(self) -> list[str]:
+        return [model.strip() for model in self.openai_models.split(",") if model.strip()]
+
+    @property
+    def deepseek_models_list(self) -> list[str]:
+        return [model.strip() for model in self.deepseek_models.split(",") if model.strip()]
 
 
 @lru_cache

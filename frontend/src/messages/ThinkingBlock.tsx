@@ -2,17 +2,25 @@ import { useState } from "react";
 
 import { focusRing } from "../ui/classes";
 import { Icons } from "../ui/icons";
+import { reasoningPreview } from "./reasoningPreview";
 
 type ThinkingBlockProps = {
   content: string;
   streaming: boolean;
-  // Overrides the default 正在思考/已思考 header — used while a tool call is in
-  // flight to surface the search phase (正在搜索… / 已找到 n 个来源).
+  // Overrides the default header — used while a tool call is in flight to
+  // surface the search phase (正在搜索… / 已找到 n 个来源).
   label?: string;
 };
 
 export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps) {
-  const [open, setOpen] = useState(true);
+  // Collapsed by default: while streaming the header carries a rolling
+  // preview of the latest reasoning line — expanded or not, so unfolding the
+  // full text keeps the live status visible. Providers that send no
+  // reasoning (OpenAI without a summary) keep the plain 正在思考 shimmer.
+  const [open, setOpen] = useState(false);
+  const preview = streaming ? reasoningPreview(content) : "";
+  const headerText =
+    label ?? (streaming ? preview || "正在思考" : "已思考");
 
   return (
     <div
@@ -37,7 +45,7 @@ export function ThinkingBlock({ content, streaming, label }: ThinkingBlockProps)
         <span
           className={`thinking-label min-w-0 truncate text-[16px] leading-[1.6] max-[760px]:text-[17px]${streaming ? " is-streaming" : ""}`}
         >
-          {label ?? (streaming ? "正在思考" : "已思考")}
+          {headerText}
         </span>
         <Icons.Chevron
           size={14}

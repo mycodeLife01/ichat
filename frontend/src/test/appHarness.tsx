@@ -61,7 +61,18 @@ export function createFakeCapabilitiesApi(
   overrides: Partial<CapabilitiesApi> = {},
 ): CapabilitiesApi {
   return {
-    get: async () => ({ web_search: { enabled: true } }),
+    get: async () => ({
+      web_search: { enabled: true },
+      models: [
+        {
+          id: "deepseek-v4-flash",
+          provider: "deepseek",
+          label: "deepseek-v4-flash",
+          thinking_levels: ["low", "high", "max"],
+          default: true,
+        },
+      ],
+    }),
     ...overrides,
   };
 }
