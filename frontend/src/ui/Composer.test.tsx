@@ -211,7 +211,11 @@ describe("Composer", () => {
 
     await user.click(luna);
     expect(onModelChange).toHaveBeenCalledWith("openai/gpt-5.6-luna");
-    expect(screen.queryByRole("menu")).toBeNull();
+    // Selection folds the flyout and returns to the root menu.
+    expect(screen.queryByRole("menu", { name: "模型" })).toBeNull();
+    expect(
+      screen.getByRole("menu", { name: "模型与思考强度" }),
+    ).toBeInTheDocument();
   });
 
   it("limits thinking levels to the selected model's tiers", async () => {
@@ -249,7 +253,11 @@ describe("Composer", () => {
 
     await user.click(screen.getByRole("menuitemradio", { name: "超高" }));
     expect(onThinkingLevelChange).toHaveBeenCalledWith("xhigh");
-    expect(screen.queryByRole("menu")).toBeNull();
+    // Selection folds the flyout and returns to the root menu.
+    expect(screen.queryByRole("menu", { name: "思考强度" })).toBeNull();
+    expect(
+      screen.getByRole("menu", { name: "模型与思考强度" }),
+    ).toBeInTheDocument();
   });
 
   it("clamps an out-of-range level onto the model's tiers for display", () => {
@@ -290,6 +298,49 @@ describe("Composer", () => {
     await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
     expect(screen.getByRole("menu", { name: "思考强度" })).toBeInTheDocument();
     expect(screen.queryByRole("menu", { name: "模型" })).toBeNull();
+  });
+
+  it("unfolds thinking options above the row on mobile viewports", async () => {
+    const user = userEvent.setup();
+    // jsdom reports documentElement.clientWidth 0 → the mobile branch.
+    renderComposer({ models: MODELS, model: LUNA.id });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    const levelRow = screen.getByRole("menuitem", { name: /^思考强度/ });
+    await user.click(levelRow);
+
+    const list = screen.getByRole("menu", { name: "思考强度" });
+    // The list precedes the row in DOM order, so the bottom-anchored panel
+    // grows upward toward the 模型 row.
+    expect(
+      list.compareDocumentPosition(levelRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(list.className).not.toContain("absolute");
+  });
+
+  it("keeps the thinking flyout beside the row on desktop viewports", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      value: 1280,
+      configurable: true,
+    });
+    try {
+      renderComposer({ models: MODELS, model: LUNA.id });
+
+      await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+      const levelRow = screen.getByRole("menuitem", { name: /^思考强度/ });
+      await user.click(levelRow);
+
+      const list = screen.getByRole("menu", { name: "思考强度" });
+      expect(
+        levelRow.compareDocumentPosition(list) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(list.className).toContain("absolute");
+    } finally {
+      // Drop the own property so the prototype getter takes over again.
+      Reflect.deleteProperty(document.documentElement, "clientWidth");
+    }
   });
 
   it("closes the picker when clicking outside", async () => {

@@ -66,19 +66,28 @@ const composerPrimaryAction =
   "transition-[opacity] duration-[120ms] not-disabled:hover:opacity-90 " +
   "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait aria-busy:opacity-60";
 
-// The picker popover keeps the root menu (model + thinking rows, mirroring the
-// reference two-column menu) visible and flies the tapped row's options out as
-// a second panel beside it. The panel prefers the right side (as in the
-// reference) and flips left when the viewport has no room. It is anchored to
-// the row's bottom edge and grows upward — the root menu already hugs the
-// viewport bottom, so growing downward would overflow the page and spawn a
-// scrollbar that shifts the whole layout.
+// The picker popover is a fixed-width panel, so its footprint never shifts
+// with the length of a model name. The model row unfolds its options as an
+// inline list right below the row (top-down, contained in the panel). The
+// thinking row keeps the flyout on desktop — a second panel beside the root
+// that prefers the right side, flips left when the viewport has no room, and
+// slightly overlaps/staggers below the root panel (layered, as in the
+// reference); on mobile viewports there is no side room, so its options
+// unfold inline above the row instead, growing toward the 模型 row. The
+// panel is bottom-anchored above the trigger and grows upward as a list
+// unfolds — the menu already hugs the viewport bottom, so growing downward
+// would overflow the page and spawn a scrollbar that shifts the whole
+// layout. Picking an option folds the submenu back to the root rows; only
+// Escape, outside taps, or the trigger close the picker.
 type PickerSubmenu = "model" | "level" | null;
 
-// Safety estimate for a flyout's footprint (panel min-width + gap), used to
-// pick the side before rendering — measuring after the fact would let the
-// panel overflow for a frame and stretch the page.
+// Safety estimate for the flyout's footprint (panel min-width + gap), used
+// to pick the side before rendering — measuring after the fact would let
+// the panel overflow for a frame and stretch the page.
 const FLYOUT_WIDTH_PX = 200;
+
+// Mirrors the max-[760px] mobile breakpoint used across the composer.
+const MOBILE_VIEWPORT_MAX_PX = 760;
 
 export function Composer({
   value,
@@ -99,6 +108,7 @@ export function Composer({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<PickerSubmenu>(null);
   const [flyoutSide, setFlyoutSide] = useState<"right" | "left">("right");
+  const [levelInline, setLevelInline] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -137,18 +147,27 @@ export function Composer({
   };
 
   const toggleSubmenu = (menu: Exclude<PickerSubmenu, null>) => {
-    // The root menu's right edge sits at the picker wrapper's right edge
-    // (right-0 anchored), so the space beyond it is what the flyout gets.
-    const anchor = pickerRef.current?.getBoundingClientRect();
-    const viewportWidth = document.documentElement.clientWidth;
-    setFlyoutSide(
-      anchor && viewportWidth - anchor.right >= FLYOUT_WIDTH_PX ? "right" : "left",
-    );
+    if (menu === "level") {
+      const viewportWidth = document.documentElement.clientWidth;
+      // Mobile has no side room for the flyout — the options unfold inline
+      // above the row instead. Both placements are decided at open time,
+      // like the flyout side.
+      setLevelInline(viewportWidth <= MOBILE_VIEWPORT_MAX_PX);
+      // The root menu's right edge sits at the picker wrapper's right edge
+      // (right-0 anchored), so the space beyond it is what the flyout gets.
+      const anchor = pickerRef.current?.getBoundingClientRect();
+      setFlyoutSide(
+        anchor && viewportWidth - anchor.right >= FLYOUT_WIDTH_PX ? "right" : "left",
+      );
+    }
     setOpenSubmenu((current) => (current === menu ? null : menu));
   };
 
+  // Row edges sit 6px (p-1.5) inside the root panel, so 100%-2px lays the
+  // flyout 8px over the panel edge; the flyout's higher z-index keeps it on
+  // top of the root panel.
   const flyoutSideClass =
-    flyoutSide === "right" ? "left-[calc(100%+10px)]" : "right-[calc(100%+10px)]";
+    flyoutSide === "right" ? "left-[calc(100%-2px)]" : "right-[calc(100%-2px)]";
 
   const selectedModel = models.find((entry) => entry.id === model) ?? null;
   // With no capabilities loaded every tier stays selectable; a model with no
@@ -168,6 +187,24 @@ export function Composer({
   ]
     .filter(Boolean)
     .join(" ");
+
+  // Shared by both thinking-level placements (mobile inline / desktop flyout).
+  const levelOptionItems = levelOptions.map((option) => (
+    <button
+      key={option.value}
+      role="menuitemradio"
+      aria-checked={option.value === effectiveLevel}
+      className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
+      type="button"
+      onClick={() => {
+        onThinkingLevelChange(option.value);
+        setOpenSubmenu(null);
+      }}
+    >
+      <span>{option.label}</span>
+      {option.value === effectiveLevel && <Icons.Check size={14} />}
+    </button>
+  ));
 
   return (
     <div className="composer-wrap border-t border-transparent bg-canvas px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
@@ -235,7 +272,7 @@ export function Composer({
                   <div
                     role="menu"
                     aria-label="模型与思考强度"
-                    className={`absolute right-0 bottom-[calc(100%+6px)] z-10 min-w-[208px] p-1.5 ${popoverSurface}`}
+                    className={`absolute right-0 bottom-[calc(100%+6px)] z-10 w-[248px] p-1.5 ${popoverSurface}`}
                   >
                     {models.length > 0 && (
                       <div className="relative">
@@ -248,17 +285,23 @@ export function Composer({
                           onClick={() => toggleSubmenu("model")}
                         >
                           <span>模型</span>
-                          <span className="inline-flex items-center gap-1 text-text-muted">
-                            <span>{selectedModel?.label ?? ""}</span>
-                            <Icons.Chevron size={14} className="-rotate-90" />
+                          <span className="inline-flex min-w-0 items-center gap-1 text-text-muted">
+                            {/* leading-normal: the menu item's leading-none
+                                paints descenders outside the line box, and
+                                truncate's overflow-hidden would clip them. */}
+                            <span className="truncate leading-normal">
+                              {selectedModel?.label ?? ""}
+                            </span>
+                            <Icons.Chevron
+                              size={14}
+                              className={`shrink-0 transition-transform duration-[160ms]${
+                                openSubmenu === "model" ? "" : " -rotate-90"
+                              }`}
+                            />
                           </span>
                         </button>
                         {openSubmenu === "model" && (
-                          <div
-                            role="menu"
-                            aria-label="模型"
-                            className={`absolute bottom-[-6px] ${flyoutSideClass} z-20 min-w-[176px] p-1.5 ${popoverSurface}`}
-                          >
+                          <div role="menu" aria-label="模型" className="pl-3">
                             {models.map((entry) => (
                               <button
                                 key={entry.id}
@@ -268,12 +311,14 @@ export function Composer({
                                 type="button"
                                 onClick={() => {
                                   onModelChange(entry.id);
-                                  setPickerOpen(false);
+                                  setOpenSubmenu(null);
                                 }}
                               >
-                                <span>{entry.label}</span>
+                                <span className="min-w-0 truncate leading-normal">
+                                  {entry.label}
+                                </span>
                                 {entry.id === selectedModel?.id && (
-                                  <Icons.Check size={14} />
+                                  <Icons.Check size={14} className="shrink-0" />
                                 )}
                               </button>
                             ))}
@@ -283,6 +328,14 @@ export function Composer({
                     )}
                     {levelOptions.length > 0 && (
                       <div className="relative">
+                        {/* Mobile placement: the list sits above the row, so
+                            the bottom-anchored panel grows upward toward the
+                            模型 row as it unfolds. */}
+                        {openSubmenu === "level" && levelInline && (
+                          <div role="menu" aria-label="思考强度" className="pl-3">
+                            {levelOptionItems}
+                          </div>
+                        )}
                         <button
                           role="menuitem"
                           aria-haspopup="menu"
@@ -294,33 +347,23 @@ export function Composer({
                           <span>思考强度</span>
                           <span className="inline-flex items-center gap-1 text-text-muted">
                             <span>{levelLabel}</span>
-                            <Icons.Chevron size={14} className="-rotate-90" />
+                            <Icons.Chevron
+                              size={14}
+                              className={`shrink-0 transition-transform duration-[160ms]${
+                                openSubmenu === "level" && levelInline
+                                  ? " rotate-180"
+                                  : " -rotate-90"
+                              }`}
+                            />
                           </span>
                         </button>
-                        {openSubmenu === "level" && (
+                        {openSubmenu === "level" && !levelInline && (
                           <div
                             role="menu"
                             aria-label="思考强度"
-                            className={`absolute bottom-[-6px] ${flyoutSideClass} z-20 min-w-[128px] p-1.5 ${popoverSurface}`}
+                            className={`absolute bottom-[-12px] ${flyoutSideClass} z-20 min-w-[128px] p-1.5 ${popoverSurface}`}
                           >
-                            {levelOptions.map((option) => (
-                              <button
-                                key={option.value}
-                                role="menuitemradio"
-                                aria-checked={option.value === effectiveLevel}
-                                className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
-                                type="button"
-                                onClick={() => {
-                                  onThinkingLevelChange(option.value);
-                                  setPickerOpen(false);
-                                }}
-                              >
-                                <span>{option.label}</span>
-                                {option.value === effectiveLevel && (
-                                  <Icons.Check size={14} />
-                                )}
-                              </button>
-                            ))}
+                            {levelOptionItems}
                           </div>
                         )}
                       </div>
