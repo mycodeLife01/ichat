@@ -27,7 +27,7 @@ from app.services.files.storage import (
 )
 
 
-def test_format_policy_is_extension_controlled_and_checks_size_and_declared_mime() -> None:
+def test_format_policy_is_extension_controlled_and_checks_size() -> None:
     assert policy_for_filename("report.YML").format is FileFormat.YAML
     assert policy_for_filename("photo.jpeg").format is FileFormat.JPG
     assert validate_upload_declaration(
@@ -36,18 +36,59 @@ def test_format_policy_is_extension_controlled_and_checks_size_and_declared_mime
         size_bytes=1,
     ).format is FileFormat.TS
 
-    with pytest.raises(FileProcessingError, match="content_type_mismatch"):
-        validate_upload_declaration(
-            filename="photo.png",
-            content_type="application/pdf",
-            size_bytes=1,
-        )
+    assert validate_upload_declaration(
+        filename="photo.png",
+        content_type="application/pdf",
+        size_bytes=1,
+    ).format is FileFormat.PNG
     with pytest.raises(FileProcessingError, match="file_too_large"):
         validate_upload_declaration(
             filename="photo.png",
             content_type="image/png",
             size_bytes=IMAGE_MAX_BYTES + 1,
         )
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("source.py", "text/x-python-script"),
+        ("source.go", "text/x-go-source"),
+        ("source.ts", "video/mp2t"),
+        ("query.sql", "application/x-sql"),
+        ("table.csv", "application/vnd.ms-excel"),
+        ("photo.webp", "application/octet-stream"),
+        ("slides.pptx", "application/octet-stream"),
+    ],
+)
+def test_format_policy_accepts_platform_specific_browser_mime_types(
+    filename: str,
+    content_type: str,
+) -> None:
+    assert validate_upload_declaration(
+        filename=filename,
+        content_type=content_type,
+        size_bytes=1,
+    ) is policy_for_filename(filename)
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("source.py", "image/png"),
+        ("photo.png", "application/pdf"),
+        ("paper.pdf", "text/plain"),
+    ],
+)
+def test_format_policy_treats_conflicting_browser_mime_types_as_untrusted_hints(
+    filename: str,
+    content_type: str,
+) -> None:
+    assert validate_upload_declaration(
+        filename=filename,
+        content_type=content_type,
+        size_bytes=1,
+    ) is policy_for_filename(filename)
 
 
 def test_fake_storage_enforces_staging_etag_and_safe_download_headers() -> None:

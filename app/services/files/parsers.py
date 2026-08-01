@@ -63,6 +63,13 @@ MAX_PARSER_DERIVED_BYTES = 128 * 1024 * 1024
 DOCUMENT_EXTRACT_MEDIA_TYPE = "text/plain; charset=utf-8"
 PREVIEW_MEDIA_TYPE = "image/webp"
 WARNING_PARTIAL_CONTENT = "partial_content_not_extracted"
+WARNING_ANIMATED_IMAGE_FIRST_FRAME = "animated_image_first_frame_only"
+WARNING_COMPLEXITY_LIMIT = "complexity_limit_exceeded"
+WARNING_CSV_SHAPE_LIMIT = "csv_shape_limit_exceeded"
+WARNING_EMBEDDED_CONTENT = "embedded_content_not_extracted"
+WARNING_EXTERNAL_LINKS = "external_links_not_extracted"
+WARNING_NO_EXTRACTABLE_TEXT = "no_extractable_text"
+WARNING_TEXT_ENCODING_NORMALIZED = "text_encoding_normalized"
 
 _UTF8_BOM = b"\xef\xbb\xbf"
 _PDF_HEADER_SEARCH_BYTES = 1_024
@@ -421,31 +428,42 @@ def _resolve_policy(policy: FormatPolicy | FileFormat | str) -> FormatPolicy:
 
 def _parse_text(content: bytes, policy: FormatPolicy) -> ProcessedFile:
     _reject_nontext_magic(content)
-    text = _decode_utf8_text(content)
+    text, encoding_normalized = _decode_text(content)
     metadata: dict[str, int | str | bool] = {"text_bytes": len(text.encode("utf-8"))}
+    warnings_out: tuple[str, ...] = (
+        (WARNING_TEXT_ENCODING_NORMALIZED,) if encoding_normalized else ()
+    )
     if policy.format is FileFormat.CSV:
-        row_count, max_columns = _validate_csv_limits(text)
+        row_count, max_columns, shape_limit_exceeded = _inspect_csv_shape(text)
         metadata["row_count"] = row_count
         metadata["max_columns"] = max_columns
+        if shape_limit_exceeded:
+            warnings_out = _merge_warnings(warnings_out, (WARNING_CSV_SHAPE_LIMIT,))
     return _document_processed(
         policy,
         source=content,
         text=text,
+        warnings_out=warnings_out,
         metadata=metadata,
         extractor_version="text-v1",
     )
 
 
-def _decode_utf8_text(content: bytes) -> str:
-    if b"\0" in content:
-        raise FileProcessingError("nul_byte_not_allowed")
+def _decode_text(content: bytes) -> tuple[str, bool]:
     try:
-        text = content.decode("utf-8")
+        if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+            text = content.decode("utf-16")
+            encoding_normalized = True
+        else:
+            text = content.decode("utf-8")
+            encoding_normalized = False
     except UnicodeDecodeError:
         raise FileProcessingError("invalid_text_encoding") from None
     if content.startswith(_UTF8_BOM):
         text = text.removeprefix("\ufeff")
-    return _normalize_newlines(text)
+    if "\0" in text:
+        raise FileProcessingError("nul_byte_not_allowed")
+    return _normalize_newlines(text), encoding_normalized
 
 
 def _reject_nontext_magic(content: bytes) -> None:
@@ -466,31 +484,31 @@ def _normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def _validate_csv_limits(text: str) -> tuple[int, int]:
+def _inspect_csv_shape(text: str) -> tuple[int, int, bool]:
     row_count = 0
     max_columns = 0
+    limit_exceeded = False
     try:
         reader = csv.reader(StringIO(text, newline=""))
         for row in reader:
             row_count += 1
             if row_count > MAX_CSV_ROWS:
-                raise FileProcessingError("csv_row_limit_exceeded")
+                limit_exceeded = True
             max_columns = max(max_columns, len(row))
             if len(row) > MAX_CSV_COLUMNS:
-                raise FileProcessingError("csv_column_limit_exceeded")
-    except FileProcessingError:
-        raise
+                limit_exceeded = True
     except csv.Error:
         # CSV syntax is deliberately low-trust text rather than a requirement.
-        # Bound malformed input by physical lines while preserving it verbatim.
+        # Inspect malformed input by physical lines while preserving it verbatim.
         row_count = text.count("\n") + (1 if text else 0)
         if row_count > MAX_CSV_ROWS:
-            raise FileProcessingError("csv_row_limit_exceeded") from None
+            limit_exceeded = True
         for line in text.splitlines():
-            if line.count(",") + 1 > MAX_CSV_COLUMNS:
-                raise FileProcessingError("csv_column_limit_exceeded") from None
-        max_columns = 0
-    return row_count, max_columns
+            columns = line.count(",") + 1
+            max_columns = max(max_columns, columns)
+            if columns > MAX_CSV_COLUMNS:
+                limit_exceeded = True
+    return row_count, max_columns, limit_exceeded
 
 
 def _parse_image(content: bytes, policy: FormatPolicy) -> ProcessedFile:
@@ -505,8 +523,7 @@ def _parse_image(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             with Image.open(BytesIO(content)) as image:
                 if image.format != expected_format:
                     raise FileProcessingError("file_format_mismatch")
-                if getattr(image, "n_frames", 1) != 1:
-                    raise FileProcessingError("animated_image")
+                frame_count = getattr(image, "n_frames", 1)
                 width, height = image.size
                 if width > MAX_IMAGE_EDGE or height > MAX_IMAGE_EDGE:
                     raise FileProcessingError("image_dimensions_exceeded")
@@ -533,7 +550,13 @@ def _parse_image(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             FileDerivative(role="original", content_type=policy.media_type, content=content),
             FileDerivative(role="preview", content_type=PREVIEW_MEDIA_TYPE, content=preview),
         ),
-        metadata={"width": width, "height": height, "pixels": width * height},
+        warnings=(WARNING_ANIMATED_IMAGE_FIRST_FRAME,) if frame_count > 1 else (),
+        metadata={
+            "width": width,
+            "height": height,
+            "pixels": width * height,
+            "frame_count": frame_count,
+        },
         extractor_version="image-v1",
     )
 
@@ -547,7 +570,13 @@ def _parse_pdf(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             raise FileProcessingError("encrypted_document")
         page_count = len(reader.pages)
         if page_count > MAX_PDF_PAGES:
-            raise FileProcessingError("pdf_page_limit_exceeded")
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=(WARNING_COMPLEXITY_LIMIT,),
+                metadata={"page_count": page_count},
+                extractor_version="pdf-v1",
+            )
     except FileProcessingError:
         raise
     except Exception:
@@ -566,7 +595,13 @@ def _parse_pdf(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             continue
         sections.append(f"--- Page {page_number} ---\n{extracted}")
     if not sections:
-        raise FileProcessingError("no_extractable_text")
+        return _display_only_processed(
+            policy,
+            source=content,
+            warnings_out=(WARNING_NO_EXTRACTABLE_TEXT,),
+            metadata={"page_count": page_count, "extracted_page_count": 0},
+            extractor_version="pdf-v1",
+        )
     warnings_out = (WARNING_PARTIAL_CONTENT,) if partial else ()
     return _document_processed(
         policy,
@@ -582,6 +617,7 @@ def _parse_pdf(content: bytes, policy: FormatPolicy) -> ProcessedFile:
 class _OoxmlArchive:
     archive: zipfile.ZipFile
     names: frozenset[str]
+    warnings: tuple[str, ...] = ()
 
     def read_xml(self, name: str) -> ElementTree.Element:
         if name not in self.names:
@@ -612,15 +648,19 @@ def _open_ooxml(content: bytes, expected_format: FileFormat) -> _OoxmlArchive:
         names=frozenset(info.filename for info in archive.infolist()),
     )
     try:
-        _validate_ooxml_archive(package, expected_format)
+        package.warnings = _validate_ooxml_archive(package, expected_format)
     except BaseException:
         package.close()
         raise
     return package
 
 
-def _validate_ooxml_archive(package: _OoxmlArchive, expected_format: FileFormat) -> None:
+def _validate_ooxml_archive(
+    package: _OoxmlArchive,
+    expected_format: FileFormat,
+) -> tuple[str, ...]:
     infos = package.archive.infolist()
+    warnings_out: list[str] = []
     if len(infos) > MAX_OOXML_ENTRIES:
         raise FileProcessingError("ooxml_entry_limit_exceeded")
     if len(package.names) != len(infos):
@@ -640,7 +680,7 @@ def _validate_ooxml_archive(package: _OoxmlArchive, expected_format: FileFormat)
         ):
             raise FileProcessingError("ooxml_compression_ratio_exceeded")
         if not info.is_dir() and _looks_like_nested_archive(package.archive, info):
-            raise FileProcessingError("nested_archive_not_allowed")
+            warnings_out.append(WARNING_EMBEDDED_CONTENT)
 
     expected_content_type, expected_main_part = _CONTENT_TYPE_MAIN_PART[expected_format]
     types = package.read_xml("[Content_Types].xml")
@@ -656,16 +696,22 @@ def _validate_ooxml_archive(package: _OoxmlArchive, expected_format: FileFormat)
     for name in package.names:
         if name.endswith(".rels"):
             relationships = package.read_xml(name)
-            if any(
-                _local_name(item.tag) == "Relationship"
-                and item.attrib.get("TargetMode", "").casefold() == "external"
-                for item in relationships.iter()
-            ):
+            for item in relationships.iter():
+                if (
+                    _local_name(item.tag) != "Relationship"
+                    or item.attrib.get("TargetMode", "").casefold() != "external"
+                ):
+                    continue
+                relationship_type = item.attrib.get("Type", "").rsplit("/", 1)[-1]
+                if relationship_type.casefold() == "hyperlink":
+                    warnings_out.append(WARNING_EXTERNAL_LINKS)
+                    continue
                 raise FileProcessingError("external_reference_not_allowed")
     if expected_format is FileFormat.XLSX and any(
         name.startswith("xl/externalLinks/") for name in package.names
     ):
         raise FileProcessingError("external_reference_not_allowed")
+    return _merge_warnings(tuple(warnings_out))
 
 
 def _unsafe_archive_name(name: str) -> bool:
@@ -723,14 +769,35 @@ def _parse_docx(content: bytes, policy: FormatPolicy) -> ProcessedFile:
                 if table_lines:
                     blocks.append("\n".join(table_lines))
             if node_count > MAX_DOCX_NODES:
-                raise FileProcessingError("document_node_limit_exceeded")
+                return _display_only_processed(
+                    policy,
+                    source=content,
+                    warnings_out=_merge_warnings(
+                        package.warnings,
+                        (WARNING_COMPLEXITY_LIMIT,),
+                    ),
+                    metadata={"extractable_nodes": node_count},
+                    extractor_version="docx-v1",
+                )
         text = "\n\n".join(blocks).strip()
         if not text:
-            raise FileProcessingError("no_extractable_text")
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=_merge_warnings(
+                    package.warnings,
+                    (WARNING_NO_EXTRACTABLE_TEXT,),
+                ),
+                metadata={"extractable_nodes": node_count},
+                extractor_version="docx-v1",
+            )
         has_visual_content = any(
             _local_name(item.tag) in {"drawing", "pict", "object"} for item in root.iter()
         ) or any(name.startswith("word/media/") for name in package.names)
-        warnings_out = (WARNING_PARTIAL_CONTENT,) if has_visual_content else ()
+        warnings_out = _merge_warnings(
+            package.warnings,
+            (WARNING_PARTIAL_CONTENT,) if has_visual_content else (),
+        )
         return _document_processed(
             policy,
             source=content,
@@ -799,7 +866,16 @@ def _parse_pptx(content: bytes, policy: FormatPolicy) -> ProcessedFile:
     try:
         slide_paths = _pptx_visible_slide_paths(package)
         if len(slide_paths) > MAX_PPTX_VISIBLE_SLIDES:
-            raise FileProcessingError("slide_limit_exceeded")
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=_merge_warnings(
+                    package.warnings,
+                    (WARNING_COMPLEXITY_LIMIT,),
+                ),
+                metadata={"visible_slide_count": len(slide_paths)},
+                extractor_version="pptx-v1",
+            )
         sections: list[str] = []
         partial = False
         for source_index, path in slide_paths:
@@ -812,8 +888,23 @@ def _parse_pptx(content: bytes, policy: FormatPolicy) -> ProcessedFile:
                 partial = True
             sections.append(f"--- Slide {source_index} ---\n{text}")
         if not sections:
-            raise FileProcessingError("no_extractable_text")
-        warnings_out = (WARNING_PARTIAL_CONTENT,) if partial else ()
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=_merge_warnings(
+                    package.warnings,
+                    (WARNING_NO_EXTRACTABLE_TEXT,),
+                ),
+                metadata={
+                    "visible_slide_count": len(slide_paths),
+                    "extracted_slide_count": 0,
+                },
+                extractor_version="pptx-v1",
+            )
+        warnings_out = _merge_warnings(
+            package.warnings,
+            (WARNING_PARTIAL_CONTENT,) if partial else (),
+        )
         return _document_processed(
             policy,
             source=content,
@@ -943,20 +1034,50 @@ def _parse_xlsx(content: bytes, policy: FormatPolicy) -> ProcessedFile:
                 raise FileProcessingError("invalid_ooxml")
             visible_sheets.append((name, path))
         if len(visible_sheets) > MAX_XLSX_VISIBLE_SHEETS:
-            raise FileProcessingError("worksheet_limit_exceeded")
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=_merge_warnings(
+                    package.warnings,
+                    (WARNING_COMPLEXITY_LIMIT,),
+                ),
+                metadata={
+                    "visible_sheet_count": len(visible_sheets),
+                    "hidden_sheet_count": hidden_sheet_count,
+                },
+                extractor_version="xlsx-v1",
+            )
 
         sections: list[str] = []
         cell_count = 0
         partial = hidden_sheet_count > 0
         for sheet_name, path in visible_sheets:
             worksheet = package.read_xml(path)
-            rows, sheet_partial = _xlsx_visible_cells(
-                worksheet,
-                shared_strings=shared_strings,
-                date_styles=date_styles,
-                date_1904=date_1904,
-                current_count=cell_count,
-            )
+            try:
+                rows, sheet_partial = _xlsx_visible_cells(
+                    worksheet,
+                    shared_strings=shared_strings,
+                    date_styles=date_styles,
+                    date_1904=date_1904,
+                    current_count=cell_count,
+                )
+            except FileProcessingError as error:
+                if error.code != "cell_limit_exceeded":
+                    raise
+                return _display_only_processed(
+                    policy,
+                    source=content,
+                    warnings_out=_merge_warnings(
+                        package.warnings,
+                        (WARNING_COMPLEXITY_LIMIT,),
+                    ),
+                    metadata={
+                        "visible_sheet_count": len(visible_sheets),
+                        "hidden_sheet_count": hidden_sheet_count,
+                        "cell_count": cell_count,
+                    },
+                    extractor_version="xlsx-v1",
+                )
             cell_count += len(rows)
             if cell_count > MAX_XLSX_NONEMPTY_CELLS:
                 raise FileProcessingError("cell_limit_exceeded")
@@ -964,8 +1085,24 @@ def _parse_xlsx(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             if rows:
                 sections.append(f"--- Sheet: {sheet_name} ---\n" + "\n".join(rows))
         if not sections:
-            raise FileProcessingError("no_extractable_text")
-        warnings_out = (WARNING_PARTIAL_CONTENT,) if partial else ()
+            return _display_only_processed(
+                policy,
+                source=content,
+                warnings_out=_merge_warnings(
+                    package.warnings,
+                    (WARNING_NO_EXTRACTABLE_TEXT,),
+                ),
+                metadata={
+                    "visible_sheet_count": len(visible_sheets),
+                    "hidden_sheet_count": hidden_sheet_count,
+                    "cell_count": cell_count,
+                },
+                extractor_version="xlsx-v1",
+            )
+        warnings_out = _merge_warnings(
+            package.warnings,
+            (WARNING_PARTIAL_CONTENT,) if partial else (),
+        )
         return _document_processed(
             policy,
             source=content,
@@ -1204,6 +1341,31 @@ def _document_processed(
         metadata=metadata,
         extractor_version=extractor_version,
     )
+
+
+def _display_only_processed(
+    policy: FormatPolicy,
+    *,
+    source: bytes,
+    warnings_out: tuple[str, ...],
+    metadata: dict[str, int | str | bool],
+    extractor_version: str,
+) -> ProcessedFile:
+    return ProcessedFile(
+        format=policy.format.value,
+        media_type=policy.media_type,
+        kind="display_only",
+        derivatives=(
+            FileDerivative(role="original", content_type=policy.media_type, content=source),
+        ),
+        warnings=warnings_out,
+        metadata=metadata,
+        extractor_version=extractor_version,
+    )
+
+
+def _merge_warnings(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item for group in groups for item in group))
 
 
 def _local_name(name: str) -> str:

@@ -44,6 +44,15 @@ def _zip_bytes(parts: dict[str, str | bytes]) -> bytes:
     return output.getvalue()
 
 
+def _replace_zip_parts(source: bytes, replacements: dict[str, str | bytes]) -> bytes:
+    parts: dict[str, str | bytes] = {}
+    with ZipFile(BytesIO(source)) as archive:
+        for info in archive.infolist():
+            parts[info.filename] = archive.read(info.filename)
+    parts.update(replacements)
+    return _zip_bytes(parts)
+
+
 def _content_types(main_part: str, media_type: str) -> str:
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -192,6 +201,16 @@ def test_text_parser_normalizes_bom_and_newlines_without_mutating_original() -> 
     assert result.original.content == source
 
 
+def test_text_parser_accepts_utf16_bom_and_warns_about_normalization() -> None:
+    source = "你好\r\nworld".encode("utf-16")
+
+    result = parse_file(source, policy_for_filename("note.txt"))
+
+    assert _document_text(result) == "你好\nworld"
+    assert result.original.content == source
+    assert result.warnings == ("text_encoding_normalized",)
+
+
 @pytest.mark.parametrize(
     ("source", "code"),
     [(b"nul\0", "nul_byte_not_allowed"), (b"\xff", "invalid_text_encoding")],
@@ -201,15 +220,17 @@ def test_text_parser_rejects_binary_and_non_utf8(source: bytes, code: str) -> No
         parse_file(source, policy_for_filename("note.md"))
 
 
-def test_csv_limit_is_checked_without_parsing_json_or_code() -> None:
+def test_csv_shape_limit_warns_without_rejecting_content() -> None:
     result = parse_file(b"not: [valid", policy_for_filename("broken.yaml"))
     assert _document_text(result) == "not: [valid"
     too_many_columns = b",".join([b"x"] * 257)
-    with pytest.raises(FileProcessingError, match="csv_column_limit_exceeded"):
-        parse_file(too_many_columns, policy_for_filename("table.csv"))
+    csv_result = parse_file(too_many_columns, policy_for_filename("table.csv"))
+    assert _document_text(csv_result) == too_many_columns.decode()
+    assert csv_result.warnings == ("csv_shape_limit_exceeded",)
+    assert csv_result.metadata["max_columns"] == 257
 
 
-def test_image_parser_verifies_real_type_rejects_multiframe_and_strips_metadata() -> None:
+def test_image_parser_verifies_real_type_uses_first_frame_and_strips_metadata() -> None:
     source_image = Image.new("RGB", (5, 4), (20, 40, 60))
     source = BytesIO()
     source_image.save(source, format="PNG", exif=b"Exif\x00\x00metadata")
@@ -219,6 +240,23 @@ def test_image_parser_verifies_real_type_rejects_multiframe_and_strips_metadata(
         assert preview.format == "WEBP"
         assert preview.size == (5, 4)
         assert not preview.info.get("exif")
+
+    second_frame = Image.new("RGB", (5, 4), (80, 100, 120))
+    animated = BytesIO()
+    source_image.save(
+        animated,
+        format="WEBP",
+        save_all=True,
+        append_images=[second_frame],
+        duration=100,
+        loop=0,
+    )
+    animated_result = parse_file(animated.getvalue(), policy_for_filename("animated.webp"))
+    assert animated_result.kind == "display_only"
+    assert animated_result.warnings == ("animated_image_first_frame_only",)
+    assert animated_result.metadata["frame_count"] == 2
+    with Image.open(BytesIO(animated_result.preview.content)) as preview:
+        assert getattr(preview, "n_frames", 1) == 1
 
     with pytest.raises(FileProcessingError, match="file_format_mismatch"):
         parse_file(source.getvalue(), policy_for_filename("photo.jpg"))
@@ -230,6 +268,30 @@ def test_pdf_parser_uses_real_pdf_pages_and_rejects_encryption() -> None:
     assert "Readable PDF text" in _document_text(result)
     with pytest.raises(FileProcessingError, match="encrypted_document"):
         parse_file(_text_pdf(encrypted=True), policy_for_filename("paper.pdf"))
+
+
+def test_pdf_without_extractable_text_degrades_to_display_only() -> None:
+    writer = PdfWriter()
+    writer.add_blank_page(width=300, height=300)
+    source = BytesIO()
+    writer.write(source)
+
+    result = parse_file(source.getvalue(), policy_for_filename("scan.pdf"))
+
+    assert result.kind == "display_only"
+    assert result.document_extract is None
+    assert result.warnings == ("no_extractable_text",)
+
+
+def test_pdf_over_page_limit_degrades_to_display_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(parsers, "MAX_PDF_PAGES", 0)
+
+    result = parse_file(_text_pdf(), policy_for_filename("paper.pdf"))
+
+    assert result.kind == "display_only"
+    assert result.warnings == ("complexity_limit_exceeded",)
 
 
 def test_docx_pptx_and_xlsx_extract_only_visible_content() -> None:
@@ -252,6 +314,106 @@ def test_docx_pptx_and_xlsx_extract_only_visible_content() -> None:
     assert "C1: =SUM(1,2) (cached: 3)" in xlsx_text
     assert "Secret" not in xlsx_text
     assert xlsx_result.warnings == ("partial_content_not_extracted",)
+
+
+@pytest.mark.parametrize(
+    ("source", "filename", "replacement"),
+    [
+        (
+            _docx(),
+            "empty.docx",
+            {
+                "word/document.xml": '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>'
+            },
+        ),
+        (
+            _pptx(),
+            "empty.pptx",
+            {
+                "ppt/slides/slide1.xml": '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld/></p:sld>'
+            },
+        ),
+        (
+            _xlsx(),
+            "empty.xlsx",
+            {
+                "xl/worksheets/sheet1.xml": '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>'
+            },
+        ),
+    ],
+)
+def test_office_without_extractable_text_degrades_to_display_only(
+    source: bytes,
+    filename: str,
+    replacement: dict[str, str | bytes],
+) -> None:
+    result = parse_file(_replace_zip_parts(source, replacement), policy_for_filename(filename))
+
+    assert result.kind == "display_only"
+    assert result.document_extract is None
+    assert "no_extractable_text" in result.warnings
+
+
+@pytest.mark.parametrize(
+    ("constant", "source", "filename"),
+    [
+        ("MAX_DOCX_NODES", _docx(), "large.docx"),
+        ("MAX_PPTX_VISIBLE_SLIDES", _pptx(), "large.pptx"),
+        ("MAX_XLSX_VISIBLE_SHEETS", _xlsx(), "large.xlsx"),
+        ("MAX_XLSX_NONEMPTY_CELLS", _xlsx(), "large.xlsx"),
+    ],
+)
+def test_office_complexity_limits_degrade_to_display_only(
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+    source: bytes,
+    filename: str,
+) -> None:
+    monkeypatch.setattr(parsers, constant, 0)
+
+    result = parse_file(source, policy_for_filename(filename))
+
+    assert result.kind == "display_only"
+    assert "complexity_limit_exceeded" in result.warnings
+
+
+def test_ooxml_allows_external_hyperlinks_but_rejects_other_external_relationships() -> None:
+    hyperlink_relationship = '''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+ Target="https://example.com/team" TargetMode="External"/>
+</Relationships>'''
+    linked = _replace_zip_parts(
+        _xlsx(),
+        {"xl/worksheets/_rels/sheet1.xml.rels": hyperlink_relationship},
+    )
+
+    result = parse_file(linked, policy_for_filename("linked.xlsx"))
+
+    assert result.kind == "document"
+    assert "external_links_not_extracted" in result.warnings
+
+    external_data_relationship = hyperlink_relationship.replace(
+        "relationships/hyperlink", "relationships/externalLink"
+    )
+    external_data = _replace_zip_parts(
+        _xlsx(),
+        {"xl/worksheets/_rels/sheet1.xml.rels": external_data_relationship},
+    )
+    with pytest.raises(FileProcessingError, match="external_reference_not_allowed"):
+        parse_file(external_data, policy_for_filename("linked.xlsx"))
+
+
+def test_ooxml_embedded_archive_is_ignored_with_warning() -> None:
+    source = _replace_zip_parts(
+        _docx(),
+        {"word/embeddings/embedded.xlsx": _xlsx()},
+    )
+
+    result = parse_file(source, policy_for_filename("embedded.docx"))
+
+    assert result.kind == "document"
+    assert "Visible paragraph" in _document_text(result)
+    assert "embedded_content_not_extracted" in result.warnings
 
 
 def test_xlsx_dates_respect_both_excel_epoch_systems() -> None:

@@ -657,7 +657,8 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
 ) -> None:
     monkeypatch.setenv("WEB_SEARCH_ENABLED", "true")
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
-    # Pin the model catalog: a developer .env may configure OpenAI models.
+    # Pin capabilities that a developer .env may override.
+    monkeypatch.setenv("FILE_UPLOAD_ENABLED", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("DEEPSEEK_MODELS", "deepseek-v4-flash,deepseek-v4-pro")
     get_settings.cache_clear()

@@ -2,7 +2,7 @@
 
 Filename extensions select a policy at upload creation time.  The parser still
 verifies the real byte format before an upload can become ready; a browser MIME
-type is only an early compatibility check and never establishes trust.
+type is only an untrusted diagnostic hint and never establishes trust.
 """
 
 from __future__ import annotations
@@ -40,6 +40,23 @@ class FileFormat(StrEnum):
     DOCX = "docx"
     PPTX = "pptx"
     XLSX = "xlsx"
+
+
+TEXT_FILE_FORMATS = frozenset(
+    {
+        FileFormat.TXT,
+        FileFormat.MD,
+        FileFormat.CSV,
+        FileFormat.JSON,
+        FileFormat.YAML,
+        FileFormat.PY,
+        FileFormat.JS,
+        FileFormat.TS,
+        FileFormat.GO,
+        FileFormat.JAVA,
+        FileFormat.SQL,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -100,7 +117,7 @@ FORMAT_POLICIES: tuple[FormatPolicy, ...] = (
         FileFormat.CSV,
         extensions=("csv",),
         media_type="text/csv",
-        aliases=("application/csv", "application/octet-stream"),
+        aliases=("application/csv", "application/vnd.ms-excel", "application/octet-stream"),
         max_bytes=TEXT_MAX_BYTES,
         kind="document",
     ),
@@ -145,7 +162,12 @@ FORMAT_POLICIES: tuple[FormatPolicy, ...] = (
         FileFormat.TS,
         extensions=("ts",),
         media_type="text/typescript",
-        aliases=("application/typescript", "text/plain", "application/octet-stream"),
+        aliases=(
+            "application/typescript",
+            "text/plain",
+            "video/mp2t",
+            "application/octet-stream",
+        ),
         max_bytes=TEXT_MAX_BYTES,
         kind="document",
     ),
@@ -169,7 +191,7 @@ FORMAT_POLICIES: tuple[FormatPolicy, ...] = (
         FileFormat.SQL,
         extensions=("sql",),
         media_type="application/sql",
-        aliases=("text/sql", "text/plain", "application/octet-stream"),
+        aliases=("application/x-sql", "text/sql", "text/plain", "application/octet-stream"),
         max_bytes=TEXT_MAX_BYTES,
         kind="document",
     ),
@@ -265,10 +287,17 @@ def policy_for_format(file_format: FileFormat | str) -> FormatPolicy:
 
 
 def is_declared_content_type_compatible(policy: FormatPolicy, content_type: str) -> bool:
-    """Check only an untrusted browser declaration, ignoring parameters."""
+    """Check only an untrusted, platform-dependent browser MIME hint."""
 
     normalized = content_type.split(";", 1)[0].strip().casefold()
-    return not normalized or normalized in policy.declared_media_types
+    if not normalized or normalized == "application/octet-stream":
+        return True
+    if normalized in policy.declared_media_types:
+        return True
+    # OS MIME databases assign different vendor text types to source files.
+    # Text syntax is intentionally not required to be valid, so the worker's
+    # UTF-8, NUL, and non-text magic checks remain the authoritative boundary.
+    return policy.format in TEXT_FILE_FORMATS and normalized.startswith("text/")
 
 
 def validate_upload_declaration(
@@ -281,8 +310,10 @@ def validate_upload_declaration(
     policy = policy_for_filename(filename)
     if size_bytes < 0 or size_bytes > policy.max_bytes:
         raise FileProcessingError("file_too_large")
-    if not is_declared_content_type_compatible(policy, content_type):
-        raise FileProcessingError("content_type_mismatch")
+    # Browser MIME databases are inconsistent and the declaration is
+    # attacker-controlled. The worker's byte-level parser remains the
+    # authoritative format check, so a conflicting hint must not reject an
+    # otherwise valid upload.
     return policy
 
 

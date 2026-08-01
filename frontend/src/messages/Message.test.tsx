@@ -80,7 +80,9 @@ describe("Message", () => {
 
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByText("Some scanned pages were not read.")).toBeInTheDocument();
-    expect(screen.getByText(/Image preview only/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/File available for download — the model cannot read its contents/),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Preview image" }));
     expect(onReadAttachment).toHaveBeenCalledWith("file-2", "preview");
     expect(await screen.findByAltText("photo.png preview")).toHaveAttribute(

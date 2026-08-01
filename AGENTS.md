@@ -10,7 +10,7 @@ iChat — AI chat service: FastAPI backend integrated with DeepSeek API (real-ti
 
 ## User Interactions
 
-**Must** use Chinese for user interactions in claude sessions unless required in other ways.
+**Must** use Chinese for user interactions in codex sessions unless required in other ways.
 
 ## Language
 
@@ -19,7 +19,7 @@ iChat — AI chat service: FastAPI backend integrated with DeepSeek API (real-ti
 | `docs/` content, project documentation | Chinese |
 | Code comments and docstrings | English |
 | User-facing error messages and application-level hints | English |
-| `CLAUDE.md` (this file) | English — agent instructions |
+| `AGENTS.md` (this file) | English — agent instructions |
 
 ## Workspace
 

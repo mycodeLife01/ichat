@@ -72,14 +72,14 @@ pending ──confirm──► queued ──claim──► processing ──► 
 
 ## 文件格式、安全边界与模型输入
 
-允许的精确扩展名为 `jpg/jpeg/png/webp/pdf/docx/pptx/xlsx/txt/md/csv/json/yaml/yml/py/js/ts/go/java/sql`。浏览器 MIME 只用于初筛；worker 必须验证真实字节和扩展名匹配，OOXML 还必须验证内部类型。
+允许的精确扩展名为 `jpg/jpeg/png/webp/pdf/docx/pptx/xlsx/txt/md/csv/json/yaml/yml/py/js/ts/go/java/sql`。浏览器 MIME 只是不可信提示，不作为拒绝依据；worker 必须验证真实字节和扩展名匹配，OOXML 还必须验证内部类型。
 
 | 类别 | 限制与输出 |
 |---|---|
-| 图片 | JPG/PNG/静态 WebP，最大 10 MiB、最长边 8192、最多 2,000 万像素；完整解码，保留私有原件并生成去元数据安全预览。动画 WebP 拒绝。图片只生成 `AttachmentNoticeBlock`，本期不做视觉理解。 |
-| PDF | 最大 25 MiB、最多 200 页；只提取可选择文本，不 OCR、渲染页面、执行脚本或读取附件。完全无可提取文本时拒绝；可读部分会带稳定 warning。 |
-| DOCX/PPTX/XLSX | 单文件最大 20 MiB；解压后最多 100 MiB、10,000 entries，拒绝路径穿越、嵌套压缩和异常压缩比。只读可见主体：隐藏工作表/行列/幻灯片、备注、批注、已删除修订、动作和文档属性不会进入模型。XLSX 不执行公式、不访问外部连接。 |
-| 文本、数据、源码 | 单文件最大 2 MiB，严格 UTF-8/UTF-8 BOM，无 NUL；派生文本去 BOM、换行规范化为 LF，原件不变。无效 JSON/YAML/CSV/源码仍可作为低信任文本进入模型。CSV 最多 100,000 行、每行最多 256 列。 |
+| 图片 | JPG/PNG/WebP，最大 10 MiB、最长边 8192、最多 2,000 万像素；完整解码，保留私有原件并生成去元数据安全预览。动画 WebP 只使用第一帧生成预览并带 warning。图片只生成 `AttachmentNoticeBlock`，本期不做视觉理解。 |
+| PDF | 最大 25 MiB；只提取可选择文本，不 OCR、渲染页面、执行脚本或读取附件。完全无可提取文本或超过 200 页时仍可 ready，但降级为仅展示/下载附件并明确提示模型无法读取。可读部分缺失时带稳定 warning。 |
+| DOCX/PPTX/XLSX | 单文件最大 20 MiB；解压后最多 100 MiB、10,000 entries，仍拒绝路径穿越、异常压缩比、加密和真实外部数据连接。普通网页超链接不会打开或进入模型；嵌入文件不递归解析，两者均带 warning。只读可见主体：隐藏工作表/行列/幻灯片、备注、批注、已删除修订、动作和文档属性不会进入模型。完全无文本或超过逻辑复杂度上限时降级为仅展示/下载；XLSX 不执行公式、不访问外部连接。 |
+| 文本、数据、源码 | 单文件最大 2 MiB，接受 UTF-8/UTF-8 BOM 和带 BOM 的 UTF-16，解码后拒绝 NUL；派生文本统一为 UTF-8、去 BOM、换行规范化为 LF，原件不变。无效 JSON/YAML/CSV/源码仍可作为低信任文本进入模型。CSV 超过 100,000 行或 256 列时保留完整文本并带 warning，不再整体拒绝。 |
 
 所有原件在解析前经过 ClamAV/clamd。恶意签名命中是永久拒绝；扫描器不可用或签名超过配置年龄时 fail-closed，并作为可重试基础设施故障。解析在受时间与资源限制、无应用凭据的外部进程中进行：解析 wall-clock 上限 120 秒，Celery soft/hard 上限由整次尝试配置（默认 180 秒）派生；父任务异常会终止解析进程组，Linux hard-kill 由 parent-death signal 兜底。lease 为 5 分钟且不作持续 heartbeat。
 
@@ -291,7 +291,7 @@ where status = 'processing' and lease_expires_at < now();
 
 ## 已知限制与后续工作
 
-- 没有 OCR、图片视觉理解、ImageBlock、自动图像描述或图片文字提取；图片仅预览/下载/notice。
+- 没有 OCR、图片视觉理解、ImageBlock、自动图像描述或图片文字提取；图片仅预览/下载/notice，动画图片预览只展示第一帧。
 - 没有 RAG、向量索引、分块检索、附件摘要、静默截断或 provider 原生 Files API；超预算必须拒绝。
 - 没有 multipart、分片上传、断点续传或中断 PUT 恢复。
 - 没有独立文件库、跨无关消息/跨用途复用、物理去重、引用计数或公开附件下载。

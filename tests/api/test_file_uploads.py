@@ -179,6 +179,29 @@ async def test_create_requires_verified_email(client: AsyncClient) -> None:
     assert response.json()["detail"] == "Verify your email before uploading files"
 
 
+async def test_create_accepts_platform_specific_python_mime_type(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "python-upload")
+    await verify_user(session_factory, data)
+
+    response = await client.post(
+        "/api/v1/files/uploads",
+        headers=auth_header(data),
+        json={
+            "filename": "example.py",
+            "content_type": "text/x-python-script",
+            "size_bytes": 12,
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    assert response.json()["data"]["upload_headers"]["Content-Type"] == (
+        "text/x-python-script"
+    )
+
+
 async def test_create_confirm_query_cancel_and_ownership(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],

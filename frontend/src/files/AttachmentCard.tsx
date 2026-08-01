@@ -14,7 +14,14 @@ import {
 } from "lucide-react";
 
 import type { FileReadRole } from "./types";
-import { attachmentWarnings, errorLabel, isUploadFailed, isUploadInProgress, statusLabel } from "./utils";
+import {
+  attachmentWarnings,
+  errorLabel,
+  isUploadFailed,
+  isUploadInProgress,
+  statusLabel,
+  warningLabel,
+} from "./utils";
 import type { DraftAttachment, FileAttachment, SharedAttachmentPlaceholder } from "./types";
 
 type AttachmentDisplay = FileAttachment | SharedAttachmentPlaceholder | DraftAttachment;
@@ -126,12 +133,12 @@ export function AttachmentCard({
           )}
           {file?.model_consumable === false && (
             <p className="mt-1 text-[11.5px] text-text-muted">
-              Image preview only — the model cannot read this image.
+              File available for download — the model cannot read its contents.
             </p>
           )}
           {warning.map((item) => (
             <p key={item} className="mt-1 text-[11.5px] text-warning-foreground">
-              {item}
+              {warningLabel(item)}
             </p>
           ))}
           {readError && <p className="mt-1 text-[11.5px] text-error-foreground">{readError}</p>}

@@ -139,7 +139,7 @@ services:
         condition: service_healthy
 
   clamav:
-    image: clamav/clamav:1.4
+    image: clamav/clamav:1.4-debian
     volumes:
       - clamav_data:/var/lib/clamav
     healthcheck:
