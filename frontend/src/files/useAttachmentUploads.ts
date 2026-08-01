@@ -36,8 +36,8 @@ function randomId(): string {
 }
 
 function sameAttachment(left: DraftAttachment, right: DraftAttachment): boolean {
-  const leftFile = left.file;
-  const rightFile = right.file;
+  const leftFile = left.file ?? null;
+  const rightFile = right.file ?? null;
   const sameFile =
     leftFile === rightFile ||
     (leftFile !== null &&

@@ -51,7 +51,7 @@ export type FileUploadRecord = {
   status: FileUploadStatus;
   error_code: string | null;
   message?: string | null;
-  file: FileAttachment | null;
+  file?: FileAttachment | null;
 };
 
 export type FileUploadSession = {

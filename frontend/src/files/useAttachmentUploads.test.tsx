@@ -42,6 +42,13 @@ const readyRecord: FileUploadRecord = {
   },
 };
 
+// `response_model_exclude_none=True` omits `file` from non-terminal wire payloads.
+const queuedRecordWithoutFile: FileUploadRecord = {
+  upload_id: "upload-1",
+  status: "queued",
+  error_code: null,
+};
+
 function makeApi(overrides: Partial<FilesApi> = {}): FilesApi {
   return {
     createUpload: vi.fn(async () => session),
@@ -98,6 +105,31 @@ describe("useAttachmentUploads", () => {
       content: "please read this",
       attachments: [{ upload_id: "upload-1", status: "succeeded" }],
     });
+  });
+
+  it("handles a queued response without file before polling the ready attachment", async () => {
+    const filesApi = makeApi({
+      confirm: vi.fn(async () => queuedRecordWithoutFile),
+      status: vi.fn(async () => [readyRecord]),
+    });
+    const fetchImpl = vi.fn(async () =>
+      new Response(null, { status: 200, headers: { ETag: '"r2-etag"' } }),
+    );
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        fetchImpl,
+      }),
+    );
+
+    act(() => result.current.addFiles([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+
+    await waitFor(() => expect(filesApi.status).toHaveBeenCalledWith(["upload-1"]));
+    await waitFor(() => expect(result.current.readyAttachmentIds).toEqual(["file-1"]));
+    expect(result.current.attachments[0]?.file).toEqual(readyRecord.file);
   });
 
   it("blocks unsupported files and enforces the local count limit before creating uploads", () => {

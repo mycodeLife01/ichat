@@ -110,19 +110,20 @@ export function draftFromUpload(
     status: FileUploadStatus;
     error_code: string | null;
     message?: string | null;
-    file: FileAttachment | null;
+    file?: FileAttachment | null;
   },
 ): DraftAttachment {
+  const file = update.file ?? null;
   return {
     ...draft,
     status: update.status,
     error_code: update.error_code,
     error_message: update.message ?? null,
-    file: update.file,
-    name: update.file?.name ?? draft.name,
-    media_type: update.file?.media_type ?? draft.media_type,
-    size_bytes: update.file?.size_bytes ?? draft.size_bytes,
-    category: update.file?.category ?? draft.category,
+    file,
+    name: file?.name ?? draft.name,
+    media_type: file?.media_type ?? draft.media_type,
+    size_bytes: file?.size_bytes ?? draft.size_bytes,
+    category: file?.category ?? draft.category,
   };
 }
 

@@ -244,7 +244,7 @@ rm -f /tmp/ichat-file-smoke.txt /tmp/ichat-file-smoke.headers \
 
 ```bash
 bash -ceu '
-  docker compose exec -T clamav clamdscan --ping 1
+  docker compose exec -T clamav clamdscan --ping=1 --wait /etc/hosts
   set +e
   curl --fail --silent --show-error https://secure.eicar.org/eicar.com.txt \
     | docker compose exec -T clamav clamdscan -
