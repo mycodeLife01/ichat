@@ -16,6 +16,7 @@ dependencies = [
     "psycopg[binary]",
     "pydantic-settings",
     "pillow",
+    "pypdf>=5.0",
     "pwdlib[argon2]",
     "pyjwt[crypto]",
     "python-dotenv",

@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 03
 
 # 分享与自动标题的附件隐私边界

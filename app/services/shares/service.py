@@ -10,6 +10,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message, ShareLink
+from app.models.files import MessageAttachment
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.shares import (
@@ -23,6 +24,7 @@ from app.services.conversations.service import (
     get_owned_visible_conversation,
     get_owned_visible_conversation_for_update,
 )
+from app.services.files.service import file_category_values
 
 SHARE_NOT_FOUND_MESSAGE = "Share not found"
 ACTIVE_SHARE_EXISTS_MESSAGE = "Active share already exists"
@@ -47,7 +49,11 @@ def share_link_response(share: ShareLink) -> ShareLinkResponse:
     )
 
 
-def _build_snapshot(conversation: Conversation, messages: list[Message]) -> dict[str, Any]:
+def _build_snapshot(
+    conversation: Conversation,
+    messages: list[Message],
+    attachments: dict[int, list[dict[str, Any]]],
+) -> dict[str, Any]:
     """Freeze the conversation into a snapshot dict.
 
     Only role/content/reasoning/sources are kept — never internal ids, run ids,
@@ -61,6 +67,7 @@ def _build_snapshot(conversation: Conversation, messages: list[Message]) -> dict
                 "content": message.content,
                 "reasoning": message.reasoning,
                 "sources": (message.metadata_ or {}).get("sources", []),
+                "attachments": attachments.get(message.id, []),
             }
             for message in messages
         ],
@@ -73,7 +80,15 @@ async def create_share(
     user: User,
     conversation_public_id: UUID,
     expires_in_days: int | None,
+    confirm_attachment_privacy: bool = False,
 ) -> ShareLinkResponse:
+    active_user_id = await session.scalar(
+        select(User.id)
+        .where(User.id == user.id, User.is_active.is_(True))
+        .with_for_update(read=True)
+    )
+    if active_user_id is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, "Conversation not found")
     # Lock the conversation row so concurrent creates serialize: the
     # "no active share" check below and the insert are then atomic, enforcing
     # at most one active link per conversation without a DB-level constraint
@@ -109,6 +124,34 @@ async def create_share(
             )
         ).all()
     )
+    message_ids = [message.id for message in messages]
+    attachment_rows = (
+        (
+            await session.scalars(
+                select(MessageAttachment)
+                .where(MessageAttachment.message_id.in_(message_ids))
+                .order_by(MessageAttachment.message_id, MessageAttachment.position)
+            )
+        ).all()
+        if message_ids
+        else []
+    )
+    if attachment_rows and not confirm_attachment_privacy:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Confirm that assistant replies may contain information from attachments",
+        )
+    attachment_snapshot: dict[int, list[dict[str, Any]]] = {}
+    for attachment in attachment_rows:
+        attachment_snapshot.setdefault(attachment.message_id, []).append(
+            {
+                "name": attachment.name,
+                "media_type": attachment.media_type,
+                "size_bytes": attachment.size_bytes,
+                "category": file_category_values(attachment.name, attachment.media_type),
+                "warnings": list(attachment.warnings or []),
+            }
+        )
 
     expires_at = now + timedelta(days=expires_in_days) if expires_in_days is not None else None
 
@@ -116,7 +159,7 @@ async def create_share(
         token=secrets.token_urlsafe(_TOKEN_NBYTES),
         conversation_id=conversation.id,
         created_by=user.id,
-        snapshot=_build_snapshot(conversation, messages),
+        snapshot=_build_snapshot(conversation, messages, attachment_snapshot),
         expires_at=expires_at,
     )
     session.add(share)

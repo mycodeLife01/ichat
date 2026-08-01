@@ -25,7 +25,8 @@
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
-| Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-07-14-r2-avatar-upload.md` |
+| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
+| Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 
 ## Directory guide
 
@@ -33,15 +34,16 @@
 
 Authoritative architectural rules.
 
-- `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
-- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
-- `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, why streaming runs stay out of Celery, and the three questions every task table must answer.
+- `overview.md` — runtime architecture: service topology, end-to-end data flow, run/file state machines, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
+- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including `app/services/files` and the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
+- `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, file/media Celery ownership, why streaming runs stay out of Celery, and the three questions every task table must answer.
 
 ### `docs/adr/`
 
 Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching your area before proposing changes; conflicts with an ADR must be raised explicitly, never silently overridden (see `docs/agents/domain.md`).
 
 - `2026-07-13-account-deletion-soft-deactivation.md` — account deletion = soft deactivation (`is_active=false` + full credential revocation), data retained; physical erasure (cooling-off period + periodic job) deferred to a later iteration.
+- `0002-unify-file-assets-and-avatar-uploads.md` — the later decision that replaces the former avatar-only-files boundary; implementation and the still-deferred legacy-avatar contract are recorded in `handover/2026-08-01-unified-file-upload.md`.
 
 ### `docs/handover/`
 
@@ -69,6 +71,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-26-email-verification.md` — email verification + auth-email infra: `auth_tokens`/`email_outbox` tables, Redis cooldown + IP sliding-window rate limiting, Postmark/console/fake providers, Celery worker/beat outbox delivery (claim/lease/retry/dead/sweep), `GET /auth/me` + `POST /auth/verify-email` + `POST /auth/resend-verification-email`, nginx Cloudflare realip + firewall ops checklist.
 - `2026-07-13-password-reset-account-deletion.md` — password reset / change-password / account deletion (five new auth endpoints), purpose-generalized token service, cross-invalidation matrix, anti-enumeration constant responses, per-endpoint rate-limit & Redis failure modes, soft-deactivation semantics + ops recovery notes.
 - `2026-07-14-r2-avatar-upload.md` — browser-cropped avatar direct upload to private R2, media queue validation/transcoding, public CDN URL, replacement/deletion compensation, account-deletion exception, Cloudflare setup/smoke/rollback.
+- `2026-08-01-unified-file-upload.md` — unified files domain for message attachments and new avatars: data model/state machine, format and parser security, transcript/privacy behavior, retention/quota/account rules, queues/credential topology, feature flag, R2/ClamAV smoke, rollout and rollback. This is the current authority; ticket 15 contract remains gated on production verification.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 
 ### `docs/handover/frontend/`
@@ -107,4 +110,4 @@ Historical implementation checklists, one per past sprint. **Not active referenc
 
 ### `docs/deployment.md`
 
-Production deployment runbook — Linux server setup, Docker Compose, Nginx reverse proxy, Cloudflare SSL/TLS, Cloudflare Pages frontend hosting, environment variables.
+Production deployment runbook — Linux server setup, Docker Compose, Nginx reverse proxy, Cloudflare SSL/TLS, Cloudflare Pages frontend hosting, environment variables. File-upload-specific R2/ClamAV smoke and rollout gates are in `handover/2026-08-01-unified-file-upload.md`.

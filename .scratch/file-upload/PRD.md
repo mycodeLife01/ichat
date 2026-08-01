@@ -1,7 +1,7 @@
 # 统一文件上传与消息附件
 
 Type: feature
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: None
 
 日期：2026-08-01
@@ -413,3 +413,9 @@ iChat 当前只有头像这一种文件上传能力。头像链路已经具备�
 - 文件内容、文件名和 parser 异常都可能包含敏感信息。测试 fixture 使用合成数据，日志断言应验证敏感字段从未出现。
 - 任务表必须持续满足项目后台任务三问：最大尝试三次；30 秒/5 分钟退避；永久策略错误进入 rejected，暂时故障耗尽进入 failed，删除补偿保留到完成。
 - 实施结束后需要新增中文 handover、部署与 R2/ClamAV smoke 文档，并更新文档索引、架构总览和模块职责。
+
+## Implementation Status
+
+- 2026-08-01：ticket 01–13 已完成实现与自动化验证。
+- ticket 14 的代码、配置、可观测性和运行手册已完成；真实开发 R2/ClamAV、生产凭据隔离、灰度回滚和 P95/P99 容量证据需要人工环境验收，因此本 PRD 保持 `ready-for-human`。
+- ticket 15 是生产前置条件满足后的 contract 阶段，当前有意保留旧头像表、对象键回退、任务与双读兼容，禁止提前删除。

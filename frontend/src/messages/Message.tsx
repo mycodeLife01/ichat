@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
+import { AttachmentCard } from "../files/AttachmentCard";
+import type { DraftAttachment, FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
   buttonControl,
@@ -23,8 +25,16 @@ type MessageProps = {
   isMobile?: boolean;
   // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onEditAndRegenerate?: (
+    messageId: string,
+    content: string,
+    attachmentIds?: string[],
+  ) => void;
   onRegenerate?: (messageId: string) => void;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  /** Ready files selected in the composer can be added to an edited message. */
+  composerAttachments?: DraftAttachment[];
+  maxAttachmentsPerMessage?: number;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };
@@ -46,10 +56,17 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  onReadAttachment,
+  composerAttachments = [],
+  maxAttachmentsPerMessage = 5,
   onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  // undefined deliberately means "omit attachment_ids", which tells the API
+  // to inherit this revision's attachments. Any array (including []) is the
+  // explicit replacement form.
+  const [editedAttachmentIds, setEditedAttachmentIds] = useState<string[] | undefined>();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // Long user messages collapse to COLLAPSE_MAX_HEIGHT with an expand toggle;
@@ -108,11 +125,56 @@ export function Message({
 
   const startEditing = () => {
     setDraft(message.content);
+    setEditedAttachmentIds(undefined);
     setEditing(true);
   };
   const mutate = isUser ? startEditing : () => onRegenerate?.(message.id);
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
+  const messageAttachments = message.attachments ?? [];
+  const readyComposerAttachments = composerAttachments.flatMap((attachment) =>
+    attachment.status === "succeeded" && attachment.file ? [attachment.file] : [],
+  );
+  const attachmentById = new Map(
+    [...messageAttachments, ...readyComposerAttachments].map((attachment) => [attachment.id, attachment]),
+  );
+  const effectiveEditedAttachmentIds =
+    editedAttachmentIds ?? messageAttachments.map((attachment) => attachment.id);
+  const editedAttachments = effectiveEditedAttachmentIds.flatMap((id) => {
+    const attachment = attachmentById.get(id);
+    return attachment ? [attachment] : [];
+  });
+  const hasEditedModelInput = editedAttachments.some(
+    (attachment) => attachment.model_consumable && attachment.category !== "image",
+  );
+
+  const removeEditedAttachment = (fileId: string) => {
+    setEditedAttachmentIds((current) => {
+      const source = current ?? messageAttachments.map((attachment) => attachment.id);
+      return source.filter((id) => id !== fileId);
+    });
+  };
+  const moveEditedAttachment = (fileId: string, direction: -1 | 1) => {
+    setEditedAttachmentIds((current) => {
+      const source = [...(current ?? messageAttachments.map((attachment) => attachment.id))];
+      const index = source.indexOf(fileId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= source.length) return source;
+      [source[index], source[target]] = [source[target], source[index]];
+      return source;
+    });
+  };
+  const composerIdsToAdd = readyComposerAttachments
+    .map((attachment) => attachment.id)
+    .filter((id) => !effectiveEditedAttachmentIds.includes(id));
+  const canAddComposerAttachments =
+    composerIdsToAdd.length > 0 &&
+    effectiveEditedAttachmentIds.length + composerIdsToAdd.length <=
+      maxAttachmentsPerMessage;
+  const addComposerAttachments = () => {
+    if (!canAddComposerAttachments) return;
+    setEditedAttachmentIds([...effectiveEditedAttachmentIds, ...composerIdsToAdd]);
+  };
 
   // Copy shows a transient check (已复制) before reverting to the copy icon.
   const handleCopy = () => {
@@ -222,12 +284,17 @@ export function Message({
   if (isUser && editing) {
     const save = () => {
       const trimmed = draft.trim();
-      if (trimmed === "") return;
+      if (trimmed === "" && !hasEditedModelInput) return;
       setEditing(false);
-      onEditAndRegenerate?.(message.id, trimmed);
+      if (editedAttachmentIds === undefined) {
+        onEditAndRegenerate?.(message.id, trimmed);
+      } else {
+        onEditAndRegenerate?.(message.id, trimmed, editedAttachmentIds);
+      }
     };
     const cancel = () => {
       setDraft(message.content);
+      setEditedAttachmentIds(undefined);
       setEditing(false);
     };
     return (
@@ -251,6 +318,70 @@ export function Message({
               }}
             />
           </div>
+          {messageAttachments.length > 0 || readyComposerAttachments.length > 0 ? (
+            <div className="mx-2 mt-2 rounded-control border border-border bg-surface p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] text-text-muted">
+                  {editedAttachmentIds === undefined
+                    ? "Keeping this message's original attachments."
+                    : "This edit will replace the original attachments."}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {readyComposerAttachments.length > 0 && (
+                    <button
+                      type="button"
+                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
+                      onClick={addComposerAttachments}
+                      disabled={!canAddComposerAttachments}
+                      title={
+                        composerIdsToAdd.length === 0
+                          ? "These attachments are already included."
+                          : !canAddComposerAttachments
+                            ? "Remove an attachment before adding these files."
+                            : undefined
+                      }
+                    >
+                      添加输入区附件
+                    </button>
+                  )}
+                  {editedAttachmentIds !== undefined && (
+                    <button
+                      type="button"
+                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
+                      onClick={() => setEditedAttachmentIds(undefined)}
+                    >
+                      恢复原附件
+                    </button>
+                  )}
+                  {effectiveEditedAttachmentIds.length > 0 && (
+                    <button
+                      type="button"
+                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
+                      onClick={() => setEditedAttachmentIds([])}
+                    >
+                      移除全部
+                    </button>
+                  )}
+                </div>
+              </div>
+              {editedAttachments.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {editedAttachments.map((attachment, index) => (
+                    <AttachmentCard
+                      key={attachment.id}
+                      attachment={attachment}
+                      mode="editor"
+                      getReadUrl={onReadAttachment}
+                      onRemove={removeEditedAttachment}
+                      onMoveFile={moveEditedAttachment}
+                      canMoveBack={index > 0}
+                      canMoveForward={index < editedAttachments.length - 1}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
             <button
               className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
@@ -261,7 +392,7 @@ export function Message({
             <button
               className={`${primaryButton} h-9 rounded-full px-3 text-[14px] font-medium leading-5`}
               onClick={save}
-              disabled={draft.trim() === ""}
+              disabled={draft.trim() === "" && !hasEditedModelInput}
             >
               保存
             </button>
@@ -300,6 +431,12 @@ export function Message({
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
             )}
           </div>
+          {messageAttachments.length > 0 && (
+            <MessageAttachments
+              attachments={messageAttachments}
+              onReadAttachment={onReadAttachment}
+            />
+          )}
           {overflowing && (
             <button
               className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
@@ -328,11 +465,37 @@ export function Message({
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}
         <Markdown content={message.content} sources={message.metadata?.sources} isMobile={isMobile} />
+        {messageAttachments.length > 0 && (
+          <MessageAttachments
+            attachments={messageAttachments}
+            onReadAttachment={onReadAttachment}
+          />
+        )}
         {sources.length > 0 && (
           <SourcesTrigger sources={sources} onClick={() => onShowSources?.(sources)} />
         )}
         {actionBar}
       </div>
+    </div>
+  );
+}
+
+function MessageAttachments({
+  attachments,
+  onReadAttachment,
+}: {
+  attachments: NonNullable<MessageResponse["attachments"]>;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+}) {
+  return (
+    <div className="mt-2 flex flex-col gap-1.5" aria-label="附件">
+      {attachments.map((attachment) => (
+        <AttachmentCard
+          key={attachment.id}
+          attachment={attachment}
+          getReadUrl={onReadAttachment}
+        />
+      ))}
     </div>
   );
 }

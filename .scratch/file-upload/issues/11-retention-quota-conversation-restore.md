@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 04
 
 # 附件保留、配额释放与会话恢复

@@ -9,6 +9,7 @@ import { buttonControl, messageBubble, primaryButton } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
+import { AttachmentCard } from "../files/AttachmentCard";
 import { SourcesTrigger } from "./Message";
 import { SourcesPanel } from "./SourcesPanel";
 
@@ -195,6 +196,13 @@ function SharedMessageView({
           <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
             {message.content}
           </div>
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5" aria-label="附件">
+              {message.attachments.map((attachment, index) => (
+                <AttachmentCard key={`${attachment.name}-${index}`} attachment={attachment} mode="share" />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -209,6 +217,13 @@ function SharedMessageView({
           sources={sources.length > 0 ? sources : undefined}
           isMobile={isMobile}
         />
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1.5" aria-label="附件">
+            {message.attachments.map((attachment, index) => (
+              <AttachmentCard key={`${attachment.name}-${index}`} attachment={attachment} mode="share" />
+            ))}
+          </div>
+        )}
         {sources.length > 0 && (
           <SourcesTrigger sources={sources} onClick={() => onShowSources(sources)} />
         )}

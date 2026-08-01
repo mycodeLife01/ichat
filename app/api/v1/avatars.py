@@ -18,8 +18,16 @@ from app.services.auth import rate_limit
 from app.services.auth.dependencies import get_current_user
 from app.services.avatars.dependencies import get_avatar_api_storage
 from app.services.avatars.publisher import CeleryAvatarTaskPublisher, get_avatar_task_publisher
-from app.services.avatars.service import confirm_upload, create_upload, get_upload
 from app.services.avatars.storage import R2AvatarStorage
+from app.services.files.avatar import (
+    confirm_avatar_upload as confirm_unified_avatar_upload,
+)
+from app.services.files.avatar import (
+    create_avatar_upload as create_unified_avatar_upload,
+)
+from app.services.files.avatar import (
+    get_avatar_upload as get_unified_avatar_upload,
+)
 
 router = APIRouter(prefix="/api/v1/auth/me/avatar-uploads", tags=["avatars"])
 
@@ -38,7 +46,7 @@ async def create_avatar_upload(
     redis: Annotated[Redis, Depends(rate_limit.get_redis)],
     storage: Annotated[R2AvatarStorage, Depends(get_avatar_api_storage)],
 ) -> SuccessResponse[CreateAvatarUploadResponse]:
-    result = await create_upload(
+    result = await create_unified_avatar_upload(
         session,
         redis,
         storage,
@@ -65,7 +73,7 @@ async def confirm_avatar_upload(
     storage: Annotated[R2AvatarStorage, Depends(get_avatar_api_storage)],
     publisher: Annotated[CeleryAvatarTaskPublisher, Depends(get_avatar_task_publisher)],
 ) -> SuccessResponse[AvatarUploadResponse]:
-    result = await confirm_upload(
+    result = await confirm_unified_avatar_upload(
         session,
         storage,
         publisher,
@@ -89,5 +97,10 @@ async def get_avatar_upload(
     user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[AvatarUploadResponse]:
     return SuccessResponse(
-        data=await get_upload(session, user=user, upload_id=upload_id, settings=settings)
+        data=await get_unified_avatar_upload(
+            session,
+            user=user,
+            upload_id=upload_id,
+            settings=settings,
+        )
     )

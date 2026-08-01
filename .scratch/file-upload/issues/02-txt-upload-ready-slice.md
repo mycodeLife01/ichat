@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 01
 
 # TXT 上传到 Ready 的安全纵向切片

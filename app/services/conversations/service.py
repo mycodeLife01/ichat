@@ -1,12 +1,14 @@
 import uuid
-from collections.abc import Sequence
-from datetime import datetime
+from collections.abc import Callable, Sequence
+from datetime import datetime, timedelta
 from typing import Any, Literal, cast
 
 from fastapi import status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.messages import Message as AgentMessage
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
 from app.models.run import Run
@@ -20,7 +22,16 @@ from app.schemas.conversations import (
     RunResponse,
     SendMessageResponse,
 )
+from app.schemas.files import MessageAttachmentResponse
 from app.schemas.runs import RunStatus
+from app.services.files.bindings import (
+    bind_attachment_plan,
+    current_attachment_files,
+    prepare_attachment_plan,
+    refresh_detached_state,
+)
+from app.services.files.service import attachment_responses
+from app.services.runs.transcript import append_transcript_message
 
 CONVERSATION_NOT_FOUND_MESSAGE = "Conversation not found"
 ACTIVE_RUN_STATUSES = ("queued", "started", "streaming", "cancelling")
@@ -39,6 +50,7 @@ def message_response(
     *,
     conversation_public_id: uuid.UUID,
     run_public_id: uuid.UUID | None,
+    attachments: list[MessageAttachmentResponse] | None = None,
 ) -> MessageResponse:
     return MessageResponse(
         id=message.public_id,
@@ -50,6 +62,7 @@ def message_response(
         metadata=message.metadata_,
         position=message.position,
         created_at=message.created_at,
+        attachments=attachments or [],
     )
 
 
@@ -79,6 +92,20 @@ def run_response(
         provider_model=run.provider_model,
         created_at=run.created_at,
     )
+
+
+async def _lock_active_user(session: AsyncSession, *, user_id: int) -> User:
+    is_active = await session.scalar(
+        select(User.is_active)
+        .where(User.id == user_id)
+        .with_for_update(read=True)
+    )
+    if is_active is not True:
+        raise AppError(status.HTTP_404_NOT_FOUND, CONVERSATION_NOT_FOUND_MESSAGE)
+    owner = await session.get(User, user_id)
+    if owner is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, CONVERSATION_NOT_FOUND_MESSAGE)
+    return owner
 
 
 async def create_conversation(
@@ -151,6 +178,10 @@ async def get_conversation_detail(
         )
     ).all()
     run_public_ids = await _run_public_id_map(session, messages)
+    attachment_map = await attachment_responses(
+        session,
+        message_ids=[message.id for message in messages],
+    )
     return ConversationDetailResponse(
         **conversation_response(conversation).model_dump(),
         messages=[
@@ -162,6 +193,7 @@ async def get_conversation_detail(
                     if message.run_id is not None
                     else None
                 ),
+                attachments=attachment_map.get(message.id, []),
             )
             for message in messages
         ],
@@ -200,9 +232,60 @@ async def delete_conversation(
     )
     now = await get_database_now(session)
     conversation.deleted_at = now
+    conversation.deletion_due_at = now + timedelta(
+        seconds=get_settings().conversation_deletion_retention_seconds
+    )
     conversation.updated_at = now
     await session.flush()
     return CommandStatusResponse()
+
+
+async def list_deleted_conversations(
+    session: AsyncSession,
+    *,
+    user: User,
+) -> list[ConversationResponse]:
+    rows = list(
+        (
+            await session.scalars(
+                select(Conversation)
+                .where(
+                    Conversation.user_id == user.id,
+                    Conversation.deleted_at.is_not(None),
+                    Conversation.deletion_due_at.is_not(None),
+                )
+                .order_by(Conversation.deletion_due_at.asc())
+            )
+        ).all()
+    )
+    return [conversation_response(row) for row in rows]
+
+
+async def restore_conversation(
+    session: AsyncSession,
+    *,
+    user: User,
+    conversation_public_id: uuid.UUID,
+) -> ConversationResponse:
+    conversation = await session.scalar(
+        select(Conversation)
+        .where(
+            Conversation.public_id == conversation_public_id,
+            Conversation.user_id == user.id,
+            Conversation.deleted_at.is_not(None),
+        )
+        .with_for_update()
+    )
+    if conversation is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, CONVERSATION_NOT_FOUND_MESSAGE)
+    now = await get_database_now(session)
+    if conversation.deletion_due_at is None or conversation.deletion_due_at <= now:
+        raise AppError(status.HTTP_410_GONE, "Conversation can no longer be restored")
+    conversation.deleted_at = None
+    conversation.deletion_due_at = None
+    conversation.updated_at = now
+    await session.flush()
+    return conversation_response(conversation)
 
 
 async def submit_user_message(
@@ -215,7 +298,11 @@ async def submit_user_message(
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
+    attachment_ids: list[uuid.UUID] | None = None,
+    settings: Settings | None = None,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> SendMessageResponse:
+    active_user = await _lock_active_user(session, user_id=user.id)
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
@@ -224,11 +311,15 @@ async def submit_user_message(
     return await _submit_user_message_to_conversation(
         session,
         conversation=conversation,
+        user=active_user,
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
         provider_options=provider_options,
         system_prompt_snapshot=system_prompt_snapshot,
+        attachment_ids=attachment_ids or [],
+        settings=settings or get_settings(),
+        count_tokens=count_tokens or len,
     )
 
 
@@ -242,16 +333,24 @@ async def create_conversation_with_message(
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
+    attachment_ids: list[uuid.UUID] | None = None,
+    settings: Settings | None = None,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> ConversationCreateWithMessageResponse:
+    active_user = await _lock_active_user(session, user_id=user.id)
     conversation = await _create_conversation_model(session, user=user, title=title)
     submitted = await _submit_user_message_to_conversation(
         session,
         conversation=conversation,
+        user=active_user,
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
         provider_options=provider_options,
         system_prompt_snapshot=system_prompt_snapshot,
+        attachment_ids=attachment_ids or [],
+        settings=settings or get_settings(),
+        count_tokens=count_tokens or len,
     )
     return ConversationCreateWithMessageResponse(
         conversation=conversation_response(conversation),
@@ -264,14 +363,30 @@ async def _submit_user_message_to_conversation(
     session: AsyncSession,
     *,
     conversation: Conversation,
+    user: User,
     content: str,
     provider_name: str,
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
+    attachment_ids: list[uuid.UUID] | None = None,
+    settings: Settings | None = None,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> SendMessageResponse:
     await ensure_no_active_run(session, conversation_id=conversation.id)
     next_position = await get_next_message_position(session, conversation_id=conversation.id)
+
+    resolved_settings = settings or get_settings()
+    token_counter = count_tokens or len
+    plan = await prepare_attachment_plan(
+        session,
+        user=user,
+        content=content,
+        attachment_ids=attachment_ids or [],
+        allowed_bound_file_ids=None,
+        settings=resolved_settings,
+        count_tokens=token_counter,
+    )
 
     message = Message(
         conversation_id=conversation.id,
@@ -295,14 +410,25 @@ async def _submit_user_message_to_conversation(
     await session.flush()
 
     message.run_id = run.id
+    await bind_attachment_plan(session, message=message, plan=plan)
+    await append_transcript_message(
+        session,
+        run_id=run.id,
+        message=AgentMessage(role="user", blocks=list(plan.blocks)),
+        message_id=message.id,
+        count_tokens=token_counter,
+    )
     conversation.updated_at = await get_database_now(session)
     await session.flush()
+
+    attachment_map = await attachment_responses(session, message_ids=[message.id])
 
     return SendMessageResponse(
         message=message_response(
             message,
             conversation_public_id=conversation.public_id,
             run_public_id=run.public_id,
+            attachments=attachment_map.get(message.id, []),
         ),
         run=run_response(
             run,
@@ -323,7 +449,11 @@ async def edit_user_message_and_regenerate(
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
+    attachment_ids: list[uuid.UUID] | None = None,
+    settings: Settings | None = None,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> SendMessageResponse:
+    active_user = await _lock_active_user(session, user_id=user.id)
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
@@ -338,6 +468,23 @@ async def edit_user_message_and_regenerate(
         raise AppError(status.HTTP_409_CONFLICT, EDIT_TARGET_NOT_USER_MESSAGE)
 
     await ensure_no_active_run(session, conversation_id=conversation.id)
+    inherited_files = await current_attachment_files(session, message_id=target.id)
+    selected_ids = (
+        [file.public_id for file in inherited_files]
+        if attachment_ids is None
+        else attachment_ids
+    )
+    resolved_settings = settings or get_settings()
+    token_counter = count_tokens or len
+    plan = await prepare_attachment_plan(
+        session,
+        user=active_user,
+        content=new_content,
+        attachment_ids=selected_ids,
+        allowed_bound_file_ids={file.id for file in inherited_files},
+        settings=resolved_settings,
+        count_tokens=token_counter,
+    )
     await _archive_messages_at_or_after_position(
         session,
         conversation_id=conversation.id,
@@ -367,14 +514,29 @@ async def edit_user_message_and_regenerate(
     await session.flush()
 
     new_message.run_id = run.id
+    await bind_attachment_plan(session, message=new_message, plan=plan)
+    await append_transcript_message(
+        session,
+        run_id=run.id,
+        message=AgentMessage(role="user", blocks=list(plan.blocks)),
+        message_id=new_message.id,
+        count_tokens=token_counter,
+    )
+    await refresh_detached_state(
+        session,
+        file_ids={file.id for file in inherited_files} | {file.id for file in plan.files},
+    )
     conversation.updated_at = await get_database_now(session)
     await session.flush()
+
+    attachment_map = await attachment_responses(session, message_ids=[new_message.id])
 
     return SendMessageResponse(
         message=message_response(
             new_message,
             conversation_public_id=conversation.public_id,
             run_public_id=run.public_id,
+            attachments=attachment_map.get(new_message.id, []),
         ),
         run=run_response(
             run,
@@ -394,7 +556,10 @@ async def regenerate_from_message(
     provider_model: str,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
+    settings: Settings | None = None,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> SendMessageResponse:
+    active_user = await _lock_active_user(session, user_id=user.id)
     conversation = await get_owned_visible_conversation_for_update(
         session,
         user=user,
@@ -423,6 +588,17 @@ async def regenerate_from_message(
         anchor = target
 
     await ensure_no_active_run(session, conversation_id=conversation.id)
+    attached_files = await current_attachment_files(session, message_id=anchor.id)
+    token_counter = count_tokens or len
+    plan = await prepare_attachment_plan(
+        session,
+        user=active_user,
+        content=anchor.content,
+        attachment_ids=[file.public_id for file in attached_files],
+        allowed_bound_file_ids={file.id for file in attached_files},
+        settings=settings or get_settings(),
+        count_tokens=token_counter,
+    )
     await _archive_messages_after_position(
         session,
         conversation_id=conversation.id,
@@ -441,6 +617,14 @@ async def regenerate_from_message(
     session.add(run)
     await session.flush()
 
+    await append_transcript_message(
+        session,
+        run_id=run.id,
+        message=AgentMessage(role="user", blocks=list(plan.blocks)),
+        message_id=anchor.id,
+        count_tokens=token_counter,
+    )
+
     conversation.updated_at = await get_database_now(session)
     await session.flush()
 
@@ -448,12 +632,14 @@ async def regenerate_from_message(
     if anchor.run_id is not None:
         anchor_run = await session.get(Run, anchor.run_id)
         anchor_run_public_id = anchor_run.public_id if anchor_run is not None else None
+    attachment_map = await attachment_responses(session, message_ids=[anchor.id])
 
     return SendMessageResponse(
         message=message_response(
             anchor,
             conversation_public_id=conversation.public_id,
             run_public_id=anchor_run_public_id,
+            attachments=attachment_map.get(anchor.id, []),
         ),
         run=run_response(
             run,

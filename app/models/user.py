@@ -36,6 +36,14 @@ class User(Base):
         server_default="false",
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Expand-contract bridge: the legacy object key remains readable until the
+    # avatar path is fully moved to the unified files domain.
+    avatar_file_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("files.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
     avatar_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

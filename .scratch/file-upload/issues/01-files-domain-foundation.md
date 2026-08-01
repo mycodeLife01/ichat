@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: None
 
 # 统一 Files 领域的 additive 基础

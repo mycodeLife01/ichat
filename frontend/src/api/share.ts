@@ -10,12 +10,21 @@ export function createShareApi(client?: Pick<ApiClient, "request">) {
   const resolveClient = () => client ?? getDefaultApiClient();
 
   return {
-    create(conversationId: string, expiresInDays?: number | null): Promise<ShareLinkResponse> {
+    create(
+      conversationId: string,
+      expiresInDays?: number | null,
+      confirmAttachmentPrivacy?: boolean,
+    ): Promise<ShareLinkResponse> {
       return resolveClient().request<ShareLinkResponse>(
         `/conversations/${conversationId}/shares`,
         {
           method: "POST",
-          body: { expires_in_days: expiresInDays ?? null },
+          body: {
+            expires_in_days: expiresInDays ?? null,
+            ...(confirmAttachmentPrivacy === undefined
+              ? {}
+              : { confirm_attachment_privacy: confirmAttachmentPrivacy }),
+          },
         },
       );
     },

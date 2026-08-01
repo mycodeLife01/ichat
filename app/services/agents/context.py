@@ -17,7 +17,9 @@ import json
 from collections.abc import Callable
 
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
     Message,
     ToolCallBlock,
     ToolResultBlock,
@@ -39,6 +41,16 @@ def build_context(
     history_budget = budget_tokens - _message_tokens(system_text(system_prompt), count_tokens)
     kept = _trim_to_budget(history, budget_tokens=history_budget, count_tokens=count_tokens)
     return [system_text(system_prompt), *kept]
+
+
+def estimate_message_tokens(
+    message: Message,
+    *,
+    count_tokens: Callable[[str], int],
+) -> int:
+    """Public admission-control counterpart to context trimming."""
+
+    return _message_tokens(message, count_tokens)
 
 
 def _is_turn_boundary(message: Message) -> bool:
@@ -78,7 +90,22 @@ def _trim_to_budget(
 def _block_text(block: ContentBlock) -> str:
     if isinstance(block, ToolCallBlock):
         return json.dumps(block.arguments, ensure_ascii=False)
-    return block.content if isinstance(block, ToolResultBlock) else block.text
+    if isinstance(block, ToolResultBlock):
+        return block.content
+    if isinstance(block, AttachmentNoticeBlock):
+        return "\n".join((block.filename, block.media_type, block.notice))
+    if isinstance(block, DocumentBlock):
+        metadata = "\n".join(
+            (
+                block.filename,
+                block.media_type,
+                block.sha256,
+                block.extractor_version,
+                *block.warnings,
+            )
+        )
+        return f"{metadata}\n{block.text}"
+    return block.text
 
 
 def _message_tokens(message: Message, count_tokens: Callable[[str], int]) -> int:

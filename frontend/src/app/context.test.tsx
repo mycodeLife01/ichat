@@ -43,6 +43,7 @@ describe("useAppActions", () => {
         authApi: {} as AppActions["services"]["authApi"],
         capabilitiesApi: {} as AppActions["services"]["capabilitiesApi"],
         conversationApi: {} as AppActions["services"]["conversationApi"],
+        filesApi: {} as AppActions["services"]["filesApi"],
         runApi: {} as AppActions["services"]["runApi"],
         shareApi: {} as AppActions["services"]["shareApi"],
       },

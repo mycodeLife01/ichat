@@ -48,6 +48,7 @@ async def load_conversation_history(
         session,
         history_rows=list(history_rows),
         target_user_message_id=target.id,
+        target_run_id=run.id,
     )
 
 
@@ -56,6 +57,7 @@ async def _build_history(
     *,
     history_rows: list[MessageRow],
     target_user_message_id: int,
+    target_run_id: int | None = None,
 ) -> list[Message]:
     messages: list[Message] = []
     skipped_message_ids: set[int] = set()
@@ -73,29 +75,58 @@ async def _build_history(
             )
             continue
 
-        messages.append(user_text(row.content))
-        if row.id != target_user_message_id and row.run_id is not None:
-            transcript = await _load_succeeded_run_transcript(session, run_id=row.run_id)
-            if transcript:
+        replay_run_id = target_run_id if row.id == target_user_message_id else row.run_id
+        transcript = (
+            await _load_run_transcript_for_history(
+                session,
+                run_id=replay_run_id,
+                require_succeeded=row.id != target_user_message_id,
+            )
+            if replay_run_id is not None
+            else []
+        )
+        # New transcripts are self-contained and start with the exact user
+        # input blocks (including attachment extracts). Legacy transcripts
+        # start at the assistant output, so retain the message-row fallback.
+        if transcript and transcript[0].role == "user":
+            messages.extend(transcript)
+        else:
+            messages.append(user_text(row.content))
+            if row.id != target_user_message_id and transcript:
                 messages.extend(transcript)
-            else:
-                for message in messages_by_run.get(row.run_id, []):
-                    if message.id == row.id or message.role != "assistant":
-                        continue
-                    messages.append(Message(role="assistant", blocks=[TextBlock(message.content)]))
-                    skipped_message_ids.add(message.id)
+        if row.id != target_user_message_id and row.run_id is not None:
+            if transcript:
+                # A completed transcript already contains the provider output.
+                # Skip its materialized assistant rows so new self-contained
+                # transcripts do not replay the same answer twice.
+                skipped_message_ids.update(
+                    message.id
+                    for message in messages_by_run.get(row.run_id, [])
+                    if message.id != row.id and message.role == "assistant"
+                )
     return messages
 
 
-async def _load_succeeded_run_transcript(
+async def _load_run_transcript_for_history(
     session: AsyncSession,
     *,
-    run_id: int,
+    run_id: int | None,
+    require_succeeded: bool,
 ) -> list[Message]:
-    run = await session.get(Run, run_id)
-    if run is None or run.status != "succeeded":
+    if run_id is None:
         return []
-    return await load_transcript(session, run_id=run_id)
+    run = await session.get(Run, run_id)
+    if run is None:
+        return []
+    transcript = await load_transcript(session, run_id=run_id)
+    if require_succeeded and run.status != "succeeded":
+        # New runs persist their exact user input before execution.  Preserve
+        # that attachment snapshot after a failed/cancelled attempt, while
+        # never replaying partial provider output.  Legacy transcripts start
+        # with assistant/tool output and therefore still fall back to the
+        # message row alone.
+        return transcript[:1] if transcript and transcript[0].role == "user" else []
+    return transcript
 
 
 def _normalize_role(role: str) -> Role:

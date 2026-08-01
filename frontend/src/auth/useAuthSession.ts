@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { LoginRequest, RegisterRequest } from "../api/auth";
 import type { AuthUserResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
+import { attachmentDraftStore } from "../files/draftStore";
 import { createAuthSession, tokenStore } from "./tokenStore";
 
 export function useAuthSession() {
@@ -51,6 +52,7 @@ export function useAuthSession() {
       }
     }
     streamAbort.abort();
+    attachmentDraftStore.clearAll();
     tokenStore.clear();
     dispatch({ type: "app/reset" });
   }, [dispatch, services, streamAbort]);

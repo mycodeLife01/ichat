@@ -2,7 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.files import MessageAttachmentResponse
 
 
 class ConversationCreateRequest(BaseModel):
@@ -46,14 +48,23 @@ class RunOptionsRequest(BaseModel):
 
 
 class MessageCreateRequest(RunOptionsRequest):
-    content: str = Field(min_length=1, max_length=20000)
+    content: str = Field(default="", max_length=20000)
+    attachment_ids: list[uuid.UUID] | None = Field(default=None, max_length=5)
 
-    @field_validator("content")
+    @field_validator("attachment_ids")
     @classmethod
-    def reject_blank_content(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Message content is required")
+    def reject_duplicate_attachments(
+        cls, value: list[uuid.UUID] | None
+    ) -> list[uuid.UUID] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("Attachment IDs must be unique")
         return value
+
+    @model_validator(mode="after")
+    def require_text_or_attachment(self) -> "MessageCreateRequest":
+        if not self.content.strip() and not self.attachment_ids:
+            raise ValueError("Enter a message or attach a readable document")
+        return self
 
 
 class ConversationCreateWithMessageRequest(MessageCreateRequest):
@@ -74,6 +85,8 @@ class ConversationResponse(BaseModel):
     activated_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
+    deletion_due_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -88,6 +101,7 @@ class MessageResponse(BaseModel):
     metadata: dict[str, Any] | None = None
     position: int
     created_at: datetime
+    attachments: list[MessageAttachmentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

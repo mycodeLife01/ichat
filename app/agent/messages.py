@@ -53,7 +53,43 @@ class ToolResultBlock:
     is_error: bool = False
 
 
-ContentBlock = TextBlock | ReasoningBlock | ToolCallBlock | ToolResultBlock
+@dataclass(frozen=True)
+class DocumentBlock:
+    """Complete, immutable extract of a model-consumable attachment.
+
+    Attachment content remains untrusted user data. Providers receive the full
+    ``text`` projection; the identity/hash/version fields make transcripts
+    self-describing and independent from object storage or future extractors.
+    """
+
+    file_id: str
+    filename: str
+    media_type: str
+    text: str
+    sha256: str
+    extractor_version: str
+    warnings: tuple[str, ...] = ()
+    summary: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AttachmentNoticeBlock:
+    """Minimal notice for a display-only attachment such as an image."""
+
+    file_id: str
+    filename: str
+    media_type: str
+    notice: str = "This attachment is present but cannot be read by the current model."
+
+
+ContentBlock = (
+    TextBlock
+    | DocumentBlock
+    | AttachmentNoticeBlock
+    | ReasoningBlock
+    | ToolCallBlock
+    | ToolResultBlock
+)
 
 
 @dataclass(frozen=True)

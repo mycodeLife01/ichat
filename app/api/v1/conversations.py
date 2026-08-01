@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.errors import AppError
 from app.core.logging import logger
 from app.db.session import get_session
 from app.models.user import User
@@ -23,6 +24,7 @@ from app.schemas.conversations import (
 from app.schemas.responses import SuccessResponse
 from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
 from app.services.agents.catalog import ChatModel, resolve_chat_model
+from app.services.agents.registry import resolve_provider
 from app.services.auth.dependencies import get_current_user
 from app.services.conversations.service import (
     create_conversation,
@@ -32,8 +34,10 @@ from app.services.conversations.service import (
     get_conversation_detail,
     get_internal_run_id,
     list_conversations,
+    list_deleted_conversations,
     regenerate_from_message,
     rename_conversation,
+    restore_conversation,
     submit_user_message,
 )
 from app.services.runs.wakeup import RunQueuedPublisher
@@ -170,6 +174,7 @@ async def create_conversation_with_message_route(
     ],
 ) -> SuccessResponse[ConversationCreateWithMessageResponse]:
     chat_model = resolve_chat_selection(settings, request)
+    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
     result = await create_conversation_with_message(
         session,
         user=current_user,
@@ -178,6 +183,9 @@ async def create_conversation_with_message_route(
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
+        attachment_ids=request.attachment_ids or [],
+        settings=settings,
+        count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
@@ -202,6 +210,19 @@ async def list_conversations_route(
         skip=skip,
     )
     return SuccessResponse(data=conversations)
+
+
+@router.get(
+    "/deleted",
+    response_model=SuccessResponse[list[ConversationResponse]],
+)
+async def list_deleted_conversations_route(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[list[ConversationResponse]]:
+    return SuccessResponse(
+        data=await list_deleted_conversations(session, user=current_user)
+    )
 
 
 @router.get(
@@ -261,6 +282,24 @@ async def delete_conversation_route(
 
 
 @router.post(
+    "/{conversation_id}/restore",
+    response_model=SuccessResponse[ConversationResponse],
+)
+async def restore_conversation_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ConversationResponse]:
+    result = await restore_conversation(
+        session,
+        user=current_user,
+        conversation_public_id=conversation_id,
+    )
+    await session.commit()
+    return SuccessResponse(data=result)
+
+
+@router.post(
     "/{conversation_id}/messages",
     status_code=status.HTTP_201_CREATED,
     response_model=SuccessResponse[SendMessageResponse],
@@ -278,6 +317,7 @@ async def send_message_route(
     ],
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = resolve_chat_selection(settings, request)
+    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
     result = await submit_user_message(
         session,
         user=current_user,
@@ -286,6 +326,9 @@ async def send_message_route(
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
+        attachment_ids=request.attachment_ids or [],
+        settings=settings,
+        count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
@@ -312,6 +355,12 @@ async def edit_and_regenerate_route(
     ],
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = resolve_chat_selection(settings, request)
+    if "attachment_ids" in request.model_fields_set and request.attachment_ids is None:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "attachment_ids must be an array when provided",
+        )
+    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
     result = await edit_user_message_and_regenerate(
         session,
         user=current_user,
@@ -321,6 +370,11 @@ async def edit_and_regenerate_route(
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request, content=request.content),
+        attachment_ids=(
+            request.attachment_ids if "attachment_ids" in request.model_fields_set else None
+        ),
+        settings=settings,
+        count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
@@ -347,6 +401,7 @@ async def regenerate_route(
     request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = resolve_chat_selection(settings, request)
+    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
     result = await regenerate_from_message(
         session,
         user=current_user,
@@ -355,6 +410,8 @@ async def regenerate_route(
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
         provider_options=resolve_provider_options(settings, request),
+        settings=settings,
+        count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
     await session.commit()
@@ -378,6 +435,7 @@ async def create_share_route(
         user=current_user,
         conversation_public_id=conversation_id,
         expires_in_days=request.expires_in_days,
+        confirm_attachment_privacy=request.confirm_attachment_privacy,
     )
     await session.commit()
     return SuccessResponse(data=share)

@@ -8,6 +8,7 @@ import { ModalDialog } from "./ModalDialog";
 
 type ShareDialogProps = {
   conversationId: string;
+  hasAttachments?: boolean;
   onClose: () => void;
 };
 
@@ -22,7 +23,7 @@ function shareUrl(token: string): string {
   return `${window.location.origin}/share/${token}`;
 }
 
-export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
+export function ShareDialog({ conversationId, hasAttachments = false, onClose }: ShareDialogProps) {
   const { services, dispatch } = useAppActions();
   const [expiryIndex, setExpiryIndex] = useState(0);
   // The API returns only the active link (at most one per conversation);
@@ -31,6 +32,7 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [attachmentPrivacyConfirmed, setAttachmentPrivacyConfirmed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -64,7 +66,13 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
     if (creating) return;
     setCreating(true);
     try {
-      const link = await services.shareApi.create(conversationId, EXPIRY_OPTIONS[expiryIndex].days);
+      const link = hasAttachments
+        ? await services.shareApi.create(
+            conversationId,
+            EXPIRY_OPTIONS[expiryIndex].days,
+            attachmentPrivacyConfirmed,
+          )
+        : await services.shareApi.create(conversationId, EXPIRY_OPTIONS[expiryIndex].days);
       setActiveLink(link);
       // Creation succeeded regardless of what the clipboard does next; the
       // copy attempt then reports its own success/failure on top.
@@ -171,6 +179,21 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
+            {hasAttachments && (
+              <label className="w-full rounded-control border border-warning-border bg-warning-soft px-2.5 py-2 text-[12px] leading-[1.5] text-warning-foreground">
+                <span className="flex items-start gap-2">
+                  <input
+                    className="mt-0.5"
+                    type="checkbox"
+                    checked={attachmentPrivacyConfirmed}
+                    onChange={(event) => setAttachmentPrivacyConfirmed(event.target.checked)}
+                  />
+                  <span>
+                    I understand that files, previews, and downloads are not shared, but assistant replies may contain information from the attachments.
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex gap-1.5" role="radiogroup" aria-label="过期时间">
               {EXPIRY_OPTIONS.map((option, index) => (
                 <button
@@ -192,7 +215,7 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
             <button
               type="button"
               className={`${primaryButton} ml-auto h-9 px-3.5 text-[13.5px] font-medium`}
-              disabled={creating}
+              disabled={creating || (hasAttachments && !attachmentPrivacyConfirmed)}
               aria-busy={creating}
               aria-label={creating ? "正在创建链接" : "创建链接"}
               onClick={() => void create()}

@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 02
 
 # TXT 附件进入消息与模型上下文

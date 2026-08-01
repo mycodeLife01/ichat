@@ -32,12 +32,19 @@ class TitleAgent:
     max_output_tokens: int
     max_chars: int
 
-    def generate(self, *, user_content: str, assistant_content: str) -> str | None:
+    def generate(
+        self,
+        *,
+        user_content: str,
+        assistant_content: str,
+        attachment_metadata: str | None = None,
+    ) -> str | None:
         raw_title = self.provider.generate(
             model=self.model,
             messages=_title_messages(
                 user_content=user_content,
                 assistant_content=assistant_content,
+                attachment_metadata=attachment_metadata,
             ),
             max_output_tokens=self.max_output_tokens,
         )
@@ -58,12 +65,19 @@ def build_title_agent(
     )
 
 
-def _title_messages(*, user_content: str, assistant_content: str) -> list[Message]:
+def _title_messages(
+    *,
+    user_content: str,
+    assistant_content: str,
+    attachment_metadata: str | None = None,
+) -> list[Message]:
     return [
         system_text(TITLE_SYSTEM_PROMPT),
         user_text(
             "用户首条消息：\n"
             f"{user_content}\n\n"
+            "附件元数据（仅文件名、格式和大小；不含正文）：\n"
+            f"{attachment_metadata or '无'}\n\n"
             "助手首条回复：\n"
             f"{assistant_content}"
         ),

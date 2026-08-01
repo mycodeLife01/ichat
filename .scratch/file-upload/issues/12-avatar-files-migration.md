@@ -1,5 +1,5 @@
 Type: refactor
-Status: ready-for-agent
+Status: completed
 Blocked by: 01
 
 # 头像迁移到统一 Files 领域

@@ -37,3 +37,8 @@ Blocked by: 12, 13, 14
 - 头像上传/替换/注销、附件全格式、编辑/重生成、分享、恢复/回收和删除补偿回归通过。
 - 模块边界测试证明头像和消息附件只通过统一 files interface，worker 权限隔离仍成立。
 - 全套后端、前端、migration、compose 检查通过；handover 足以由新 agent 独立维护该功能。
+
+## Comments
+
+- 2026-08-01：ticket 12/13 的 expand 阶段和统一领域交接文档已完成，但 ticket 14 的生产验收尚未完成，旧头像积压与历史保留窗口也没有生产证据。
+- 按本 ticket 的安全停止条件，当前有意保留旧头像表、对象键回退、旧任务和双读兼容；不得在生产前置条件满足前执行 contract migration。

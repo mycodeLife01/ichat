@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.email_tasks",
         "app.tasks.llm_tasks",
         "app.tasks.media_tasks",
+        "app.tasks.file_tasks",
     ],
 )
 
@@ -41,8 +42,14 @@ celery_app.conf.update(
             "schedule": float(_settings.avatar_maintenance_interval_seconds),
             "options": {"queue": "media"},
         },
+        "maintain-files": {
+            "task": "app.tasks.file_tasks.maintain_files",
+            "schedule": float(_settings.files_maintenance_interval_seconds),
+            "options": {"queue": "files"},
+        },
     },
     task_routes={
         "app.tasks.media_tasks.*": {"queue": "media"},
+        "app.tasks.file_tasks.*": {"queue": "files"},
     },
 )

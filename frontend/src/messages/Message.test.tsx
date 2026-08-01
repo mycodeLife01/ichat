@@ -27,6 +27,29 @@ const assistantMessage: MessageResponse = {
   created_at: "2026-06-08T10:00:01Z",
 };
 
+const attachments = [
+  {
+    id: "file-1",
+    name: "report.pdf",
+    media_type: "application/pdf",
+    size_bytes: 1234,
+    category: "pdf",
+    model_consumable: true,
+    warning: ["Some scanned pages were not read."],
+    preview_available: false,
+  },
+  {
+    id: "file-2",
+    name: "photo.png",
+    media_type: "image/png",
+    size_bytes: 4321,
+    category: "image",
+    model_consumable: false,
+    warning: [],
+    preview_available: true,
+  },
+];
+
 // Simulates a touch held past the 450ms long-press window.
 function longPress(el: HTMLElement) {
   vi.useFakeTimers();
@@ -43,6 +66,27 @@ describe("Message", () => {
   it("renders a user bubble", () => {
     render(<Message message={userMessage} />);
     expect(screen.getByText("你好")).toBeInTheDocument();
+  });
+
+  it("renders attachment cards with warnings and fetches only a private image preview", async () => {
+    const user = userEvent.setup();
+    const onReadAttachment = vi.fn(async () => ({ url: "https://signed.example.test/preview" }));
+    render(
+      <Message
+        message={{ ...userMessage, attachments }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Some scanned pages were not read.")).toBeInTheDocument();
+    expect(screen.getByText(/Image preview only/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Preview image" }));
+    expect(onReadAttachment).toHaveBeenCalledWith("file-2", "preview");
+    expect(await screen.findByAltText("photo.png preview")).toHaveAttribute(
+      "src",
+      "https://signed.example.test/preview",
+    );
   });
 
   it("renders only the formal assistant reply after completion", () => {
@@ -128,6 +172,114 @@ describe("Message", () => {
     expect(onEditAndRegenerate).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText("你好")).toBeInTheDocument();
+  });
+
+  it("edits attachments with omitted inherit, explicit removal, and stable ordering", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    const message = { ...userMessage, attachments };
+    const { rerender } = render(
+      <Message message={message} onEditAndRegenerate={onEditAndRegenerate} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onEditAndRegenerate).toHaveBeenLastCalledWith(userMessage.id, "你好");
+
+    rerender(<Message message={message} onEditAndRegenerate={onEditAndRegenerate} />);
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.click(screen.getAllByRole("button", { name: "Move attachment later" })[0]);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onEditAndRegenerate).toHaveBeenLastCalledWith(userMessage.id, "你好", ["file-2", "file-1"]);
+
+    rerender(<Message message={message} onEditAndRegenerate={onEditAndRegenerate} />);
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.click(screen.getByRole("button", { name: "移除全部" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onEditAndRegenerate).toHaveBeenLastCalledWith(userMessage.id, "你好", []);
+  });
+
+  it("adds ready composer attachments while retaining the original edit input", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    const addedFile = {
+      id: "file-3",
+      name: "notes.txt",
+      media_type: "text/plain",
+      size_bytes: 42,
+      category: "text" as const,
+      model_consumable: true,
+      warning: [],
+      preview_available: false,
+    };
+    render(
+      <Message
+        message={{ ...userMessage, attachments }}
+        composerAttachments={[
+          {
+            client_id: "draft-3",
+            upload_id: "upload-3",
+            status: "succeeded",
+            error_code: null,
+            error_message: null,
+            file: addedFile,
+            name: addedFile.name,
+            media_type: addedFile.media_type,
+            size_bytes: addedFile.size_bytes,
+            category: addedFile.category,
+          },
+        ]}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.click(screen.getByRole("button", { name: "添加输入区附件" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "你好", [
+      "file-1",
+      "file-2",
+      "file-3",
+    ]);
+  });
+
+  it("uses the capability attachment limit when adding files during an edit", async () => {
+    const user = userEvent.setup();
+    const addedFile = {
+      id: "file-3",
+      name: "notes.txt",
+      media_type: "text/plain",
+      size_bytes: 42,
+      category: "text" as const,
+      model_consumable: true,
+      warning: [],
+      preview_available: false,
+    };
+    render(
+      <Message
+        message={{ ...userMessage, attachments }}
+        maxAttachmentsPerMessage={2}
+        composerAttachments={[
+          {
+            client_id: "draft-3",
+            upload_id: "upload-3",
+            status: "succeeded",
+            error_code: null,
+            error_message: null,
+            file: addedFile,
+            name: addedFile.name,
+            media_type: addedFile.media_type,
+            size_bytes: addedFile.size_bytes,
+            category: addedFile.category,
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+
+    expect(screen.getByRole("button", { name: "添加输入区附件" })).toBeDisabled();
   });
 
   it("does not submit an empty edit", async () => {

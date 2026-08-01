@@ -24,7 +24,9 @@ from app.agent.events import (
     ToolCallStarted,
 )
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
     Message,
     ReasoningBlock,
     Role,
@@ -61,7 +63,9 @@ __all__ = [
     "WEB_SEARCH_TOOL_SPEC",
     "AgentEvent",
     "AgentFinal",
+    "AttachmentNoticeBlock",
     "ContentBlock",
+    "DocumentBlock",
     "Message",
     "MessageDone",
     "ModelCallResult",

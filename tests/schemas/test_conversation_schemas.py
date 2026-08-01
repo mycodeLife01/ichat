@@ -46,6 +46,15 @@ def test_message_create_request_rejects_blank_content() -> None:
         MessageCreateRequest(content=" \n\t ")
 
 
+def test_message_create_request_accepts_attachment_only() -> None:
+    attachment_id = uuid4()
+
+    request = MessageCreateRequest(content="", attachment_ids=[attachment_id])
+
+    assert request.content == ""
+    assert request.attachment_ids == [attachment_id]
+
+
 def test_conversation_create_with_message_request_normalizes_fields() -> None:
     request = ConversationCreateWithMessageRequest(
         title="  Project chat  ",

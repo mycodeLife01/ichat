@@ -2,6 +2,7 @@ import os
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import cast
+from uuid import UUID
 
 import pytest
 from fakeredis import aioredis
@@ -13,8 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.main import create_app
-from app.models.avatar import AvatarDeletion, AvatarUpload
 from app.models.email_outbox import EmailOutbox
+from app.models.files import (
+    FileAsset,
+    FileObject,
+    FileObjectDeletion,
+    FilePurpose,
+    FileUpload,
+    FileUploadStatus,
+)
 from app.models.user import User
 from app.services.auth import orchestration, rate_limit
 from app.services.avatars.dependencies import get_avatar_api_storage
@@ -51,12 +59,11 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     async def clean() -> None:
         async with factory() as session:
             user_ids = select(User.id).where(User.email.like(f"%@{TEST_DOMAIN}"))
+            object_ids = select(FileObject.id).where(
+                FileObject.file_id.in_(select(FileAsset.id).where(FileAsset.user_id.in_(user_ids)))
+            )
             await session.execute(
-                delete(AvatarDeletion).where(
-                    AvatarDeletion.upload_id.in_(
-                        select(AvatarUpload.id).where(AvatarUpload.user_id.in_(user_ids))
-                    )
-                )
+                delete(FileObjectDeletion).where(FileObjectDeletion.file_object_id.in_(object_ids))
             )
             await session.execute(delete(User).where(User.email.like(f"%@{TEST_DOMAIN}")))
             await session.execute(
@@ -175,10 +182,10 @@ async def test_create_confirm_query_and_idempotency(
 
     async with session_factory() as session:
         upload = await session.scalar(
-            select(AvatarUpload).where(AvatarUpload.upload_id == payload["upload_id"])
+            select(FileUpload).where(FileUpload.public_id == UUID(payload["upload_id"]))
         )
         assert upload is not None
-        infra.storage.temporary[upload.temporary_object_key] = (
+        infra.storage.temporary[upload.staging_object_key] = (
             b"content",
             AVATAR_CONTENT_TYPE,
             "etag-1",
@@ -226,10 +233,10 @@ async def test_create_presigns_declared_content_type(
     assert payload["upload_headers"]["Content-Type"] == "image/png"
     async with session_factory() as session:
         upload = await session.scalar(
-            select(AvatarUpload).where(AvatarUpload.upload_id == payload["upload_id"])
+            select(FileUpload).where(FileUpload.public_id == UUID(payload["upload_id"]))
         )
         assert upload is not None
-        assert upload.temporary_object_key.endswith(".png")
+        assert upload.staging_object_key.endswith(".png")
 
     rejected = await client.post(
         "/api/v1/auth/me/avatar-uploads",
@@ -261,10 +268,16 @@ async def test_new_upload_supersedes_previous_session(
     async with session_factory() as session:
         uploads = list(
             await session.scalars(
-                select(AvatarUpload)
-                .where(AvatarUpload.user_id == cast(dict[str, object], data["user"])["id"])
-                .order_by(AvatarUpload.id)
+                select(FileUpload)
+                .where(
+                    FileUpload.user_id == cast(dict[str, object], data["user"])["id"],
+                    FileUpload.purpose == FilePurpose.AVATAR,
+                )
+                .order_by(FileUpload.id)
             )
         )
-    assert [upload.is_current for upload in uploads] == [False, True]
+    assert [upload.status for upload in uploads] == [
+        FileUploadStatus.CANCELLED,
+        FileUploadStatus.PENDING,
+    ]
     assert uploads[0].error_code == "superseded"

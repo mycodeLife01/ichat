@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 03
 
 # 文本、数据与源码格式纵向扩展

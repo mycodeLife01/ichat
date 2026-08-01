@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     # Optional override for the assistant's base system prompt. Empty (default)
     # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
-    context_budget_tokens: int = 64_000
+    # Production models expose a 256k context window. File attachments reserve
+    # at most half of it for the target user turn so history/system prompt still
+    # have deterministic headroom.
+    context_budget_tokens: int = 256_000
+    attachment_target_turn_tokens: int = 128_000
     run_lease_seconds: int
     worker_poll_interval_seconds: float
     worker_heartbeat_interval_seconds: float
@@ -133,6 +137,43 @@ class Settings(BaseSettings):
     avatar_history_retention_seconds: int = 7 * 86_400
     avatar_cleanup_safety_seconds: int = 300
 
+    # --- Unified private file uploads / Cloudflare R2 ---
+    file_upload_enabled: bool = False
+    files_r2_endpoint_url: str = ""
+    files_r2_region: str = "auto"
+    files_staging_bucket: str = ""
+    files_canonical_bucket: str = ""
+    files_upload_access_key_id: str = ""
+    files_upload_secret_access_key: str = ""
+    files_worker_access_key_id: str = ""
+    files_worker_secret_access_key: str = ""
+    files_download_access_key_id: str = ""
+    files_download_secret_access_key: str = ""
+    files_upload_presign_ttl_seconds: int = 600
+    files_download_ttl_seconds: int = 300
+    files_upload_session_ttl_seconds: int = 1_800
+    files_unbound_ttl_seconds: int = 86_400
+    files_detached_retention_seconds: int = 30 * 86_400
+    conversation_deletion_retention_seconds: int = 30 * 86_400
+    files_quota_bytes: int = 1 * 1024 * 1024 * 1024
+    files_max_inflight_uploads: int = 5
+    files_max_attachments_per_message: int = 5
+    files_max_message_bytes: int = 50 * 1024 * 1024
+    files_rate_user_limit: int = 100
+    files_rate_ip_limit: int = 500
+    files_rate_window_seconds: int = 3_600
+    files_processing_lease_seconds: int = 300
+    files_processing_max_attempts: int = 3
+    files_parser_timeout_seconds: int = 120
+    files_attempt_timeout_seconds: int = 180
+    files_maintenance_interval_seconds: int = 60
+    files_maintenance_batch_size: int = 100
+    files_cleanup_safety_seconds: int = 300
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: float = 30.0
+    clamav_signature_max_age_seconds: int = 48 * 3_600
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -197,7 +238,7 @@ class Settings(BaseSettings):
                     f"email_provider=resend requires non-empty: {', '.join(missing)}"
                 )
         if self.avatar_storage_enabled:
-            required = (
+            avatar_required = (
                 ("avatar_r2_endpoint_url", self.avatar_r2_endpoint_url),
                 ("avatar_upload_bucket", self.avatar_upload_bucket),
                 ("avatar_public_bucket", self.avatar_public_bucket),
@@ -209,10 +250,29 @@ class Settings(BaseSettings):
                 ("cloudflare_zone_id", self.cloudflare_zone_id),
                 ("cloudflare_purge_token", self.cloudflare_purge_token),
             )
-            missing = [name for name, value in required if not value.strip()]
+            missing = [name for name, value in avatar_required if not value.strip()]
             if missing:
                 raise ValueError(
                     f"avatar_storage_enabled=true requires non-empty: {', '.join(missing)}"
+                )
+        if self.file_upload_enabled:
+            # The feature flag is evaluated by the API.  File workers keep
+            # draining PostgreSQL facts with the flag disabled and receive
+            # only their worker credential pair, so application boot must not
+            # couple upload/download signing to the processing credential.
+            file_required = (
+                ("files_r2_endpoint_url", self.files_r2_endpoint_url),
+                ("files_staging_bucket", self.files_staging_bucket),
+                ("files_canonical_bucket", self.files_canonical_bucket),
+                ("files_upload_access_key_id", self.files_upload_access_key_id),
+                ("files_upload_secret_access_key", self.files_upload_secret_access_key),
+                ("files_download_access_key_id", self.files_download_access_key_id),
+                ("files_download_secret_access_key", self.files_download_secret_access_key),
+            )
+            missing = [name for name, value in file_required if not value.strip()]
+            if missing:
+                raise ValueError(
+                    f"file_upload_enabled=true requires non-empty: {', '.join(missing)}"
                 )
         return self
 

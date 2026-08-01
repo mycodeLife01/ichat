@@ -26,7 +26,7 @@
 
 ## `app/models`
 
-负责 SQLAlchemy ORM model 类：users、refresh_tokens、conversations、messages、runs、run_events、run_provider_messages 等。
+负责 SQLAlchemy ORM model 类：users、refresh_tokens、conversations、messages、runs、run_events、run_provider_messages，以及 files 领域的 `file_uploads`、`files`、`file_objects`、`message_attachments`、`file_quotas`、`file_object_deletions` 等。
 
 不放在 `services` 下的理由：ORM models 描述数据库结构和跨业务关系，会被多个 service、migration 和 query 使用。
 
@@ -42,11 +42,21 @@
 
 ## `app/services/conversations`
 
-负责 conversation 和 message 的业务规则，包括创建对话、重命名、软删除、发送 user message、物化 assistant message、读取可见消息。
+负责 conversation 和 message 的业务规则，包括创建对话、重命名、软删除/恢复、发送 user message、物化 assistant message、读取可见消息。它是 files 的调用者：只请求准备和绑定附件输入，不直接读取 R2、操作对象 key、管理配额或自行构造删除补偿。
+
+## `app/services/files`
+
+统一文件深模块，拥有上传会话、文件资产、物理对象、消息附件绑定、配额、读取许可、处理、维护和删除补偿。调用者只使用创建/确认/查询/取消上传、绑定附件、签发读取许可和回收等高层 interface；不得接触 bucket、object key、lease、ClamAV、解析器、R2 signer 或补偿细节。
+
+模块内部以固定且不可变的 `purpose` 隔离 `message_attachment` 与 `avatar`。它可以依赖 ORM、配置和存储/扫描/解析/publisher adapter；它不调用聊天 provider、不把原件交给 provider、也不把消息文字与派生文本拼接在一起。附件输入以中立 `DocumentBlock` / `AttachmentNoticeBlock` 返回给会话层；完整文档块由 runs transcript 固化，历史加载不能再访问 R2。
+
+`FileObjectDeletion` 是所有正式对象删除的唯一持久事实：私有对象只需 R2 delete，公开头像必须同时完成 R2 delete 和 CDN purge。PG 状态行仍是事实源；任务消息只负责唤醒或重投。
 
 ## `app/services/avatars`
 
-负责头像专用领域：上传会话状态机、R2/CDN/任务发布协议、图片验证与转码编排、替换原子切换、删除补偿、注销失效和周期维护。不抽象为通用 files/assets 模块。API 只创建/确认/查询会话，不接收图片字节；媒体 Celery worker 调用该 service 处理私有临时对象。
+头像 HTTP contract 与头像用途适配层。新头像写入、当前头像引用、替换的原子切换以及公开 delete+purge 都应调用 `services/files` 高层 interface；media-worker 只处理 avatar purpose，不建立第二套通用上传状态机。
+
+历史 `avatar_object_key`、旧 uploads/deletions 表、任务和双读回退目前处于 expand 阶段，只用于读兼容和排空已有 PG 事实。它们不能被新写使用，也不能在缺少生产映射、积压、保留窗口和灰度验证前删除；contract 由 file-upload ticket 15 单独执行。
 
 ## `app/services/runs`
 
@@ -78,6 +88,10 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 
+## `app/tasks`
+
+负责 Celery 的有限、非流式任务入口与 queue 路由：邮件 outbox、标题、媒体头像和 files。`file_tasks` 只按上传 public ID 调用 files 的处理/维护 interface，使用 `files` queue；`media_tasks` 只处理 avatar purpose，使用 `media` queue。任务入口不重写状态机或业务规则，所有 claim、lease、终态和补偿仍由所属 service 和 PG 行决定。
+
 ## 跨模块规则
 
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
@@ -86,7 +100,10 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 - `app/agent` 不 import `app.core.config`、不读取数据库、不 import ORM/`app/services`；可以依赖 `app/search`。
 - `app/search` 不读取数据库。
 - `app/services/runs` 不拼装 prompt。
-- `app/services/conversations` 不直接调用 provider。
+- `app/services/conversations` 不直接调用 provider，也不直接操作 R2/file quota；附件只经 `app/services/files` 的高层 interface。
+- `app/services/files` 是 files/object/attachment/quota/deletion 的唯一业务拥有者；`app/services/avatars` 不能复制其通用状态机、文件资产或删除补偿规则。
+- `app/api` 不代理文件字节；它只能通过 files 的窄 adapter 签发预签名 URL 和调用高层操作。
+- `app/services/runs/history` 只重放持久化 transcript，不能为了历史附件回放读取 R2 或重新解析原件。
 - `app/models` 只定义 ORM model，不承载业务流程。
 - `app/schemas` 只定义请求/响应结构，不访问数据库。
 - 测试目录按模块镜像组织。

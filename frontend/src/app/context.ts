@@ -3,6 +3,7 @@ import { createContext, useContext, type Dispatch, type MutableRefObject } from 
 import type { LoginRequest, RegisterRequest } from "../api/auth";
 import type { CapabilitiesApi } from "../api/capabilities";
 import type { ConversationApi } from "../api/conversations";
+import type { FilesApi } from "../api/files";
 import type { RunApi } from "../api/runs";
 import type { ShareApi } from "../api/share";
 import type { AuthTokenResponse, AuthUserResponse, CommandStatusResponse } from "../api/types";
@@ -29,6 +30,7 @@ export type Services = {
   authApi: AuthApi;
   capabilitiesApi: CapabilitiesApi;
   conversationApi: ConversationApi;
+  filesApi: FilesApi;
   runApi: RunApi;
   shareApi: ShareApi;
 };

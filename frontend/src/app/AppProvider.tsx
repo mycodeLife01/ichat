@@ -12,6 +12,7 @@ import { createAuthApi } from "../api/auth";
 import { createCapabilitiesApi } from "../api/capabilities";
 import { ApiClient } from "../api/client";
 import { createConversationApi } from "../api/conversations";
+import { createFilesApi } from "../api/files";
 import { createRunApi } from "../api/runs";
 import { createShareApi } from "../api/share";
 import { tokenStore } from "../auth/tokenStore";
@@ -65,6 +66,7 @@ export function AppProvider({ children, services: injectedServices }: AppProvide
       authApi: createAuthApi(client),
       capabilitiesApi: createCapabilitiesApi(client),
       conversationApi: createConversationApi(client),
+      filesApi: createFilesApi(client),
       runApi: createRunApi(client),
       shareApi: createShareApi(client),
     };

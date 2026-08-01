@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { ConversationApi } from "../api/conversations";
 import type { CapabilitiesApi } from "../api/capabilities";
+import type { FilesApi } from "../api/files";
 import type { RunApi } from "../api/runs";
 import type { ShareApi } from "../api/share";
 import type { RunEventResponse, RunStreamEvent } from "../api/types";
@@ -50,6 +51,8 @@ export function createFakeConversationApi(
     detail: async () => conversationDetailResponse,
     rename: async () => conversationResponse,
     remove: async () => ({ status: "ok" }),
+    listDeleted: async () => [],
+    restore: async () => conversationResponse,
     sendMessage: async () => sendMessageResponse,
     editAndRegenerate: async () => sendMessageResponse,
     regenerate: async () => sendMessageResponse,
@@ -94,6 +97,45 @@ export function createFakeRunApi(overrides: Partial<RunApi> = {}): RunApi {
   };
 }
 
+export function createFakeFilesApi(overrides: Partial<FilesApi> = {}): FilesApi {
+  return {
+    createUpload: async () => ({
+      upload_id: "upload-1",
+      upload_url: "https://uploads.example.test/upload-1",
+      upload_headers: { "Content-Type": "text/plain" },
+      upload_url_expires_at: "2026-08-01T10:05:00Z",
+      session_expires_at: "2026-08-01T10:30:00Z",
+    }),
+    confirm: async () => ({
+      upload_id: "upload-1",
+      status: "succeeded",
+      error_code: null,
+      file: {
+        id: "file-1",
+        name: "example.txt",
+        media_type: "text/plain",
+        size_bytes: 7,
+        category: "text",
+        model_consumable: true,
+        warning: [],
+        preview_available: false,
+      },
+    }),
+    status: async () => [],
+    cancel: async (uploadId) => ({
+      upload_id: uploadId,
+      status: "cancelled",
+      error_code: null,
+      file: null,
+    }),
+    readUrl: async () => ({
+      url: "https://downloads.example.test/file",
+      expires_at: "2026-08-01T10:05:00Z",
+    }),
+    ...overrides,
+  };
+}
+
 export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi {
   return {
     create: async () => shareLinkResponse,
@@ -115,11 +157,13 @@ export function createFakeServices(
   runApi: Partial<RunApi> = {},
   capabilitiesApi: Partial<CapabilitiesApi> = {},
   shareApi: Partial<ShareApi> = {},
+  filesApi: Partial<FilesApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
     capabilitiesApi: createFakeCapabilitiesApi(capabilitiesApi),
     conversationApi: createFakeConversationApi(conversationApi),
+    filesApi: createFakeFilesApi(filesApi),
     runApi: createFakeRunApi(runApi),
     shareApi: createFakeShareApi(shareApi),
   };

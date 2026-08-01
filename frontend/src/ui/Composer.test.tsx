@@ -51,6 +51,18 @@ const NO_THINKING = {
 };
 const MODELS = [FLASH, PRO, LUNA, NO_THINKING];
 
+const FILES = {
+  enabled: true,
+  allowed_extensions: ["txt", "png"],
+  category_max_bytes: { text: 2_000_000, image: 10_000_000 },
+  max_attachments_per_message: 5,
+  max_message_bytes: 50_000_000,
+  quota_bytes: 1_000_000_000,
+  target_turn_tokens: 128_000,
+  context_budget_tokens: 256_000,
+  image_model_input: false,
+};
+
 describe("Composer", () => {
   it("disables send when empty (idle)", () => {
     renderComposer();
@@ -127,6 +139,47 @@ describe("Composer", () => {
   it("does not show a voice input button", () => {
     renderComposer();
     expect(screen.queryByRole("button", { name: "语音输入" })).toBeNull();
+  });
+
+  it("shows the attachment picker only when the server enables files", async () => {
+    const user = userEvent.setup();
+    const onSelectFiles = vi.fn();
+    const { rerender } = renderComposer({ onSelectFiles });
+    expect(screen.queryByRole("button", { name: "添加附件" })).toBeNull();
+
+    rerender(
+      <Composer
+        value=""
+        onChange={noop}
+        onSend={noop}
+        onStop={noop}
+        state="idle"
+        thinkingLevel="low"
+        onThinkingLevelChange={noop}
+        fileCapability={FILES}
+        onSelectFiles={onSelectFiles}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "添加附件" }));
+    const input = screen.getByLabelText("选择附件") as HTMLInputElement;
+    expect(input).toHaveAttribute("accept", ".txt,.png");
+  });
+
+  it("uses the attachment-aware send gate instead of requiring text", () => {
+    renderComposer({ value: "", canSend: true });
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+  });
+
+  it("explains an attachment send gate when disabled", () => {
+    renderComposer({
+      value: "",
+      canSend: false,
+      sendDisabledReason: "Add text or a readable document. Images alone cannot be sent.",
+    });
+    expect(screen.getByRole("button", { name: "发送" })).toHaveAttribute(
+      "title",
+      "Add text or a readable document. Images alone cannot be sent.",
+    );
   });
 
   it("toggles the web search tool and disables it when unavailable", async () => {

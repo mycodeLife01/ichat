@@ -1,6 +1,7 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../api/errors";
+import type { ConversationResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "./pagination";
 import { selectionStore } from "./selectionStore";
@@ -12,6 +13,7 @@ export function useConversationLoader() {
   const { dispatch, services } = useAppActions();
   const { conversationApi } = services;
   const loadingMoreRef = useRef(false);
+  const [deletedItems, setDeletedItems] = useState<ConversationResponse[]>([]);
 
   const loadList = useCallback(async () => {
     dispatch({ type: "conversations/listLoading" });
@@ -64,6 +66,17 @@ export function useConversationLoader() {
     conversationIndex.items.length,
     conversationIndex.status,
   ]);
+
+  const loadDeleted = useCallback(async () => {
+    try {
+      const items = await conversationApi.listDeleted();
+      setDeletedItems(items);
+    } catch {
+      // Deleted conversations are supplementary recovery UI. Failure here must
+      // not block the active conversation list from loading.
+      setDeletedItems([]);
+    }
+  }, [conversationApi]);
 
   const newConversation = useCallback(() => {
     dispatch({ type: "run/cleared" });
@@ -123,7 +136,7 @@ export function useConversationLoader() {
 
   const deleteConversation = useCallback(
     async (id: string) => {
-      await conversationApi.remove(id);
+      const deletion = await conversationApi.remove(id);
       const remaining = conversationIndex.items.filter((c) => c.id !== id);
       dispatch({ type: "conversations/removed", id });
       dispatch({ type: "ui/closeConfirm" });
@@ -134,8 +147,28 @@ export function useConversationLoader() {
           newConversation();
         }
       }
+      await loadDeleted();
+      return deletion;
     },
-    [dispatch, conversationApi, conversationIndex, selectConversation, newConversation],
+    [
+      dispatch,
+      conversationApi,
+      conversationIndex,
+      selectConversation,
+      newConversation,
+      loadDeleted,
+    ],
+  );
+
+  const restoreConversation = useCallback(
+    async (id: string) => {
+      const conversation = await conversationApi.restore(id);
+      setDeletedItems((current) => current.filter((item) => item.id !== id));
+      await loadList();
+      await selectConversation(conversation.id);
+      return conversation;
+    },
+    [conversationApi, loadList, selectConversation],
   );
 
   return {
@@ -148,9 +181,12 @@ export function useConversationLoader() {
     detailStatus: conversationDetail.status,
     loadList,
     loadMore,
+    deletedItems,
+    loadDeleted,
     selectConversation,
     newConversation,
     renameConversation,
     deleteConversation,
+    restoreConversation,
   };
 }

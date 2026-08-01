@@ -1,5 +1,5 @@
 Type: chore
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 05, 06, 07, 09, 10, 13
 
 # 文件上传生产部署、灰度与可观测性
@@ -37,3 +37,8 @@ Blocked by: 05, 06, 07, 09, 10, 13
 - confirm→ready 达成图片/文本 P95≤10s、PDF/Office P95≤30s、正常文件 P99≤120s 的受控验收，
   并记录测试环境和样本；浏览器 PUT 时间不计入。
 - `pytest`、`ruff`、`mypy`、vitest、lint、typecheck、build 与 compose config 全绿。
+
+## Comments
+
+- 2026-08-01：仓库内的执行拓扑、最小权限环境边界、功能开关、动态 capabilities、分段指标、中文 smoke/灰度/回滚手册和自动化检查均已完成。
+- 仍需在有真实开发 R2、ClamAV 和生产部署权限的环境中执行 CORS/ETag/If-Match/权限烟测、无害测试签名演练、凭据隔离核验、灰度回滚和 P95/P99 容量采样；这些操作不能由本地 fake 环境代替，故状态为 `ready-for-human`。

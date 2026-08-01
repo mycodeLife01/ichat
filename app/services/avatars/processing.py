@@ -141,6 +141,20 @@ def process_upload(
         return "retry" if attempt_count < settings.avatar_processing_max_attempts else "failed"
 
     with factory() as session:
+        # The account lifecycle locks User before upload rows. Preserve that
+        # ordering while the legacy worker drains historical task facts.
+        observed = session.scalar(select(AvatarUpload).where(AvatarUpload.upload_id == upload_id))
+        if observed is None:
+            _create_deletion(
+                session,
+                settings=settings,
+                object_key=final_key,
+                upload_db_id=None,
+                now=moment,
+            )
+            session.commit()
+            return "orphaned"
+        user = session.scalar(select(User).where(User.id == observed.user_id).with_for_update())
         current = session.scalar(
             select(AvatarUpload).where(AvatarUpload.upload_id == upload_id).with_for_update()
         )
@@ -154,7 +168,6 @@ def process_upload(
             )
             session.commit()
             return "orphaned"
-        user = session.scalar(select(User).where(User.id == current.user_id).with_for_update())
         if (
             current.status != AvatarUploadStatus.PROCESSING
             or current.lease_owner != owner

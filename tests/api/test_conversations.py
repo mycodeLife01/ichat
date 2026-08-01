@@ -141,7 +141,17 @@ async def test_conversation_crud_flow(client: AsyncClient) -> None:
     created = create_response.json()["data"]
     assert created["title"] == "Project chat"
     assert created["activated_at"] is None
-    assert set(created) == {"id", "title", "activated_at", "created_at", "updated_at"}
+    assert set(created) == {
+        "id",
+        "title",
+        "activated_at",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "deletion_due_at",
+    }
+    assert created["deleted_at"] is None
+    assert created["deletion_due_at"] is None
     assert list_response.status_code == status.HTTP_200_OK
     assert list_response.json()["data"] == []
 
@@ -657,6 +667,43 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"] == {
         "web_search": {"enabled": True},
+        "files": {
+            "enabled": False,
+            "allowed_extensions": [
+                "csv",
+                "docx",
+                "go",
+                "java",
+                "jpeg",
+                "jpg",
+                "js",
+                "json",
+                "md",
+                "pdf",
+                "png",
+                "pptx",
+                "py",
+                "sql",
+                "ts",
+                "txt",
+                "webp",
+                "xlsx",
+                "yaml",
+                "yml",
+            ],
+            "category_max_bytes": {
+                "image": 10 * 1024 * 1024,
+                "pdf": 25 * 1024 * 1024,
+                "office": 20 * 1024 * 1024,
+                "text": 2 * 1024 * 1024,
+            },
+            "max_attachments_per_message": 5,
+            "max_message_bytes": 50 * 1024 * 1024,
+            "quota_bytes": 1024 * 1024 * 1024,
+            "target_turn_tokens": 128_000,
+            "context_budget_tokens": 256_000,
+            "image_model_input": False,
+        },
         "models": [
             {
                 "id": "deepseek-v4-flash",

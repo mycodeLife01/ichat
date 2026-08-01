@@ -1,5 +1,6 @@
 """Celery tasks for finite, retryable LLM work."""
 
+import json
 from dataclasses import dataclass
 from typing import Literal, NoReturn
 
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.sync_session import get_sync_session_factory
 from app.models.conversation import Conversation, Message
+from app.models.files import MessageAttachment
 from app.models.run import Run
 from app.services.agents import build_title_agent
 from app.services.conversations.title_jobs import (
@@ -33,6 +35,7 @@ class TitleInputs:
     conversation_id: int
     user_content: str
     assistant_content: str
+    attachment_metadata: str | None = None
 
 
 @celery_app.task(  # type: ignore[untyped-decorator]
@@ -71,6 +74,7 @@ def generate_conversation_title(
         title = build_title_agent(settings=settings).generate(
             user_content=inputs.user_content,
             assistant_content=inputs.assistant_content,
+            attachment_metadata=inputs.attachment_metadata,
         )
         with factory() as session:
             updated_id = None
@@ -159,6 +163,31 @@ def _load_title_inputs(session: Session, *, run_id: int) -> TitleInputs | None:
         conversation_id=run.conversation_id,
         user_content=first_user.content,
         assistant_content=assistant.content,
+        attachment_metadata=_title_attachment_metadata(session, message_id=first_user.id),
+    )
+
+
+def _title_attachment_metadata(session: Session, *, message_id: int) -> str | None:
+    rows = list(
+        session.scalars(
+            select(MessageAttachment)
+            .where(MessageAttachment.message_id == message_id)
+            .order_by(MessageAttachment.position)
+        )
+    )
+    if not rows:
+        return None
+    return json.dumps(
+        [
+            {
+                "name": row.name,
+                "media_type": row.media_type,
+                "size_bytes": row.size_bytes,
+            }
+            for row in rows
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
 
 

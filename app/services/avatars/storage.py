@@ -42,7 +42,7 @@ class AvatarStorage(Protocol):
 
     def head_temporary(self, object_key: str) -> ObjectMetadata: ...
 
-    def get_temporary(self, object_key: str) -> bytes: ...
+    def get_temporary(self, object_key: str, *, if_match: str | None = None) -> bytes: ...
 
     def delete_temporary(self, object_key: str) -> None: ...
 
@@ -130,10 +130,14 @@ class R2AvatarStorage:
             declared_size_bytes=int(declared_size) if declared_size is not None else None,
         )
 
-    def get_temporary(self, object_key: str) -> bytes:
-        response = self._client.get_object(  # type: ignore[attr-defined]
-            Bucket=self._settings.avatar_upload_bucket, Key=object_key
-        )
+    def get_temporary(self, object_key: str, *, if_match: str | None = None) -> bytes:
+        params: dict[str, str] = {
+            "Bucket": self._settings.avatar_upload_bucket,
+            "Key": object_key,
+        }
+        if if_match is not None:
+            params["IfMatch"] = if_match if if_match.startswith('"') else f'"{if_match}"'
+        response = self._client.get_object(**params)  # type: ignore[attr-defined]
         return bytes(response["Body"].read())
 
     def delete_temporary(self, object_key: str) -> None:
@@ -197,8 +201,11 @@ class FakeAvatarStorage:
         content, content_type, etag = self.temporary[object_key]
         return ObjectMetadata(len(content), content_type, etag)
 
-    def get_temporary(self, object_key: str) -> bytes:
-        return self.temporary[object_key][0]
+    def get_temporary(self, object_key: str, *, if_match: str | None = None) -> bytes:
+        content, _content_type, etag = self.temporary[object_key]
+        if if_match is not None and etag != if_match.strip('"'):
+            raise RuntimeError("staging object no longer matches confirmed ETag")
+        return content
 
     def delete_temporary(self, object_key: str) -> None:
         self.temporary.pop(object_key, None)

@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 03
 
 # 附件编辑、替换、重新生成与草稿恢复

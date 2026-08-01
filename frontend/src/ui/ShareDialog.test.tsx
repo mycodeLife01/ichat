@@ -16,12 +16,15 @@ function ToastProbe() {
   );
 }
 
-function renderDialog(shareOverrides: Parameters<typeof createFakeServices>[4]) {
+function renderDialog(
+  shareOverrides: Parameters<typeof createFakeServices>[4],
+  hasAttachments = false,
+) {
   const services = createFakeServices({}, {}, {}, {}, shareOverrides);
   const onClose = vi.fn();
   render(
     <>
-      <ShareDialog conversationId="conv-1" onClose={onClose} />
+      <ShareDialog conversationId="conv-1" hasAttachments={hasAttachments} onClose={onClose} />
       <ToastProbe />
     </>,
     { wrapper: makeWrapper(services) },
@@ -208,5 +211,25 @@ describe("ShareDialog", () => {
     );
     expect(screen.getByTestId("toast")).toHaveAttribute("data-tone", "error");
     expect(screen.getByText(/keep-me/)).toBeInTheDocument();
+  });
+
+  it("requires a privacy acknowledgement before sharing a conversation with attachments", async () => {
+    const user = userEvent.setup();
+    const create = vi.fn(async () => ({
+      token: "attachment-link",
+      expires_at: null,
+      revoked_at: null,
+      created_at: "2026-08-01T10:00:00Z",
+    }));
+    renderDialog({ list: async () => [], create }, true);
+
+    const createButton = await screen.findByRole("button", { name: /创建链接/ });
+    expect(createButton).toBeDisabled();
+    expect(screen.getByText(/files, previews, and downloads are not shared/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox"));
+    expect(createButton).toBeEnabled();
+    await user.click(createButton);
+    expect(create).toHaveBeenCalledWith("conv-1", 7, true);
   });
 });

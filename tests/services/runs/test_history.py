@@ -6,7 +6,13 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.agent.messages import ReasoningBlock, TextBlock, ToolCallBlock, ToolResultBlock
+from app.agent.messages import (
+    DocumentBlock,
+    ReasoningBlock,
+    TextBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+)
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
@@ -212,3 +218,161 @@ async def test_load_turns_replays_transcript_as_blocks(
     assert flat[2].blocks == [ToolResultBlock("call_1", "Evidence [1]")]
     assert flat[3].blocks == [ReasoningBlock("Use evidence"), TextBlock("Final answer [1]")]
     assert flat[-1].text() == "follow up"
+
+
+async def test_self_contained_transcript_does_not_duplicate_materialized_assistant(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "hist-document")
+        conversation = Conversation(user_id=user.id, title="Chat")
+        session.add(conversation)
+        await session.flush()
+
+        first_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="Read the attachment",
+            position=1,
+        )
+        first_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=first_user.id,
+        )
+        first_run.status = "succeeded"
+        first_user.run_id = first_run.id
+        session.add_all(
+            [
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=1,
+                    message_id=first_user.id,
+                    role="user",
+                    blocks=[
+                        {"type": "text", "text": "Read the attachment"},
+                        {
+                            "type": "document",
+                            "file_id": str(uuid4()),
+                            "filename": "facts.txt",
+                            "media_type": "text/plain",
+                            "text": "stable extracted facts",
+                            "sha256": "a" * 64,
+                            "extractor_version": "text-v1",
+                            "warnings": [],
+                            "summary": {"text_bytes": 22},
+                        },
+                    ],
+                ),
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=2,
+                    role="assistant",
+                    blocks=[{"type": "text", "text": "I read the facts."}],
+                ),
+            ]
+        )
+        assistant = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="assistant",
+            content="I read the facts.",
+            position=2,
+        )
+        assistant.run_id = first_run.id
+        target_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="What did it say?",
+            position=3,
+        )
+        target_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=target_user.id,
+        )
+        await session.commit()
+
+        flat = await load_conversation_history(session, run_id=target_run.id)
+
+    assert [message.role for message in flat] == ["user", "assistant", "user"]
+    document = flat[0].blocks[1]
+    assert isinstance(document, DocumentBlock)
+    assert document.text == "stable extracted facts"
+    assert flat[1].text() == "I read the facts."
+
+
+async def test_failed_run_keeps_exact_user_attachment_but_drops_partial_output(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "hist-failed")
+        conversation = Conversation(user_id=user.id, title="Chat")
+        session.add(conversation)
+        await session.flush()
+        first_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="",
+            position=1,
+        )
+        first_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=first_user.id,
+        )
+        first_run.status = "failed"
+        first_user.run_id = first_run.id
+        session.add_all(
+            [
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=1,
+                    message_id=first_user.id,
+                    role="user",
+                    blocks=[
+                        {
+                            "type": "document",
+                            "file_id": str(uuid4()),
+                            "filename": "failed.txt",
+                            "media_type": "text/plain",
+                            "text": "input survives failure",
+                            "sha256": "b" * 64,
+                            "extractor_version": "text-v1",
+                            "warnings": [],
+                            "summary": {},
+                        }
+                    ],
+                ),
+                RunProviderMessage(
+                    run_id=first_run.id,
+                    seq=2,
+                    role="assistant",
+                    blocks=[{"type": "text", "text": "partial answer must not replay"}],
+                ),
+            ]
+        )
+        target_user = await add_message(
+            session,
+            conversation_id=conversation.id,
+            role="user",
+            content="Try again",
+            position=2,
+        )
+        target_run = await create_run_for_message(
+            session,
+            conversation_id=conversation.id,
+            user_message_id=target_user.id,
+        )
+        await session.commit()
+
+        flat = await load_conversation_history(session, run_id=target_run.id)
+
+    assert [message.role for message in flat] == ["user", "user"]
+    document = flat[0].blocks[0]
+    assert isinstance(document, DocumentBlock)
+    assert document.text == "input survives failure"
+    assert all("partial answer" not in message.text() for message in flat)

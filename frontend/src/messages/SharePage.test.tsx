@@ -63,4 +63,38 @@ describe("SharePage", () => {
     expect(alert.querySelector("svg")).not.toBeNull();
     expect(screen.getByRole("link", { name: "前往 iChat" })).toBeInTheDocument();
   });
+
+  it("renders attachment placeholders without preview or download controls", async () => {
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Shared files",
+        messages: [
+          {
+            role: "user",
+            content: "See attached",
+            sources: [],
+            attachments: [
+              {
+                name: "private-report.pdf",
+                media_type: "application/pdf",
+                size_bytes: 1024,
+                category: "pdf",
+                model_consumable: true,
+                warning: ["Some pages were not read."],
+                preview_available: false,
+              },
+            ],
+          },
+        ],
+        created_at: "2026-08-01T10:00:00Z",
+      }),
+    });
+
+    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    expect(await screen.findByText("private-report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Some pages were not read.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download original file" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Preview image" })).toBeNull();
+  });
 });

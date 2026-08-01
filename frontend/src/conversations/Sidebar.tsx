@@ -42,6 +42,7 @@ type SidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
   pendingTitleIds: string[];
+  deletedItems?: ConversationResponse[];
   hasMore: boolean;
   isLoadingMore: boolean;
   onSelect: (id: string) => void;
@@ -50,6 +51,7 @@ type SidebarProps = {
   onRename: (id: string, title: string) => void;
   onRequestShare: (id: string) => void;
   onRequestDelete: (id: string) => void;
+  onRestore?: (id: string) => void;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
@@ -87,6 +89,7 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   pendingTitleIds,
+  deletedItems = [],
   hasMore,
   isLoadingMore,
   onSelect,
@@ -95,6 +98,7 @@ export function Sidebar({
   onRename,
   onRequestShare,
   onRequestDelete,
+  onRestore = () => {},
   onLogout,
   onResendVerification,
   onUpdateNickname,
@@ -433,6 +437,36 @@ export function Sidebar({
             {isLoadingMore && (
               <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
                 正在加载...
+              </div>
+            )}
+            {deletedItems.length > 0 && (
+              <div className="mt-5">
+                <div className={sectionLabel}>最近删除</div>
+                {deletedItems.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className="flex min-h-10 items-center gap-2 px-2.5 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] text-text-muted">
+                        {conversation.title || "新对话"}
+                      </p>
+                      <p className="mt-0.5 text-[10.5px] text-fg-subtle">
+                        {conversation.deletion_due_at
+                          ? `可恢复至 ${new Date(conversation.deletion_due_at).toLocaleDateString()}`
+                          : "可在 30 天内恢复"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
+                      aria-label={`恢复 ${conversation.title || "新对话"}`}
+                      onClick={() => onRestore(conversation.id)}
+                    >
+                      恢复
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

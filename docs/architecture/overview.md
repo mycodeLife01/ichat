@@ -2,7 +2,7 @@
 
 > 本文是 iChat 后端当前运行时架构的总结。模块/目录职责见
 > [`module-boundaries.md`](module-boundaries.md)；后台任务归属与可靠性模式见
-> [`background-tasks.md`](background-tasks.md)。状态截至 2026-07-20。
+> [`background-tasks.md`](background-tasks.md)。状态截至 2026-08-01。
 
 ## 服务拓扑
 
@@ -25,7 +25,9 @@ Nginx ──► API (FastAPI)
           │
           └──────────────► Celery workers
                             ├── 邮件 outbox
-                            ├── 头像处理/维护
+                            ├── media-worker：头像处理/维护、公开对象 delete + CDN purge
+                            ├── file-worker：私有附件扫描、受限解析、回收与私有删除
+                            │       └── ClamAV/clamd
                             └── 对话标题生成
 ```
 
@@ -36,6 +38,37 @@ Nginx ──► API (FastAPI)
   最终成功或失败等业务事实。
 - API 不调用流式聊天 provider；Worker 不通过 HTTP 向 API 反推事件。
 - 标题生成是有限、非流式、可重试任务，归 Celery，不占用流式 Worker 并发槽。
+- 文件上传也属于有限、非流式 Celery 任务；`file-worker` 与 `media-worker` 分 queue、分凭证，
+  但上传/资产/补偿的事实均在 PostgreSQL。
+
+## 文件上传与消息附件数据流
+
+```text
+浏览器 ──预签名 PUT──► 私有 files staging bucket
+    │ POST confirm                 │
+    ▼                              ▼
+API ── FileUpload queued ──► Celery files queue / file-worker
+                                      │ If-Match GET → ClamAV → 受限解析
+                                      ▼
+                     FileAsset/FileObject + 私有 canonical bucket
+                                      │
+                         MessageAttachment + Run transcript DocumentBlock
+```
+
+1. API 只在 active、已验证邮箱用户创建固定为 `message_attachment` purpose 的上传会话；创建时
+   锁住每用户配额行预留声明大小，返回短期 staging PUT URL，字节不经 FastAPI。
+2. confirm 通过 HEAD 固化 ETag 后把 `FileUpload` 置为 queued，并尽力投递 files queue。Celery
+   丢失只会增加延迟：beat 的有界 sweep 按 PG `available_at` 再次投递。
+3. file-worker 按 ETag 用 `If-Match` 条件读取，计算 SHA-256、ClamAV 扫描、在资源受限子进程
+   解析并先写 output manifest；成功后才建立 `FileAsset`、`FileObject` 和配额转移。
+4. 会话服务在同一事务中建立 Message、显式 `MessageAttachment` 和 Run。文档的完整
+   `DocumentBlock` 写入 Run transcript；图片只写 `AttachmentNoticeBlock`，不会触发视觉理解。
+5. `FileObjectDeletion` 是正式对象删除的 PG 事实。私有对象 delete 完成即可终态；公开头像的
+   delete 和 CDN purge 都必须完成。对象存储、Celery 和 CDN 都不是删除事实源。
+
+用途 `avatar` 与 `message_attachment` 共享 files 领域但不可互换。头像仍由 media-worker 处理
+公开 `avatar_512` 成品；附件由 file-worker 处理私有原件及派生物。当前仍保留旧头像双读/排空
+兼容，contract 收缩必须等待生产前置验证；细节见[统一文件上传交接](../handover/2026-08-01-unified-file-upload.md)。
 
 ## 用户消息到回复的端到端数据流
 
@@ -108,6 +141,11 @@ cancelled            ├──────── finish ────────
 | `run_drafts` | 每 Run 一行的累计 text/reasoning checkpoint，供 Redis 故障降级 |
 | `run_provider_messages` | provider-neutral content blocks transcript |
 | `messages` | 用户可见 user/assistant 消息；assistant 仅在成功终态物化 |
+| `file_uploads` | 有期限上传状态机、confirm ETag、lease、尝试数和 output manifest |
+| `files` / `file_objects` | 不可变逻辑资产与其 R2 原件/派生物表示 |
+| `message_attachments` | Message 到附件资产的显式有序关系与稳定展示元数据 |
+| `file_quotas` | 每用户 `used_bytes` / `reserved_bytes` 的事务性配额状态行 |
+| `file_object_deletions` | 私有 delete 或公开 delete+purge 的持久化补偿 |
 
 关键约束：
 
@@ -164,6 +202,9 @@ LLM Worker 不把 Redis health 作为启动前置条件，因此 Redis 在启动
 | `DRAFT_CHECKPOINT_INTERVAL_SECONDS` | 3.0 | draft 时间触发窗口 |
 | `DRAFT_CHECKPOINT_MAX_PENDING_CHARS` | 4096 | draft 字符量防御上限 |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | 20 / 20 | 单进程 SQLAlchemy 池容量 |
+| `FILES_PROCESSING_LEASE_SECONDS` | 300 | 文件处理 claim lease；到期由 beat sweep 恢复 |
+| `FILES_PARSER_TIMEOUT_SECONDS` / `FILES_ATTEMPT_TIMEOUT_SECONDS` | 120 / 180 | 受限解析与整次文件处理的上限 |
+| `FILES_MAINTENANCE_INTERVAL_SECONDS` | 60 | files queue 的 PG sweep/删除补偿调度间隔 |
 
 ## 数据流不变量
 
@@ -174,6 +215,9 @@ LLM Worker 不把 Redis health 作为启动前置条件，因此 Redis 在启动
 5. assistant message 只在成功终态物化；失败/取消不产生 assistant message。
 6. 标题任务仅更新 `title IS NULL` 且首个成功 Run 的 conversation，重复投递安全。
 7. 前端可见 SSE 契约保持冻结；内部传输变化不要求前端同步部署。
+8. 附件原件不进入 provider；目标用户 turn 使用完整 DocumentBlock 快照或图片 notice，超预算
+   必须在提交前拒绝，不能静默截断。
+9. 文件读取、配额、资产回收和对象删除均经 files 服务；会话/Run 历史不能通过 R2 重新构造事实。
 
 ## 关联文档
 
@@ -181,4 +225,5 @@ LLM Worker 不把 Redis health 作为启动前置条件，因此 Redis 在启动
 - 后台任务约定：[`background-tasks.md`](background-tasks.md)
 - Agent 04b 决策：[`../handover/2026-07-20-agent-runtime-refactor-04b-decisions.md`](../handover/2026-07-20-agent-runtime-refactor-04b-decisions.md)
 - Agent 04b 实施：[`../handover/2026-07-20-agent-runtime-refactor-04b-implementation.md`](../handover/2026-07-20-agent-runtime-refactor-04b-implementation.md)
+- 统一文件上传：[`../handover/2026-08-01-unified-file-upload.md`](../handover/2026-08-01-unified-file-upload.md)
 - 部署：[`../deployment.md`](../deployment.md)

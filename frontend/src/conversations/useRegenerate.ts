@@ -22,7 +22,7 @@ export function useRegenerate(start: StartStream) {
     async (
       call: () => Promise<{ run: { id: string } }>,
       conversationId: string,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       try {
         const { run: started } = await call();
         const detail = await conversationApi.detail(conversationId);
@@ -30,29 +30,48 @@ export function useRegenerate(start: StartStream) {
         dispatch({ type: "conversations/detailLoaded", conversation, messages });
         dispatch({ type: "run/started", runId: started.id, conversationId });
         void start(started.id, conversationId, 0);
+        return true;
       } catch (error) {
         // Keep the current view usable (e.g. a 409 active-run race) and surface a
         // Chinese toast.
         console.error("regenerate failed", error);
         dispatch({ type: "ui/showToast", message: "操作失败，请重试", tone: "error" });
+        return false;
       }
     },
     [dispatch, conversationApi, start],
   );
 
   const editAndRegenerate = useCallback(
-    async (messageId: string, content: string): Promise<void> => {
+    async (
+      messageId: string,
+      content: string,
+      attachmentIds?: string[],
+    ): Promise<boolean> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       const trimmed = content.trim();
-      if (conversationId == null || trimmed === "") return;
-      await run(
+      if (
+        conversationId == null ||
+        (trimmed === "" && (attachmentIds === undefined || attachmentIds.length === 0))
+      ) {
+        return false;
+      }
+      return run(
         () =>
-          conversationApi.editAndRegenerate(
-            conversationId,
-            messageId,
-            trimmed,
-            currentRunOptions(),
-          ),
+          attachmentIds === undefined
+            ? conversationApi.editAndRegenerate(
+                conversationId,
+                messageId,
+                trimmed,
+                currentRunOptions(),
+              )
+            : conversationApi.editAndRegenerate(
+                conversationId,
+                messageId,
+                trimmed,
+                currentRunOptions(),
+                attachmentIds,
+              ),
         conversationId,
       );
     },
@@ -60,10 +79,10 @@ export function useRegenerate(start: StartStream) {
   );
 
   const regenerate = useCallback(
-    async (messageId: string): Promise<void> => {
+    async (messageId: string): Promise<boolean> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
-      if (conversationId == null) return;
-      await run(
+      if (conversationId == null) return false;
+      return run(
         () =>
           conversationApi.regenerate(conversationId, messageId, currentRunOptions()),
         conversationId,

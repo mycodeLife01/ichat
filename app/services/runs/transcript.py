@@ -6,7 +6,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
     Message,
     ReasoningBlock,
     Role,
@@ -78,6 +80,30 @@ def serialize_blocks(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
     for block in blocks:
         if isinstance(block, TextBlock):
             serialized.append({"type": "text", "text": block.text})
+        elif isinstance(block, DocumentBlock):
+            serialized.append(
+                {
+                    "type": "document",
+                    "file_id": block.file_id,
+                    "filename": block.filename,
+                    "media_type": block.media_type,
+                    "text": block.text,
+                    "sha256": block.sha256,
+                    "extractor_version": block.extractor_version,
+                    "warnings": list(block.warnings),
+                    "summary": block.summary,
+                }
+            )
+        elif isinstance(block, AttachmentNoticeBlock):
+            serialized.append(
+                {
+                    "type": "attachment_notice",
+                    "file_id": block.file_id,
+                    "filename": block.filename,
+                    "media_type": block.media_type,
+                    "notice": block.notice,
+                }
+            )
         elif isinstance(block, ReasoningBlock):
             serialized.append({"type": "reasoning", "text": block.text})
         elif isinstance(block, ToolCallBlock):
@@ -117,6 +143,36 @@ def _deserialize_blocks(raw_blocks: object) -> list[ContentBlock]:
         block_type = raw.get("type")
         if block_type == "text":
             blocks.append(TextBlock(text=_required_string(raw, "text")))
+        elif block_type == "document":
+            warnings = raw.get("warnings", [])
+            if not isinstance(warnings, list) or not all(
+                isinstance(item, str) for item in warnings
+            ):
+                raise ValueError("Transcript document warnings must be a string array")
+            summary = raw.get("summary")
+            if summary is not None and not isinstance(summary, dict):
+                raise ValueError("Transcript document summary must be a JSON object")
+            blocks.append(
+                DocumentBlock(
+                    file_id=_required_string(raw, "file_id"),
+                    filename=_required_string(raw, "filename"),
+                    media_type=_required_string(raw, "media_type"),
+                    text=_required_string(raw, "text"),
+                    sha256=_required_string(raw, "sha256"),
+                    extractor_version=_required_string(raw, "extractor_version"),
+                    warnings=tuple(warnings),
+                    summary=summary,
+                )
+            )
+        elif block_type == "attachment_notice":
+            blocks.append(
+                AttachmentNoticeBlock(
+                    file_id=_required_string(raw, "file_id"),
+                    filename=_required_string(raw, "filename"),
+                    media_type=_required_string(raw, "media_type"),
+                    notice=_required_string(raw, "notice"),
+                )
+            )
         elif block_type == "reasoning":
             blocks.append(ReasoningBlock(text=_required_string(raw, "text")))
         elif block_type == "tool_call":

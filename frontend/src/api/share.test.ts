@@ -45,6 +45,19 @@ describe("shareApi", () => {
     });
   });
 
+  it("includes the explicit attachment privacy confirmation when required", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValueOnce(shareLinkResponse);
+    const api = createShareApi(client);
+
+    await api.create("conv-1", 30, true);
+
+    expect(client.request).toHaveBeenCalledWith("/conversations/conv-1/shares", {
+      method: "POST",
+      body: { expires_in_days: 30, confirm_attachment_privacy: true },
+    });
+  });
+
   it("reads a public snapshot without auth", async () => {
     const client = mockClient();
     vi.mocked(client.request).mockResolvedValueOnce({

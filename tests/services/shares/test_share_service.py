@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message, ShareLink
+from app.models.files import MessageAttachment
 from app.models.run import Run
 from app.models.user import User
 from app.services.shares.service import (
@@ -110,8 +111,96 @@ async def test_create_share_snapshot_excludes_internal_ids(
         assert snapshot["title"] == "shared"
         # No internal ids / positions / user identity leak into the snapshot.
         for message in snapshot["messages"]:
-            assert set(message) == {"role", "content", "reasoning", "sources"}
+            assert set(message) == {"role", "content", "reasoning", "sources", "attachments"}
+            assert message["attachments"] == []
         assert snapshot["messages"][1]["sources"][0]["url"] == "https://x.test"
+
+
+async def test_inactive_user_cannot_create_a_share(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        user.is_active = False
+        await session.flush()
+
+        with pytest.raises(AppError) as exc_info:
+            await create_share(
+                session,
+                user=user,
+                conversation_public_id=conversation.public_id,
+                expires_in_days=None,
+        )
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert (
+            await session.scalar(
+                select(ShareLink.id).where(ShareLink.conversation_id == conversation.id)
+            )
+            is None
+        )
+
+
+async def test_attachment_share_requires_confirmation_and_freezes_only_placeholders(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        user_message = await session.scalar(
+            select(Message).where(
+                Message.conversation_id == conversation.id,
+                Message.role == "user",
+            )
+        )
+        assert user_message is not None
+        session.add(
+            MessageAttachment(
+                message_id=user_message.id,
+                file_id=None,
+                position=0,
+                name="research.pdf",
+                media_type="application/pdf",
+                size_bytes=1234,
+                warnings=["partial_content_not_extracted"],
+            )
+        )
+        await session.flush()
+
+        with pytest.raises(AppError) as exc_info:
+            await create_share(
+                session,
+                user=user,
+                conversation_public_id=conversation.public_id,
+                expires_in_days=None,
+            )
+        assert exc_info.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert "Confirm that assistant replies" in exc_info.value.detail
+
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+            confirm_attachment_privacy=True,
+        )
+        await session.commit()
+        share = await session.scalar(select(ShareLink).where(ShareLink.token == created.token))
+        assert share is not None
+        placeholder = share.snapshot["messages"][0]["attachments"][0]
+        assert placeholder == {
+            "name": "research.pdf",
+            "media_type": "application/pdf",
+            "size_bytes": 1234,
+            "category": "pdf",
+            "warnings": ["partial_content_not_extracted"],
+        }
+        assert "file_id" not in placeholder
+        assert "object_key" not in placeholder
+
+        public = await get_public_share(session, token=created.token)
+
+    assert public.messages[0].attachments[0].name == "research.pdf"
+    assert public.messages[0].attachments[0].warnings == ["partial_content_not_extracted"]
 
 
 async def test_create_share_sets_expiry_from_db_now(

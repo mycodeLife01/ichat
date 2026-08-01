@@ -7,6 +7,8 @@ import { useConversationLoader } from "../conversations/useConversationLoader";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
+import { useAttachmentUploads } from "../files/useAttachmentUploads";
+import type { FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
 import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
@@ -61,6 +63,9 @@ export function AppShell() {
     newConversation,
     renameConversation,
     deleteConversation,
+    deletedItems,
+    loadDeleted,
+    restoreConversation,
   } = useConversationLoader();
 
   // The conversation public id is carried in the URL (`/c/:publicId`), so the
@@ -75,6 +80,7 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  const [fileCapability, setFileCapability] = useState<FilesCapability>();
   // Thinking level drives the per-request thinking options sent with every
   // send/edit/regenerate call (read from the store at call time); persisted so
   // the choice survives reloads.
@@ -130,6 +136,22 @@ export function AppShell() {
   const recover = useRunRecovery(start);
   const pollTitle = useTitlePolling();
   const pendingTitleIds = conversationIndex.pendingTitleIds;
+  const restoreComposerContent = useCallback((content: string) => {
+    setComposerValue(content);
+  }, []);
+  const attachmentUploads = useAttachmentUploads({
+    userId: user?.id ?? null,
+    conversationId: selectedId,
+    capability: fileCapability,
+    canCreate: user?.email_verified === true,
+    filesApi: services.filesApi,
+    onRestoredContent: restoreComposerContent,
+    onError: (message) => dispatch({ type: "ui/showToast", message, tone: "error" }),
+  });
+  const onComposerValueChange = (value: string) => {
+    setComposerValue(value);
+    attachmentUploads.setDraftContent(value);
+  };
   // The id of the newest user message in the thread; advances on send and on
   // edit-and-regenerate (the edited message is re-created with a new id).
   const lastUserMessageId = detail.messages.filter((m) => m.role === "user").at(-1)?.id;
@@ -152,18 +174,36 @@ export function AppShell() {
 
   const onSend = () => {
     const text = composerValue;
-    if (text.trim() === "" || pendingSubmission !== null) return;
+    if (
+      (!text.trim() && !attachmentUploads.hasModelConsumableAttachment) ||
+      attachmentUploads.hasPendingAttachments ||
+      attachmentUploads.hasFailedAttachments ||
+      pendingSubmission !== null
+    ) {
+      return;
+    }
     // Animate the composer only for the first message of a brand-new conversation
     // (the empty/welcome state). Follow-up messages keep the composer pinned.
     if (selectedId == null || messages.length === 0) {
       setAnimateComposer(true);
     }
-    setComposerValue("");
-    void send(text).then((sent) => {
+    onComposerValueChange("");
+    const attachmentIds =
+      attachmentUploads.readyAttachmentIds.length > 0
+        ? attachmentUploads.readyAttachmentIds
+        : undefined;
+    void send(text, attachmentIds).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
       if (!sent && stateRef.current.pendingSubmission === null) {
-        setComposerValue((current) => (current === "" ? text : current));
+        setComposerValue((current) => {
+          const restored = current === "" ? text : current;
+          attachmentUploads.setDraftContent(restored);
+          return restored;
+        });
+      }
+      if (sent) {
+        attachmentUploads.clear();
       }
     });
   };
@@ -229,10 +269,12 @@ export function AppShell() {
         modelPreferenceStore.setAvailable(capabilities.models);
         setModels(capabilities.models);
         setModelId(modelPreferenceStore.resolve()?.id ?? null);
+        setFileCapability(capabilities.files);
       } catch {
         webSearchPreferenceStore.setCapability(false);
         setWebSearchAvailable(false);
         modelPreferenceStore.setAvailable([]);
+        setFileCapability(undefined);
       }
       if (!active) return;
       setRouterReady(true);
@@ -242,6 +284,10 @@ export function AppShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (routerReady) void loadDeleted();
+  }, [loadDeleted, routerReady]);
 
   // URL → state: select the conversation named in the path (and recover any
   // in-flight run), or reset to a blank new conversation at the root.
@@ -315,6 +361,17 @@ export function AppShell() {
       : composerState !== "idle"
         ? "请先停止当前生成"
         : null;
+  const sendDisabledReason =
+    attachmentUploads.hasPendingAttachments
+      ? "Wait until every attachment is ready before sending."
+      : attachmentUploads.hasFailedAttachments
+        ? "Remove or retry failed attachments before sending."
+        : !composerValue.trim() && attachmentUploads.attachments.length > 0 && !attachmentUploads.hasModelConsumableAttachment
+          ? "Add text or a readable document. Images alone cannot be sent."
+          : null;
+  const canSend = composerState === "idle" && sendDisabledReason === null && (
+    Boolean(composerValue.trim()) || attachmentUploads.hasModelConsumableAttachment
+  );
 
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"
@@ -341,6 +398,7 @@ export function AppShell() {
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
+        deletedItems={deletedItems}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
@@ -356,6 +414,11 @@ export function AppShell() {
             dialog: { kind: "deleteConversation", conversationId: id },
           })
         }
+        onRestore={(id) => {
+          void restoreConversation(id)
+            .then(() => dispatch({ type: "ui/showToast", message: "对话已恢复", tone: "success" }))
+            .catch(() => dispatch({ type: "ui/showToast", message: "恢复对话失败", tone: "error" }));
+        }}
         onLogout={() => void logout()}
         onResendVerification={() => services.authApi.resendVerificationEmail()}
         onUpdateNickname={async (nickname) => {
@@ -419,8 +482,22 @@ export function AppShell() {
               pendingMessage={pendingMessage}
               isMobile={isMobile}
               mutateDisabledReason={mutateDisabledReason}
-              onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
+              onEditAndRegenerate={(id, content, attachmentIds) => {
+                void editAndRegenerate(id, content, attachmentIds).then((edited) => {
+                  if (
+                    edited &&
+                    attachmentIds?.some((fileId) =>
+                      attachmentUploads.readyAttachmentIds.includes(fileId),
+                    )
+                  ) {
+                    attachmentUploads.clear();
+                  }
+                });
+              }}
               onRegenerate={(id) => void regenerate(id)}
+              onReadAttachment={services.filesApi.readUrl}
+              composerAttachments={attachmentUploads.attachments}
+              maxAttachmentsPerMessage={fileCapability?.max_attachments_per_message}
               onShowSources={showSources}
             >
               {pendingMessage ||
@@ -446,7 +523,7 @@ export function AppShell() {
           </div>
           <Composer
             value={composerValue}
-            onChange={setComposerValue}
+            onChange={onComposerValueChange}
             onSend={onSend}
             onStop={onStop}
             state={composerState}
@@ -458,6 +535,16 @@ export function AppShell() {
             models={models}
             model={modelId}
             onModelChange={onModelChange}
+            fileCapability={fileCapability}
+            fileUploadAllowed={user?.email_verified === true}
+            attachments={attachmentUploads.attachments}
+            onSelectFiles={attachmentUploads.addFiles}
+            onCancelAttachment={(clientId) => void attachmentUploads.cancelAttachment(clientId)}
+            onRetryAttachment={attachmentUploads.retryAttachment}
+            onMoveAttachment={attachmentUploads.moveAttachment}
+            onReadAttachment={services.filesApi.readUrl}
+            canSend={canSend}
+            sendDisabledReason={sendDisabledReason}
           />
         </div>
         <div
@@ -475,7 +562,7 @@ export function AppShell() {
       {confirmTarget != null && (
         <ConfirmDialog
           title="删除对话？"
-          body="此对话及其全部消息将永久删除，无法恢复。"
+          body="此对话将在 30 天内保留并可恢复；期限结束后将永久删除。"
           confirmLabel="删除"
           destructive
           onConfirm={() =>
@@ -491,6 +578,7 @@ export function AppShell() {
       {ui.shareDialog != null && (
         <ShareDialog
           conversationId={ui.shareDialog.conversationId}
+          hasAttachments={detail.messages.some((message) => (message.attachments?.length ?? 0) > 0)}
           onClose={() => dispatch({ type: "ui/closeShare" })}
         />
       )}

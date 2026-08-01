@@ -13,9 +13,14 @@ export function useSendMessage(
   const { conversationApi } = services;
 
   return useCallback(
-    async (content: string): Promise<boolean> => {
+    async (content: string, attachmentIds?: string[]): Promise<boolean> => {
       const trimmed = content.trim();
-      if (trimmed === "" || stateRef.current.pendingSubmission !== null) return false;
+      if (
+        (trimmed === "" && (attachmentIds?.length ?? 0) === 0) ||
+        stateRef.current.pendingSubmission !== null
+      ) {
+        return false;
+      }
 
       let targetId = stateRef.current.conversationIndex.selectedId;
       const runOptions = currentRunOptions();
@@ -28,7 +33,14 @@ export function useSendMessage(
       try {
         if (targetId == null) {
           const { conversation: convo, message, run } =
-            await conversationApi.createWithMessage(trimmed, runOptions);
+            attachmentIds === undefined
+              ? await conversationApi.createWithMessage(trimmed, runOptions)
+              : await conversationApi.createWithMessage(
+                  trimmed,
+                  runOptions,
+                  undefined,
+                  attachmentIds,
+                );
           targetId = convo.id;
           dispatch({ type: "submission/targeted", conversationId: convo.id });
           dispatch({
@@ -45,11 +57,10 @@ export function useSendMessage(
           return true;
         }
 
-        const { message, run } = await conversationApi.sendMessage(
-          targetId,
-          trimmed,
-          runOptions,
-        );
+        const { message, run } =
+          attachmentIds === undefined
+            ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
+            : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds);
         dispatch({ type: "conversations/messageAppended", message });
         dispatch({ type: "run/started", runId: run.id, conversationId: targetId });
         dispatch({ type: "submission/cleared" });

@@ -1,5 +1,5 @@
 Type: feat
-Status: ready-for-agent
+Status: completed
 Blocked by: 11, 12
 
 # 跨用途删除补偿与账户生命周期

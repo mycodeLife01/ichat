@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatModelCapability } from "../api/types";
+import { AttachmentCard } from "../files/AttachmentCard";
+import type { DraftAttachment, FileReadRole, FilesCapability } from "../files/types";
 import {
   clampThinkingLevel,
   THINKING_LEVEL_OPTIONS,
@@ -31,6 +33,16 @@ type ComposerProps = {
   models?: ChatModelCapability[];
   model?: string | null;
   onModelChange?: (modelId: string) => void;
+  fileCapability?: FilesCapability;
+  fileUploadAllowed?: boolean;
+  attachments?: DraftAttachment[];
+  onSelectFiles?: (files: FileList) => void;
+  onCancelAttachment?: (clientId: string) => void;
+  onRetryAttachment?: (clientId: string) => void;
+  onMoveAttachment?: (clientId: string, direction: -1 | 1) => void;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  canSend?: boolean;
+  sendDisabledReason?: string | null;
 };
 
 const MAX_HEIGHT = 240;
@@ -103,8 +115,19 @@ export function Composer({
   models = [],
   model = null,
   onModelChange = () => {},
+  fileCapability,
+  fileUploadAllowed = true,
+  attachments = [],
+  onSelectFiles = () => {},
+  onCancelAttachment = () => {},
+  onRetryAttachment = () => {},
+  onMoveAttachment = () => {},
+  onReadAttachment,
+  canSend,
+  sendDisabledReason = null,
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<PickerSubmenu>(null);
   const [flyoutSide, setFlyoutSide] = useState<"right" | "left">("right");
@@ -136,10 +159,15 @@ export function Composer({
     };
   }, [pickerOpen]);
 
+  const canSubmit = canSend ?? Boolean(value.trim());
   const send = () => {
-    if (!value.trim() || state !== "idle") return;
+    if (!canSubmit || state !== "idle") return;
     onSend();
   };
+
+  const uploadAccept = fileCapability?.allowed_extensions
+    .map((extension) => `.${extension}`)
+    .join(",");
 
   const togglePicker = () => {
     setOpenSubmenu(null);
@@ -238,8 +266,53 @@ export function Composer({
             }
           }}
         />
+        {attachments.length > 0 && (
+          <div className="mt-1 flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5" aria-label="附件">
+            {attachments.map((attachment, index) => (
+              <AttachmentCard
+                key={attachment.client_id}
+                attachment={attachment}
+                mode="composer"
+                getReadUrl={onReadAttachment}
+                canMoveBack={index > 0}
+                canMoveForward={index < attachments.length - 1}
+                onCancel={onCancelAttachment}
+                onRetry={onRetryAttachment}
+                onMove={onMoveAttachment}
+              />
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-1">
+            {fileCapability?.enabled && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  className="sr-only"
+                  type="file"
+                  multiple
+                  accept={uploadAccept}
+                  disabled={!fileUploadAllowed}
+                  aria-label="选择附件"
+                  onChange={(event) => {
+                    if (event.target.files) onSelectFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  className={`${composerPill} ${composerPillIdle}`}
+                  type="button"
+                  aria-label="添加附件"
+                  title={fileUploadAllowed ? "添加附件" : "Verify your email before uploading files."}
+                  disabled={!fileUploadAllowed}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icons.Upload size={15} />
+                  <span>添加文件</span>
+                </button>
+              </>
+            )}
             <button
               className={`${composerPill} ${
                 webSearchEnabled ? webSearchPillSelected : composerPillIdle
@@ -377,7 +450,8 @@ export function Composer({
                 className={composerPrimaryAction}
                 type="button"
                 aria-label="发送"
-                disabled={!value.trim()}
+                disabled={!canSubmit}
+                title={!canSubmit ? sendDisabledReason ?? undefined : undefined}
                 onClick={send}
               >
                 <Icons.ArrowUp size={15} />

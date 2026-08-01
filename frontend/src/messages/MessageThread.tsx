@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
+import type { DraftAttachment, FileReadRole } from "../files/types";
 import { messageBubble } from "../ui/classes";
 import { Message } from "./Message";
 
@@ -9,8 +10,15 @@ type MessageThreadProps = {
   pendingMessage?: string | null;
   isMobile?: boolean;
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onEditAndRegenerate?: (
+    messageId: string,
+    content: string,
+    attachmentIds?: string[],
+  ) => void;
   onRegenerate?: (messageId: string) => void;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  composerAttachments?: DraftAttachment[];
+  maxAttachmentsPerMessage?: number;
   onShowSources?: (sources: MessageSource[]) => void;
   children?: ReactNode;
 };
@@ -22,6 +30,9 @@ export function MessageThread({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  onReadAttachment,
+  composerAttachments,
+  maxAttachmentsPerMessage,
   onShowSources,
   children,
 }: MessageThreadProps) {
@@ -38,6 +49,9 @@ export function MessageThread({
           mutateDisabledReason={mutateDisabledReason}
           onEditAndRegenerate={onEditAndRegenerate}
           onRegenerate={onRegenerate}
+          onReadAttachment={onReadAttachment}
+          composerAttachments={composerAttachments}
+          maxAttachmentsPerMessage={maxAttachmentsPerMessage}
           onShowSources={onShowSources}
         />
       ))}

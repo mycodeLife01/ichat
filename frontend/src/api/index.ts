@@ -2,6 +2,7 @@ export { authApi, createAuthApi } from "./auth";
 export { ApiClient, getDefaultApiClient } from "./client";
 export { capabilitiesApi, createCapabilitiesApi } from "./capabilities";
 export { conversationApi, createConversationApi } from "./conversations";
+export { filesApi, createFilesApi } from "./files";
 export { ApiError, isAbortError, toApiError } from "./errors";
 export { runApi, createRunApi } from "./runs";
 export { SseParser, decodeSseStream } from "./sse";
@@ -26,3 +27,12 @@ export type {
   SendMessageResponse,
   SuccessEnvelope,
 } from "./types";
+export type {
+  FileAttachment,
+  FileReadRole,
+  FileReadUrl,
+  FileUploadRecord,
+  FileUploadSession,
+  FilesCapability,
+  SharedAttachmentPlaceholder,
+} from "../files/types";

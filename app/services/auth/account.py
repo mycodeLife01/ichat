@@ -29,13 +29,13 @@ from app.services.auth.token_service import (
     revoke_active_tokens,
     revoke_all_active_tokens,
 )
-from app.services.avatars.lifecycle import deactivate_user_avatar
 from app.services.email.renderer import (
     ACCOUNT_DELETION_SUBJECT,
     ACCOUNT_DELETION_TEMPLATE,
     PASSWORD_RESET_SUBJECT,
     PASSWORD_RESET_TEMPLATE,
 )
+from app.services.files.account import deactivate_user_files
 
 COOLDOWN_MESSAGE = "Please wait before requesting another email"
 RATE_LIMITED_MESSAGE = "Too many requests, please try again later"
@@ -429,12 +429,12 @@ async def confirm_account_deletion(
     if consumed is None:
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_DELETION_MESSAGE)
     user_id, _sent_to_email = consumed
-    user = await session.get(User, user_id)
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_DELETION_MESSAGE)
 
     user.is_active = False
-    await deactivate_user_avatar(session, user=user, settings=settings, now=moment)
+    await deactivate_user_files(session, user=user, settings=settings, now=moment)
     await revoke_all_refresh_tokens(session, user_id=user.id, now=moment)
     await revoke_all_active_tokens(session, user_id=user.id, now=moment)
     await session.flush()

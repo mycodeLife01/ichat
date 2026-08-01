@@ -26,6 +26,8 @@ from openai import (
 )
 
 from app.agent.messages import (
+    AttachmentNoticeBlock,
+    DocumentBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -345,6 +347,10 @@ def _user_to_wire(message: Message, *, strip_tool_history: bool) -> list[dict[st
     for block in message.blocks:
         if isinstance(block, TextBlock):
             text_parts.append(block.text)
+        elif isinstance(block, DocumentBlock):
+            text_parts.append(_document_to_text(block))
+        elif isinstance(block, AttachmentNoticeBlock):
+            text_parts.append(_attachment_notice_to_text(block))
         elif isinstance(block, ToolResultBlock) and not strip_tool_history:
             wire.append(
                 {
@@ -357,6 +363,37 @@ def _user_to_wire(message: Message, *, strip_tool_history: bool) -> list[dict[st
     if text or not wire:
         wire.append({"role": "user", "content": text})
     return wire
+
+
+def _document_to_text(block: DocumentBlock) -> str:
+    metadata = {
+        "file_id": block.file_id,
+        "filename": block.filename,
+        "media_type": block.media_type,
+        "sha256": block.sha256,
+        "extractor_version": block.extractor_version,
+        "warnings": list(block.warnings),
+        "summary": block.summary,
+    }
+    return (
+        "\n\n[BEGIN UNTRUSTED ATTACHMENT]\n"
+        f"metadata={json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"{block.text}\n"
+        "[END UNTRUSTED ATTACHMENT]\n"
+    )
+
+
+def _attachment_notice_to_text(block: AttachmentNoticeBlock) -> str:
+    metadata = {
+        "file_id": block.file_id,
+        "filename": block.filename,
+        "media_type": block.media_type,
+    }
+    return (
+        "\n\n[ATTACHMENT NOTICE]\n"
+        f"metadata={json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"{block.notice}\n"
+    )
 
 
 def tool_spec_to_wire(tool: ToolSpec) -> dict[str, Any]:
