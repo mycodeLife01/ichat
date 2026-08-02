@@ -183,7 +183,7 @@ export function Sidebar({
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
-  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg-sunken"];
+  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg"];
   if (isMobile) {
     sidebarClasses.push(
       "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] max-w-[calc(100vw-44px)] border-r border-border " +

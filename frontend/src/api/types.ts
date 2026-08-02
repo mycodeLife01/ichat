@@ -116,6 +116,7 @@ export type RunEventResponse = {
 
 export type RunStateResponse = {
   run_id: string;
+  provider_name: string;
   status: RunStatus;
   latest_seq: number;
   draft_text: string;

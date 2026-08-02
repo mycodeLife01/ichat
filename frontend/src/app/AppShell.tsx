@@ -482,22 +482,11 @@ export function AppShell() {
               pendingMessage={pendingMessage}
               isMobile={isMobile}
               mutateDisabledReason={mutateDisabledReason}
-              onEditAndRegenerate={(id, content, attachmentIds) => {
-                void editAndRegenerate(id, content, attachmentIds).then((edited) => {
-                  if (
-                    edited &&
-                    attachmentIds?.some((fileId) =>
-                      attachmentUploads.readyAttachmentIds.includes(fileId),
-                    )
-                  ) {
-                    attachmentUploads.clear();
-                  }
-                });
+              onEditAndRegenerate={(id, content) => {
+                void editAndRegenerate(id, content);
               }}
               onRegenerate={(id) => void regenerate(id)}
               onReadAttachment={services.filesApi.readUrl}
-              composerAttachments={attachmentUploads.attachments}
-              maxAttachmentsPerMessage={fileCapability?.max_attachments_per_message}
               onShowSources={showSources}
             >
               {pendingMessage ||

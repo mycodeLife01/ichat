@@ -53,6 +53,7 @@ class RunToolStateResponse(BaseModel):
 
 class RunStateResponse(BaseModel):
     run_id: uuid.UUID
+    provider_name: str
     status: RunStatus
     latest_seq: int
     draft_text: str

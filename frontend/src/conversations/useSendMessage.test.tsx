@@ -79,6 +79,9 @@ describe("useSendMessage", () => {
     await waitFor(() =>
       expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id),
     );
+    expect(result.current.activeRun?.providerName).toBe(
+      sendMessageResponse.run.provider_name,
+    );
   });
 
   it("sends to the already-selected conversation without creating a draft", async () => {

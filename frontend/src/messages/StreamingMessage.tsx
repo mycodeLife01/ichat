@@ -34,6 +34,8 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
           <ThinkingBlock
             content={run?.draftReasoning ?? ""}
             streaming={thinking}
+            showStreamingPreview={run?.providerName !== "deepseek"}
+            autoExpandWhileStreaming={run?.providerName === "deepseek"}
             label={label}
           />
         )}

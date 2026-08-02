@@ -93,6 +93,8 @@ describe("SharePage", () => {
     renderWithApp(<App />, services, undefined, ["/share/tok123"]);
 
     expect(await screen.findByText("private-report.pdf")).toBeInTheDocument();
+    expect(screen.queryByText(/application\/pdf/)).toBeNull();
+    expect(screen.queryByText(/1\.0 KiB/)).toBeNull();
     expect(screen.getByText("Some pages were not read.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Download original file" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Preview image" })).toBeNull();

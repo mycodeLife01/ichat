@@ -53,6 +53,9 @@ describe("useRegenerate", () => {
       conversationDetailResponse.messages,
     );
     expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id);
+    expect(result.current.activeRun?.providerName).toBe(
+      sendMessageResponse.run.provider_name,
+    );
     expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, conversationResponse.id, 0);
   });
 

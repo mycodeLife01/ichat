@@ -1,6 +1,5 @@
 import type { SVGProps } from "react";
 import {
-  ArrowUp,
   Check,
   ChevronDown,
   Copy,
@@ -10,8 +9,10 @@ import {
   Menu,
   Mic,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   PenLine,
+  Plus,
   RefreshCw,
   Share2,
   Square,
@@ -23,6 +24,24 @@ import {
 type CustomIconProps = Omit<SVGProps<SVGSVGElement>, "height" | "width"> & {
   size?: number | string;
 };
+
+// ChatGPT composer send mark, using the reference interface's 20px path.
+function sendPromptIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      data-icon="send-prompt"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M9 16V6.414L5.707 9.707a1 1 0 1 1-1.414-1.414l5-5 .076-.069a1 1 0 0 1 1.338.069l5 5 .068.076a1 1 0 0 1-1.406 1.406l-.076-.068L11 6.414V16a1 1 0 1 1-2 0" />
+    </svg>
+  );
+}
 
 // ChatGPT compose mark, using the reference interface's 20px path.
 function newChatIcon({ size = 20, ...props }: CustomIconProps) {
@@ -81,12 +100,14 @@ export const Icons = {
   Chevron: ChevronDown,
   Copy: Copy,
   Globe: Globe,
+  Paperclip: Paperclip,
+  Plus: Plus,
   Loading: LoaderCircle,
   Check: Check,
   Refresh: RefreshCw,
   Share: Share2,
   Upload: Upload,
-  ArrowUp: ArrowUp,
+  ArrowUp: sendPromptIcon,
   Mic: Mic,
   Stop: Square,
   Close: X,

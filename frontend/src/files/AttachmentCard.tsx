@@ -1,14 +1,20 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
   Download,
   Eye,
+  FileCode2,
+  FileJson,
+  FileSpreadsheet,
   FileText,
+  FileType2,
   Image as ImageIcon,
   LoaderCircle,
+  Presentation,
   RotateCcw,
   X,
 } from "lucide-react";
@@ -19,12 +25,51 @@ import {
   errorLabel,
   isUploadFailed,
   isUploadInProgress,
+  fileExtension,
   statusLabel,
   warningLabel,
 } from "./utils";
 import type { DraftAttachment, FileAttachment, SharedAttachmentPlaceholder } from "./types";
 
 type AttachmentDisplay = FileAttachment | SharedAttachmentPlaceholder | DraftAttachment;
+type ReadUrlResolver = (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+
+const READ_URL_CACHE_TTL_MS = 4 * 60 * 1_000;
+const READ_URL_CACHE_LIMIT = 200;
+const readUrlCache = new WeakMap<
+  ReadUrlResolver,
+  Map<string, { createdAt: number; request: Promise<string> }>
+>();
+
+function cachedReadUrl(
+  getReadUrl: ReadUrlResolver,
+  fileId: string,
+  role: FileReadRole,
+): Promise<string> {
+  let cache = readUrlCache.get(getReadUrl);
+  if (!cache) {
+    cache = new Map();
+    readUrlCache.set(getReadUrl, cache);
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now - entry.createdAt >= READ_URL_CACHE_TTL_MS) cache.delete(key);
+  }
+  const cacheKey = `${fileId}:${role}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached.request;
+
+  const request = getReadUrl(fileId, role)
+    .then(({ url }) => url)
+    .catch((error: unknown) => {
+      cache?.delete(cacheKey);
+      throw error;
+    });
+  cache.set(cacheKey, { createdAt: now, request });
+  if (cache.size > READ_URL_CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
+  return request;
+}
 
 type AttachmentCardProps = {
   attachment: AttachmentDisplay;
@@ -37,6 +82,8 @@ type AttachmentCardProps = {
   canMoveForward?: boolean;
   onRemove?: (fileId: string) => void;
   onMoveFile?: (fileId: string, direction: -1 | 1) => void;
+  imageLayout?: "single" | "collection" | "mixed";
+  imageCollectionPosition?: "first" | "middle" | "last";
 };
 
 function isDraftAttachment(attachment: AttachmentDisplay): attachment is DraftAttachment {
@@ -55,21 +102,87 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MiB`;
 }
 
+function attachmentTypeLabel(name: string, category: string): string {
+  const extension = fileExtension(name);
+  const labels: Record<string, string> = {
+    csv: "CSV",
+    docx: "Word 文档",
+    go: "Go",
+    java: "Java",
+    js: "JavaScript",
+    json: "JSON",
+    md: "Markdown",
+    pdf: "PDF",
+    pptx: "演示文稿",
+    py: "Python",
+    sql: "SQL",
+    txt: "文本文件",
+    ts: "TypeScript",
+    xlsx: "电子表格",
+    yaml: "YAML",
+    yml: "YAML",
+  };
+  if (labels[extension]) return labels[extension];
+  if (category === "image") return "图片";
+  return "文件";
+}
+
+function AttachmentTypeIcon({
+  name,
+  category,
+  loading,
+}: {
+  name: string;
+  category: string;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <LoaderCircle className="animate-spin text-text-muted" size={24} />;
+  }
+
+  const extension = fileExtension(name);
+  if (category === "image") {
+    return <ImageIcon className="text-[#38aee8]" size={24} />;
+  }
+  if (extension === "xlsx" || extension === "csv") {
+    return <FileSpreadsheet className="text-[#16a34a]" size={24} />;
+  }
+  if (extension === "pptx") {
+    return <Presentation className="text-[#e85d24]" size={24} />;
+  }
+  if (extension === "docx") {
+    return <FileType2 className="text-[#2b6fdb]" size={24} />;
+  }
+  if (extension === "json" || extension === "yaml" || extension === "yml") {
+    return <FileJson className="text-[#d69e2e]" size={24} />;
+  }
+  if (category === "code") {
+    return <FileCode2 className="text-text-primary" size={24} />;
+  }
+  if (extension === "pdf") {
+    return <FileText className="text-[#e5484d]" size={24} />;
+  }
+  return <FileText className="text-search-foreground" size={24} />;
+}
+
 export function AttachmentCard({
   attachment,
   mode = "message",
   getReadUrl,
   onCancel,
   onRetry,
-  onMove,
   canMoveBack = false,
   canMoveForward = false,
   onRemove,
   onMoveFile,
+  imageLayout = "single",
+  imageCollectionPosition = "middle",
 }: AttachmentCardProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [loadingRole, setLoadingRole] = useState<FileReadRole | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const previewRequestRef = useRef<Promise<string> | null>(null);
   const staticAttachment = isDraftAttachment(attachment) ? null : attachment;
   const draft = isDraftAttachment(attachment) ? attachment : null;
   const file = draft?.file ?? staticAttachment;
@@ -79,27 +192,276 @@ export function AttachmentCard({
   const progress = draft && isUploadInProgress(draft.status);
   const failed = draft && isUploadFailed(draft.status);
 
+  const resolvePreviewUrl = async (): Promise<string | null> => {
+    if (draft?.local_preview_url) return draft.local_preview_url;
+    if (previewUrl) return previewUrl;
+    if (!fileId || !getReadUrl || !file?.preview_available) return null;
+    if (!previewRequestRef.current) {
+      setLoadingRole("preview");
+      setReadError(null);
+      previewRequestRef.current = cachedReadUrl(getReadUrl, fileId, "preview")
+        .then((url) => {
+          setPreviewUrl(url);
+          return url;
+        })
+        .catch((error: unknown) => {
+          setReadError("The image could not be opened. Please try again.");
+          throw error;
+        })
+        .finally(() => {
+          previewRequestRef.current = null;
+          setLoadingRole((role) => (role === "preview" ? null : role));
+        });
+    }
+    try {
+      return await previewRequestRef.current;
+    } catch {
+      return null;
+    }
+  };
+
+  // Sent images need a signed preview to paint their thumbnail. Composer
+  // images use their local object URL and therefore make no read-url request.
+  useEffect(() => {
+    if (!isImage || draft?.local_preview_url || previewUrl || !file?.preview_available) return;
+    void resolvePreviewUrl();
+    // resolvePreviewUrl intentionally keys on the stable file identity. Local
+    // state updates must not start a second signed-URL request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId, file?.preview_available, isImage, draft?.local_preview_url]);
+
   const read = async (role: FileReadRole) => {
+    if (role === "preview") {
+      const url = await resolvePreviewUrl();
+      if (url) setPreviewOpen(true);
+      return;
+    }
     if (!fileId || !getReadUrl || loadingRole) return;
     setLoadingRole(role);
     setReadError(null);
     try {
-      const { url } = await getReadUrl(fileId, role);
-      if (role === "preview") {
-        setPreviewUrl(url);
-      } else {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = file?.name ?? draft?.name ?? "download";
-        link.rel = "noopener noreferrer";
-        link.click();
-      }
+      const url = await cachedReadUrl(getReadUrl, fileId, role);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file?.name ?? draft?.name ?? "download";
+      link.rel = "noopener noreferrer";
+      link.click();
     } catch {
       setReadError("The file could not be opened. Please try again.");
     } finally {
       setLoadingRole(null);
     }
   };
+
+  if (
+    (mode === "composer" && draft) ||
+    ((mode === "message" || mode === "editor") && !draft)
+  ) {
+    const name = file?.name ?? draft?.name ?? "Attachment";
+    const compactStatus = failed && draft
+      ? draft.error_message ?? errorLabel(draft.error_code)
+      : progress
+        ? "正在上传"
+        : attachmentTypeLabel(name, file?.category ?? draft?.category ?? "text");
+    const readRole: FileReadRole = file?.preview_available ? "preview" : "download";
+    const canRead = Boolean(fileId && getReadUrl);
+    const category = file?.category ?? draft?.category ?? "text";
+    const buttonLabel =
+      mode === "message"
+        ? readRole === "preview"
+          ? "Preview image"
+          : "Download original file"
+        : name;
+
+    if (isImage) {
+      const imageUrl = draft?.local_preview_url ?? previewUrl;
+      const canPreview = Boolean(imageUrl || (fileId && getReadUrl && file?.preview_available));
+      const isComposer = mode === "composer" || mode === "editor";
+      const isCollection = imageLayout !== "single";
+      const isMixedComposerImage = isComposer && imageLayout === "mixed";
+      const collectionRadius =
+        imageCollectionPosition === "first"
+          ? "rounded-lg rounded-s-2xl"
+          : imageCollectionPosition === "last"
+            ? "rounded-lg rounded-e-2xl"
+            : "rounded-lg";
+      const imageFrameClass = isComposer
+        ? isMixedComposerImage
+          ? "h-[60px] w-14 rounded-xl"
+          : isCollection
+          ? "h-20 w-20 rounded-[18px]"
+          : imageUrl
+            ? "max-h-[120px] max-w-[160px] rounded-[18px]"
+            : "h-[120px] w-[120px] rounded-[18px]"
+        : isCollection
+          ? `h-32 w-32 ${collectionRadius}`
+          : imageUrl
+            ? "max-h-96 max-w-64 rounded-[28px]"
+            : "h-40 w-40 rounded-[28px]";
+      const imageClass = isComposer
+        ? isCollection
+          ? "h-full w-full"
+          : "max-h-[120px] max-w-[160px]"
+        : isCollection
+          ? "h-full w-full"
+          : "max-h-96 max-w-64";
+
+      return (
+        <article
+          role="group"
+          aria-label={name}
+          aria-busy={progress ? "true" : undefined}
+          className={`group/attachment relative shrink-0 text-left ${imageFrameClass}`}
+          data-attachment-status={draft?.status ?? "bound"}
+          data-attachment-kind="image"
+        >
+          <button
+            type="button"
+            className={`relative block overflow-hidden border border-border bg-sunken transition-opacity duration-[120ms] enabled:hover:opacity-90 disabled:cursor-default ${imageFrameClass}`}
+            aria-label={`打开图片：${name}`}
+            disabled={!canPreview}
+            onClick={() => void read("preview")}
+          >
+            {imageUrl ? (
+              <img
+                className={`block object-cover ${imageClass}`}
+                src={imageUrl}
+                alt={name}
+              />
+            ) : (
+              <span className="flex h-full min-h-20 w-full min-w-20 items-center justify-center text-text-muted">
+                <ImageIcon size={24} aria-hidden="true" />
+              </span>
+            )}
+            {(progress || loadingRole === "preview") && (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white">
+                <LoaderCircle className="animate-spin" size={24} aria-label="正在上传" />
+              </span>
+            )}
+            {failed && (
+              <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-[11px] text-white">
+                上传失败
+              </span>
+            )}
+          </button>
+          {draft && (
+            <div className="absolute -top-1 -right-1 z-[2] flex gap-1 opacity-0 transition-opacity duration-[120ms] group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100">
+              {failed && onRetry && (
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-popover hover:text-text-primary"
+                  aria-label="Retry upload"
+                  onClick={() => onRetry(draft.client_id)}
+                >
+                  <RotateCcw size={13} />
+                </button>
+              )}
+              {onCancel && (
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-popover hover:text-text-primary"
+                  aria-label={progress ? "Cancel upload" : "Remove attachment"}
+                  onClick={() => onCancel(draft.client_id)}
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="sr-only">
+            {readError && <p>{readError}</p>}
+            {file?.model_consumable === false && (
+              <p>File available for download — the model cannot read its contents.</p>
+            )}
+            {warning.map((item) => (
+              <p key={item}>{warningLabel(item)}</p>
+            ))}
+          </div>
+          {previewOpen && imageUrl && (
+            <ImagePreviewDialog
+              name={name}
+              url={imageUrl}
+              onClose={() => setPreviewOpen(false)}
+              onDownload={fileId && getReadUrl ? () => void read("download") : undefined}
+              downloading={loadingRole === "download"}
+            />
+          )}
+        </article>
+      );
+    }
+
+    return (
+      <article
+        role="group"
+        aria-label={name}
+        aria-busy={progress ? "true" : undefined}
+        className="group/attachment relative w-[320px] min-w-[320px] text-left max-[760px]:w-[240px] max-[760px]:min-w-[240px]"
+        data-attachment-status={draft?.status ?? "bound"}
+      >
+        <div className="relative h-[60px]">
+          <button
+            type="button"
+            className="absolute inset-0 grid rounded-[18px] border border-border bg-surface text-left transition-colors duration-[120ms] enabled:hover:bg-hover disabled:cursor-default"
+            aria-label={buttonLabel}
+            disabled={!canRead}
+            onClick={() => void read(readRole)}
+          />
+          <div className="pointer-events-none relative z-[1] flex h-full min-w-0 items-center gap-2 p-2.5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" aria-hidden="true">
+              <AttachmentTypeIcon
+                name={name}
+                category={category}
+                loading={Boolean(progress)}
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14px] font-semibold leading-5 text-text-primary">
+                {name}
+              </span>
+              <span
+                className={`flex min-w-0 items-center gap-1 truncate text-[14px] leading-5 ${
+                  failed ? "text-error-foreground" : "text-text-muted"
+                }`}
+              >
+                {failed && <AlertCircle className="shrink-0" size={13} />}
+                <span className="truncate">{readError ?? compactStatus}</span>
+              </span>
+            </span>
+          </div>
+          <div className="absolute -top-1 -right-1 z-[2] flex gap-1 opacity-0 transition-opacity duration-[120ms] group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100">
+            {failed && onRetry && draft && (
+              <button
+                type="button"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-popover hover:text-text-primary"
+                aria-label="Retry upload"
+                onClick={() => onRetry(draft.client_id)}
+              >
+                <RotateCcw size={13} />
+              </button>
+            )}
+            {onCancel && draft && (
+              <button
+                type="button"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-popover hover:text-text-primary"
+                aria-label={progress ? "Cancel upload" : "Remove attachment"}
+                onClick={() => onCancel(draft.client_id)}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="sr-only">
+          {file?.model_consumable === false && (
+            <p>File available for download — the model cannot read its contents.</p>
+          )}
+          {warning.map((item) => (
+            <p key={item}>{warningLabel(item)}</p>
+          ))}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -112,9 +474,11 @@ export function AttachmentCard({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-text-primary">{file?.name ?? draft?.name}</p>
-          <p className="mt-0.5 text-[11.5px] text-text-muted">
-            {file?.media_type ?? draft?.media_type} · {formatBytes(file?.size_bytes ?? draft?.size_bytes ?? 0)}
-          </p>
+          {mode !== "share" && (
+            <p className="mt-0.5 text-[11.5px] text-text-muted">
+              {file?.media_type ?? draft?.media_type} · {formatBytes(file?.size_bytes ?? draft?.size_bytes ?? 0)}
+            </p>
+          )}
           {draft && (
             <p
               className={`mt-1 flex items-center gap-1 text-[11.5px] ${
@@ -143,38 +507,6 @@ export function AttachmentCard({
           ))}
           {readError && <p className="mt-1 text-[11.5px] text-error-foreground">{readError}</p>}
         </div>
-        {mode === "composer" && draft && (
-          <div className="flex shrink-0 items-center gap-0.5">
-            {failed && onRetry && (
-              <CardButton label="Retry upload" onClick={() => onRetry(draft.client_id)}>
-                <RotateCcw size={14} />
-              </CardButton>
-            )}
-            {onMove && (
-              <>
-                <CardButton
-                  label="Move attachment earlier"
-                  disabled={!canMoveBack}
-                  onClick={() => onMove(draft.client_id, -1)}
-                >
-                  <ChevronLeft size={15} />
-                </CardButton>
-                <CardButton
-                  label="Move attachment later"
-                  disabled={!canMoveForward}
-                  onClick={() => onMove(draft.client_id, 1)}
-                >
-                  <ChevronRight size={15} />
-                </CardButton>
-              </>
-            )}
-            {onCancel && (
-              <CardButton label={progress ? "Cancel upload" : "Remove attachment"} onClick={() => onCancel(draft.client_id)}>
-                <X size={15} />
-              </CardButton>
-            )}
-          </div>
-        )}
         {mode === "editor" && fileId && (
           <div className="flex shrink-0 items-center gap-0.5">
             {onMoveFile && (
@@ -244,6 +576,86 @@ export function AttachmentCard({
         />
       )}
     </article>
+  );
+}
+
+function ImagePreviewDialog({
+  name,
+  url,
+  onClose,
+  onDownload,
+  downloading,
+}: {
+  name: string;
+  url: string;
+  onClose: () => void;
+  onDownload?: () => void;
+  downloading: boolean;
+}) {
+  const titleId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const closeHandlerRef = useRef(onClose);
+  closeHandlerRef.current = onClose;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeHandlerRef.current();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(0,0,0,0.9)]"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <h2 id={titleId} className="sr-only">{name}</h2>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative max-h-[85vh] max-w-[90vw] outline-none"
+      >
+        <img className="max-h-[85vh] max-w-[90vw] object-contain" src={url} alt={name} />
+      </div>
+      <div className="absolute top-3 right-3 flex items-center gap-1 text-white">
+        {onDownload && (
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 disabled:cursor-wait disabled:opacity-60"
+            aria-label="Download original file"
+            disabled={downloading}
+            onClick={onDownload}
+          >
+            {downloading ? <LoaderCircle className="animate-spin" size={20} /> : <Download size={20} />}
+          </button>
+        )}
+        <button
+          ref={closeRef}
+          type="button"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10"
+          aria-label="关闭图片预览"
+          data-dialog-initial-focus
+          onClick={onClose}
+        >
+          <X size={22} />
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

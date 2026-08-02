@@ -41,6 +41,18 @@ describe("Toast", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the shared top-page placement", () => {
+    render(
+      <Toast
+        toast={{ id: 1, message: "文件上传失败，请稍后再试", tone: "error" }}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveClass("top-5");
+    expect(screen.getByRole("alert")).not.toHaveClass("bottom-20");
+  });
+
   it("does not fire onDismiss after unmount", () => {
     const onDismiss = vi.fn();
     const { unmount } = render(

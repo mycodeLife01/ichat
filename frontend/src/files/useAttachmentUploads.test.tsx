@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FilesApi } from "../api/files";
 import { attachmentDraftStore } from "./draftStore";
-import { useAttachmentUploads } from "./useAttachmentUploads";
+import {
+  FILE_UPLOAD_FAILURE_MESSAGE,
+  useAttachmentUploads,
+} from "./useAttachmentUploads";
 import type { FileUploadRecord, FilesCapability } from "./types";
 
 const capability: FilesCapability = {
@@ -153,9 +156,106 @@ describe("useAttachmentUploads", () => {
       ]),
     );
 
-    expect(onError).toHaveBeenCalledWith("This file type is not supported.");
+    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
     expect(onError).toHaveBeenCalledWith("You can attach at most 1 files to one message.");
     expect(filesApi.createUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("ejects a file and shows the ChatGPT-style toast when upload creation fails", async () => {
+    const filesApi = makeApi({
+      createUpload: vi.fn(async () => {
+        throw new Error("backend detail must not leak into the toast");
+      }),
+    });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        onError,
+      }),
+    );
+
+    act(() => result.current.addFiles([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+
+    await waitFor(() => expect(result.current.attachments).toEqual([]));
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
+    expect(attachmentDraftStore.read(7, "conversation-1").attachments).toEqual([]);
+  });
+
+  it("ejects a file when confirmation returns a terminal processing failure", async () => {
+    const failedRecord: FileUploadRecord = {
+      upload_id: "upload-1",
+      status: "rejected",
+      error_code: "unsupported_file_type",
+      message: "server-specific detail",
+      file: null,
+    };
+    const filesApi = makeApi({ confirm: vi.fn(async () => failedRecord) });
+    const fetchImpl = vi.fn(async () =>
+      new Response(null, { status: 200, headers: { ETag: '"r2-etag"' } }),
+    );
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        fetchImpl,
+        onError,
+      }),
+    );
+
+    act(() => result.current.addFiles([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+
+    await waitFor(() => expect(result.current.attachments).toEqual([]));
+    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
+  });
+
+  it("ejects a restored file when polling reports a terminal processing failure", async () => {
+    attachmentDraftStore.write(7, "conversation-1", {
+      content: "",
+      attachments: [
+        {
+          client_id: "local-1",
+          upload_id: "upload-1",
+          status: "queued",
+          error_code: null,
+          file: null,
+          name: "notes.txt",
+          media_type: "text/plain",
+          size_bytes: 5,
+          category: "text",
+        },
+      ],
+    });
+    const filesApi = makeApi({
+      status: vi.fn(async () => [
+        {
+          upload_id: "upload-1",
+          status: "failed" as const,
+          error_code: "processing_failed",
+          file: null,
+        },
+      ]),
+    });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        onError,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.attachments).toEqual([]));
+    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
   });
 
   it("restores queued upload ids and resumes consolidated status polling", async () => {
@@ -191,6 +291,42 @@ describe("useAttachmentUploads", () => {
     await waitFor(() => expect(onRestoredContent).toHaveBeenCalledWith("saved text"));
     await waitFor(() => expect(filesApi.status).toHaveBeenCalledWith(["upload-1"]));
     await waitFor(() => expect(result.current.readyAttachmentIds).toEqual(["file-1"]));
+  });
+
+  it("ejects a failed attachment restored from an older draft", async () => {
+    attachmentDraftStore.write(7, "conversation-1", {
+      content: "keep this text",
+      attachments: [
+        {
+          client_id: "failed-local",
+          upload_id: "failed-upload",
+          status: "failed",
+          error_code: "processing_failed",
+          file: null,
+          name: "broken.txt",
+          media_type: "text/plain",
+          size_bytes: 5,
+          category: "text",
+        },
+      ],
+    });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi: makeApi(),
+        onError,
+      }),
+    );
+
+    expect(result.current.attachments).toEqual([]);
+    expect(attachmentDraftStore.read(7, "conversation-1")).toEqual({
+      content: "keep this text",
+      attachments: [],
+    });
+    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
   });
 
   it("cancels a durable upload and removes its draft card", async () => {

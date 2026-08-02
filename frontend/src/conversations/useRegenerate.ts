@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 
+import type { RunResponse } from "../api/types";
 import { useAppActions } from "../app/context";
 import { currentRunOptions } from "../runs/runOptions";
 
@@ -20,7 +21,7 @@ export function useRegenerate(start: StartStream) {
 
   const run = useCallback(
     async (
-      call: () => Promise<{ run: { id: string } }>,
+      call: () => Promise<{ run: RunResponse }>,
       conversationId: string,
     ): Promise<boolean> => {
       try {
@@ -28,7 +29,12 @@ export function useRegenerate(start: StartStream) {
         const detail = await conversationApi.detail(conversationId);
         const { messages, ...conversation } = detail;
         dispatch({ type: "conversations/detailLoaded", conversation, messages });
-        dispatch({ type: "run/started", runId: started.id, conversationId });
+        dispatch({
+          type: "run/started",
+          runId: started.id,
+          conversationId,
+          providerName: started.provider_name,
+        });
         void start(started.id, conversationId, 0);
         return true;
       } catch (error) {

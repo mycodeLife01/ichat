@@ -49,6 +49,14 @@
   --color-accent: #1a1a19;
   --color-accent-foreground: #fbfbfa;
 
+  /* ChatGPT composer submit action. Kept separate from the app accent so
+     matching its pure-black control does not recolor unrelated actions. */
+  --color-composer-submit: #000000;
+  --color-composer-submit-hover: #212121;
+  --color-composer-submit-foreground: #ffffff;
+  --color-composer-submit-disabled: #e7e7e7;
+  --color-composer-submit-disabled-foreground: #b4b4b4;
+
   /* Tone families expose foreground, soft surface, and border roles. */
   --color-neutral-foreground: #6b6a66;
   --color-neutral-soft: #f4f3f0;
@@ -409,6 +417,24 @@ body {
   mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%);
 }
 
+/* ChatGPT fades the final 12px of an overflowing prompt instead of letting
+   the last visible line meet the footer abruptly. This overlay stops before
+   the textarea's 10px scrollbar lane, so the thumb remains fully opaque. */
+.composer-prompt-fade {
+  position: relative;
+}
+.composer-prompt-fade::after {
+  position: absolute;
+  right: 20px;
+  bottom: 0;
+  left: 10px;
+  z-index: 1;
+  height: 12px;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
+}
+
 /* Global scrollbar styling (pseudo-elements stay as handwritten CSS).
    The standard properties are scoped to Firefox only: in Chromium, setting
    scrollbar-width/scrollbar-color disables ALL ::-webkit-scrollbar-* styling,
@@ -442,4 +468,16 @@ body {
   background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
   border: 2px solid transparent;
+}
+
+/* Horizontal attachment rails remain touch/trackpad scrollable without
+   painting a native scrollbar inside the compact Composer surface. */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

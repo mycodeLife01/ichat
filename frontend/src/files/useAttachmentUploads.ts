@@ -19,6 +19,7 @@ import type {
 
 const INITIAL_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 5_000;
+export const FILE_UPLOAD_FAILURE_MESSAGE = "文件上传失败，请稍后再试";
 
 type AttachmentUploadOptions = {
   userId: number | string | null;
@@ -63,6 +64,7 @@ function sameAttachment(left: DraftAttachment, right: DraftAttachment): boolean 
     left.media_type === right.media_type &&
     left.size_bytes === right.size_bytes &&
     left.category === right.category &&
+    left.local_preview_url === right.local_preview_url &&
     left.session_expires_at === right.session_expires_at
   );
 }
@@ -91,6 +93,7 @@ export function useAttachmentUploads({
   const contentRef = useRef("");
   const abortControllersRef = useRef(new Map<string, AbortController>());
   const sourcesRef = useRef(new Map<string, File>());
+  const previewUrlsRef = useRef(new Map<string, string>());
   const scopeVersionRef = useRef(0);
   const restoredContentRef = useRef(onRestoredContent);
   const errorRef = useRef(onError);
@@ -128,6 +131,8 @@ export function useAttachmentUploads({
     abortControllersRef.current.forEach((controller) => controller.abort());
     abortControllersRef.current.clear();
     sourcesRef.current.clear();
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
 
     if (userId == null) {
       attachmentsRef.current = [];
@@ -138,15 +143,26 @@ export function useAttachmentUploads({
 
     attachmentDraftStore.clearOtherUsers(userId);
     const restored = attachmentDraftStore.read(userId, conversationId);
-    attachmentsRef.current = restored.attachments;
+    const restoredAttachments = restored.attachments.filter(
+      (attachment) => !isUploadFailed(attachment.status),
+    );
+    attachmentsRef.current = restoredAttachments;
     contentRef.current = restored.content;
-    setAttachments(restored.attachments);
+    setAttachments(restoredAttachments);
+    if (restoredAttachments.length !== restored.attachments.length) {
+      attachmentDraftStore.write(userId, conversationId, {
+        content: restored.content,
+        attachments: restoredAttachments,
+      });
+      errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
+    }
     restoredContentRef.current?.(restored.content);
   }, [conversationId, userId]);
 
   useEffect(
     () => () => {
       abortControllersRef.current.forEach((controller) => controller.abort());
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     },
     [],
   );
@@ -159,8 +175,39 @@ export function useAttachmentUploads({
     [persist],
   );
 
+  const discardLocalAttachment = useCallback((clientId: string) => {
+    abortControllersRef.current.get(clientId)?.abort();
+    abortControllersRef.current.delete(clientId);
+    sourcesRef.current.delete(clientId);
+    const previewUrl = previewUrlsRef.current.get(clientId);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrlsRef.current.delete(clientId);
+  }, []);
+
   const updateUploadRecord = useCallback(
-    (record: FileUploadRecord) => {
+    (record: FileUploadRecord, clientId: string) => {
+      if (
+        record.status === "rejected" ||
+        record.status === "failed" ||
+        record.status === "expired" ||
+        record.status === "cancelled"
+      ) {
+        const failedClientIds = new Set([
+          clientId,
+          ...attachmentsRef.current
+            .filter((attachment) => attachment.upload_id === record.upload_id)
+            .map((attachment) => attachment.client_id),
+        ]);
+        failedClientIds.forEach(discardLocalAttachment);
+        commit((current) =>
+          current.filter(
+            (attachment) =>
+              attachment.client_id !== clientId && attachment.upload_id !== record.upload_id,
+          ),
+        );
+        if (record.status !== "cancelled") errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
+        return;
+      }
       commit((current) =>
         current.map((attachment) =>
           attachment.upload_id === record.upload_id
@@ -174,7 +221,7 @@ export function useAttachmentUploads({
         ),
       );
     },
-    [commit],
+    [commit, discardLocalAttachment],
   );
 
   const startFile = useCallback(
@@ -182,6 +229,12 @@ export function useAttachmentUploads({
       const scopeVersion = scopeVersionRef.current;
       const isCurrentScope = () => scopeVersion === scopeVersionRef.current;
       const clientId = randomId();
+      const category = categoryForFileName(file.name);
+      const localPreviewUrl =
+        category === "image" && typeof URL.createObjectURL === "function"
+          ? URL.createObjectURL(file)
+          : undefined;
+      if (localPreviewUrl) previewUrlsRef.current.set(clientId, localPreviewUrl);
       const initial: DraftAttachment = {
         client_id: clientId,
         upload_id: null,
@@ -192,7 +245,8 @@ export function useAttachmentUploads({
         name: file.name,
         media_type: file.type || "application/octet-stream",
         size_bytes: file.size,
-        category: categoryForFileName(file.name),
+        category,
+        local_preview_url: localPreviewUrl,
       };
       sourcesRef.current.set(clientId, file);
       commit((current) => [...current, initial]);
@@ -224,29 +278,18 @@ export function useAttachmentUploads({
         if (!isCurrentScope()) return;
         const record = await filesApi.confirm(session.upload_id, etag);
         if (!isCurrentScope()) return;
-        updateUploadRecord(record);
+        updateUploadRecord(record, clientId);
       } catch (error) {
         abortControllersRef.current.delete(clientId);
         if (!isCurrentScope() || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
-        const message = error instanceof Error ? error.message : "The file upload failed. Please try again.";
-        commit((current) =>
-          current.map((attachment) =>
-            attachment.client_id === clientId
-              ? {
-                  ...attachment,
-                  status: "failed",
-                  error_code: "upload_failed",
-                  error_message: message,
-                }
-              : attachment,
-          ),
-        );
-        errorRef.current?.(message);
+        discardLocalAttachment(clientId);
+        commit((current) => current.filter((attachment) => attachment.client_id !== clientId));
+        errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
       }
     },
-    [commit, fetchImpl, filesApi, updateUploadRecord],
+    [commit, discardLocalAttachment, fetchImpl, filesApi, updateUploadRecord],
   );
 
   const addFiles = useCallback(
@@ -271,7 +314,7 @@ export function useAttachmentUploads({
       for (const file of selected) {
         const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
         if (!extension || !allowedExtensions.has(extension)) {
-          errorRef.current?.("This file type is not supported.");
+          errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
           continue;
         }
         if (existingCount + accepted.length >= maxCount) {
@@ -304,13 +347,13 @@ export function useAttachmentUploads({
       abortControllersRef.current.delete(clientId);
       try {
         if (attachment.upload_id) await filesApi.cancel(attachment.upload_id);
-        sourcesRef.current.delete(clientId);
+        discardLocalAttachment(clientId);
         commit((current) => current.filter((item) => item.client_id !== clientId));
       } catch {
         errorRef.current?.("The upload could not be cancelled. Please try again.");
       }
     },
-    [commit, filesApi],
+    [commit, discardLocalAttachment, filesApi],
   );
 
   const retryAttachment = useCallback(
@@ -321,10 +364,10 @@ export function useAttachmentUploads({
         return;
       }
       commit((current) => current.filter((item) => item.client_id !== clientId));
-      sourcesRef.current.delete(clientId);
+      discardLocalAttachment(clientId);
       void startFile(file);
     },
-    [commit, startFile],
+    [commit, discardLocalAttachment, startFile],
   );
 
   const moveAttachment = useCallback(
@@ -346,6 +389,8 @@ export function useAttachmentUploads({
     abortControllersRef.current.forEach((controller) => controller.abort());
     abortControllersRef.current.clear();
     sourcesRef.current.clear();
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
     attachmentsRef.current = [];
     setAttachments([]);
   }, [conversationId, userId]);
@@ -382,19 +427,45 @@ export function useAttachmentUploads({
         const records = await filesApi.status(uploadIds);
         if (cancelled) return;
         const byId = new Map(records.map((record) => [record.upload_id, record]));
-        commit((current) =>
-          current.map((attachment) => {
-            const record = attachment.upload_id ? byId.get(attachment.upload_id) : undefined;
-            return record
-              ? draftFromUpload(attachment, {
-                  status: record.status,
-                  error_code: record.error_code ?? null,
-                  message: record.message,
-                  file: record.file,
-                })
-              : attachment;
-          }),
+        const failedUploadIds = new Set(
+          records
+            .filter(
+              (record) =>
+                record.status === "rejected" ||
+                record.status === "failed" ||
+                record.status === "expired",
+            )
+            .map((record) => record.upload_id),
         );
+        const cancelledUploadIds = new Set(
+          records
+            .filter((record) => record.status === "cancelled")
+            .map((record) => record.upload_id),
+        );
+        const removedUploadIds = new Set([...failedUploadIds, ...cancelledUploadIds]);
+        const removed = attachmentsRef.current.filter(
+          (attachment) => attachment.upload_id && removedUploadIds.has(attachment.upload_id),
+        );
+        removed.forEach((attachment) => discardLocalAttachment(attachment.client_id));
+        commit((current) =>
+          current
+            .filter(
+              (attachment) =>
+                !attachment.upload_id || !removedUploadIds.has(attachment.upload_id),
+            )
+            .map((attachment) => {
+              const record = attachment.upload_id ? byId.get(attachment.upload_id) : undefined;
+              return record
+                ? draftFromUpload(attachment, {
+                    status: record.status,
+                    error_code: record.error_code ?? null,
+                    message: record.message,
+                    file: record.file,
+                  })
+                : attachment;
+            }),
+        );
+        if (failedUploadIds.size > 0) errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
       } catch {
         // Keep the card in its durable state. A later poll can recover from a
         // transient API failure without inventing a failed upload terminal state.
@@ -411,7 +482,7 @@ export function useAttachmentUploads({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [commit, filesApi, pollingKey, visibilityVersion]);
+  }, [commit, discardLocalAttachment, filesApi, pollingKey, visibilityVersion]);
 
   const readyAttachmentIds = useMemo(
     () =>

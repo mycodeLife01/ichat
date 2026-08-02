@@ -30,6 +30,7 @@ def test_run_state_response_contains_draft_and_terminal_event() -> None:
     run_id = uuid4()
     state = RunStateResponse(
         run_id=run_id,
+        provider_name="deepseek",
         status="succeeded",
         latest_seq=4,
         draft_text="Hello world",
@@ -37,6 +38,7 @@ def test_run_state_response_contains_draft_and_terminal_event() -> None:
     )
 
     assert state.run_id == run_id
+    assert state.provider_name == "deepseek"
     assert state.status == "succeeded"
     assert state.latest_seq == 4
     assert state.draft_text == "Hello world"

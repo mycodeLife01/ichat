@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
-import type { DraftAttachment, FileReadRole } from "../files/types";
+import type { FileReadRole } from "../files/types";
 import { messageBubble } from "../ui/classes";
 import { Message } from "./Message";
 
@@ -17,8 +17,6 @@ type MessageThreadProps = {
   ) => void;
   onRegenerate?: (messageId: string) => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
-  composerAttachments?: DraftAttachment[];
-  maxAttachmentsPerMessage?: number;
   onShowSources?: (sources: MessageSource[]) => void;
   children?: ReactNode;
 };
@@ -31,8 +29,6 @@ export function MessageThread({
   onEditAndRegenerate,
   onRegenerate,
   onReadAttachment,
-  composerAttachments,
-  maxAttachmentsPerMessage,
   onShowSources,
   children,
 }: MessageThreadProps) {
@@ -50,8 +46,6 @@ export function MessageThread({
           onEditAndRegenerate={onEditAndRegenerate}
           onRegenerate={onRegenerate}
           onReadAttachment={onReadAttachment}
-          composerAttachments={composerAttachments}
-          maxAttachmentsPerMessage={maxAttachmentsPerMessage}
           onShowSources={onShowSources}
         />
       ))}

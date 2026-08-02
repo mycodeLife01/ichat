@@ -50,7 +50,12 @@ export function useSendMessage(
           });
           dispatch({ type: "conversations/selected", id: convo.id });
           dispatch({ type: "conversations/draftCreated", id: convo.id });
-          dispatch({ type: "run/started", runId: run.id, conversationId: convo.id });
+          dispatch({
+            type: "run/started",
+            runId: run.id,
+            conversationId: convo.id,
+            providerName: run.provider_name,
+          });
           dispatch({ type: "submission/cleared" });
           selectionStore.save(convo.id);
           void start(run.id, convo.id, 0);
@@ -62,7 +67,12 @@ export function useSendMessage(
             ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
             : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds);
         dispatch({ type: "conversations/messageAppended", message });
-        dispatch({ type: "run/started", runId: run.id, conversationId: targetId });
+        dispatch({
+          type: "run/started",
+          runId: run.id,
+          conversationId: targetId,
+          providerName: run.provider_name,
+        });
         dispatch({ type: "submission/cleared" });
         void start(run.id, targetId, 0);
         return true;

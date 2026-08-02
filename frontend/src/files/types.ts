@@ -99,5 +99,7 @@ export type DraftAttachment = {
   media_type: string;
   size_bytes: number;
   category: FileCategory;
+  /** Ephemeral object URL for an image selected in this browser tab. */
+  local_preview_url?: string;
   session_expires_at?: string | null;
 };

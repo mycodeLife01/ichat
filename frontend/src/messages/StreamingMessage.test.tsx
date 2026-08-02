@@ -8,6 +8,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
   return {
     runId: "1",
     conversationId: "10",
+    providerName: "openai",
     latestSeq: 1,
     draftText: "",
     draftReasoning: "",
@@ -36,6 +37,40 @@ describe("StreamingMessage", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByRole("button", { name: /在想/ })).toBeInTheDocument();
     expect(screen.queryByText("正在思考")).toBeNull();
+  });
+
+  it("auto-expands DeepSeek raw reasoning behind the generic thinking label", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          providerName: "deepseek",
+          draftReasoning: "正在逐步推导答案",
+          status: "streaming",
+        })}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("正在逐步推导答案");
+    expect(screen.getByText("正在逐步推导答案")).not.toHaveClass("hidden");
+  });
+
+  it("auto-expands recovered DeepSeek reasoning behind the thinking label", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          providerName: "deepseek",
+          draftReasoning: "刷新前已经生成的思考过程",
+          status: "streaming",
+        })}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("刷新前已经生成的思考过程");
+    expect(screen.getByText("刷新前已经生成的思考过程")).not.toHaveClass("hidden");
   });
 
   it("hides reasoning after the formal answer starts", () => {

@@ -561,6 +561,37 @@ describe("AppShell", () => {
     expect(streamEvents).not.toHaveBeenCalled();
   });
 
+  it("expands restored DeepSeek reasoning below its generic label after refresh", async () => {
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => conversationDetailResponse,
+      },
+      {
+        state: async () => ({
+          ...runStateResponse,
+          provider_name: "deepseek",
+          draft_text: "",
+          draft_reasoning: "刷新前已经生成的思考过程",
+        }),
+        streamEvents: () => fakeStream([]),
+      },
+    );
+
+    renderWithApp(
+      <AppShell />,
+      services,
+      undefined,
+      [`/c/${conversationResponse.id}`],
+    );
+
+    const header = await screen.findByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("刷新前已经生成的思考过程");
+    expect(screen.getByText("刷新前已经生成的思考过程")).not.toHaveClass("hidden");
+  });
+
   it("resumes an in-progress run after refresh and replaces it with the reply", async () => {
     const assistantMessage: MessageResponse = {
       id: "502",
@@ -640,7 +671,9 @@ describe("AppShell", () => {
     const editor = screen.getByDisplayValue("原问题");
     await user.clear(editor);
     await user.type(editor, "新问题");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(
+      within(screen.getByTestId("message-editor")).getByRole("button", { name: "发送" }),
+    );
 
     expect(editAndRegenerate).toHaveBeenCalledWith(conversationResponse.id, "1", "新问题", {
       thinking_enabled: true,
@@ -846,7 +879,7 @@ describe("AppShell", () => {
     await waitFor(() => expect(region.scrollTop).toBe(1000));
   });
 
-  it("keeps scroll pinned while reasoning rolls into the thinking header", async () => {
+  it("keeps scroll pinned while DeepSeek reasoning expands below the thinking header", async () => {
     const titled = { ...conversationResponse, title: "对话A" };
     const oldUser: MessageResponse = {
       id: "1", conversation_id: titled.id, run_id: "99", role: "user",
@@ -912,9 +945,10 @@ describe("AppShell", () => {
 
     scrollHeight = 1200;
     releaseReasoning();
-    // The delta lands in the collapsed header (and the hidden body), so match
-    // the header button rather than a unique text node.
-    await screen.findByRole("button", { name: /新增推理/ });
+    const reasoningBody = await screen.findByText("新增推理");
+    expect(reasoningBody).not.toHaveClass("hidden");
+    const thinkingHeader = screen.getByRole("button", { name: /正在思考/ });
+    expect(thinkingHeader).not.toHaveTextContent("新增推理");
 
     expect(region.scrollTop).toBe(1000);
   });

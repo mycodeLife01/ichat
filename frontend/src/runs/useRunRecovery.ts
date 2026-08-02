@@ -66,6 +66,7 @@ export function useRunRecovery(start: StartStream) {
         type: "run/restored",
         runId,
         conversationId,
+        providerName: runState.provider_name,
         latestSeq: runState.latest_seq,
         draftText: runState.draft_text,
         draftReasoning: runState.draft_reasoning,

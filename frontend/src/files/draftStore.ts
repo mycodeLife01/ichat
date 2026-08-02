@@ -43,7 +43,17 @@ export const attachmentDraftStore = {
       localStorage.removeItem(storageKey);
       return;
     }
-    localStorage.setItem(storageKey, JSON.stringify(draft));
+    // Object URLs only exist for the lifetime of the current document. Keeping
+    // one in localStorage would restore a broken image after a reload.
+    const serializable = {
+      ...draft,
+      attachments: draft.attachments.map((attachment) => {
+        const serializedAttachment = { ...attachment };
+        delete serializedAttachment.local_preview_url;
+        return serializedAttachment;
+      }),
+    };
+    localStorage.setItem(storageKey, JSON.stringify(serializable));
   },
   clear(userId: number | string, conversationId: string | null): void {
     localStorage.removeItem(key(userId, conversationId));

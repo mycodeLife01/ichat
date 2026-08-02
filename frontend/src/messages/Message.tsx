@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
-import type { DraftAttachment, FileReadRole } from "../files/types";
+import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
   buttonControl,
@@ -32,9 +32,6 @@ type MessageProps = {
   ) => void;
   onRegenerate?: (messageId: string) => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
-  /** Ready files selected in the composer can be added to an edited message. */
-  composerAttachments?: DraftAttachment[];
-  maxAttachmentsPerMessage?: number;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };
@@ -57,16 +54,10 @@ export function Message({
   onEditAndRegenerate,
   onRegenerate,
   onReadAttachment,
-  composerAttachments = [],
-  maxAttachmentsPerMessage = 5,
   onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
-  // undefined deliberately means "omit attachment_ids", which tells the API
-  // to inherit this revision's attachments. Any array (including []) is the
-  // explicit replacement form.
-  const [editedAttachmentIds, setEditedAttachmentIds] = useState<string[] | undefined>();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // Long user messages collapse to COLLAPSE_MAX_HEIGHT with an expand toggle;
@@ -125,56 +116,15 @@ export function Message({
 
   const startEditing = () => {
     setDraft(message.content);
-    setEditedAttachmentIds(undefined);
     setEditing(true);
   };
   const mutate = isUser ? startEditing : () => onRegenerate?.(message.id);
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
   const messageAttachments = message.attachments ?? [];
-  const readyComposerAttachments = composerAttachments.flatMap((attachment) =>
-    attachment.status === "succeeded" && attachment.file ? [attachment.file] : [],
-  );
-  const attachmentById = new Map(
-    [...messageAttachments, ...readyComposerAttachments].map((attachment) => [attachment.id, attachment]),
-  );
-  const effectiveEditedAttachmentIds =
-    editedAttachmentIds ?? messageAttachments.map((attachment) => attachment.id);
-  const editedAttachments = effectiveEditedAttachmentIds.flatMap((id) => {
-    const attachment = attachmentById.get(id);
-    return attachment ? [attachment] : [];
-  });
-  const hasEditedModelInput = editedAttachments.some(
+  const hasEditedModelInput = messageAttachments.some(
     (attachment) => attachment.model_consumable && attachment.category !== "image",
   );
-
-  const removeEditedAttachment = (fileId: string) => {
-    setEditedAttachmentIds((current) => {
-      const source = current ?? messageAttachments.map((attachment) => attachment.id);
-      return source.filter((id) => id !== fileId);
-    });
-  };
-  const moveEditedAttachment = (fileId: string, direction: -1 | 1) => {
-    setEditedAttachmentIds((current) => {
-      const source = [...(current ?? messageAttachments.map((attachment) => attachment.id))];
-      const index = source.indexOf(fileId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= source.length) return source;
-      [source[index], source[target]] = [source[target], source[index]];
-      return source;
-    });
-  };
-  const composerIdsToAdd = readyComposerAttachments
-    .map((attachment) => attachment.id)
-    .filter((id) => !effectiveEditedAttachmentIds.includes(id));
-  const canAddComposerAttachments =
-    composerIdsToAdd.length > 0 &&
-    effectiveEditedAttachmentIds.length + composerIdsToAdd.length <=
-      maxAttachmentsPerMessage;
-  const addComposerAttachments = () => {
-    if (!canAddComposerAttachments) return;
-    setEditedAttachmentIds([...effectiveEditedAttachmentIds, ...composerIdsToAdd]);
-  };
 
   // Copy shows a transient check (已复制) before reverting to the copy icon.
   const handleCopy = () => {
@@ -286,22 +236,38 @@ export function Message({
       const trimmed = draft.trim();
       if (trimmed === "" && !hasEditedModelInput) return;
       setEditing(false);
-      if (editedAttachmentIds === undefined) {
-        onEditAndRegenerate?.(message.id, trimmed);
-      } else {
-        onEditAndRegenerate?.(message.id, trimmed, editedAttachmentIds);
-      }
+      // Omitting attachment_ids inherits the current revision's attachments.
+      onEditAndRegenerate?.(message.id, trimmed);
     };
     const cancel = () => {
       setDraft(message.content);
-      setEditedAttachmentIds(undefined);
       setEditing(false);
     };
     return (
       <div className={`${msgBase} user items-end`}>
         {/* Editing uses a full-width panel rather than stretching the compact
             message bubble, matching the visual hierarchy of the reference. */}
-        <div className="w-full animate-edit-in rounded-[24px] bg-sunken p-3">
+        <div
+          className="w-full animate-edit-in rounded-[24px] bg-sunken px-3 py-3"
+          data-testid="message-editor"
+        >
+          {messageAttachments.length > 0 && (
+            <div
+              className="flex flex-wrap gap-2"
+              aria-label="编辑消息附件"
+              data-attachment-group="editor"
+            >
+              {messageAttachments.map((attachment) => (
+                <AttachmentCard
+                  key={attachment.id}
+                  attachment={attachment}
+                  mode="editor"
+                  getReadUrl={onReadAttachment}
+                  imageLayout={attachment.category === "image" ? "mixed" : undefined}
+                />
+              ))}
+            </div>
+          )}
           <div className="m-2 max-h-[25dvh] overflow-y-auto">
             <textarea
               autoFocus
@@ -318,70 +284,6 @@ export function Message({
               }}
             />
           </div>
-          {messageAttachments.length > 0 || readyComposerAttachments.length > 0 ? (
-            <div className="mx-2 mt-2 rounded-control border border-border bg-surface p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[12px] text-text-muted">
-                  {editedAttachmentIds === undefined
-                    ? "Keeping this message's original attachments."
-                    : "This edit will replace the original attachments."}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {readyComposerAttachments.length > 0 && (
-                    <button
-                      type="button"
-                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
-                      onClick={addComposerAttachments}
-                      disabled={!canAddComposerAttachments}
-                      title={
-                        composerIdsToAdd.length === 0
-                          ? "These attachments are already included."
-                          : !canAddComposerAttachments
-                            ? "Remove an attachment before adding these files."
-                            : undefined
-                      }
-                    >
-                      添加输入区附件
-                    </button>
-                  )}
-                  {editedAttachmentIds !== undefined && (
-                    <button
-                      type="button"
-                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
-                      onClick={() => setEditedAttachmentIds(undefined)}
-                    >
-                      恢复原附件
-                    </button>
-                  )}
-                  {effectiveEditedAttachmentIds.length > 0 && (
-                    <button
-                      type="button"
-                      className="rounded-control border border-border px-2 py-1 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary"
-                      onClick={() => setEditedAttachmentIds([])}
-                    >
-                      移除全部
-                    </button>
-                  )}
-                </div>
-              </div>
-              {editedAttachments.length > 0 && (
-                <div className="mt-2 flex flex-col gap-1.5">
-                  {editedAttachments.map((attachment, index) => (
-                    <AttachmentCard
-                      key={attachment.id}
-                      attachment={attachment}
-                      mode="editor"
-                      getReadUrl={onReadAttachment}
-                      onRemove={removeEditedAttachment}
-                      onMoveFile={moveEditedAttachment}
-                      canMoveBack={index > 0}
-                      canMoveForward={index < editedAttachments.length - 1}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
           <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
             <button
               className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
@@ -390,11 +292,11 @@ export function Message({
               取消
             </button>
             <button
-              className={`${primaryButton} h-9 rounded-full px-3 text-[14px] font-medium leading-5`}
+              className={`${primaryButton} h-9 rounded-full px-[13px] text-[14px] font-medium leading-5`}
               onClick={save}
               disabled={draft.trim() === "" && !hasEditedModelInput}
             >
-              保存
+              发送
             </button>
           </div>
         </div>
@@ -406,50 +308,55 @@ export function Message({
     const collapsed = overflowing && !expanded;
     return (
       <div className={`${msgBase} user items-end`}>
-        <div
-          className={`max-w-[70%] ${messageBubble}${
-            isMobile ? " select-none [-webkit-touch-callout:none]" : ""
-          }`}
-          onTouchStart={isMobile ? startLongPress : undefined}
-          onTouchEnd={isMobile ? cancelLongPress : undefined}
-          onTouchMove={isMobile ? cancelLongPress : undefined}
-          onTouchCancel={isMobile ? cancelLongPress : undefined}
-          // Android fires contextmenu on long-press — keep the sheet, not the
-          // system menu. (select-none/touch-callout cover iOS selection.)
-          onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
-        >
-          <div className="relative">
-            <div
-              ref={contentRef}
-              className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
-              style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
-            >
-              {message.content}
-            </div>
-            {/* Fade the clipped last line into the bubble background. */}
-            {collapsed && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
-            )}
-          </div>
+        <div className="flex w-full flex-col items-end gap-1">
           {messageAttachments.length > 0 && (
             <MessageAttachments
               attachments={messageAttachments}
               onReadAttachment={onReadAttachment}
+              align="end"
             />
           )}
-          {overflowing && (
-            <button
-              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
+          {message.content !== "" && (
+            <div
+              className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}${
+                isMobile ? " select-none [-webkit-touch-callout:none]" : ""
+              }`}
+              onTouchStart={isMobile ? startLongPress : undefined}
+              onTouchEnd={isMobile ? cancelLongPress : undefined}
+              onTouchMove={isMobile ? cancelLongPress : undefined}
+              onTouchCancel={isMobile ? cancelLongPress : undefined}
+              // Android fires contextmenu on long-press — keep the sheet, not the
+              // system menu. (select-none/touch-callout cover iOS selection.)
+              onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
             >
-              {expanded ? "收起" : "展开"}
-              <Icons.Chevron
-                size={13}
-                className={`transition-transform duration-[160ms]${expanded ? " rotate-180" : ""}`}
-              />
-            </button>
+              <div className="relative">
+                <div
+                  ref={contentRef}
+                  className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
+                  style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
+                >
+                  {message.content}
+                </div>
+                {/* Fade the clipped last line into the bubble background. */}
+                {collapsed && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
+                )}
+              </div>
+              {overflowing && (
+                <button
+                  className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  {expanded ? "收起" : "展开"}
+                  <Icons.Chevron
+                    size={13}
+                    className={`transition-transform duration-[160ms]${expanded ? " rotate-180" : ""}`}
+                  />
+                </button>
+              )}
+            </div>
           )}
         </div>
         {actionBar}
@@ -483,19 +390,61 @@ export function Message({
 function MessageAttachments({
   attachments,
   onReadAttachment,
+  align = "start",
 }: {
   attachments: NonNullable<MessageResponse["attachments"]>;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  align?: "start" | "end";
 }) {
+  const images = attachments.filter((attachment) => attachment.category === "image");
+  const files = attachments.filter((attachment) => attachment.category !== "image");
+  const isEnd = align === "end";
+  const singleImage = images.length === 1 && files.length === 0;
+
   return (
-    <div className="mt-2 flex flex-col gap-1.5" aria-label="附件">
-      {attachments.map((attachment) => (
-        <AttachmentCard
-          key={attachment.id}
-          attachment={attachment}
-          getReadUrl={onReadAttachment}
-        />
-      ))}
+    <div
+      className={`flex w-full max-w-full flex-col gap-1 ${
+        isEnd ? "items-end" : "mt-2 items-start"
+      }`}
+      aria-label="附件"
+    >
+      {images.length > 0 && (
+        <div
+          className={`flex gap-1 ${
+            singleImage
+              ? `w-[70%] flex-col ${isEnd ? "items-end" : "items-start"}`
+              : `max-w-72 flex-row flex-wrap ${isEnd ? "justify-end" : "justify-start"}`
+          }`}
+          data-attachment-group="images"
+          data-image-layout={singleImage ? "single" : "collection"}
+        >
+          {images.map((attachment, index) => (
+            <AttachmentCard
+              key={attachment.id}
+              attachment={attachment}
+              getReadUrl={onReadAttachment}
+              imageLayout={singleImage ? "single" : "collection"}
+              imageCollectionPosition={
+                index === 0 ? "first" : index === images.length - 1 ? "last" : "middle"
+              }
+            />
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div
+          className={`mt-1 flex max-w-[80%] flex-wrap gap-2 ${isEnd ? "justify-end" : "justify-start"}`}
+          data-attachment-group="files"
+        >
+          {files.map((attachment) => (
+            <AttachmentCard
+              key={attachment.id}
+              attachment={attachment}
+              getReadUrl={onReadAttachment}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
