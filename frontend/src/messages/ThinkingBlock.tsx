@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { focusRing } from "../ui/classes";
 import { Icons } from "../ui/icons";
@@ -27,19 +27,20 @@ export function ThinkingBlock({
   // reasoning opens when its streaming phase begins, but later user toggles
   // remain authoritative because content deltas do not retrigger this effect.
   const [open, setOpen] = useState(autoExpandWhileStreaming && streaming);
-  useEffect(() => {
-    if (autoExpandWhileStreaming && streaming) setOpen(true);
+  useLayoutEffect(() => {
+    if (autoExpandWhileStreaming) setOpen(streaming);
   }, [autoExpandWhileStreaming, streaming]);
+  const hasContent = content.trim() !== "";
   const preview = streaming && showStreamingPreview ? reasoningPreview(content) : "";
   const headerText =
     label ?? (streaming ? preview || "正在思考" : "已思考");
 
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"} mb-3.5 py-0.5 text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
+      className={`thinking${open ? "" : " collapsed"}${hasContent ? " mb-3.5 py-0.5" : " h-7"} text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
     >
       <div
-        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail py-0.5 select-none`}
+        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail select-none${hasContent ? " py-0.5" : " h-full"}`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -64,7 +65,7 @@ export function ThinkingBlock({
           className={`shrink-0 text-text-faint transition-transform duration-[160ms]${open ? "" : " -rotate-90"}`}
         />
       </div>
-      {content && (
+      {hasContent && (
         <div
           className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-text-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
         >

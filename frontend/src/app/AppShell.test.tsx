@@ -931,6 +931,7 @@ describe("AppShell", () => {
 
     await screen.findByText("旧答案");
     const region = container.querySelector(".thread-region") as HTMLElement;
+    expect(region.className).toContain("[overflow-anchor:none]");
     let scrollHeight = 1000;
     Object.defineProperty(region, "scrollHeight", {
       get: () => scrollHeight,

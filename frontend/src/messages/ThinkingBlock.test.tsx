@@ -47,6 +47,47 @@ describe("ThinkingBlock", () => {
     expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("keeps an empty streaming status at one-line height", () => {
+    const { container } = render(
+      <ThinkingBlock
+        content={"\n"}
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    const body = container.querySelector(".thinking-body");
+    expect(body).toBeNull();
+    expect(container.querySelector(".thinking")?.className).toContain("h-7");
+  });
+
+  it("auto-collapses raw reasoning when the formal answer starts", () => {
+    const { rerender } = render(
+      <ThinkingBlock
+        content="DeepSeek 思考过程"
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    rerender(
+      <ThinkingBlock
+        content="DeepSeek 思考过程"
+        streaming={false}
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByText("DeepSeek 思考过程")).toHaveClass("hidden");
+  });
+
   it("prefers an explicit label over the reasoning preview", () => {
     render(<ThinkingBlock content="推理内容" streaming label="正在搜索 天气" />);
     // The collapsed body keeps the text in the DOM (hidden), so assert on the

@@ -473,7 +473,7 @@ export function AppShell() {
             both-edges keeps the column centered: a right-only gutter would
             shift it 5px left of the composer's axis. */}
         <div
-          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [scrollbar-gutter:stable_both-edges] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
           ref={threadRef}
         >
           {!showWelcome && (
