@@ -41,13 +41,6 @@ Branch names must start with a change type/scope segment such as `feat/`, `fix/`
 
 Commit messages must follow the Conventional Commits specification, for example `fix(frontend): replace share loading text with icon` or `docs: add git workflow constraints`.
 
-## Subagent Model Policy
-
-When using subagent, choose models by task role:
-- Orchestrator and reviewer subagents must use `gpt-sol` with `high` thinking effort level.
-- Executor and worker subagents must use `gpt-luna` with `max` thinking effort level.
-- Read-only and explore subagents must use `gpt-luna` with `medium` thinking effort level.
-
 ## Development Guidelines
 
 - Before making changes, read the relevant entry points and existing implementation. Do not code from memory. When trade-offs are required, state the key assumptions and their impact.
