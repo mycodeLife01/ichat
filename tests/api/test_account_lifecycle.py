@@ -26,6 +26,7 @@ from app.models.conversation import Conversation
 from app.models.email_outbox import EmailOutbox
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
@@ -882,7 +883,7 @@ async def test_confirm_deletion_cancels_inflight_files_and_removes_only_public_a
             size_bytes=123,
             sha256="a" * 64,
             warnings=[],
-            model_consumable=False,
+            model_input_kind=None,
         )
         attachment = FileAsset(
             user_id=user.id,
@@ -892,7 +893,7 @@ async def test_confirm_deletion_cancels_inflight_files_and_removes_only_public_a
             size_bytes=17,
             sha256="b" * 64,
             warnings=[],
-            model_consumable=True,
+            model_input_kind=FileModelInputKind.DOCUMENT,
             document_text="retained",
             bound_at=now,
         )

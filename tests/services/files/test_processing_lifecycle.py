@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.db.sync_session import create_sync_engine
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
@@ -154,7 +155,7 @@ def test_processing_success_commits_asset_manifest_and_quota_atomically(
         asset = session.get(FileAsset, upload.file_id)
         assert asset is not None
         assert asset.document_text == "document body"
-        assert asset.model_consumable is True
+        assert asset.model_input_kind == FileModelInputKind.DOCUMENT
         assert asset.unbound_expires_at == now + timedelta(seconds=86_400)
         object_rows = session.scalars(
             select(FileObject).where(FileObject.file_id == asset.id)

@@ -93,6 +93,34 @@ def test_app_error_handler_returns_detail_only() -> None:
     assert response.json() == {"detail": "Active run already exists"}
 
 
+def test_app_error_context_cannot_override_detail_or_machine_code() -> None:
+    app = create_app(database_ready_check=ready)
+
+    @app.get("/raises-coded-app-error")
+    async def raises_coded_app_error() -> None:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "Choose a compatible model",
+            code="VISION_MODEL_REQUIRED",
+            context={
+                "detail": "unsafe override",
+                "code": "unsafe_override",
+                "required_model": "vision",
+            },
+        )
+
+    client = TestClient(app)
+
+    response = client.get("/raises-coded-app-error")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json() == {
+        "detail": "Choose a compatible model",
+        "code": "VISION_MODEL_REQUIRED",
+        "required_model": "vision",
+    }
+
+
 def test_unhandled_error_handler_returns_generic_detail() -> None:
     app = create_app(database_ready_check=ready)
 

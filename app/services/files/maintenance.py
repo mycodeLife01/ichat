@@ -10,8 +10,10 @@ from app.core.config import Settings
 from app.models.conversation import Conversation, Message
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
+    FileObjectRole,
     FilePurpose,
     FileQuota,
     FileStorageLocation,
@@ -22,6 +24,7 @@ from app.models.files import (
 from app.models.run import Run
 from app.services.files.lifecycle import retry_available_at, transition_upload
 from app.services.files.protocols import FileStorage
+from app.services.files.storage import StorageIntegrityError, StorageObjectMissing
 from app.services.files.telemetry import observe_file_phase
 
 
@@ -46,21 +49,145 @@ def _enqueue_manifest_deletions(session: Session, upload: FileUpload, now: datet
         key = str(entry.get("object_key") or "")
         if not key:
             continue
-        exists = session.scalar(
-            select(FileObjectDeletion.id).where(
-                FileObjectDeletion.storage_location
-                == FileStorageLocation.CANONICAL_PRIVATE,
-                FileObjectDeletion.object_key == key,
+        location_value = entry.get("storage_location")
+        try:
+            location = (
+                FileStorageLocation(str(location_value))
+                if location_value is not None
+                else FileStorageLocation.CANONICAL_PRIVATE
             )
-        )
-        if exists is None:
-            session.add(
-                FileObjectDeletion(
-                    storage_location=FileStorageLocation.CANONICAL_PRIVATE,
-                    object_key=key,
-                    available_at=now,
+        except ValueError:
+            # Keep old cleanup conservative when a historical manifest is
+            # malformed; the canonical object is the only known location.
+            location = FileStorageLocation.CANONICAL_PRIVATE
+        locations = [location]
+        if entry.get("role") == "preview" and location in {
+            FileStorageLocation.CANONICAL_PRIVATE,
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+        }:
+            locations.append(
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
+            )
+        for current_location in locations:
+            exists = session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == current_location,
+                    FileObjectDeletion.object_key == key,
                 )
             )
+            if exists is None:
+                session.add(
+                    FileObjectDeletion(
+                        storage_location=current_location,
+                        object_key=key,
+                        available_at=now,
+                    )
+                )
+
+
+def backfill_model_previews(
+    session: Session,
+    *,
+    settings: Settings,
+    storage: FileStorage,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Idempotently copy legacy previews and switch their durable location.
+
+    The copy is verified against the immutable ``file_objects`` size/hash
+    before the row is switched.  The old canonical key is then represented by
+    a deletion fact without a ``file_object_id``: the row now points at the
+    preview bucket, so deleting by the old row id would remove the new object
+    metadata when compensation completes.
+    """
+
+    moment = now or datetime.now(UTC)
+    rows = list(
+        session.execute(
+            select(FileAsset, FileObject)
+            .join(FileObject, FileObject.file_id == FileAsset.id)
+            .where(
+                FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+                FileAsset.model_input_kind == FileModelInputKind.IMAGE,
+                FileAsset.deletion_started_at.is_(None),
+                FileObject.role == FileObjectRole.PREVIEW,
+                FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+            )
+            .order_by(FileObject.id)
+            .limit(settings.files_maintenance_batch_size)
+            .with_for_update(skip_locked=True)
+        )
+    )
+    copied = 0
+    switched = 0
+    failed = 0
+    for _file, object_row in rows:
+        if object_row.sha256 is None or object_row.size_bytes <= 0:
+            failed += 1
+            continue
+        try:
+            storage.copy_canonical_to_preview(
+                object_row.object_key,
+                expected_size_bytes=object_row.size_bytes,
+                expected_sha256=object_row.sha256,
+                content_type=object_row.media_type,
+            )
+            copied += 1
+        except (StorageIntegrityError, StorageObjectMissing):
+            failed += 1
+            continue
+        except Exception:
+            # Keep the migration loop bounded and content-free.  A transient
+            # adapter failure is retried on the next maintenance tick.
+            failed += 1
+            continue
+
+        object_row.storage_location = FileStorageLocation.MODEL_PREVIEW_PRIVATE
+        existing = session.scalar(
+            select(FileObjectDeletion.id).where(
+                FileObjectDeletion.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+                FileObjectDeletion.object_key == object_row.object_key,
+                FileObjectDeletion.completed_at.is_(None),
+            )
+        )
+        if existing is None:
+            session.add(
+                FileObjectDeletion(
+                    file_object_id=None,
+                    storage_location=FileStorageLocation.CANONICAL_PRIVATE,
+                    object_key=object_row.object_key,
+                    available_at=moment,
+                )
+            )
+        switched += 1
+
+    session.flush()
+    remaining = int(
+        session.scalar(
+            select(func.count(FileObject.id)).where(
+                FileObject.role == FileObjectRole.PREVIEW,
+                FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+                FileObject.file_id.in_(
+                    select(FileAsset.id).where(
+                        FileAsset.model_input_kind == FileModelInputKind.IMAGE
+                    )
+                ),
+            )
+        )
+        or 0
+    )
+    return {
+        "copied": copied,
+        "switched": switched,
+        "failed": failed,
+        "remaining": remaining,
+    }
+
+
+# Name used by maintenance callers and rollout scripts.
+backfill_preview_objects = backfill_model_previews
 
 
 def sweep_uploads(
@@ -222,21 +349,45 @@ def _begin_asset_deletion(session: Session, file: FileAsset, now: datetime) -> N
     for object_row in session.scalars(
         select(FileObject).where(FileObject.file_id == file.id)
     ):
-        existing = session.scalar(
-            select(FileObjectDeletion.id).where(
-                FileObjectDeletion.storage_location == object_row.storage_location,
-                FileObjectDeletion.object_key == object_row.object_key,
+        locations = [object_row.storage_location]
+        if (
+            file.purpose == FilePurpose.MESSAGE_ATTACHMENT
+            and object_row.role == "preview"
+            and object_row.storage_location
+            in {
+                FileStorageLocation.CANONICAL_PRIVATE,
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+            }
+        ):
+            # During backfill the same deterministic key may exist in either
+            # bucket, or in both between the copy and old-object delete.  A
+            # deletion fact for each location makes that race idempotent.
+            counterpart = (
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if object_row.storage_location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
             )
-        )
-        if existing is None:
-            session.add(
-                FileObjectDeletion(
-                    file_object_id=object_row.id,
-                    storage_location=object_row.storage_location,
-                    object_key=object_row.object_key,
-                    available_at=now,
+            locations.append(counterpart)
+        for location in locations:
+            existing = session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == location,
+                    FileObjectDeletion.object_key == object_row.object_key,
                 )
             )
+            if existing is None:
+                session.add(
+                    FileObjectDeletion(
+                        file_object_id=(
+                            object_row.id
+                            if location == object_row.storage_location
+                            else None
+                        ),
+                        storage_location=location,
+                        object_key=object_row.object_key,
+                        available_at=now,
+                    )
+                )
     if file.purpose == FilePurpose.MESSAGE_ATTACHMENT:
         quota = _locked_quota(session, user_id=file.user_id)
         quota.used_bytes = max(0, quota.used_bytes - file.size_bytes)
@@ -397,6 +548,7 @@ def process_deletions(
     moment = now or datetime.now(UTC)
     locations = storage_locations or {
         FileStorageLocation.CANONICAL_PRIVATE,
+        FileStorageLocation.MODEL_PREVIEW_PRIVATE,
         FileStorageLocation.AVATAR_PUBLIC,
     }
     rows = list(
@@ -425,10 +577,16 @@ def process_deletions(
                 with observe_file_phase("object_delete", deletion_id=row.id):
                     if row.storage_location == FileStorageLocation.CANONICAL_PRIVATE:
                         private_storage.delete_canonical(row.object_key)
+                    elif row.storage_location == FileStorageLocation.MODEL_PREVIEW_PRIVATE:
+                        private_storage.delete_preview(row.object_key)
                     elif delete_public is None:
                         raise RuntimeError("public_delete_unavailable")
                     else:
                         delete_public(row.object_key)
+                row.object_deleted_at = moment
+            except StorageObjectMissing:
+                # Object deletion is idempotent: an already-absent object is
+                # the desired external state and must not block compensation.
                 row.object_deleted_at = moment
             except Exception as exc:  # noqa: BLE001 - persisted compensation boundary
                 errors.append(f"object_delete:{type(exc).__name__}")
@@ -525,6 +683,37 @@ def file_maintenance_snapshot(
             select(func.count(FileObjectDeletion.id)).where(
                 FileObjectDeletion.completed_at.is_(None),
                 FileObjectDeletion.available_at <= moment,
+            )
+        )
+        or 0
+    )
+    values["preview_backfill_remaining"] = int(
+        session.scalar(
+            select(func.count(FileObject.id))
+            .join(FileAsset, FileAsset.id == FileObject.file_id)
+            .where(
+                FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+                FileAsset.model_input_kind == FileModelInputKind.IMAGE,
+                FileObject.role == FileObjectRole.PREVIEW,
+                FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+            )
+        )
+        or 0
+    )
+    values["preview_backfill_failed"] = int(
+        session.scalar(
+            select(func.count(FileObject.id))
+            .join(FileAsset, FileAsset.id == FileObject.file_id)
+            .where(
+                FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+                FileAsset.model_input_kind == FileModelInputKind.IMAGE,
+                FileObject.role == FileObjectRole.PREVIEW,
+                FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+                (
+                    (FileObject.size_bytes <= 0)
+                    | FileObject.sha256.is_(None)
+                    | (func.length(FileObject.sha256) != 64)
+                ),
             )
         )
         or 0

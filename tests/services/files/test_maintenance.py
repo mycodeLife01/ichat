@@ -6,6 +6,7 @@ import os
 import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from uuid import uuid4
 
 import pytest
@@ -17,6 +18,7 @@ from app.db.sync_session import create_sync_engine
 from app.models.conversation import Conversation, Message
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
@@ -30,6 +32,8 @@ from app.models.files import (
 from app.models.user import User
 from app.services.files.avatar import sweep_avatar_uploads
 from app.services.files.maintenance import (
+    backfill_model_previews,
+    file_maintenance_snapshot,
     process_deletions,
     purge_deleted_conversations,
     quota_reconciliation_user_ids,
@@ -37,7 +41,7 @@ from app.services.files.maintenance import (
     reconcile_quota,
     sweep_uploads,
 )
-from app.services.files.storage import FakeFileStorage
+from app.services.files.storage import FakeFileStorage, StorageObjectMissing
 
 TEST_DATABASE_URL = os.environ.get(
     "FILE_MAINTENANCE_TEST_DATABASE_URL",
@@ -118,7 +122,7 @@ def _asset_with_original(
         size_bytes=11,
         sha256="f" * 64,
         document_text="report body",
-        model_consumable=True,
+        model_input_kind=FileModelInputKind.DOCUMENT,
         unbound_expires_at=unbound_expires_at,
         detached_at=detached_at,
     )
@@ -136,6 +140,286 @@ def _asset_with_original(
         )
     )
     return asset
+
+
+def _asset_with_image_preview(
+    session: Session,
+    user: User,
+    *,
+    key: str,
+    content: bytes = b"preview bytes",
+    storage_location: FileStorageLocation = FileStorageLocation.CANONICAL_PRIVATE,
+    size_bytes: int | None = None,
+    object_sha256: str | None = None,
+    unbound_expires_at: datetime | None = None,
+) -> tuple[FileAsset, FileObject]:
+    digest = sha256(content).hexdigest()
+    asset = FileAsset(
+        user_id=user.id,
+        purpose=FilePurpose.MESSAGE_ATTACHMENT,
+        original_filename="photo.png",
+        media_type="image/png",
+        size_bytes=len(content),
+        sha256=digest,
+        model_input_kind=FileModelInputKind.IMAGE,
+        unbound_expires_at=unbound_expires_at,
+    )
+    session.add(asset)
+    session.flush()
+    object_row = FileObject(
+        file_id=asset.id,
+        role=FileObjectRole.PREVIEW,
+        storage_location=storage_location,
+        object_key=key,
+        media_type="image/webp",
+        size_bytes=len(content) if size_bytes is None else size_bytes,
+        sha256=digest if object_sha256 is None else object_sha256,
+    )
+    session.add(object_row)
+    session.flush()
+    return asset, object_row
+
+
+def test_backfill_copies_verifies_switches_and_compensates_old_canonical_preview(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    content = b"legacy image preview"
+    key = f"file-maintenance-test/preview/{uuid4().hex}"
+    with session_factory() as session:
+        user = _user(session)
+        _asset, object_row = _asset_with_image_preview(session, user, key=key, content=content)
+        storage.put_canonical(key, content=content, content_type="image/webp")
+        session.commit()
+
+        result = backfill_model_previews(
+            session,
+            settings=file_settings,
+            storage=storage,
+            now=now,
+        )
+        session.commit()
+
+        assert result == {"copied": 1, "switched": 1, "failed": 0, "remaining": 0}
+        switched = session.get(FileObject, object_row.id)
+        assert switched is not None
+        assert switched.storage_location == FileStorageLocation.MODEL_PREVIEW_PRIVATE
+        assert storage.model_preview[key].content == content
+        deletion = session.scalar(
+            select(FileObjectDeletion).where(
+                FileObjectDeletion.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+                FileObjectDeletion.object_key == key,
+            )
+        )
+        assert deletion is not None
+        assert deletion.file_object_id is None
+        assert deletion.completed_at is None
+
+        completed = process_deletions(
+            session,
+            settings=file_settings,
+            private_storage=storage,
+            storage_locations={FileStorageLocation.CANONICAL_PRIVATE},
+            now=now,
+        )
+        session.commit()
+
+        assert completed >= 1
+        assert key not in storage.canonical
+        refreshed_deletion = session.get(FileObjectDeletion, deletion.id)
+        assert refreshed_deletion is not None and refreshed_deletion.completed_at == now
+        assert session.get(FileObject, object_row.id) is not None
+
+
+def test_backfill_accepts_existing_verified_target_and_is_idempotent(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    content = b"already copied image"
+    key = f"file-maintenance-test/preview/{uuid4().hex}"
+    with session_factory() as session:
+        user = _user(session)
+        _asset, _object_row = _asset_with_image_preview(session, user, key=key, content=content)
+        storage.put_canonical(key, content=content, content_type="image/webp")
+        storage.put_preview(key, content=content, content_type="image/webp")
+        session.commit()
+
+        first = backfill_model_previews(
+            session,
+            settings=file_settings,
+            storage=storage,
+            now=now,
+        )
+        session.commit()
+        second = backfill_model_previews(
+            session,
+            settings=file_settings,
+            storage=storage,
+            now=now,
+        )
+        session.commit()
+
+        assert first == {"copied": 1, "switched": 1, "failed": 0, "remaining": 0}
+        assert second == {"copied": 0, "switched": 0, "failed": 0, "remaining": 0}
+        assert storage.model_preview[key].content == content
+        assert session.scalar(
+            select(func.count(FileObjectDeletion.id)).where(
+                FileObjectDeletion.object_key == key,
+                FileObjectDeletion.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+            )
+        ) == 1
+
+
+def test_preview_backfill_stats_report_remaining_and_invalid_rows(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    with session_factory() as session:
+        user = _user(session)
+        mismatch_key = f"file-maintenance-test/preview/{uuid4().hex}"
+        invalid_key = f"file-maintenance-test/preview/{uuid4().hex}"
+        _asset, mismatch_object = _asset_with_image_preview(session, user, key=mismatch_key)
+        _asset_with_image_preview(
+            session,
+            user,
+            key=invalid_key,
+            size_bytes=0,
+            object_sha256="invalid",
+        )
+        storage.put_canonical(mismatch_key, content=b"tampered", content_type="image/webp")
+        session.commit()
+
+        before = file_maintenance_snapshot(session, settings=file_settings, now=now)
+        result = backfill_model_previews(
+            session,
+            settings=file_settings,
+            storage=storage,
+            now=now,
+        )
+        session.commit()
+        after = file_maintenance_snapshot(session, settings=file_settings, now=now)
+
+        assert before["preview_backfill_remaining"] == 2
+        assert before["preview_backfill_failed"] == 1
+        assert result == {"copied": 0, "switched": 0, "failed": 2, "remaining": 2}
+        assert after["preview_backfill_remaining"] == 2
+        assert after["preview_backfill_failed"] == 1
+        mismatch_after = session.get(FileObject, mismatch_object.id)
+        assert mismatch_after is not None
+        assert mismatch_after.storage_location == FileStorageLocation.CANONICAL_PRIVATE
+
+
+@pytest.mark.parametrize(
+    "storage_location",
+    [FileStorageLocation.CANONICAL_PRIVATE, FileStorageLocation.MODEL_PREVIEW_PRIVATE],
+)
+def test_reclaim_image_asset_enqueues_both_migration_preview_locations(
+    session_factory: sessionmaker[Session],
+    file_settings: Settings,
+    storage_location: FileStorageLocation,
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    content = b"preview exists in both locations"
+    key = f"file-maintenance-test/preview/{uuid4().hex}"
+    with session_factory() as session:
+        user = _user(session)
+        asset, object_row = _asset_with_image_preview(
+            session,
+            user,
+            key=key,
+            content=content,
+            storage_location=storage_location,
+            unbound_expires_at=now,
+        )
+        storage.put_canonical(key, content=content, content_type="image/webp")
+        storage.put_preview(key, content=content, content_type="image/webp")
+        session.commit()
+
+        assert reclaim_assets(session, settings=file_settings, now=now) == 1
+        session.commit()
+        deletions = list(
+            session.scalars(
+                select(FileObjectDeletion)
+                .where(FileObjectDeletion.object_key == key)
+                .order_by(FileObjectDeletion.storage_location)
+            )
+        )
+        assert {item.storage_location for item in deletions} == {
+            FileStorageLocation.CANONICAL_PRIVATE,
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+        }
+        by_location = {item.storage_location: item for item in deletions}
+        assert by_location[storage_location].file_object_id == object_row.id
+        counterpart = (
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE
+            if storage_location == FileStorageLocation.CANONICAL_PRIVATE
+            else FileStorageLocation.CANONICAL_PRIVATE
+        )
+        assert by_location[counterpart].file_object_id is None
+
+        completed = process_deletions(
+            session,
+            settings=file_settings,
+            private_storage=storage,
+            storage_locations={
+                FileStorageLocation.CANONICAL_PRIVATE,
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+            },
+            now=now,
+        )
+        session.commit()
+
+        assert completed >= 2
+        assert key not in storage.canonical
+        assert key not in storage.model_preview
+        assert session.get(FileAsset, asset.id) is None
+        assert session.get(FileObject, object_row.id) is None
+        assert all(item.completed_at == now for item in deletions)
+
+
+class _DeleteMissing(FakeFileStorage):
+    def delete_canonical(self, object_key: str) -> None:
+        raise StorageObjectMissing
+
+
+def test_private_deletion_treats_missing_object_as_completed(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = _DeleteMissing()
+    key = f"file-maintenance-test/missing/{uuid4().hex}"
+    with session_factory() as session:
+        user = _user(session)
+        asset = _asset_with_original(session, user, key=key, now=now, unbound_expires_at=now)
+        session.commit()
+
+        assert reclaim_assets(session, settings=file_settings, now=now) == 1
+        session.commit()
+        deletion = session.scalar(
+            select(FileObjectDeletion).where(FileObjectDeletion.object_key == key)
+        )
+        assert deletion is not None
+
+        completed = process_deletions(
+            session,
+            settings=file_settings,
+            private_storage=storage,
+            storage_locations={FileStorageLocation.CANONICAL_PRIVATE},
+            now=now,
+        )
+        session.commit()
+
+        assert completed >= 1
+        refreshed = session.get(FileObjectDeletion, deletion.id)
+        assert refreshed is not None
+        assert refreshed.completed_at == now
+        assert refreshed.attempt_count == 1
+        assert refreshed.error_summary is None
+        assert session.get(FileAsset, asset.id) is None
 
 
 def test_pending_ttl_releases_reservation_without_extending_on_reads(

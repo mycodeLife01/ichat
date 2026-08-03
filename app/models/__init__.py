@@ -4,6 +4,7 @@ from app.models.conversation import Conversation, Message, ShareLink
 from app.models.email_outbox import EmailOutbox
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
@@ -25,6 +26,7 @@ __all__ = [
     "ConversationTitleJob",
     "EmailOutbox",
     "FileAsset",
+    "FileModelInputKind",
     "FileObject",
     "FileObjectDeletion",
     "FileObjectRole",

@@ -16,7 +16,7 @@ from app.agent.messages import DocumentBlock
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
-from app.models.files import FileAsset, FilePurpose, MessageAttachment
+from app.models.files import FileAsset, FileModelInputKind, FilePurpose, MessageAttachment
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
 from app.services.conversations.service import (
@@ -111,7 +111,7 @@ async def _asset(
         size_bytes=size_bytes,
         sha256="a" * 64,
         document_text=text,
-        model_consumable=text is not None,
+        model_input_kind=FileModelInputKind.DOCUMENT if text is not None else None,
         extractor_version="files-v1" if text is not None else None,
         summary_metadata={"pages": 1} if text is not None else None,
         unbound_expires_at=now + timedelta(days=1),
@@ -196,7 +196,7 @@ async def test_inactive_owner_cannot_bind_a_ready_attachment(
 async def test_document_only_turn_is_snapshotted_and_history_never_needs_file_storage(
     session_factory: async_sessionmaker[AsyncSession], file_settings: Settings
 ) -> None:
-    now = datetime(2026, 8, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
     async with session_factory() as session:
         user = await _user(session, "snapshot")
         conversation = await _conversation(session, user)
@@ -248,7 +248,7 @@ async def test_document_only_turn_is_snapshotted_and_history_never_needs_file_st
 async def test_display_only_image_requires_text_and_becomes_a_notice_when_sent(
     session_factory: async_sessionmaker[AsyncSession], file_settings: Settings
 ) -> None:
-    now = datetime(2026, 8, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
     async with session_factory() as session:
         user = await _user(session, "image")
         conversation = await _conversation(session, user)
@@ -273,7 +273,7 @@ async def test_display_only_image_requires_text_and_becomes_a_notice_when_sent(
                 settings=file_settings,
                 count_tokens=len,
             )
-        assert exc_info.value.detail == "Enter a message or attach a readable document"
+        assert exc_info.value.detail == "Enter a message or attach a readable file"
 
         result = await submit_user_message(
             session,
@@ -303,7 +303,7 @@ async def test_display_only_image_requires_text_and_becomes_a_notice_when_sent(
 async def test_target_turn_budget_rejection_does_not_bind_or_create_a_run(
     session_factory: async_sessionmaker[AsyncSession], file_settings: Settings
 ) -> None:
-    now = datetime(2026, 8, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
     tiny_budget = file_settings.model_copy(
         update={"attachment_target_turn_tokens": 4, "context_budget_tokens": 8}
     )
@@ -338,7 +338,7 @@ async def test_target_turn_budget_rejection_does_not_bind_or_create_a_run(
 async def test_edit_inherits_then_explicit_empty_detaches_and_regenerate_reuses_input(
     session_factory: async_sessionmaker[AsyncSession], file_settings: Settings
 ) -> None:
-    now = datetime(2026, 8, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
     async with session_factory() as session:
         user = await _user(session, "revisions")
         conversation = await _conversation(session, user)

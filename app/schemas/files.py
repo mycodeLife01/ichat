@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 FileCategory = Literal["image", "pdf", "office", "text"]
+FileModelInputKindValue = Literal["document", "image"]
 FileUploadStatusValue = Literal[
     "pending",
     "queued",
@@ -42,7 +43,7 @@ class FileAssetResponse(BaseModel):
     media_type: str
     size_bytes: int
     category: FileCategory
-    model_consumable: bool
+    model_input_kind: FileModelInputKindValue | None = None
     warnings: list[str] = Field(default_factory=list)
     preview_available: bool = False
     unbound_expires_at: datetime | None = None
@@ -68,6 +69,10 @@ class FileUploadStatusRequest(BaseModel):
         return value
 
 
+class CancelFileUploadsRequest(FileUploadStatusRequest):
+    """Cancel a draft upload set atomically."""
+
+
 class FileReadUrlRequest(BaseModel):
     role: Literal["preview", "download"]
 
@@ -83,7 +88,7 @@ class MessageAttachmentResponse(BaseModel):
     media_type: str
     size_bytes: int
     category: FileCategory
-    model_consumable: bool
+    model_input_kind: FileModelInputKindValue | None = None
     warnings: list[str] = Field(default_factory=list)
     preview_available: bool = False
     position: int

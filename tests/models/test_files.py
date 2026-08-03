@@ -39,6 +39,7 @@ def test_file_domain_uses_fixed_vocabulary() -> None:
     }
     assert {location.value for location in FileStorageLocation} == {
         "canonical_private",
+        "model_preview_private",
         "avatar_public",
     }
 

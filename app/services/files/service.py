@@ -19,6 +19,7 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectRole,
     FilePurpose,
@@ -32,6 +33,7 @@ from app.models.user import User
 from app.schemas.files import (
     CreateFileUploadResponse,
     FileAssetResponse,
+    FileModelInputKindValue,
     FileReadUrlResponse,
     FileUploadResponse,
     MessageAttachmentResponse,
@@ -365,47 +367,101 @@ async def cancel_upload(
     upload_id: UUID,
     now: datetime | None = None,
 ) -> FileUploadResponse:
+    return (await cancel_uploads(session, user=user, upload_ids=[upload_id], now=now))[0]
+
+
+async def cancel_uploads(
+    session: AsyncSession,
+    *,
+    user: User,
+    upload_ids: list[UUID],
+    now: datetime | None = None,
+) -> list[FileUploadResponse]:
+    """Cancel one draft set in a single transaction.
+
+    Every upload and succeeded asset is locked and validated before any state
+    changes are made. This prevents a failed multi-image model switch from
+    cancelling only part of the recoverable draft.
+    """
+
     moment = now or datetime.now(UTC)
-    upload = await session.scalar(
-        select(FileUpload)
-        .where(FileUpload.public_id == upload_id, FileUpload.user_id == user.id)
-        .with_for_update()
-    )
-    if upload is None:
-        raise AppError(status.HTTP_404_NOT_FOUND, UPLOAD_NOT_FOUND)
-    if upload.status == FileUploadStatus.CANCELLED:
-        return await upload_response(session, upload)
-    if upload.status == FileUploadStatus.SUCCEEDED:
-        file = (
-            await session.scalar(
-                select(FileAsset).where(FileAsset.id == upload.file_id).with_for_update()
+    uploads = list(
+        (
+            await session.scalars(
+                select(FileUpload)
+                .where(
+                    FileUpload.public_id.in_(upload_ids),
+                    FileUpload.user_id == user.id,
+                )
+                .order_by(FileUpload.id)
+                .with_for_update()
             )
-            if upload.file_id is not None
-            else None
+        ).all()
+    )
+    by_public_id = {upload.public_id: upload for upload in uploads}
+    if len(by_public_id) != len(upload_ids):
+        raise AppError(status.HTTP_404_NOT_FOUND, UPLOAD_NOT_FOUND)
+
+    ordered_uploads = [by_public_id[upload_id] for upload_id in upload_ids]
+    succeeded_file_ids = sorted(
+        {
+            upload.file_id
+            for upload in ordered_uploads
+            if upload.status == FileUploadStatus.SUCCEEDED and upload.file_id is not None
+        }
+    )
+    files = (
+        list(
+            (
+                await session.scalars(
+                    select(FileAsset)
+                    .where(FileAsset.id.in_(succeeded_file_ids))
+                    .order_by(FileAsset.id)
+                    .with_for_update()
+                )
+            ).all()
         )
+        if succeeded_file_ids
+        else []
+    )
+    files_by_id = {file.id: file for file in files}
+
+    # Validate the complete set before mutating an upload, asset, quota, or
+    # deletion-compensation row.
+    for upload in ordered_uploads:
+        if upload.status != FileUploadStatus.SUCCEEDED or upload.file_id is None:
+            continue
+        file = files_by_id.get(upload.file_id)
         if file is not None and file.bound_at is not None:
             raise AppError(status.HTTP_409_CONFLICT, "A bound attachment cannot be cancelled")
-        if file is not None and file.deletion_started_at is None:
-            await begin_file_deletion(session, file=file, now=moment)
-        await session.commit()
-        return await upload_response(session, upload)
-    if upload.status in {
-        FileUploadStatus.REJECTED,
-        FileUploadStatus.FAILED,
-        FileUploadStatus.EXPIRED,
-    }:
-        return await upload_response(session, upload)
 
-    quota = await _locked_quota(session, user_id=user.id)
-    quota.reserved_bytes = max(0, quota.reserved_bytes - upload.declared_size_bytes)
-    transition_upload(
-        upload,
-        FileUploadStatus.CANCELLED,
-        now=moment,
-        error_code="upload_cancelled",
-    )
+    active_uploads = [
+        upload for upload in ordered_uploads if upload.status in ACTIVE_UPLOAD_STATUSES
+    ]
+    if active_uploads:
+        quota = await _locked_quota(session, user_id=user.id)
+        quota.reserved_bytes = max(
+            0,
+            quota.reserved_bytes
+            - sum(upload.declared_size_bytes for upload in active_uploads),
+        )
+
+    for upload in ordered_uploads:
+        if upload.status == FileUploadStatus.SUCCEEDED:
+            file = files_by_id.get(upload.file_id) if upload.file_id is not None else None
+            if file is not None and file.deletion_started_at is None:
+                await begin_file_deletion(session, file=file, now=moment)
+            continue
+        if upload.status in ACTIVE_UPLOAD_STATUSES:
+            transition_upload(
+                upload,
+                FileUploadStatus.CANCELLED,
+                now=moment,
+                error_code="upload_cancelled",
+            )
+
     await session.commit()
-    return await upload_response(session, upload)
+    return [await upload_response(session, upload) for upload in ordered_uploads]
 
 
 async def upload_response(
@@ -439,7 +495,7 @@ async def asset_response(session: AsyncSession, file: FileAsset) -> FileAssetRes
         media_type=file.media_type,
         size_bytes=file.size_bytes,
         category=file_category(file),
-        model_consumable=file.model_consumable,
+        model_input_kind=_model_input_kind_value(file.model_input_kind),
         warnings=list(file.warnings or []),
         preview_available=preview is not None,
         unbound_expires_at=file.unbound_expires_at if file.bound_at is None else None,
@@ -453,6 +509,16 @@ async def asset_response(session: AsyncSession, file: FileAsset) -> FileAssetRes
 
 def file_category(file: FileAsset) -> Literal["image", "pdf", "office", "text"]:
     return file_category_values(file.original_filename, file.media_type)
+
+
+def _model_input_kind_value(
+    kind: FileModelInputKind | None,
+) -> FileModelInputKindValue | None:
+    if kind == FileModelInputKind.DOCUMENT:
+        return "document"
+    if kind == FileModelInputKind.IMAGE:
+        return "image"
+    return None
 
 
 def file_category_values(
@@ -506,7 +572,11 @@ async def attachment_responses(
                 media_type=media_type,
                 size_bytes=attachment.size_bytes,
                 category=file_category_values(name, media_type),
-                model_consumable=file.model_consumable if file is not None else False,
+                model_input_kind=(
+                    _model_input_kind_value(file.model_input_kind)
+                    if file is not None
+                    else None
+                ),
                 warnings=list(attachment.warnings or []),
                 preview_available=preview_available,
                 position=attachment.position,
@@ -523,6 +593,7 @@ async def issue_read_url(
     file_public_id: UUID,
     role: str,
     settings: Settings,
+    preview_storage: FileStorage | None = None,
     now: datetime | None = None,
 ) -> FileReadUrlResponse:
     moment = now or datetime.now(UTC)
@@ -563,27 +634,58 @@ async def issue_read_url(
             raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
 
     object_role = FileObjectRole.PREVIEW if role == "preview" else FileObjectRole.ORIGINAL
-    object_row = await session.scalar(
-        select(FileObject).where(
-            FileObject.file_id == file.id,
-            FileObject.role == object_role,
-            FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
-        )
+    object_query = select(FileObject).where(
+        FileObject.file_id == file.id,
+        FileObject.role == object_role,
     )
+    if role == "download":
+        object_query = object_query.where(
+            FileObject.storage_location == FileStorageLocation.CANONICAL_PRIVATE
+        )
+    else:
+        # During the bounded migration window old rows remain readable from
+        # canonical while new rows point at the isolated preview location.
+        object_query = object_query.where(
+            FileObject.storage_location.in_(
+                [
+                    FileStorageLocation.CANONICAL_PRIVATE,
+                    FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+                ]
+            )
+        )
+    object_row = await session.scalar(object_query)
     if object_row is None:
         raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
-    expires_at = moment + timedelta(seconds=settings.files_download_ttl_seconds)
+    ttl_seconds = (
+        getattr(settings, "files_preview_api_ttl_seconds", settings.files_download_ttl_seconds)
+        if role == "preview"
+        else settings.files_download_ttl_seconds
+    )
     try:
-        signed = await asyncio.to_thread(
-            storage.presign_download,
-            object_row.object_key,
-            ttl_seconds=settings.files_download_ttl_seconds,
-            disposition="inline" if role == "preview" else "attachment",
-            filename=file.original_filename,
-        )
+        if role == "preview":
+            signer = (
+                storage
+                if object_row.storage_location == FileStorageLocation.CANONICAL_PRIVATE
+                else preview_storage or storage
+            )
+            signed = await asyncio.to_thread(
+                signer.presign_preview,
+                object_row.object_key,
+                ttl_seconds=ttl_seconds,
+                filename=file.original_filename,
+                storage_location=object_row.storage_location,
+            )
+        else:
+            signed = await asyncio.to_thread(
+                storage.presign_download,
+                object_row.object_key,
+                ttl_seconds=ttl_seconds,
+                disposition="attachment",
+                filename=file.original_filename,
+            )
     except Exception:
         raise AppError(status.HTTP_503_SERVICE_UNAVAILABLE, UPLOAD_UNAVAILABLE) from None
-    return FileReadUrlResponse(url=signed.url, expires_at=expires_at)
+    return FileReadUrlResponse(url=signed.url, expires_at=moment + timedelta(seconds=ttl_seconds))
 
 
 async def begin_file_deletion(
@@ -605,14 +707,41 @@ async def begin_file_deletion(
         ).all()
     )
     for object_row in objects:
-        session.add(
-            FileObjectDeletion(
-                file_object_id=object_row.id,
-                storage_location=object_row.storage_location,
-                object_key=object_row.object_key,
-                available_at=now,
+        locations = [object_row.storage_location]
+        if (
+            file.purpose == FilePurpose.MESSAGE_ATTACHMENT
+            and object_row.role == FileObjectRole.PREVIEW
+            and object_row.storage_location
+            in {
+                FileStorageLocation.CANONICAL_PRIVATE,
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+            }
+        ):
+            locations.append(
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if object_row.storage_location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
             )
-        )
+        for location in locations:
+            existing = await session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == location,
+                    FileObjectDeletion.object_key == object_row.object_key,
+                )
+            )
+            if existing is None:
+                session.add(
+                    FileObjectDeletion(
+                        file_object_id=(
+                            object_row.id
+                            if location == object_row.storage_location
+                            else None
+                        ),
+                        storage_location=location,
+                        object_key=object_row.object_key,
+                        available_at=now,
+                    )
+                )
     if file.purpose == FilePurpose.MESSAGE_ATTACHMENT:
         quota = await _locked_quota(session, user_id=file.user_id)
         quota.used_bytes = max(0, quota.used_bytes - file.size_bytes)

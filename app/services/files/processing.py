@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import Settings
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
@@ -133,11 +134,18 @@ def process_upload(
             )
         with observe_file_phase("r2_write", upload_id=str(public_id)):
             for derivative, entry in zip(processed.derivatives, manifest, strict=True):
-                storage.put_canonical(
-                    str(entry["object_key"]),
-                    content=derivative.content,
-                    content_type=derivative.content_type,
-                )
+                if _manifest_location(entry) == FileStorageLocation.MODEL_PREVIEW_PRIVATE:
+                    storage.put_preview(
+                        str(entry["object_key"]),
+                        content=derivative.content,
+                        content_type=derivative.content_type,
+                    )
+                else:
+                    storage.put_canonical(
+                        str(entry["object_key"]),
+                        content=derivative.content,
+                        content_type=derivative.content_type,
+                    )
     except FileProcessingError as exc:
         return _finish_error(
             factory,
@@ -195,6 +203,11 @@ def _build_manifest(processed: ProcessedFile) -> list[dict[str, Any]]:
             "media_type": derivative.content_type,
             "size_bytes": derivative.size_bytes,
             "sha256": derivative.sha256_hex,
+            "storage_location": (
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE.value
+                if derivative.role == "preview"
+                else FileStorageLocation.CANONICAL_PRIVATE.value
+            ),
         }
         for derivative in processed.derivatives
     ]
@@ -331,7 +344,21 @@ def _commit_success(
             warnings=list(processed.warnings),
             extractor_version=processed.extractor_version,
             summary_metadata=dict(processed.metadata),
-            model_consumable=processed.kind == "document",
+            model_input_kind=(
+                FileModelInputKind.DOCUMENT
+                if processed.kind == "document"
+                and extracted is not None
+                and bool(extracted.content.strip())
+                else (
+                    FileModelInputKind.IMAGE
+                    if (
+                        processed.kind == "display_only"
+                        and processed.preview is not None
+                        and bool(processed.preview.content)
+                    )
+                    else None
+                )
+            ),
             document_text=(
                 extracted.content.decode("utf-8") if extracted is not None else None
             ),
@@ -344,7 +371,7 @@ def _commit_success(
                 FileObject(
                     file_id=file.id,
                     role=_object_role(str(entry["role"])),
-                    storage_location=FileStorageLocation.CANONICAL_PRIVATE,
+                    storage_location=_manifest_location(entry),
                     object_key=str(entry["object_key"]),
                     media_type=str(entry["media_type"]),
                     size_bytes=int(entry["size_bytes"]),
@@ -368,6 +395,18 @@ def _object_role(role: str) -> FileObjectRole:
     }[role]
 
 
+def _manifest_location(entry: dict[str, Any]) -> FileStorageLocation:
+    """Return a manifest location, retaining canonical compatibility for old rows."""
+
+    value = entry.get("storage_location")
+    if value is None:
+        return FileStorageLocation.CANONICAL_PRIVATE
+    try:
+        return FileStorageLocation(str(value))
+    except ValueError as exc:
+        raise FileProcessingError("manifest_conflict") from exc
+
+
 def _enqueue_manifest_deletions(
     session: Session,
     *,
@@ -378,18 +417,29 @@ def _enqueue_manifest_deletions(
         key = str(entry.get("object_key") or "")
         if not key:
             continue
-        existing = session.scalar(
-            select(FileObjectDeletion.id).where(
-                FileObjectDeletion.storage_location
-                == FileStorageLocation.CANONICAL_PRIVATE,
-                FileObjectDeletion.object_key == key,
+        location = _manifest_location(entry)
+        locations = [location]
+        if entry.get("role") == "preview" and location in {
+            FileStorageLocation.CANONICAL_PRIVATE,
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+        }:
+            locations.append(
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
             )
-        )
-        if existing is None:
-            session.add(
-                FileObjectDeletion(
-                    storage_location=FileStorageLocation.CANONICAL_PRIVATE,
-                    object_key=key,
-                    available_at=now,
+        for current_location in locations:
+            existing = session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == current_location,
+                    FileObjectDeletion.object_key == key,
                 )
             )
+            if existing is None:
+                session.add(
+                    FileObjectDeletion(
+                        storage_location=current_location,
+                        object_key=key,
+                        available_at=now,
+                    )
+                )

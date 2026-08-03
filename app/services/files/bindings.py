@@ -13,6 +13,7 @@ from app.agent.messages import (
     AttachmentNoticeBlock,
     ContentBlock,
     DocumentBlock,
+    ImageBlock,
     TextBlock,
 )
 from app.agent.messages import (
@@ -21,15 +22,24 @@ from app.agent.messages import (
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.models.conversation import Message
-from app.models.files import FileAsset, FilePurpose, MessageAttachment
+from app.models.files import (
+    FileAsset,
+    FileModelInputKind,
+    FileObject,
+    FileObjectRole,
+    FilePurpose,
+    MessageAttachment,
+)
 from app.models.user import User
 from app.services.agents.context import estimate_message_tokens
 
 ATTACHMENT_INVALID = "One or more attachments are unavailable"
 ATTACHMENT_LIMIT = "A message can include at most five attachments"
 ATTACHMENT_SIZE_LIMIT = "Attachments exceed the per-message size limit"
-EMPTY_MODEL_INPUT = "Enter a message or attach a readable document"
+EMPTY_MODEL_INPUT = "Enter a message or attach a readable file"
 TARGET_TURN_TOO_LARGE = "Attachments exceed the model context budget"
+IMAGE_INPUT_NOT_SUPPORTED = "The selected model does not support image input"
+IMAGE_INPUT_NOT_SUPPORTED_CODE = "IMAGE_INPUT_NOT_SUPPORTED"
 
 
 @dataclass(frozen=True)
@@ -64,6 +74,9 @@ async def prepare_attachment_plan(
     allowed_bound_file_ids: set[int] | None,
     settings: Settings,
     count_tokens: Callable[[str], int],
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
+    legacy_notice_file_ids: set[int] | None = None,
     now: datetime | None = None,
 ) -> AttachmentPlan:
     moment = now or datetime.now(UTC)
@@ -102,14 +115,26 @@ async def prepare_attachment_plan(
             raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
     if sum(file.size_bytes for file in files) > settings.files_max_message_bytes:
         raise AppError(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, ATTACHMENT_SIZE_LIMIT)
-    if not content.strip() and not any(file.model_consumable for file in files):
-        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, EMPTY_MODEL_INPUT)
+    preview_by_file_id: dict[int, FileObject] = {}
+    image_files = [file for file in files if file.model_input_kind == FileModelInputKind.IMAGE]
+    if image_files:
+        preview_rows = list(
+            (
+                await session.scalars(
+                    select(FileObject).where(
+                        FileObject.file_id.in_([file.id for file in image_files]),
+                        FileObject.role == FileObjectRole.PREVIEW,
+                    )
+                )
+            ).all()
+        )
+        preview_by_file_id = {row.file_id: row for row in preview_rows}
 
     blocks: list[ContentBlock] = []
     if content:
         blocks.append(TextBlock(content))
     for file in files:
-        if file.model_consumable:
+        if file.model_input_kind == FileModelInputKind.DOCUMENT:
             if file.document_text is None or not file.document_text:
                 raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
             blocks.append(
@@ -124,7 +149,59 @@ async def prepare_attachment_plan(
                     summary=dict(file.summary_metadata or {}),
                 )
             )
-        else:
+        elif file.model_input_kind == FileModelInputKind.IMAGE:
+            if not file.media_type.casefold().startswith("image/"):
+                raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
+            if supports_image_input is False and file.id not in (legacy_notice_file_ids or set()):
+                raise AppError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    IMAGE_INPUT_NOT_SUPPORTED,
+                    code=IMAGE_INPUT_NOT_SUPPORTED_CODE,
+                )
+            if supports_image_input is True:
+                preview = preview_by_file_id.get(file.id)
+                summary = file.summary_metadata or {}
+                width = summary.get("width")
+                height = summary.get("height")
+                if (
+                    preview is None
+                    or preview.sha256 is None
+                    or len(preview.sha256) != 64
+                    or preview.media_type != "image/webp"
+                    or not isinstance(width, int)
+                    or isinstance(width, bool)
+                    or width <= 0
+                    or not isinstance(height, int)
+                    or isinstance(height, bool)
+                    or height <= 0
+                    or file.extractor_version != "image-v1"
+                ):
+                    raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
+                blocks.append(
+                    ImageBlock(
+                        file_id=str(file.public_id),
+                        filename=file.original_filename,
+                        media_type=preview.media_type,
+                        sha256=preview.sha256,
+                        width=width,
+                        height=height,
+                        processor_version=file.extractor_version,
+                        warnings=tuple(file.warnings or []),
+                    )
+                )
+            else:
+                blocks.append(
+                    AttachmentNoticeBlock(
+                        file_id=str(file.public_id),
+                        filename=file.original_filename,
+                        media_type=file.media_type,
+                    )
+                )
+        elif file.model_input_kind is None:
+            if supports_image_input is True and file.media_type.casefold().startswith("image/"):
+                # A visual model must never silently receive a notice for an
+                # image whose safe model representation is missing.
+                raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
             blocks.append(
                 AttachmentNoticeBlock(
                     file_id=str(file.public_id),
@@ -132,12 +209,22 @@ async def prepare_attachment_plan(
                     media_type=file.media_type,
                 )
             )
+        else:
+            raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
+    if not content.strip() and not any(
+        isinstance(block, DocumentBlock | ImageBlock) for block in blocks
+    ):
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, EMPTY_MODEL_INPUT)
     message = AgentMessage(role="user", blocks=blocks)
     target_limit = min(
         settings.attachment_target_turn_tokens,
         settings.context_budget_tokens // 2,
     )
-    if estimate_message_tokens(message, count_tokens=count_tokens) > target_limit:
+    if estimate_message_tokens(
+        message,
+        count_tokens=count_tokens,
+        image_token_reserve=image_token_reserve or 0,
+    ) > target_limit:
         raise AppError(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, TARGET_TURN_TOO_LARGE)
     return AttachmentPlan(files=tuple(files), blocks=tuple(blocks))
 

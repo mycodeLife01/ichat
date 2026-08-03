@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import Settings, get_settings
+from app.agent import ImageInputResolver
+from app.core.config import Settings, get_settings, validate_worker_vision_settings
 from app.core.logging import configure_logging, logger
 from app.db.session import get_session_factory
 from app.schemas.runs import RunEventResponse
@@ -36,6 +37,7 @@ async def run_worker_loop(
     worker_id: str,
     resolve_provider: ProviderResolver,
     stop_event: asyncio.Event,
+    image_resolver: ImageInputResolver | None = None,
     recovery_interval_seconds: float = DEFAULT_RECOVERY_INTERVAL_SECONDS,
     run_queued_listener: RunQueuedListener | None = None,
     run_cancel_listener: RunCancelListener | None = None,
@@ -62,6 +64,7 @@ async def run_worker_loop(
                 worker_id=worker_id,
                 settings=settings,
                 resolve_provider=resolve_provider,
+                image_resolver=image_resolver,
                 run_event_stream=run_event_stream,
                 run_cancel_listener=run_cancel_listener,
             )
@@ -233,10 +236,22 @@ async def _wait_for_signal_or_stop(
 
 async def run_worker_from_settings() -> None:
     settings = get_settings()
+    validate_worker_vision_settings(settings)
     configure_logging(settings.log_level)
     factory = get_session_factory()
     worker_id = build_worker_id()
     stop_event = asyncio.Event()
+
+    # Imported at the composition root so the agent/provider layers remain
+    # independent from ORM models, buckets, and storage credentials.
+    from app.services.files.dependencies import build_file_storage
+    from app.services.files.image_inputs import FileImageInputResolver
+
+    image_resolver = FileImageInputResolver(
+        session_factory=factory,
+        signer=build_file_storage(settings, role="preview_llm"),
+        ttl_seconds=settings.files_download_ttl_seconds,
+    )
 
     loop = asyncio.get_running_loop()
     for signame in ("SIGINT", "SIGTERM"):
@@ -277,6 +292,7 @@ async def run_worker_from_settings() -> None:
             worker_id=worker_id,
             resolve_provider=default_resolve_provider,
             stop_event=stop_event,
+            image_resolver=image_resolver,
             run_queued_listener=listener_for_loop,
             run_cancel_listener=cancel_listener_for_loop,
             run_event_stream=run_event_stream,

@@ -111,3 +111,29 @@ def emit_file_measure(
         upload_id=upload_id,
         user_id=user_id,
     ).info("Files metric")
+
+
+def emit_image_input_resolution(
+    *,
+    image_count: int,
+    outcome: Literal["succeeded", "failed"],
+    duration_seconds: float,
+    error_code: str | None = None,
+    retryable: bool | None = None,
+) -> None:
+    """Emit content-free telemetry for one model image-input resolution.
+
+    The resolver deliberately reports only the batch cardinality, elapsed
+    time, outcome, and a stable failure classification.  In particular, no
+    file identity, filename, object-storage detail, hash, or signed URL may
+    cross this logging boundary.
+    """
+
+    logger.bind(
+        metric="files_image_input_resolution",
+        image_count=max(image_count, 0),
+        outcome=outcome,
+        duration_seconds=max(duration_seconds, 0.0),
+        error_code=error_code,
+        retryable=retryable,
+    ).info("Files image input resolution")

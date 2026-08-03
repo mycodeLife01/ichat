@@ -8,6 +8,7 @@ from app.db.sync_session import get_sync_session_factory
 from app.models.files import FileStorageLocation, FileUpload
 from app.services.files.dependencies import get_file_worker_storage
 from app.services.files.maintenance import (
+    backfill_model_previews,
     cleanup_staging_objects,
     file_maintenance_snapshot,
     process_deletions,
@@ -34,6 +35,7 @@ def _worker_configured() -> bool:
             settings.files_r2_endpoint_url,
             settings.files_staging_bucket,
             settings.files_canonical_bucket,
+            getattr(settings, "files_preview_bucket", ""),
             settings.files_worker_access_key_id,
             settings.files_worker_secret_access_key,
             settings.clamav_host,
@@ -100,6 +102,8 @@ def maintain_files() -> dict[str, int]:
             "assets_reclaimed": 0,
             "conversations_purged": 0,
             "deletions_completed": 0,
+            "preview_backfill_remaining": 0,
+            "preview_backfill_failed": 0,
             "quota_rows_reconciled": 0,
         }
     settings = get_settings()
@@ -107,6 +111,11 @@ def maintain_files() -> dict[str, int]:
     factory = get_sync_session_factory()
     with factory() as session:
         due = sweep_uploads(session, settings=settings)
+        preview_backfill = backfill_model_previews(
+            session,
+            settings=settings,
+            storage=storage,
+        )
         staging_cleaned = cleanup_staging_objects(
             session,
             settings=settings,
@@ -118,7 +127,10 @@ def maintain_files() -> dict[str, int]:
             session,
             settings=settings,
             private_storage=storage,
-            storage_locations={FileStorageLocation.CANONICAL_PRIVATE},
+            storage_locations={
+                FileStorageLocation.CANONICAL_PRIVATE,
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+            },
         )
         quota_user_ids = quota_reconciliation_user_ids(
             session,
@@ -135,6 +147,13 @@ def maintain_files() -> dict[str, int]:
                     user_id=user_id,
                 )
         snapshot = file_maintenance_snapshot(session, settings=settings)
+        # Storage/signing failures are not derivable from durable row shape.
+        # Keep the rollout gauge non-zero for every maintenance tick that
+        # observes such a failure, while retaining durable corruption counts.
+        snapshot["preview_backfill_failed"] = max(
+            snapshot["preview_backfill_failed"],
+            preview_backfill["failed"],
+        )
         session.commit()
     for upload_id in due:
         try:
@@ -149,6 +168,8 @@ def maintain_files() -> dict[str, int]:
         "assets_reclaimed": assets_reclaimed,
         "conversations_purged": conversations_purged,
         "deletions_completed": deletions_completed,
+        "preview_backfill_remaining": preview_backfill["remaining"],
+        "preview_backfill_failed": preview_backfill["failed"],
         "quota_rows_reconciled": drift_count,
     }
     logger.bind(**result).info("File maintenance finished")

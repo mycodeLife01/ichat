@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_models: str = "gpt-5-mini"
+    # Production image input is granted only to this explicit model-level
+    # allowlist. An empty value is the rollout kill switch.
+    openai_vision_models: str = ""
+    openai_image_token_reserve: int = 8_192
     # Optional override for the assistant's base system prompt. Empty (default)
     # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
@@ -143,12 +147,17 @@ class Settings(BaseSettings):
     files_r2_region: str = "auto"
     files_staging_bucket: str = ""
     files_canonical_bucket: str = ""
+    files_preview_bucket: str = ""
     files_upload_access_key_id: str = ""
     files_upload_secret_access_key: str = ""
     files_worker_access_key_id: str = ""
     files_worker_secret_access_key: str = ""
     files_download_access_key_id: str = ""
     files_download_secret_access_key: str = ""
+    files_preview_api_access_key_id: str = ""
+    files_preview_api_secret_access_key: str = ""
+    files_preview_llm_access_key_id: str = ""
+    files_preview_llm_secret_access_key: str = ""
     files_upload_presign_ttl_seconds: int = 600
     files_download_ttl_seconds: int = 300
     files_upload_session_ttl_seconds: int = 1_800
@@ -207,6 +216,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_external_services(self) -> Self:
+        openai_models = _strict_model_list(self.openai_models, allow_empty=False)
+        vision_models = _strict_model_list(self.openai_vision_models, allow_empty=True)
+        unknown_vision_models = sorted(set(vision_models) - set(openai_models))
+        if unknown_vision_models:
+            raise ValueError(
+                "openai_vision_models must be a subset of openai_models; unknown: "
+                + ", ".join(unknown_vision_models)
+            )
+        if self.openai_image_token_reserve <= 0:
+            raise ValueError("openai_image_token_reserve must be positive")
         # Only enforce provider credentials when the integration is active, so
         # fake/disabled integrations can boot in dev and CI without secrets.
         if self.summary_provider_name == "openai" and not self.openai_api_key.strip():
@@ -264,10 +283,13 @@ class Settings(BaseSettings):
                 ("files_r2_endpoint_url", self.files_r2_endpoint_url),
                 ("files_staging_bucket", self.files_staging_bucket),
                 ("files_canonical_bucket", self.files_canonical_bucket),
+                ("files_preview_bucket", self.files_preview_bucket),
                 ("files_upload_access_key_id", self.files_upload_access_key_id),
                 ("files_upload_secret_access_key", self.files_upload_secret_access_key),
                 ("files_download_access_key_id", self.files_download_access_key_id),
                 ("files_download_secret_access_key", self.files_download_secret_access_key),
+                ("files_preview_api_access_key_id", self.files_preview_api_access_key_id),
+                ("files_preview_api_secret_access_key", self.files_preview_api_secret_access_key),
             )
             missing = [name for name, value in file_required if not value.strip()]
             if missing:
@@ -290,13 +312,83 @@ class Settings(BaseSettings):
 
     @property
     def openai_models_list(self) -> list[str]:
-        return [model.strip() for model in self.openai_models.split(",") if model.strip()]
+        return _strict_model_list(self.openai_models, allow_empty=False)
+
+    @property
+    def openai_vision_models_list(self) -> list[str]:
+        return _strict_model_list(self.openai_vision_models, allow_empty=True)
 
     @property
     def deepseek_models_list(self) -> list[str]:
         return [model.strip() for model in self.deepseek_models.split(",") if model.strip()]
 
 
+def validate_api_vision_settings(settings: Settings) -> None:
+    """Fail API startup before it advertises an unusable vision catalog."""
+
+    if not settings.openai_vision_models_list:
+        return
+    _validate_preview_bucket_isolation(settings)
+    _require_non_empty(
+        "API vision runtime",
+        (
+            ("openai_api_key", settings.openai_api_key),
+            ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
+            ("files_preview_bucket", settings.files_preview_bucket),
+            ("files_preview_api_access_key_id", settings.files_preview_api_access_key_id),
+            ("files_preview_api_secret_access_key", settings.files_preview_api_secret_access_key),
+        ),
+    )
+
+
+def validate_worker_vision_settings(settings: Settings) -> None:
+    """Fail LLM-worker startup unless preview-only signing is configured."""
+
+    if not settings.openai_vision_models_list:
+        return
+    _validate_preview_bucket_isolation(settings)
+    _require_non_empty(
+        "LLM worker vision runtime",
+        (
+            ("openai_api_key", settings.openai_api_key),
+            ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
+            ("files_preview_bucket", settings.files_preview_bucket),
+            ("files_preview_llm_access_key_id", settings.files_preview_llm_access_key_id),
+            ("files_preview_llm_secret_access_key", settings.files_preview_llm_secret_access_key),
+        ),
+    )
+
+
+def _validate_preview_bucket_isolation(settings: Settings) -> None:
+    preview = settings.files_preview_bucket.strip()
+    if preview and preview in {
+        settings.files_staging_bucket.strip(),
+        settings.files_canonical_bucket.strip(),
+    }:
+        raise ValueError("files_preview_bucket must be distinct from file source buckets")
+
+
+def _require_non_empty(scope: str, values: tuple[tuple[str, str], ...]) -> None:
+    missing = [name for name, value in values if not value.strip()]
+    if missing:
+        raise ValueError(f"{scope} requires non-empty: {', '.join(missing)}")
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
+
+
+def _strict_model_list(raw: str, *, allow_empty: bool) -> list[str]:
+    """Parse a model allowlist without silently repairing bad rollout config."""
+
+    if not raw.strip():
+        if allow_empty:
+            return []
+        raise ValueError("model allowlist must not be empty")
+    values = [item.strip() for item in raw.split(",")]
+    if any(not item for item in values):
+        raise ValueError("model allowlist entries must not be empty")
+    if len(values) != len(set(values)):
+        raise ValueError("model allowlist entries must be unique")
+    return values

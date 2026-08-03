@@ -22,6 +22,7 @@ from app.main import create_app
 from app.models.conversation import Conversation, Message
 from app.models.files import (
     FileAsset,
+    FileModelInputKind,
     FileObject,
     FileObjectRole,
     FilePurpose,
@@ -295,7 +296,7 @@ async def test_cancel_waits_for_concurrent_binding_and_rejects_bound_asset(
             size_bytes=5,
             sha256="c" * 64,
             document_text="notes",
-            model_consumable=True,
+            model_input_kind=FileModelInputKind.DOCUMENT,
             unbound_expires_at=now + timedelta(days=1),
         )
         setup_session.add(asset)
@@ -345,6 +346,71 @@ async def test_cancel_waits_for_concurrent_binding_and_rejects_bound_asset(
         assert persisted is not None
         assert persisted.bound_at == now
         assert persisted.deletion_started_at is None
+
+
+async def test_batch_cancel_is_atomic_when_any_asset_is_bound(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "file-batch-cancel-atomic")
+    await verify_user(session_factory, data)
+    now = datetime.now(UTC)
+    async with session_factory() as setup_session:
+        user = await setup_session.get(User, data["user"]["id"])
+        assert user is not None
+        assets = [
+            FileAsset(
+                user_id=user.id,
+                purpose=FilePurpose.MESSAGE_ATTACHMENT,
+                original_filename=f"image-{index}.png",
+                media_type="image/png",
+                size_bytes=5,
+                sha256=str(index) * 64,
+                model_input_kind=FileModelInputKind.IMAGE,
+                bound_at=now if index == 2 else None,
+                unbound_expires_at=now + timedelta(days=1),
+            )
+            for index in (1, 2)
+        ]
+        setup_session.add_all(assets)
+        await setup_session.flush()
+        uploads = [
+            FileUpload(
+                user_id=user.id,
+                purpose=FilePurpose.MESSAGE_ATTACHMENT,
+                original_filename=asset.original_filename,
+                declared_content_type="image/png",
+                declared_size_bytes=asset.size_bytes,
+                staging_object_key=f"staging/{asset.public_id}",
+                status=FileUploadStatus.SUCCEEDED,
+                available_at=now,
+                expires_at=now + timedelta(minutes=30),
+                completed_at=now,
+                file_id=asset.id,
+            )
+            for asset in assets
+        ]
+        setup_session.add_all(uploads)
+        await setup_session.commit()
+        upload_ids = [str(upload.public_id) for upload in uploads]
+        asset_ids = [asset.id for asset in assets]
+
+    response = await client.post(
+        "/api/v1/files/uploads/cancel",
+        headers=auth_header(data),
+        json={"upload_ids": upload_ids},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    async with session_factory() as verification_session:
+        persisted = list(
+            (
+                await verification_session.scalars(
+                    select(FileAsset).where(FileAsset.id.in_(asset_ids)).order_by(FileAsset.id)
+                )
+            ).all()
+        )
+        assert [asset.deletion_started_at for asset in persisted] == [None, None]
 
 
 @pytest.mark.parametrize(
@@ -447,7 +513,7 @@ async def test_read_url_requires_active_account_and_visible_non_deleted_message(
             size_bytes=5,
             sha256="b" * 64,
             document_text="notes",
-            model_consumable=True,
+            model_input_kind=FileModelInputKind.DOCUMENT,
             bound_at=datetime.now(UTC),
         )
         session.add(asset)

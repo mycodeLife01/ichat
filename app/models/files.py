@@ -5,7 +5,6 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -49,8 +48,16 @@ class FileObjectRole(StrEnum):
     AVATAR_512 = "avatar_512"
 
 
+class FileModelInputKind(StrEnum):
+    """Stable model-input representation available for a processed asset."""
+
+    DOCUMENT = "document"
+    IMAGE = "image"
+
+
 class FileStorageLocation(StrEnum):
     CANONICAL_PRIVATE = "canonical_private"
+    MODEL_PREVIEW_PRIVATE = "model_preview_private"
     AVATAR_PUBLIC = "avatar_public"
 
 
@@ -147,7 +154,6 @@ class FileUpload(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-
 class FileAsset(Base):
     """An immutable, successfully processed logical file usable by the product."""
 
@@ -155,6 +161,10 @@ class FileAsset(Base):
     __table_args__ = (
         CheckConstraint("size_bytes >= 0", name="size_non_negative"),
         CheckConstraint("purpose IN ('avatar', 'message_attachment')", name="purpose_valid"),
+        CheckConstraint(
+            "model_input_kind IS NULL OR model_input_kind IN ('document', 'image')",
+            name="model_input_kind_valid",
+        ),
         Index("ix_files_user_purpose", "user_id", "purpose"),
         Index("ix_files_source_message_id", "source_message_id"),
         Index("ix_files_unbound_expires_at", "unbound_expires_at"),
@@ -199,10 +209,15 @@ class FileAsset(Base):
     # Canonical derived text remains database-owned while an asset is unbound;
     # workers and provider paths therefore never need cross-credential object reads.
     document_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    model_consumable: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        server_default="false",
+    model_input_kind: Mapped[FileModelInputKind | None] = mapped_column(
+        SAEnum(
+            FileModelInputKind,
+            native_enum=False,
+            values_callable=lambda kinds: [kind.value for kind in kinds],
+            validate_strings=True,
+            length=16,
+        ),
+        nullable=True,
     )
     unbound_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -224,7 +239,6 @@ class FileAsset(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-
 class FileObject(Base):
     """A controlled physical representation of a file asset in object storage."""
 
@@ -235,7 +249,7 @@ class FileObject(Base):
             "role IN ('original', 'preview', 'document_extract', 'avatar_512')", name="role_valid"
         ),
         CheckConstraint(
-            "storage_location IN ('canonical_private', 'avatar_public')",
+            "storage_location IN ('canonical_private', 'model_preview_private', 'avatar_public')",
             name="storage_location_valid",
         ),
         UniqueConstraint("file_id", "role", name="uq_file_objects_file_role"),
@@ -351,7 +365,7 @@ class FileObjectDeletion(Base):
     __table_args__ = (
         CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
         CheckConstraint(
-            "storage_location IN ('canonical_private', 'avatar_public')",
+            "storage_location IN ('canonical_private', 'model_preview_private', 'avatar_public')",
             name="storage_location_valid",
         ),
         UniqueConstraint(

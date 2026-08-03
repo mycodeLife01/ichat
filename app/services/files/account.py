@@ -158,20 +158,40 @@ async def _enqueue_private_manifest_deletions(
         object_key = str(entry.get("object_key") or "")
         if not object_key:
             continue
-        existing = await session.scalar(
-            select(FileObjectDeletion.id).where(
-                FileObjectDeletion.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
-                FileObjectDeletion.object_key == object_key,
+        location_value = entry.get("storage_location")
+        try:
+            location = (
+                FileStorageLocation(str(location_value))
+                if location_value is not None
+                else FileStorageLocation.CANONICAL_PRIVATE
             )
-        )
-        if existing is None:
-            session.add(
-                FileObjectDeletion(
-                    storage_location=FileStorageLocation.CANONICAL_PRIVATE,
-                    object_key=object_key,
-                    available_at=now,
+        except ValueError:
+            location = FileStorageLocation.CANONICAL_PRIVATE
+        locations = [location]
+        if entry.get("role") == "preview" and location in {
+            FileStorageLocation.CANONICAL_PRIVATE,
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+        }:
+            locations.append(
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
+            )
+        for current_location in locations:
+            existing = await session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == current_location,
+                    FileObjectDeletion.object_key == object_key,
                 )
             )
+            if existing is None:
+                session.add(
+                    FileObjectDeletion(
+                        storage_location=current_location,
+                        object_key=object_key,
+                        available_at=now,
+                    )
+                )
 
 
 async def _enqueue_avatar_manifest_deletions(

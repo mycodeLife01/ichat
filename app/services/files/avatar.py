@@ -661,7 +661,7 @@ def _commit_avatar_success(
             warnings=[],
             extractor_version="avatar-v1",
             summary_metadata={"width": 512, "height": 512},
-            model_consumable=False,
+            model_input_kind=None,
         )
         session.add(asset)
         session.flush()

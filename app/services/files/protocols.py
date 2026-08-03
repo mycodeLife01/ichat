@@ -14,6 +14,8 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from app.models.files import FileStorageLocation
+
 if TYPE_CHECKING:
     from app.services.files.formats import FormatPolicy
 
@@ -62,6 +64,7 @@ class StorageObjectMetadata:
     content_type: str
     etag: str
     declared_size_bytes: int | None = None
+    sha256: str | None = None
 
 
 # Kept as a familiar spelling for adapter callers migrating from the avatar
@@ -139,7 +142,7 @@ class UploadStorage(Protocol):
 
 
 class WorkerStorage(Protocol):
-    """The file-worker's staging/canonical mutation subset."""
+    """The file-worker's staging/canonical/preview mutation subset."""
 
     def get_staging(self, object_key: str, *, if_match: str) -> bytes: ...
 
@@ -148,6 +151,19 @@ class WorkerStorage(Protocol):
     def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None: ...
 
     def delete_canonical(self, object_key: str) -> None: ...
+
+    def put_preview(self, object_key: str, *, content: bytes, content_type: str) -> None: ...
+
+    def delete_preview(self, object_key: str) -> None: ...
+
+    def copy_canonical_to_preview(
+        self,
+        object_key: str,
+        *,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata: ...
 
 
 class DownloadSigner(Protocol):
@@ -163,7 +179,40 @@ class DownloadSigner(Protocol):
     ) -> PresignedDownload: ...
 
 
-class FileStorage(UploadStorage, WorkerStorage, DownloadSigner, Protocol):
+class PreviewApiSigner(Protocol):
+    """API credential's short-lived preview GET signing subset."""
+
+    def presign_preview(
+        self,
+        object_key: str,
+        *,
+        ttl_seconds: int,
+        filename: str,
+        storage_location: FileStorageLocation = FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+    ) -> PresignedDownload: ...
+
+
+class PreviewLlmSigner(Protocol):
+    """LLM credential's preview-only existence-check and GET-signing subset."""
+
+    def head_model_preview(self, object_key: str) -> StorageObjectMetadata: ...
+
+    def presign_model_preview(
+        self,
+        object_key: str,
+        *,
+        ttl_seconds: int,
+    ) -> PresignedDownload: ...
+
+
+class FileStorage(
+    UploadStorage,
+    WorkerStorage,
+    DownloadSigner,
+    PreviewApiSigner,
+    PreviewLlmSigner,
+    Protocol,
+):
     """Full private storage protocol, used only by orchestration tests/fakes."""
 
 

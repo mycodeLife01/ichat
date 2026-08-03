@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.services.files.protocols import ProcessedFile
 
+_PARENT_DEATH_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
 
 def _terminate_if_parent_dies(expected_parent_pid: int) -> None:
     """Make Linux kill this parser if its Celery worker is hard-killed."""
@@ -20,14 +22,14 @@ def _terminate_if_parent_dies(expected_parent_pid: int) -> None:
     if not sys.platform.startswith("linux"):
         return
     if os.getppid() != expected_parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
+        os.kill(os.getpid(), _PARENT_DEATH_SIGNAL)
         return
     libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+    if libc.prctl(1, _PARENT_DEATH_SIGNAL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
         raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
     # Close the race where the parent exits between getppid() and prctl().
     if os.getppid() != expected_parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
+        os.kill(os.getpid(), _PARENT_DEATH_SIGNAL)
 
 
 def _write_result(output_directory: Path, payload: dict[str, object]) -> None:

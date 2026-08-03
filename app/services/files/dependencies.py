@@ -7,7 +7,7 @@ from botocore.config import Config
 from app.core.config import Settings, get_settings
 from app.services.files.storage import R2FileStorage
 
-CredentialRole = Literal["upload", "worker", "download"]
+CredentialRole = Literal["upload", "worker", "download", "preview_api", "preview_llm"]
 
 
 def _credentials(settings: Settings, role: CredentialRole) -> tuple[str, str]:
@@ -15,7 +15,17 @@ def _credentials(settings: Settings, role: CredentialRole) -> tuple[str, str]:
         return settings.files_upload_access_key_id, settings.files_upload_secret_access_key
     if role == "worker":
         return settings.files_worker_access_key_id, settings.files_worker_secret_access_key
-    return settings.files_download_access_key_id, settings.files_download_secret_access_key
+    if role == "download":
+        return settings.files_download_access_key_id, settings.files_download_secret_access_key
+    if role == "preview_api":
+        return (
+            getattr(settings, "files_preview_api_access_key_id", ""),
+            getattr(settings, "files_preview_api_secret_access_key", ""),
+        )
+    return (
+        getattr(settings, "files_preview_llm_access_key_id", ""),
+        getattr(settings, "files_preview_llm_secret_access_key", ""),
+    )
 
 
 def build_file_storage(settings: Settings, *, role: CredentialRole) -> R2FileStorage:
@@ -32,6 +42,7 @@ def build_file_storage(settings: Settings, *, role: CredentialRole) -> R2FileSto
         client,
         staging_bucket=settings.files_staging_bucket or "disabled",
         canonical_bucket=settings.files_canonical_bucket or "disabled",
+        preview_bucket=getattr(settings, "files_preview_bucket", "") or "disabled",
         credential_role=role,
     )
 
@@ -49,3 +60,13 @@ def get_file_worker_storage() -> R2FileStorage:
 @lru_cache
 def get_file_download_storage() -> R2FileStorage:
     return build_file_storage(get_settings(), role="download")
+
+
+@lru_cache
+def get_file_preview_api_storage() -> R2FileStorage:
+    return build_file_storage(get_settings(), role="preview_api")
+
+
+@lru_cache
+def get_file_preview_llm_storage() -> R2FileStorage:
+    return build_file_storage(get_settings(), role="preview_llm")

@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.files import (
+    CancelFileUploadsRequest,
     ConfirmFileUploadRequest,
     CreateFileUploadRequest,
     CreateFileUploadResponse,
@@ -22,12 +23,14 @@ from app.services.auth import rate_limit
 from app.services.auth.dependencies import get_current_user
 from app.services.files.dependencies import (
     get_file_download_storage,
+    get_file_preview_api_storage,
     get_file_upload_storage,
 )
 from app.services.files.protocols import FileStorage
 from app.services.files.publisher import CeleryFileTaskPublisher, get_file_task_publisher
 from app.services.files.service import (
     cancel_upload,
+    cancel_uploads,
     confirm_upload,
     create_upload,
     get_upload,
@@ -78,6 +81,21 @@ async def get_file_uploads_route(
 ) -> SuccessResponse[list[FileUploadResponse]]:
     return SuccessResponse(
         data=await get_uploads(session, user=user, upload_ids=body.upload_ids)
+    )
+
+
+@router.post(
+    "/uploads/cancel",
+    response_model=SuccessResponse[list[FileUploadResponse]],
+    response_model_exclude_none=True,
+)
+async def cancel_file_uploads_route(
+    body: CancelFileUploadsRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[list[FileUploadResponse]]:
+    return SuccessResponse(
+        data=await cancel_uploads(session, user=user, upload_ids=body.upload_ids)
     )
 
 
@@ -148,6 +166,7 @@ async def create_file_read_url_route(
     settings: Annotated[Settings, Depends(get_settings)],
     user: Annotated[User, Depends(get_current_user)],
     storage: Annotated[FileStorage, Depends(get_file_download_storage)],
+    preview_storage: Annotated[FileStorage, Depends(get_file_preview_api_storage)],
 ) -> SuccessResponse[FileReadUrlResponse]:
     return SuccessResponse(
         data=await issue_read_url(
@@ -157,5 +176,6 @@ async def create_file_read_url_route(
             file_public_id=file_id,
             role=body.role,
             settings=settings,
+            preview_storage=preview_storage,
         )
     )

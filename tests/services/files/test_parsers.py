@@ -510,4 +510,4 @@ def test_parser_worker_exits_before_imports_when_expected_parent_is_gone(
 
     parser_worker._terminate_if_parent_dies(expected_parent_pid=42)
 
-    assert killed == [(99, parser_worker.signal.SIGKILL)]
+    assert killed == [(99, parser_worker._PARENT_DEATH_SIGNAL)]
