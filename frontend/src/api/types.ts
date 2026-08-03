@@ -36,6 +36,14 @@ export type ConversationResponse = {
   deletion_due_at?: string | null;
 };
 
+export type ImageContextState = "none" | "vision_required" | "legacy_upgrade_required";
+
+export type ImageContext = {
+  state: ImageContextState;
+  legacy_message_id?: string | null;
+  recommended_model?: string | null;
+};
+
 export type MessageRole = "user" | "assistant";
 
 export type MessageSource = {
@@ -85,11 +93,13 @@ export type RunResponse = {
 
 export type ConversationDetailResponse = ConversationResponse & {
   messages: MessageResponse[];
+  image_context?: ImageContext;
 };
 
 export type SendMessageResponse = {
   message: MessageResponse;
   run: RunResponse;
+  image_context?: ImageContext;
 };
 
 export type ConversationCreateWithMessageResponse = SendMessageResponse & {
@@ -152,6 +162,7 @@ export type ChatModelCapability = {
   label: string;
   thinking_levels: string[];
   default: boolean;
+  supports_image_input: boolean;
 };
 
 export type CapabilitiesResponse = {

@@ -187,17 +187,4 @@ describe("conversationApi", () => {
     );
   });
 
-  it("lists and restores recoverable conversations", async () => {
-    const client = mockClient();
-    vi.mocked(client.request).mockResolvedValue(conversationResponse);
-    const api = createConversationApi(client);
-
-    await api.listDeleted();
-    await api.restore("10");
-
-    expect(client.request).toHaveBeenNthCalledWith(1, "/conversations/deleted");
-    expect(client.request).toHaveBeenNthCalledWith(2, "/conversations/10/restore", {
-      method: "POST",
-    });
-  });
 });

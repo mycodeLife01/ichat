@@ -16,6 +16,7 @@ import type {
   FileUploadRecord,
   FilesCapability,
 } from "./types";
+import type { ChatModelCapability } from "../api/types";
 
 const INITIAL_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 5_000;
@@ -25,10 +26,12 @@ type AttachmentUploadOptions = {
   userId: number | string | null;
   conversationId: string | null;
   capability?: FilesCapability;
+  selectedModel?: ChatModelCapability | null;
   canCreate?: boolean;
   filesApi: FilesApi;
   onRestoredContent?: (content: string) => void;
   onError?: (message: string) => void;
+  onImagesBlocked?: (files: File[]) => void;
   fetchImpl?: typeof fetch;
 };
 
@@ -48,7 +51,7 @@ function sameAttachment(left: DraftAttachment, right: DraftAttachment): boolean 
       leftFile.media_type === rightFile.media_type &&
       leftFile.size_bytes === rightFile.size_bytes &&
       leftFile.category === rightFile.category &&
-      leftFile.model_consumable === rightFile.model_consumable &&
+      leftFile.model_input_kind === rightFile.model_input_kind &&
       leftFile.preview_available === rightFile.preview_available &&
       leftFile.upload_expires_at === rightFile.upload_expires_at &&
       JSON.stringify(leftFile.warning ?? leftFile.warnings ?? []) ===
@@ -82,10 +85,12 @@ export function useAttachmentUploads({
   userId,
   conversationId,
   capability,
+  selectedModel = null,
   canCreate = true,
   filesApi,
   onRestoredContent,
   onError,
+  onImagesBlocked,
   fetchImpl,
 }: AttachmentUploadOptions) {
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
@@ -246,6 +251,7 @@ export function useAttachmentUploads({
         media_type: file.type || "application/octet-stream",
         size_bytes: file.size,
         category,
+        model_input_kind: category === "image" ? "image" : null,
         local_preview_url: localPreviewUrl,
       };
       sourcesRef.current.set(clientId, file);
@@ -305,6 +311,12 @@ export function useAttachmentUploads({
         return;
       }
 
+      const hasImage = selected.some((file) => categoryForFileName(file.name) === "image");
+      if (hasImage && selectedModel?.supports_image_input !== true) {
+        onImagesBlocked?.(selected);
+        return;
+      }
+
       const allowedExtensions = new Set(capability.allowed_extensions.map((item) => item.toLowerCase()));
       const existingCount = attachmentsRef.current.length;
       const maxCount = capability.max_attachments_per_message;
@@ -336,11 +348,11 @@ export function useAttachmentUploads({
 
       for (const file of accepted) void startFile(file);
     },
-    [canCreate, capability, startFile],
+    [canCreate, capability, onImagesBlocked, selectedModel, startFile],
   );
 
   const cancelAttachment = useCallback(
-    async (clientId: string): Promise<void> => {
+    async (clientId: string, options?: { throwOnError?: boolean }): Promise<void> => {
       const attachment = attachmentsRef.current.find((item) => item.client_id === clientId);
       if (!attachment) return;
       abortControllersRef.current.get(clientId)?.abort();
@@ -349,8 +361,9 @@ export function useAttachmentUploads({
         if (attachment.upload_id) await filesApi.cancel(attachment.upload_id);
         discardLocalAttachment(clientId);
         commit((current) => current.filter((item) => item.client_id !== clientId));
-      } catch {
+      } catch (error) {
         errorRef.current?.("The upload could not be cancelled. Please try again.");
+        if (options?.throwOnError) throw error;
       }
     },
     [commit, discardLocalAttachment, filesApi],
@@ -497,9 +510,34 @@ export function useAttachmentUploads({
   const hasModelConsumableAttachment = attachments.some(
     (attachment) =>
       isUploadReady(attachment.status) &&
-      attachment.file?.model_consumable &&
-      attachment.file.category !== "image",
+      (attachment.file?.model_input_kind === "document" ||
+        (attachment.file?.model_input_kind === "image" &&
+          selectedModel?.supports_image_input === true)),
   );
+  const hasReadyImageAttachment = attachments.some(
+    (attachment) =>
+      isUploadReady(attachment.status) &&
+      (attachment.file?.category ?? attachment.category) === "image",
+  );
+  const removeImages = useCallback(async (): Promise<void> => {
+    const images = attachmentsRef.current.filter(
+      (attachment) =>
+        (attachment.file?.model_input_kind ?? attachment.model_input_kind) === "image" ||
+        (attachment.file?.category ?? attachment.category) === "image",
+    );
+    const uploadIds = images
+      .map((attachment) => attachment.upload_id)
+      .filter((uploadId): uploadId is string => uploadId !== null);
+    try {
+      if (uploadIds.length > 0) await filesApi.cancelMany(uploadIds);
+    } catch (error) {
+      errorRef.current?.("The uploads could not be cancelled. Please try again.");
+      throw error;
+    }
+    const imageClientIds = new Set(images.map((attachment) => attachment.client_id));
+    imageClientIds.forEach(discardLocalAttachment);
+    commit((current) => current.filter((item) => !imageClientIds.has(item.client_id)));
+  }, [commit, discardLocalAttachment, filesApi]);
 
   return {
     attachments,
@@ -507,6 +545,8 @@ export function useAttachmentUploads({
     hasPendingAttachments,
     hasFailedAttachments,
     hasModelConsumableAttachment,
+    hasReadyImageAttachment,
+    removeImages,
     addFiles,
     cancelAttachment,
     retryAttachment,

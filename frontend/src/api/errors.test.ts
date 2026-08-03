@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApiError,
   getDefaultErrorMessage,
+  getErrorCode,
   isAbortError,
   toApiError,
 } from "./errors";
@@ -36,5 +37,14 @@ describe("ApiError", () => {
 
     expect(isAbortError(abort)).toBe(true);
     expect(toApiError(abort).isAbort).toBe(true);
+  });
+
+  it("reads machine codes without interpreting the English detail", () => {
+    expect(getErrorCode({ code: "VISION_MODEL_REQUIRED", detail: "legacy wording" })).toBe(
+      "VISION_MODEL_REQUIRED",
+    );
+    expect(getErrorCode({ detail: { code: "LEGACY_IMAGE_CONTEXT" } })).toBe(
+      "LEGACY_IMAGE_CONTEXT",
+    );
   });
 });

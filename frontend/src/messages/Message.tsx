@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { MessageResponse, MessageSource } from "../api/types";
+import type { ChatModelCapability, MessageResponse, MessageSource } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
 import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -29,11 +29,20 @@ type MessageProps = {
     messageId: string,
     content: string,
     attachmentIds?: string[],
+    modelId?: string,
   ) => void;
   onRegenerate?: (messageId: string) => void;
+  allowAttachmentEditing?: boolean;
+  legacyUpgradeAvailable?: boolean;
+  onUpgradeLegacy?: (messageId: string) => void;
+  onEditUpgradeLegacy?: (messageId: string) => boolean | void | Promise<boolean | void>;
+  onStartNewConversation?: () => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
+  visionEditModels?: ChatModelCapability[];
+  visionEditModel?: string | null;
+  visionEditHasPriorImage?: boolean;
 };
 
 function copy(text: string) {
@@ -53,11 +62,21 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  allowAttachmentEditing = false,
+  legacyUpgradeAvailable = false,
+  onUpgradeLegacy,
+  onEditUpgradeLegacy,
+  onStartNewConversation,
   onReadAttachment,
   onShowSources,
+  visionEditModels = [],
+  visionEditModel = null,
+  visionEditHasPriorImage = false,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  const [editedAttachments, setEditedAttachments] = useState(message.attachments ?? []);
+  const [editModelId, setEditModelId] = useState<string | null>(visionEditModel);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // Long user messages collapse to COLLAPSE_MAX_HEIGHT with an expand toggle;
@@ -116,14 +135,34 @@ export function Message({
 
   const startEditing = () => {
     setDraft(message.content);
+    setEditedAttachments(message.attachments ?? []);
+    setEditModelId(visionEditModel);
     setEditing(true);
+  };
+  const editAndUpgradeLegacy = () => {
+    if (!onEditUpgradeLegacy) return;
+    const result = onEditUpgradeLegacy(message.id);
+    if (result instanceof Promise) {
+      void result.then((allowed) => {
+        if (allowed !== false) startEditing();
+      }).catch(() => {});
+      return;
+    }
+    if (result !== false) startEditing();
   };
   const mutate = isUser ? startEditing : () => onRegenerate?.(message.id);
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
   const messageAttachments = message.attachments ?? [];
-  const hasEditedModelInput = messageAttachments.some(
-    (attachment) => attachment.model_consumable && attachment.category !== "image",
+  const hasEditedModelInput = editedAttachments.some(
+    (attachment) => attachment.model_input_kind !== null,
+  );
+  const attachmentsChanged =
+    editedAttachments.map((attachment) => attachment.id).join("\u0000") !==
+    messageAttachments.map((attachment) => attachment.id).join("\u0000");
+  const editedHasImage = editedAttachments.some(
+    (attachment) =>
+      attachment.model_input_kind === "image" || attachment.category === "image",
   );
 
   // Copy shows a transient check (已复制) before reverting to the copy icon.
@@ -237,7 +276,16 @@ export function Message({
       if (trimmed === "" && !hasEditedModelInput) return;
       setEditing(false);
       // Omitting attachment_ids inherits the current revision's attachments.
-      onEditAndRegenerate?.(message.id, trimmed);
+      const attachmentIds = attachmentsChanged
+        ? editedAttachments.map((attachment) => attachment.id)
+        : undefined;
+      if (visionEditModels.length > 0 && editModelId !== null) {
+        onEditAndRegenerate?.(message.id, trimmed, attachmentIds, editModelId);
+      } else if (attachmentIds !== undefined) {
+        onEditAndRegenerate?.(message.id, trimmed, attachmentIds);
+      } else {
+        onEditAndRegenerate?.(message.id, trimmed);
+      }
     };
     const cancel = () => {
       setDraft(message.content);
@@ -251,19 +299,35 @@ export function Message({
           className="w-full animate-edit-in rounded-[24px] bg-sunken px-3 py-3"
           data-testid="message-editor"
         >
-          {messageAttachments.length > 0 && (
+          {editedAttachments.length > 0 && (
             <div
               className="flex flex-wrap gap-2"
               aria-label="编辑消息附件"
               data-attachment-group="editor"
             >
-              {messageAttachments.map((attachment) => (
+            {editedAttachments.map((attachment, index) => (
                 <AttachmentCard
                   key={attachment.id}
                   attachment={attachment}
                   mode="editor"
                   getReadUrl={onReadAttachment}
                   imageLayout={attachment.category === "image" ? "mixed" : undefined}
+                  canMoveBack={allowAttachmentEditing && index > 0}
+                  canMoveForward={allowAttachmentEditing && index < editedAttachments.length - 1}
+                  onRemove={allowAttachmentEditing ? (fileId) => setEditedAttachments((current) => current.filter((item) => item.id !== fileId)) : undefined}
+                  onMoveFile={
+                    allowAttachmentEditing
+                      ? (fileId, direction) =>
+                          setEditedAttachments((current) => {
+                            const at = current.findIndex((item) => item.id === fileId);
+                            const next = at + direction;
+                            if (at < 0 || next < 0 || next >= current.length) return current;
+                            const copy = [...current];
+                            [copy[at], copy[next]] = [copy[next], copy[at]];
+                            return copy;
+                          })
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -285,6 +349,30 @@ export function Message({
             />
           </div>
           <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
+            {visionEditModels.length > 0 && editModelId !== null && (
+              <label className="mr-auto flex items-center gap-2 text-[13px] text-text-muted">
+                Model
+                <select
+                  aria-label="Model for edited message"
+                  className="h-9 rounded-control border border-border bg-surface px-2 text-text-primary"
+                  value={editModelId}
+                  onChange={(event) => setEditModelId(event.target.value)}
+                >
+                  {visionEditModels.map((entry) => (
+                    <option
+                      key={entry.id}
+                      value={entry.id}
+                      disabled={
+                        !entry.supports_image_input &&
+                        (visionEditHasPriorImage || editedHasImage)
+                      }
+                    >
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
               onClick={cancel}
@@ -309,6 +397,39 @@ export function Message({
     return (
       <div className={`${msgBase} user items-end`}>
         <div className="flex w-full flex-col items-end gap-1">
+          {legacyUpgradeAvailable && (
+            <div
+              className="w-full max-w-[70%] rounded-xl border border-warning-border bg-warning-soft px-3 py-2 text-left text-[13px] text-warning-foreground"
+              data-testid="legacy-image-upgrade"
+            >
+              <p>Upgrade this image message with a vision model to ask questions about it.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  onClick={() => onUpgradeLegacy?.(message.id)}
+                >
+                  Upgrade with GPT
+                </button>
+                <button
+                  type="button"
+                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  onClick={editAndUpgradeLegacy}
+                >
+                  编辑并升级
+                </button>
+                {onStartNewConversation && (
+                  <button
+                    type="button"
+                    className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                    onClick={onStartNewConversation}
+                  >
+                    Start new conversation
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {messageAttachments.length > 0 && (
             <MessageAttachments
               attachments={messageAttachments}
@@ -396,10 +517,25 @@ function MessageAttachments({
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
   align?: "start" | "end";
 }) {
-  const images = attachments.filter((attachment) => attachment.category === "image");
-  const files = attachments.filter((attachment) => attachment.category !== "image");
   const isEnd = align === "end";
-  const singleImage = images.length === 1 && files.length === 0;
+  const orderedAttachments = attachments
+    .map((attachment, index) => ({ attachment, index }))
+    .sort((left, right) =>
+      (left.attachment.position ?? left.index) - (right.attachment.position ?? right.index),
+    )
+    .map(({ attachment }) => attachment);
+  const imageCount = orderedAttachments.filter((attachment) => attachment.category === "image").length;
+  const singleImage = imageCount === 1 && orderedAttachments.length === 1;
+  const groups: Array<{
+    kind: "images" | "files";
+    items: typeof attachments;
+  }> = [];
+  for (const attachment of orderedAttachments) {
+    const kind = attachment.category === "image" ? "images" : "files";
+    const previous = groups.at(-1);
+    if (previous?.kind === kind) previous.items.push(attachment);
+    else groups.push({ kind, items: [attachment] });
+  }
 
   return (
     <div
@@ -408,42 +544,41 @@ function MessageAttachments({
       }`}
       aria-label="附件"
     >
-      {images.length > 0 && (
-        <div
-          className={`flex gap-1 ${
-            singleImage
-              ? `w-[70%] flex-col ${isEnd ? "items-end" : "items-start"}`
-              : `max-w-72 flex-row flex-wrap ${isEnd ? "justify-end" : "justify-start"}`
-          }`}
-          data-attachment-group="images"
-          data-image-layout={singleImage ? "single" : "collection"}
-        >
-          {images.map((attachment, index) => (
-            <AttachmentCard
-              key={attachment.id}
-              attachment={attachment}
-              getReadUrl={onReadAttachment}
-              imageLayout={singleImage ? "single" : "collection"}
-              imageCollectionPosition={
-                index === 0 ? "first" : index === images.length - 1 ? "last" : "middle"
-              }
-            />
-          ))}
-        </div>
-      )}
-      {files.length > 0 && (
-        <div
-          className={`mt-1 flex max-w-[80%] flex-wrap gap-2 ${isEnd ? "justify-end" : "justify-start"}`}
-          data-attachment-group="files"
-        >
-          {files.map((attachment) => (
-            <AttachmentCard
-              key={attachment.id}
-              attachment={attachment}
-              getReadUrl={onReadAttachment}
-            />
-          ))}
-        </div>
+      {groups.map((group, groupIndex) =>
+        group.kind === "images" ? (
+          <div
+            key={`images-${groupIndex}`}
+            className={`flex gap-1 ${
+              singleImage
+                ? `w-[70%] flex-col ${isEnd ? "items-end" : "items-start"}`
+                : `max-w-72 flex-row flex-wrap ${isEnd ? "justify-end" : "justify-start"}`
+            }`}
+            data-attachment-group="images"
+            data-image-layout={singleImage ? "single" : "collection"}
+          >
+            {group.items.map((attachment, index) => (
+              <AttachmentCard
+                key={attachment.id}
+                attachment={attachment}
+                getReadUrl={onReadAttachment}
+                imageLayout={singleImage ? "single" : "collection"}
+                imageCollectionPosition={
+                  index === 0 ? "first" : index === group.items.length - 1 ? "last" : "middle"
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <div
+            key={`files-${groupIndex}`}
+            className={`${groupIndex > 0 ? "mt-1 " : ""}flex max-w-[80%] flex-wrap gap-2 ${isEnd ? "justify-end" : "justify-start"}`}
+            data-attachment-group="files"
+          >
+            {group.items.map((attachment) => (
+              <AttachmentCard key={attachment.id} attachment={attachment} getReadUrl={onReadAttachment} />
+            ))}
+          </div>
+        ),
       )}
     </div>
   );

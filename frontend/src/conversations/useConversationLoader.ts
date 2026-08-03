@@ -1,7 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 
 import { ApiError } from "../api/errors";
-import type { ConversationResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "./pagination";
 import { selectionStore } from "./selectionStore";
@@ -13,7 +12,6 @@ export function useConversationLoader() {
   const { dispatch, services } = useAppActions();
   const { conversationApi } = services;
   const loadingMoreRef = useRef(false);
-  const [deletedItems, setDeletedItems] = useState<ConversationResponse[]>([]);
 
   const loadList = useCallback(async () => {
     dispatch({ type: "conversations/listLoading" });
@@ -67,17 +65,6 @@ export function useConversationLoader() {
     conversationIndex.status,
   ]);
 
-  const loadDeleted = useCallback(async () => {
-    try {
-      const items = await conversationApi.listDeleted();
-      setDeletedItems(items);
-    } catch {
-      // Deleted conversations are supplementary recovery UI. Failure here must
-      // not block the active conversation list from loading.
-      setDeletedItems([]);
-    }
-  }, [conversationApi]);
-
   const newConversation = useCallback(() => {
     dispatch({ type: "run/cleared" });
     dispatch({ type: "conversations/selected", id: null });
@@ -100,8 +87,13 @@ export function useConversationLoader() {
       dispatch({ type: "ui/setMobileSidebar", open: false });
       try {
         const detail = await conversationApi.detail(id);
-        const { messages, ...conversation } = detail;
-        dispatch({ type: "conversations/detailLoaded", conversation, messages });
+        const { messages, image_context: imageContext, ...conversation } = detail;
+        dispatch({
+          type: "conversations/detailLoaded",
+          conversation,
+          messages,
+          imageContext,
+        });
         selectionStore.save(id);
       } catch (error) {
         // 403/404/422: invalid or inaccessible URL selection; clear back to blank.
@@ -147,7 +139,6 @@ export function useConversationLoader() {
           newConversation();
         }
       }
-      await loadDeleted();
       return deletion;
     },
     [
@@ -156,19 +147,7 @@ export function useConversationLoader() {
       conversationIndex,
       selectConversation,
       newConversation,
-      loadDeleted,
     ],
-  );
-
-  const restoreConversation = useCallback(
-    async (id: string) => {
-      const conversation = await conversationApi.restore(id);
-      setDeletedItems((current) => current.filter((item) => item.id !== id));
-      await loadList();
-      await selectConversation(conversation.id);
-      return conversation;
-    },
-    [conversationApi, loadList, selectConversation],
   );
 
   return {
@@ -181,12 +160,9 @@ export function useConversationLoader() {
     detailStatus: conversationDetail.status,
     loadList,
     loadMore,
-    deletedItems,
-    loadDeleted,
     selectConversation,
     newConversation,
     renameConversation,
     deleteConversation,
-    restoreConversation,
   };
 }

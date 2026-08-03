@@ -23,7 +23,8 @@ export type FileAttachment = {
   media_type: string;
   size_bytes: number;
   category: FileCategory;
-  model_consumable: boolean;
+  model_input_kind: "document" | "image" | null;
+  position?: number;
   /** The API contract uses `warning`; `warnings` is accepted for old payloads. */
   warning?: string[];
   warnings?: string[];
@@ -42,7 +43,7 @@ export type SharedAttachmentPlaceholder = {
   warnings?: string[];
   // These are optional for backwards-compatible snapshots; their absence must
   // never be treated as permission to preview or download.
-  model_consumable?: boolean;
+  model_input_kind?: "document" | "image" | null;
   preview_available?: boolean;
 };
 
@@ -78,7 +79,6 @@ export type FilesCapability = {
   quota_bytes: number;
   target_turn_tokens: number;
   context_budget_tokens: number;
-  image_model_input: boolean;
 };
 
 /**
@@ -99,6 +99,7 @@ export type DraftAttachment = {
   media_type: string;
   size_bytes: number;
   category: FileCategory;
+  model_input_kind?: "document" | "image" | null;
   /** Ephemeral object URL for an image selected in this browser tab. */
   local_preview_url?: string;
   session_expires_at?: string | null;

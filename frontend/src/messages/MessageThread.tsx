@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-import type { MessageResponse, MessageSource } from "../api/types";
+import type {
+  ChatModelCapability,
+  ImageContext,
+  MessageResponse,
+  MessageSource,
+} from "../api/types";
 import type { FileReadRole } from "../files/types";
 import { messageBubble } from "../ui/classes";
 import { Message } from "./Message";
@@ -14,10 +19,19 @@ type MessageThreadProps = {
     messageId: string,
     content: string,
     attachmentIds?: string[],
+    modelId?: string,
   ) => void;
   onRegenerate?: (messageId: string) => void;
+  allowAttachmentEditing?: boolean;
+  legacyMessageId?: string | null;
+  onUpgradeLegacy?: (messageId: string) => void;
+  onEditUpgradeLegacy?: (messageId: string) => boolean | void | Promise<boolean | void>;
+  onStartNewConversation?: () => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
   onShowSources?: (sources: MessageSource[]) => void;
+  models?: ChatModelCapability[];
+  model?: string | null;
+  imageContext?: ImageContext;
   children?: ReactNode;
 };
 
@@ -28,8 +42,16 @@ export function MessageThread({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  allowAttachmentEditing = false,
+  legacyMessageId = null,
+  onUpgradeLegacy,
+  onEditUpgradeLegacy,
+  onStartNewConversation,
   onReadAttachment,
   onShowSources,
+  models = [],
+  model = null,
+  imageContext,
   children,
 }: MessageThreadProps) {
   // Horizontal geometry mirrors the composer (px-8 gutter outside a
@@ -45,8 +67,24 @@ export function MessageThread({
           mutateDisabledReason={mutateDisabledReason}
           onEditAndRegenerate={onEditAndRegenerate}
           onRegenerate={onRegenerate}
+          allowAttachmentEditing={allowAttachmentEditing}
+          legacyUpgradeAvailable={legacyMessageId === message.id}
+          onUpgradeLegacy={onUpgradeLegacy}
+          onEditUpgradeLegacy={onEditUpgradeLegacy}
+          onStartNewConversation={onStartNewConversation}
           onReadAttachment={onReadAttachment}
           onShowSources={onShowSources}
+          visionEditModels={imageContext?.state === "vision_required" ? models : []}
+          visionEditModel={model}
+          visionEditHasPriorImage={messages.some(
+            (candidate) =>
+              candidate.role === "user" &&
+              candidate.position < message.position &&
+              (candidate.attachments ?? []).some(
+                (attachment) =>
+                  attachment.model_input_kind === "image" || attachment.category === "image",
+              ),
+          )}
         />
       ))}
       {pendingMessage && (

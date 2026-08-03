@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,9 +8,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import type { ChatModelCapability } from "../api/types";
+import type { ChatModelCapability, ImageContext } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
 import type { DraftAttachment, FileReadRole, FilesCapability } from "../files/types";
+import { categoryForFileName } from "../files/utils";
 import {
   clampThinkingLevel,
   THINKING_LEVEL_OPTIONS,
@@ -21,6 +23,7 @@ import {
   focusRing,
   neutralMenuItem,
   popoverSurface,
+  primaryButton,
 } from "./classes";
 import { Icons } from "./icons";
 
@@ -40,6 +43,8 @@ type ComposerProps = {
   models?: ChatModelCapability[];
   model?: string | null;
   onModelChange?: (modelId: string) => void;
+  imageContext?: ImageContext;
+  onRemoveImages?: () => Promise<void> | void;
   fileCapability?: FilesCapability;
   fileUploadAllowed?: boolean;
   attachments?: DraftAttachment[];
@@ -50,6 +55,7 @@ type ComposerProps = {
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
   canSend?: boolean;
   sendDisabledReason?: string | null;
+  readOnly?: boolean;
 };
 
 // ChatGPT lets the prompt occupy up to 30% of the viewport before scrolling.
@@ -140,6 +146,8 @@ export function Composer({
   models = [],
   model = null,
   onModelChange = () => {},
+  imageContext,
+  onRemoveImages,
   fileCapability,
   fileUploadAllowed = true,
   attachments = [],
@@ -150,6 +158,7 @@ export function Composer({
   onReadAttachment,
   canSend,
   sendDisabledReason = null,
+  readOnly = false,
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -168,6 +177,9 @@ export function Composer({
   const [openSubmenu, setOpenSubmenu] = useState<PickerSubmenu>(null);
   const [flyoutSide, setFlyoutSide] = useState<"right" | "left">("right");
   const [levelInline, setLevelInline] = useState(false);
+  const [blockedFiles, setBlockedFiles] = useState<File[] | null>(null);
+  const [pendingModelId, setPendingModelId] = useState<string | null>(null);
+  const [removingImages, setRemovingImages] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -229,7 +241,7 @@ export function Composer({
     };
   }, [pickerOpen]);
 
-  const canSubmit = canSend ?? Boolean(value.trim());
+  const canSubmit = !readOnly && (canSend ?? Boolean(value.trim()));
   const send = () => {
     if (!canSubmit || state !== "idle") return;
     onSend();
@@ -292,6 +304,9 @@ export function Composer({
     flyoutSide === "right" ? "left-[calc(100%-2px)]" : "right-[calc(100%-2px)]";
 
   const selectedModel = models.find((entry) => entry.id === model) ?? null;
+  const hasImageAttachments = attachments.some(
+    (attachment) => (attachment.file?.category ?? attachment.category) === "image",
+  );
   // With no capabilities loaded every tier stays selectable; a model with no
   // thinking tiers (non-reasoning GPT) hides the thinking row entirely.
   const allowedLevels =
@@ -310,9 +325,26 @@ export function Composer({
     .filter(Boolean)
     .join(" ");
   const primaryRowHeight = attachments.length > 0 ? "min-h-[52px]" : "min-h-[42px]";
-  const canDropFiles = fileCapability?.enabled === true && fileUploadAllowed;
+  const canDropFiles = fileCapability?.enabled === true && fileUploadAllowed && !readOnly;
+
+  const handleSelectFiles = useCallback((input: FileList | File[]) => {
+    if (readOnly) return;
+    const files = Array.from(input);
+    if (
+      files.some((file) => categoryForFileName(file.name) === "image") &&
+      selectedModel?.supports_image_input !== true
+    ) {
+      setBlockedFiles(files);
+      return;
+    }
+    onSelectFiles(input);
+  }, [onSelectFiles, readOnly, selectedModel]);
 
   const handlePromptPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly) {
+      event.preventDefault();
+      return;
+    }
     if (!canDropFiles) return;
     const images = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
@@ -320,7 +352,7 @@ export function Composer({
       .filter((file): file is File => file !== null);
     if (images.length === 0) return;
     event.preventDefault();
-    onSelectFiles(images);
+    handleSelectFiles(images);
   };
 
   const hasDraggedFiles = (types: readonly string[] | DOMStringList) =>
@@ -358,7 +390,7 @@ export function Composer({
       event.preventDefault();
       const files = event.dataTransfer.files;
       resetDrag();
-      if (files.length > 0) onSelectFiles(files);
+      if (files.length > 0) handleSelectFiles(files);
     };
 
     document.addEventListener("dragenter", onDragEnter);
@@ -373,7 +405,7 @@ export function Composer({
       document.removeEventListener("drop", onDrop);
       window.removeEventListener("blur", resetDrag);
     };
-  }, [canDropFiles, onSelectFiles]);
+  }, [canDropFiles, handleSelectFiles]);
 
   // Shared by both thinking-level placements (mobile inline / desktop flyout).
   const levelOptionItems = levelOptions.map((option) => (
@@ -393,9 +425,6 @@ export function Composer({
     </button>
   ));
 
-  const hasImageAttachments = attachments.some(
-    (attachment) => (attachment.file?.category ?? attachment.category) === "image",
-  );
   const hasNonImageAttachments = attachments.some(
     (attachment) => (attachment.file?.category ?? attachment.category) !== "image",
   );
@@ -460,7 +489,10 @@ export function Composer({
               promptExpanded ? "py-4" : ""
             }`}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            readOnly={readOnly}
+            onChange={(event) => {
+              if (!readOnly) onChange(event.target.value);
+            }}
             onPaste={handlePromptPaste}
             placeholder="有问题，尽管问"
             rows={1}
@@ -490,10 +522,10 @@ export function Composer({
                 type="file"
                 multiple
                 accept={uploadAccept}
-                disabled={!fileUploadAllowed}
+                disabled={!fileUploadAllowed || readOnly}
                 aria-label="选择附件"
                 onChange={(event) => {
-                  if (event.target.files) onSelectFiles(event.target.files);
+                   if (event.target.files) handleSelectFiles(event.target.files);
                   event.target.value = "";
                 }}
               />
@@ -525,7 +557,7 @@ export function Composer({
                       role="menuitem"
                       className={toolsMenuItem}
                       type="button"
-                      disabled={!fileUploadAllowed}
+                      disabled={!fileUploadAllowed || readOnly}
                       title={
                         fileUploadAllowed
                           ? "添加照片和文件"
@@ -637,7 +669,29 @@ export function Composer({
                                 aria-checked={entry.id === selectedModel?.id}
                                 className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
                                 type="button"
+                                disabled={
+                                  (imageContext?.state === "vision_required" &&
+                                    !entry.supports_image_input) ||
+                                  (imageContext?.state === "legacy_upgrade_required" &&
+                                    entry.supports_image_input)
+                                }
+                                title={
+                                  imageContext?.state === "vision_required" &&
+                                  !entry.supports_image_input
+                                    ? "This conversation requires a vision model."
+                                    : imageContext?.state === "legacy_upgrade_required" &&
+                                        entry.supports_image_input
+                                      ? "Upgrade the original image message first."
+                                      : undefined
+                                }
                                 onClick={() => {
+                                  if (
+                                    hasImageAttachments &&
+                                    !entry.supports_image_input
+                                  ) {
+                                    setPendingModelId(entry.id);
+                                    return;
+                                  }
                                   onModelChange(entry.id);
                                   setOpenSubmenu(null);
                                 }}
@@ -736,6 +790,76 @@ export function Composer({
           </div>
         </div>
       </div>
+      {(blockedFiles || pendingModelId) && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={pendingModelId ? "Image draft options" : "当前模型不支持图片上传"}
+        >
+          <div className="w-full max-w-[420px] rounded-2xl border border-border bg-surface p-5 shadow-popover">
+            <h2 className="text-[16px] font-semibold text-text-primary">
+              {pendingModelId ? "Remove images before switching models?" : "当前模型不支持图片上传"}
+            </h2>
+            <p className="mt-2 text-[13px] leading-5 text-text-muted">
+              {pendingModelId
+                ? "Your image draft will stay available until you choose how to continue."
+                : "请切换至GPT模型以继续"}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {pendingModelId ? (
+                <>
+                  <button
+                    type="button"
+                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-primary hover:bg-hover"
+                    onClick={() => setPendingModelId(null)}
+                  >
+                    Continue with GPT
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-primary hover:bg-hover"
+                    disabled={removingImages || !onRemoveImages}
+                    onClick={() => {
+                      const target = pendingModelId;
+                      if (!target || !onRemoveImages || removingImages) return;
+                      setRemovingImages(true);
+                      void Promise.resolve()
+                        .then(() => onRemoveImages())
+                        .then(() => {
+                          onModelChange(target);
+                          setPendingModelId(null);
+                        })
+                        .catch(() => {
+                          // Keep the modal and the current model when any
+                          // cancellation fails; the draft remains recoverable.
+                        })
+                        .finally(() => setRemovingImages(false));
+                    }}
+                  >
+                    {removingImages ? "Removing images…" : "Remove all images and switch"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-muted hover:bg-hover"
+                    onClick={() => setPendingModelId(null)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={`${primaryButton} h-9 px-3.5 text-[13px] font-medium`}
+                  onClick={() => setBlockedFiles(null)}
+                >
+                  确认
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {dragActive &&
         createPortal(
           <div

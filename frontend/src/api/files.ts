@@ -41,6 +41,12 @@ export function createFilesApi(client?: FilesClient) {
         method: "DELETE",
       });
     },
+    cancelMany(uploadIds: string[]): Promise<FileUploadRecord[]> {
+      return resolveClient().request<FileUploadRecord[]>("/files/uploads/cancel", {
+        method: "POST",
+        body: { upload_ids: uploadIds },
+      });
+    },
     readUrl(fileId: string, role: FileReadRole): Promise<FileReadUrl> {
       return resolveClient().request<FileReadUrl>(`/files/${fileId}/read-url`, {
         method: "POST",

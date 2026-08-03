@@ -124,30 +124,6 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows recoverable deleted conversations and invokes restore", async () => {
-    const props = baseProps();
-    const onRestore = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <Sidebar
-        {...props}
-        deletedItems={[
-          {
-            ...makeConversation("deleted-1", "误删的对话", today),
-            deleted_at: "2026-08-01T10:00:00Z",
-            deletion_due_at: "2026-08-31T10:00:00Z",
-          },
-        ]}
-        onRestore={onRestore}
-      />,
-    );
-
-    expect(screen.getByText("最近删除")).toBeInTheDocument();
-    expect(screen.getByText(/可恢复至/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "恢复 误删的对话" }));
-    expect(onRestore).toHaveBeenCalledWith("deleted-1");
-  });
-
   it("renames in place on Enter", async () => {
     const props = baseProps();
     const user = userEvent.setup();

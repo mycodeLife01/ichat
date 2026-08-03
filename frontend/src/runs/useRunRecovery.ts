@@ -54,7 +54,12 @@ export function useRunRecovery(start: StartStream) {
           dispatch({ type: "conversations/draftActivated" });
           if (stateRef.current.conversationIndex.selectedId === conversationId) {
             const { messages, ...conversation } = detail;
-            dispatch({ type: "conversations/detailLoaded", conversation, messages });
+            dispatch({
+              type: "conversations/detailLoaded",
+              conversation,
+              messages,
+              imageContext: detail.image_context,
+            });
           }
         } catch {
           // Leave the snapshot as-is; the next selection or refresh catches up.

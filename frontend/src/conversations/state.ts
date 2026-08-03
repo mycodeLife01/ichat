@@ -1,4 +1,4 @@
-import type { ConversationResponse, MessageResponse } from "../api/types";
+import type { ConversationResponse, ImageContext, MessageResponse } from "../api/types";
 import type { AppAction } from "../app/store";
 
 export type ConversationIndexState = {
@@ -22,12 +22,14 @@ export const initialConversationIndexState: ConversationIndexState = {
 export type ConversationDetailState = {
   conversation: ConversationResponse | null;
   messages: MessageResponse[];
+  imageContext: ImageContext;
   status: "idle" | "loading" | "ready" | "forbidden";
 };
 
 export const initialConversationDetailState: ConversationDetailState = {
   conversation: null,
   messages: [],
+  imageContext: { state: "none", legacy_message_id: null },
   status: "idle",
 };
 
@@ -120,8 +122,13 @@ export type ConversationDetailAction =
       type: "conversations/detailLoaded";
       conversation: ConversationResponse;
       messages: MessageResponse[];
+      imageContext?: ImageContext;
     }
-  | { type: "conversations/messageAppended"; message: MessageResponse }
+  | {
+      type: "conversations/messageAppended";
+      message: MessageResponse;
+      imageContext?: ImageContext;
+    }
   | { type: "conversations/detailForbidden" }
   | { type: "conversations/detailReset" };
 
@@ -136,12 +143,22 @@ export function conversationDetailReducer(
       return {
         conversation: action.conversation,
         messages: action.messages,
+        imageContext: action.imageContext ?? { state: "none", legacy_message_id: null },
         status: "ready",
       };
     case "conversations/messageAppended":
-      return { ...state, messages: [...state.messages, action.message] };
+      return {
+        ...state,
+        messages: [...state.messages, action.message],
+        imageContext: action.imageContext ?? state.imageContext,
+      };
     case "conversations/detailForbidden":
-      return { conversation: null, messages: [], status: "forbidden" };
+      return {
+        conversation: null,
+        messages: [],
+        imageContext: { state: "none", legacy_message_id: null },
+        status: "forbidden",
+      };
     case "conversations/detailReset":
       return initialConversationDetailState;
     case "conversations/renamed":

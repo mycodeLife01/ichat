@@ -71,15 +71,6 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         { method: "DELETE" },
       );
     },
-    listDeleted(): Promise<ConversationResponse[]> {
-      return resolveClient().request<ConversationResponse[]>("/conversations/deleted");
-    },
-    restore(conversationId: string): Promise<ConversationResponse> {
-      return resolveClient().request<ConversationResponse>(
-        `/conversations/${conversationId}/restore`,
-        { method: "POST" },
-      );
-    },
     sendMessage(
       conversationId: string,
       content: string,

@@ -3,7 +3,14 @@ export { ApiClient, getDefaultApiClient } from "./client";
 export { capabilitiesApi, createCapabilitiesApi } from "./capabilities";
 export { conversationApi, createConversationApi } from "./conversations";
 export { filesApi, createFilesApi } from "./files";
-export { ApiError, isAbortError, toApiError } from "./errors";
+export {
+  ApiError,
+  getErrorCode,
+  getErrorDetail,
+  getLegacyMessageId,
+  isAbortError,
+  toApiError,
+} from "./errors";
 export { runApi, createRunApi } from "./runs";
 export { SseParser, decodeSseStream } from "./sse";
 export type {
@@ -11,8 +18,11 @@ export type {
   AuthUserResponse,
   CommandStatusResponse,
   CapabilitiesResponse,
+  ChatModelCapability,
   ConversationDetailResponse,
   ConversationResponse,
+  ImageContext,
+  ImageContextState,
   MessageResponse,
   MessageMetadata,
   MessageSource,

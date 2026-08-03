@@ -4,7 +4,14 @@ import {
   type TokenStore,
 } from "../auth/tokenStore";
 import { getApiBaseUrl } from "./env";
-import { ApiError, getDefaultErrorMessage, getErrorDetail, toApiError } from "./errors";
+import {
+  ApiError,
+  getDefaultErrorMessage,
+  getErrorCode,
+  getErrorDetail,
+  getLegacyMessageId,
+  toApiError,
+} from "./errors";
 import type { AuthTokenResponse, SuccessEnvelope } from "./types";
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -127,6 +134,8 @@ export class ApiClient {
         message: "登录状态已失效，请重新登录",
         detail: apiError.detail,
         payload: apiError.payload,
+        code: apiError.code,
+        legacyMessageId: apiError.legacyMessageId,
         isAuthExpired: true,
         cause: error,
       });
@@ -179,6 +188,8 @@ export class ApiClient {
       message: getDefaultErrorMessage(response.status),
       detail,
       payload,
+      code: getErrorCode(payload),
+      legacyMessageId: getLegacyMessageId(payload),
     });
   }
 }

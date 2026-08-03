@@ -344,6 +344,21 @@ export function AttachmentCard({
               </span>
             )}
           </button>
+          {mode === "message" && !file?.preview_available && fileId && getReadUrl && (
+            <button
+              type="button"
+              className="absolute right-1 bottom-1 z-[2] inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface/90 text-text-muted shadow-popover hover:bg-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+              aria-label="Download original file"
+              disabled={loadingRole === "download"}
+              onClick={() => void read("download")}
+            >
+              {loadingRole === "download" ? (
+                <LoaderCircle className="animate-spin" size={15} />
+              ) : (
+                <Download size={15} />
+              )}
+            </button>
+          )}
           {draft && (
             <div className="absolute -top-1 -right-1 z-[2] flex gap-1 opacity-0 transition-opacity duration-[120ms] group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100">
               {failed && onRetry && (
@@ -368,9 +383,36 @@ export function AttachmentCard({
               )}
             </div>
           )}
+          {mode === "editor" && fileId && (
+            <div className="absolute -top-1 -right-1 z-[3] flex gap-1 rounded-full bg-surface/90 p-0.5 opacity-0 shadow-popover transition-opacity duration-[120ms] group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100">
+              {onMoveFile && (
+                <>
+                  <CardButton
+                    label="Move attachment earlier"
+                    disabled={!canMoveBack}
+                    onClick={() => onMoveFile(fileId, -1)}
+                  >
+                    <ChevronLeft size={15} />
+                  </CardButton>
+                  <CardButton
+                    label="Move attachment later"
+                    disabled={!canMoveForward}
+                    onClick={() => onMoveFile(fileId, 1)}
+                  >
+                    <ChevronRight size={15} />
+                  </CardButton>
+                </>
+              )}
+              {onRemove && (
+                <CardButton label="Remove attachment" onClick={() => onRemove(fileId)}>
+                  <X size={15} />
+                </CardButton>
+              )}
+            </div>
+          )}
           <div className="sr-only">
             {readError && <p>{readError}</p>}
-            {file?.model_consumable === false && (
+            {file && file.model_input_kind === null && (
               <p>File available for download — the model cannot read its contents.</p>
             )}
             {warning.map((item) => (
@@ -452,7 +494,7 @@ export function AttachmentCard({
           </div>
         </div>
         <div className="sr-only">
-          {file?.model_consumable === false && (
+          {file && file.model_input_kind === null && (
             <p>File available for download — the model cannot read its contents.</p>
           )}
           {warning.map((item) => (
@@ -495,7 +537,7 @@ export function AttachmentCard({
               {draft.error_message ?? errorLabel(draft.error_code)}
             </p>
           )}
-          {file?.model_consumable === false && (
+          {file && file.model_input_kind === null && (
             <p className="mt-1 text-[11.5px] text-text-muted">
               File available for download — the model cannot read its contents.
             </p>

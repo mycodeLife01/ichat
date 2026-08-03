@@ -21,6 +21,7 @@ describe("filesApi", () => {
     await api.confirm("upload-1", '"etag-1"');
     await api.status(["upload-1", "upload-2"]);
     await api.cancel("upload-2");
+    await api.cancelMany(["upload-1", "upload-2"]);
     await api.readUrl("file-1", "download");
 
     expect(client.request).toHaveBeenNthCalledWith(1, "/files/uploads", {
@@ -38,7 +39,11 @@ describe("filesApi", () => {
     expect(client.request).toHaveBeenNthCalledWith(4, "/files/uploads/upload-2", {
       method: "DELETE",
     });
-    expect(client.request).toHaveBeenNthCalledWith(5, "/files/file-1/read-url", {
+    expect(client.request).toHaveBeenNthCalledWith(5, "/files/uploads/cancel", {
+      method: "POST",
+      body: { upload_ids: ["upload-1", "upload-2"] },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(6, "/files/file-1/read-url", {
       method: "POST",
       body: { role: "download" },
     });

@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { MessageResponse } from "../api/types";
+import type { ChatModelCapability, MessageResponse } from "../api/types";
+import type { FileAttachment } from "../files/types";
 import { Message } from "./Message";
 
 const userMessage: MessageResponse = {
@@ -27,14 +28,14 @@ const assistantMessage: MessageResponse = {
   created_at: "2026-06-08T10:00:01Z",
 };
 
-const attachments = [
+const attachments: FileAttachment[] = [
   {
     id: "file-1",
     name: "report.pdf",
     media_type: "application/pdf",
     size_bytes: 1234,
     category: "pdf",
-    model_consumable: true,
+    model_input_kind: null,
     warning: ["Some scanned pages were not read."],
     preview_available: false,
   },
@@ -44,9 +45,28 @@ const attachments = [
     media_type: "image/png",
     size_bytes: 4321,
     category: "image",
-    model_consumable: false,
+    model_input_kind: "image",
     warning: [],
     preview_available: true,
+  },
+];
+
+const models: ChatModelCapability[] = [
+  {
+    id: "deepseek-v4-flash",
+    provider: "deepseek",
+    label: "DeepSeek",
+    thinking_levels: ["low", "high"],
+    default: true,
+    supports_image_input: false,
+  },
+  {
+    id: "gpt-5-mini",
+    provider: "openai",
+    label: "GPT-5 mini",
+    thinking_levels: ["low", "high"],
+    default: false,
+    supports_image_input: true,
   },
 ];
 
@@ -248,6 +268,23 @@ describe("Message", () => {
     expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "改写后的问题");
   });
 
+  it("offers legacy image editing only after the vision model upgrade succeeds", async () => {
+    const user = userEvent.setup();
+    const onEditUpgradeLegacy = vi.fn(() => true);
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        legacyUpgradeAvailable
+        onEditUpgradeLegacy={onEditUpgradeLegacy}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑并升级" }));
+
+    expect(onEditUpgradeLegacy).toHaveBeenCalledWith(userMessage.id);
+    expect(screen.getByRole("textbox")).toHaveValue(userMessage.content);
+  });
+
   it("cancels editing without calling back", async () => {
     const user = userEvent.setup();
     const onEditAndRegenerate = vi.fn();
@@ -309,6 +346,35 @@ describe("Message", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(onEditAndRegenerate).not.toHaveBeenCalled();
+  });
+
+  it("can remove the last edited image and choose DeepSeek in the same mutation", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        onEditAndRegenerate={onEditAndRegenerate}
+        allowAttachmentEditing
+        visionEditModels={models}
+        visionEditModel="gpt-5-mini"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    const modelSelect = screen.getByRole("combobox", { name: "Model for edited message" });
+    expect(screen.getByRole("option", { name: "DeepSeek" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Remove attachment" }));
+    expect(screen.getByRole("option", { name: "DeepSeek" })).toBeEnabled();
+    await user.selectOptions(modelSelect, "deepseek-v4-flash");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(
+      userMessage.id,
+      userMessage.content,
+      [],
+      "deepseek-v4-flash",
+    );
   });
 
   it("regenerates an assistant message", async () => {

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 
+import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
 import { currentRunOptions } from "../runs/runOptions";
 import { selectionStore } from "./selectionStore";
@@ -32,7 +33,7 @@ export function useSendMessage(
 
       try {
         if (targetId == null) {
-          const { conversation: convo, message, run } =
+          const { conversation: convo, message, run, image_context: imageContext } =
             attachmentIds === undefined
               ? await conversationApi.createWithMessage(trimmed, runOptions)
               : await conversationApi.createWithMessage(
@@ -47,6 +48,7 @@ export function useSendMessage(
             type: "conversations/detailLoaded",
             conversation: convo,
             messages: [message],
+            imageContext,
           });
           dispatch({ type: "conversations/selected", id: convo.id });
           dispatch({ type: "conversations/draftCreated", id: convo.id });
@@ -62,11 +64,11 @@ export function useSendMessage(
           return true;
         }
 
-        const { message, run } =
+        const { message, run, image_context: imageContext } =
           attachmentIds === undefined
             ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
             : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds);
-        dispatch({ type: "conversations/messageAppended", message });
+        dispatch({ type: "conversations/messageAppended", message, imageContext });
         dispatch({
           type: "run/started",
           runId: run.id,
@@ -79,6 +81,19 @@ export function useSendMessage(
       } catch (error) {
         dispatch({ type: "submission/cleared" });
         console.error("send message failed", error);
+        const code = error instanceof ApiError ? error.code : undefined;
+        const recoveryMessage =
+          code === "IMAGE_INPUT_NOT_SUPPORTED"
+            ? "Switch to a vision model before sending images."
+            : code === "VISION_MODEL_REQUIRED"
+              ? "This conversation requires a compatible vision model."
+              : code === "LEGACY_IMAGE_CONTEXT"
+                ? "Upgrade the original image message with a vision model first."
+                : null;
+        if (recoveryMessage) {
+          dispatch({ type: "ui/showToast", message: recoveryMessage, tone: "error" });
+          return false;
+        }
         dispatch({ type: "ui/showToast", message: "发送失败，请重试", tone: "error" });
         return false;
       }

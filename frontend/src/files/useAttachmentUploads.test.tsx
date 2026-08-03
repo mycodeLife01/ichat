@@ -18,7 +18,6 @@ const capability: FilesCapability = {
   quota_bytes: 1024,
   target_turn_tokens: 128_000,
   context_budget_tokens: 256_000,
-  image_model_input: false,
 };
 
 const session = {
@@ -39,7 +38,7 @@ const readyRecord: FileUploadRecord = {
     media_type: "text/plain",
     size_bytes: 5,
     category: "text",
-    model_consumable: true,
+    model_input_kind: "document",
     warning: [],
     preview_available: false,
   },
@@ -63,6 +62,14 @@ function makeApi(overrides: Partial<FilesApi> = {}): FilesApi {
       error_code: null,
       file: null,
     })),
+    cancelMany: vi.fn(async (uploadIds: string[]) =>
+      uploadIds.map((uploadId) => ({
+        upload_id: uploadId,
+        status: "cancelled" as const,
+        error_code: null,
+        file: null,
+      })),
+    ),
     readUrl: vi.fn(async () => ({
       url: "https://downloads.example.test/file-1",
       expires_at: "2026-08-01T10:05:00Z",
@@ -357,6 +364,74 @@ describe("useAttachmentUploads", () => {
     expect(result.current.attachments).toEqual([]);
   });
 
+  it("rejects removeImages when any image cancellation fails", async () => {
+    attachmentDraftStore.write(7, "conversation-1", {
+      content: "",
+      attachments: [
+        {
+          client_id: "local-image",
+          upload_id: "upload-image",
+          status: "succeeded",
+          error_code: null,
+          file: {
+            id: "file-image",
+            name: "photo.png",
+            media_type: "image/png",
+            size_bytes: 5,
+            category: "image",
+            model_input_kind: "image",
+            warning: [],
+            preview_available: true,
+          },
+          name: "photo.png",
+          media_type: "image/png",
+          size_bytes: 5,
+          category: "image",
+        },
+        {
+          client_id: "local-image-2",
+          upload_id: "upload-image-2",
+          status: "succeeded",
+          error_code: null,
+          file: {
+            id: "file-image-2",
+            name: "photo-2.png",
+            media_type: "image/png",
+            size_bytes: 5,
+            category: "image",
+            model_input_kind: "image",
+            warning: [],
+            preview_available: true,
+          },
+          name: "photo-2.png",
+          media_type: "image/png",
+          size_bytes: 5,
+          category: "image",
+        },
+      ],
+    });
+    const onError = vi.fn();
+    const filesApi = makeApi({
+      cancelMany: vi.fn(async () => {
+        throw new Error("cancel failed");
+      }),
+    });
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        onError,
+      }),
+    );
+
+    await expect(result.current.removeImages()).rejects.toThrow("cancel failed");
+    expect(filesApi.cancelMany).toHaveBeenCalledWith(["upload-image", "upload-image-2"]);
+    expect(result.current.attachments).toHaveLength(2);
+    expect(onError).toHaveBeenCalledWith("The uploads could not be cancelled. Please try again.");
+  });
+
   it("pauses batch polling while the page is hidden and resumes on visibility", async () => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -416,7 +491,7 @@ describe("useAttachmentUploads", () => {
             category: "image",
             // Keep this intentionally true: display-only images must still
             // never unlock an otherwise empty message.
-            model_consumable: true,
+            model_input_kind: "image",
             warning: [],
             preview_available: true,
           },

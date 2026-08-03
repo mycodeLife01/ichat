@@ -79,7 +79,7 @@ describe("SharePage", () => {
                 media_type: "application/pdf",
                 size_bytes: 1024,
                 category: "pdf",
-                model_consumable: true,
+                model_input_kind: "document",
                 warning: ["Some pages were not read."],
                 preview_available: false,
               },

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -28,6 +28,7 @@ const FLASH = {
   label: "deepseek-v4-flash",
   thinking_levels: ["low", "high", "max"],
   default: true,
+  supports_image_input: false,
 };
 const PRO = {
   id: "deepseek-v4-pro",
@@ -35,6 +36,7 @@ const PRO = {
   label: "deepseek-v4-pro",
   thinking_levels: ["high", "max"],
   default: false,
+  supports_image_input: false,
 };
 const LUNA = {
   id: "openai/gpt-5.6-luna",
@@ -42,6 +44,7 @@ const LUNA = {
   label: "gpt-5.6-luna",
   thinking_levels: ["low", "medium", "high", "xhigh", "max"],
   default: false,
+  supports_image_input: true,
 };
 const NO_THINKING = {
   id: "gpt-4.1-mini",
@@ -49,6 +52,7 @@ const NO_THINKING = {
   label: "gpt-4.1-mini",
   thinking_levels: [] as string[],
   default: false,
+  supports_image_input: false,
 };
 const MODELS = [FLASH, PRO, LUNA, NO_THINKING];
 
@@ -61,7 +65,6 @@ const FILES = {
   quota_bytes: 1_000_000_000,
   target_turn_tokens: 128_000,
   context_budget_tokens: 256_000,
-  image_model_input: false,
 };
 
 const READY_ATTACHMENT = {
@@ -75,7 +78,7 @@ const READY_ATTACHMENT = {
     media_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     size_bytes: 1024,
     category: "office",
-    model_consumable: true,
+    model_input_kind: "document",
     preview_available: false,
   },
   name: "report.xlsx",
@@ -95,7 +98,7 @@ const READY_IMAGE = {
     media_type: "image/png",
     size_bytes: 512,
     category: "image",
-    model_consumable: false,
+    model_input_kind: "image",
     preview_available: true,
   },
   name: "photo.png",
@@ -498,7 +501,12 @@ describe("Composer", () => {
 
   it("uploads pasted clipboard images through the attachment flow", () => {
     const onSelectFiles = vi.fn();
-    renderComposer({ fileCapability: FILES, onSelectFiles });
+    renderComposer({
+      fileCapability: FILES,
+      models: MODELS,
+      model: LUNA.id,
+      onSelectFiles,
+    });
     const image = new File(["pixels"], "image.png", { type: "image/png" });
 
     const pasteAccepted = fireEvent.paste(screen.getByRole("textbox"), {
@@ -521,6 +529,79 @@ describe("Composer", () => {
     expect(pasteAccepted).toBe(false);
     expect(onSelectFiles).toHaveBeenCalledOnce();
     expect(onSelectFiles).toHaveBeenCalledWith([image]);
+  });
+
+  it("shows a Chinese notice without uploading or switching models", async () => {
+    const user = userEvent.setup();
+    const onSelectFiles = vi.fn();
+    const onModelChange = vi.fn();
+    renderComposer({ fileCapability: FILES, onSelectFiles, onModelChange });
+    const image = new File(["pixels"], "image.png", { type: "image/png" });
+
+    fireEvent.change(screen.getByLabelText("选择附件"), { target: { files: [image] } });
+
+    const dialog = screen.getByRole("dialog", { name: "当前模型不支持图片上传" });
+    expect(onSelectFiles).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(dialog).toHaveTextContent("当前模型不支持图片上传");
+    expect(dialog).toHaveTextContent("请切换至GPT模型以继续");
+    expect(within(dialog).getAllByRole("button")).toHaveLength(1);
+
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "当前模型不支持图片上传" }),
+    ).not.toBeInTheDocument();
+    expect(onSelectFiles).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the composer read-only when vision input is unavailable", () => {
+    const onChange = vi.fn();
+    const onSelectFiles = vi.fn();
+    renderComposer({
+      value: "keep this",
+      onChange,
+      onSelectFiles,
+      fileCapability: FILES,
+      readOnly: true,
+    });
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "changed" } });
+    fireEvent.paste(textbox, {
+      clipboardData: {
+        items: [{ kind: "file", type: "image/png", getAsFile: () => new File(["x"], "x.png") }],
+      },
+    });
+
+    expect(textbox).toHaveAttribute("readonly");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onSelectFiles).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("选择附件")).toBeDisabled();
+  });
+
+  it("does not switch models when removing draft images fails", async () => {
+    const user = userEvent.setup();
+    const onModelChange = vi.fn();
+    const onRemoveImages = vi.fn(async () => {
+      throw new Error("cancel failed");
+    });
+    renderComposer({
+      models: MODELS,
+      model: LUNA.id,
+      attachments: [READY_IMAGE],
+      onModelChange,
+      onRemoveImages,
+    });
+
+    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("menuitem", { name: /^模型/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: FLASH.label }));
+    await user.click(screen.getByRole("button", { name: "Remove all images and switch" }));
+
+    await waitFor(() => expect(onRemoveImages).toHaveBeenCalledTimes(1));
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("leaves normal clipboard pastes untouched", () => {

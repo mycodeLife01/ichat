@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
@@ -63,9 +63,6 @@ export function AppShell() {
     newConversation,
     renameConversation,
     deleteConversation,
-    deletedItems,
-    loadDeleted,
-    restoreConversation,
   } = useConversationLoader();
 
   // The conversation public id is carried in the URL (`/c/:publicId`), so the
@@ -95,6 +92,9 @@ export function AppShell() {
   // applies while the server still offers it (modelPreferenceStore.resolve()).
   const [models, setModels] = useState<ChatModelCapability[]>([]);
   const [modelId, setModelId] = useState<string | null>(null);
+  const appliedImageContextRef = useRef<string | null>(null);
+  const imageContext = detail.imageContext;
+  const selectedModel = models.find((entry) => entry.id === modelId) ?? null;
   const onThinkingLevelChange = (level: ThinkingLevel) => {
     thinkingLevelStore.save(level);
     setThinkingLevel(level);
@@ -143,10 +143,17 @@ export function AppShell() {
     userId: user?.id ?? null,
     conversationId: selectedId,
     capability: fileCapability,
+    selectedModel,
     canCreate: user?.email_verified === true,
     filesApi: services.filesApi,
     onRestoredContent: restoreComposerContent,
     onError: (message) => dispatch({ type: "ui/showToast", message, tone: "error" }),
+    onImagesBlocked: () =>
+      dispatch({
+        type: "ui/showToast",
+        message: "Switch to a vision model before uploading images.",
+        tone: "warning",
+      }),
   });
   const onComposerValueChange = (value: string) => {
     setComposerValue(value);
@@ -174,8 +181,10 @@ export function AppShell() {
 
   const onSend = () => {
     const text = composerValue;
+    const readyImagesAllowed =
+      !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
     if (
-      (!text.trim() && !attachmentUploads.hasModelConsumableAttachment) ||
+      (!text.trim() && (!attachmentUploads.hasModelConsumableAttachment || !readyImagesAllowed)) ||
       attachmentUploads.hasPendingAttachments ||
       attachmentUploads.hasFailedAttachments ||
       pendingSubmission !== null
@@ -286,8 +295,21 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (routerReady) void loadDeleted();
-  }, [loadDeleted, routerReady]);
+    if (!detail.conversation || models.length === 0) return;
+    const key = `${detail.conversation.id}:${imageContext.state}:${imageContext.legacy_message_id ?? ""}:${imageContext.recommended_model ?? ""}`;
+    if (appliedImageContextRef.current === key) return;
+    appliedImageContextRef.current = key;
+    const resolved = modelPreferenceStore.resolveForImageContext(imageContext);
+    if (resolved && resolved.id !== modelId) {
+      modelPreferenceStore.save(resolved.id);
+      setModelId(resolved.id);
+      if (resolved.thinking_levels.length > 0) {
+        const clamped = clampThinkingLevel(thinkingLevelStore.read(), resolved.thinking_levels);
+        thinkingLevelStore.save(clamped);
+        setThinkingLevel(clamped);
+      }
+    }
+  }, [detail.conversation, imageContext, modelId, models]);
 
   // URL → state: select the conversation named in the path (and recover any
   // in-flight run), or reset to a blank new conversation at the root.
@@ -361,16 +383,37 @@ export function AppShell() {
       : composerState !== "idle"
         ? "请先停止当前生成"
         : null;
+  const visionUnavailable =
+    imageContext.state === "vision_required" &&
+    modelPreferenceStore.resolveForImageContext(imageContext) === null;
+  // A vision-dependent branch must stay read-only until a compatible model is
+  // selected. This also covers the brief render while model capabilities are
+  // loading or a stale non-vision preference is being corrected.
+  const visionMutationBlocked =
+    imageContext.state === "vision_required" &&
+    (visionUnavailable || selectedModel?.supports_image_input !== true);
+  const mutationDisabledReason =
+    mutateDisabledReason ??
+    (visionMutationBlocked ? "This conversation requires a compatible vision model." : null);
+  const readyImagesAllowed =
+    !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
   const sendDisabledReason =
     attachmentUploads.hasPendingAttachments
       ? "Wait until every attachment is ready before sending."
       : attachmentUploads.hasFailedAttachments
         ? "Remove or retry failed attachments before sending."
+        : visionMutationBlocked
+          ? visionUnavailable
+            ? "No compatible vision model is currently available."
+            : "This conversation requires a compatible vision model."
+          : !readyImagesAllowed
+            ? "Select a vision model before sending images."
         : !composerValue.trim() && attachmentUploads.attachments.length > 0 && !attachmentUploads.hasModelConsumableAttachment
           ? "Add text or a readable document. Images alone cannot be sent."
           : null;
   const canSend = composerState === "idle" && sendDisabledReason === null && (
-    Boolean(composerValue.trim()) || attachmentUploads.hasModelConsumableAttachment
+    Boolean(composerValue.trim()) ||
+    (attachmentUploads.hasModelConsumableAttachment && readyImagesAllowed)
   );
 
   const confirmTarget =
@@ -398,7 +441,6 @@ export function AppShell() {
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
-        deletedItems={deletedItems}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
@@ -414,11 +456,6 @@ export function AppShell() {
             dialog: { kind: "deleteConversation", conversationId: id },
           })
         }
-        onRestore={(id) => {
-          void restoreConversation(id)
-            .then(() => dispatch({ type: "ui/showToast", message: "对话已恢复", tone: "success" }))
-            .catch(() => dispatch({ type: "ui/showToast", message: "恢复对话失败", tone: "error" }));
-        }}
         onLogout={() => void logout()}
         onResendVerification={() => services.authApi.resendVerificationEmail()}
         onUpdateNickname={async (nickname) => {
@@ -481,13 +518,45 @@ export function AppShell() {
               messages={messages}
               pendingMessage={pendingMessage}
               isMobile={isMobile}
-              mutateDisabledReason={mutateDisabledReason}
-              onEditAndRegenerate={(id, content) => {
-                void editAndRegenerate(id, content);
+              mutateDisabledReason={mutationDisabledReason}
+              onEditAndRegenerate={(id, content, attachmentIds, editModelId) => {
+                void editAndRegenerate(id, content, attachmentIds, editModelId);
               }}
               onRegenerate={(id) => void regenerate(id)}
+              allowAttachmentEditing={selectedModel?.supports_image_input === true}
+              legacyMessageId={imageContext.legacy_message_id}
+              onUpgradeLegacy={(messageId) => {
+                const visual = models.find((entry) => entry.supports_image_input);
+                if (!visual) {
+                  dispatch({
+                    type: "ui/showToast",
+                    message: "No compatible vision model is currently available.",
+                    tone: "warning",
+                  });
+                  return;
+                }
+                onModelChange(visual.id);
+                void regenerate(messageId);
+              }}
+              onEditUpgradeLegacy={() => {
+                const visual = models.find((entry) => entry.supports_image_input);
+                if (!visual) {
+                  dispatch({
+                    type: "ui/showToast",
+                    message: "No compatible vision model is currently available.",
+                    tone: "warning",
+                  });
+                  return false;
+                }
+                onModelChange(visual.id);
+                return true;
+              }}
+              onStartNewConversation={onNewConversation}
               onReadAttachment={services.filesApi.readUrl}
               onShowSources={showSources}
+              models={models}
+              model={modelId}
+              imageContext={imageContext}
             >
               {pendingMessage ||
               (activeRun && activeRun.conversationId === selectedId) ? (
@@ -521,9 +590,11 @@ export function AppShell() {
             webSearchEnabled={webSearchEnabled}
             webSearchAvailable={webSearchAvailable}
             onWebSearchEnabledChange={onWebSearchEnabledChange}
-            models={models}
-            model={modelId}
-            onModelChange={onModelChange}
+              models={models}
+              model={modelId}
+              onModelChange={onModelChange}
+              imageContext={imageContext}
+              onRemoveImages={attachmentUploads.removeImages}
             fileCapability={fileCapability}
             fileUploadAllowed={user?.email_verified === true}
             attachments={attachmentUploads.attachments}
@@ -534,6 +605,7 @@ export function AppShell() {
             onReadAttachment={services.filesApi.readUrl}
             canSend={canSend}
             sendDisabledReason={sendDisabledReason}
+            readOnly={visionMutationBlocked}
           />
         </div>
         <div
@@ -551,7 +623,7 @@ export function AppShell() {
       {confirmTarget != null && (
         <ConfirmDialog
           title="删除对话？"
-          body="此对话将在 30 天内保留并可恢复；期限结束后将永久删除。"
+          body="此对话将从列表中移除，并在 30 天后永久删除。"
           confirmLabel="删除"
           destructive
           onConfirm={() =>
