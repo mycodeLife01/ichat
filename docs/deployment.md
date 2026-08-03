@@ -126,7 +126,7 @@ LOG_LEVEL=INFO
 
 ### 文件上传与 ClamAV 配置
 
-文件附件使用**两个私有** R2 bucket：staging（浏览器仅向随机 key PUT）与 canonical（原件/派生物）。它们必须与头像公开 bucket 分开，开发与生产也必须分开。`.env.example` 是完整变量清单；生产至少配置：
+文件附件使用**三个私有** R2 bucket：staging（浏览器仅向随机 key PUT）、canonical（原件/文档派生物）与独立 preview（模型可见的安全图片派生物）。它们必须与头像公开 bucket 以及彼此分开，开发与生产也必须分开。`.env.example` 是完整变量清单；生产至少配置：
 
 ```env
 FILE_UPLOAD_ENABLED=false
@@ -134,6 +134,7 @@ FILES_R2_ENDPOINT_URL=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
 FILES_R2_REGION=auto
 FILES_STAGING_BUCKET=ichat-prod-file-staging
 FILES_CANONICAL_BUCKET=ichat-prod-files
+FILES_PREVIEW_BUCKET=ichat-prod-file-previews
 
 # API signer：仅 staging PUT/HEAD 与 canonical 短期 GET。
 FILES_UPLOAD_ACCESS_KEY_ID=<upload-signer-key>
@@ -141,7 +142,15 @@ FILES_UPLOAD_SECRET_ACCESS_KEY=<upload-signer-secret>
 FILES_DOWNLOAD_ACCESS_KEY_ID=<download-signer-key>
 FILES_DOWNLOAD_SECRET_ACCESS_KEY=<download-signer-secret>
 
-# 仅 file-worker 接收：staging 条件 GET/delete、canonical PUT/delete。
+# API preview signer：仅 preview 短期 GET。
+FILES_PREVIEW_API_ACCESS_KEY_ID=<preview-api-key>
+FILES_PREVIEW_API_SECRET_ACCESS_KEY=<preview-api-secret>
+
+# LLM Worker：仅 preview 短期 GET，不能读取 canonical 原件。
+FILES_PREVIEW_LLM_ACCESS_KEY_ID=<preview-llm-key>
+FILES_PREVIEW_LLM_SECRET_ACCESS_KEY=<preview-llm-secret>
+
+# 仅 file-worker 接收：staging 条件 GET/delete、canonical 与 preview 写入/delete/迁移。
 FILES_WORKER_ACCESS_KEY_ID=<file-worker-key>
 FILES_WORKER_SECRET_ACCESS_KEY=<file-worker-secret>
 
@@ -150,9 +159,9 @@ CLAMAV_PORT=3310
 CLAMAV_SIGNATURE_MAX_AGE_SECONDS=172800
 ```
 
-compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 处理凭证；普通 LLM worker、邮件/标题 worker、media-worker 和 beat 固定关闭附件入口并清空三组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、回收或删除补偿。
+compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。
 
-`media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)。
+`media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical/preview 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)；视觉白名单、preview backfill、真实 GPT/R2 smoke 与回滚见[GPT 图片输入交接](handover/2026-08-03-gpt-vision-input.md)。
 
 `FILE_UPLOAD_ENABLED` 只控制新附件创建：关闭后 `/capabilities` 要求前端隐藏入口，API 拒绝新会话；已有附件仍可展示/读取，files queue 仍排空，维护与删除补偿仍运行。切换该开关必须 force-recreate API；生产回滚顺序见该交接，不能先停 worker 或撤销凭证。
 
