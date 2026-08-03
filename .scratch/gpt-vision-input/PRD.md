@@ -1,7 +1,7 @@
 # GPT 视觉输入与图像上下文约束
 
 Type: feature
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: None
 
 日期：2026-08-02
@@ -255,6 +255,20 @@ GPT 只接收现有图片安全 preview：完整解码、转为 WebP、质量 82
 - conversation-level 固定模型字段、持久化视觉状态位或会话列表 transcript 扫描。
 - 长期 expand/contract 兼容、旧客户端兼容或不停机删除 `model_consumable`；本期采用已确认的维护窗口一步切换。
 - 精确复制 OpenAI 图片计费公式；首版使用保守接纳预留并用真实 usage 后续校准。
+
+## Delivery Tickets
+
+1. [一步切换模型输入表示](issues/01-model-input-kind-cutover.md) — `completed`；无阻塞。
+2. [建立视觉模型与 ImageBlock 合同](issues/02-vision-model-image-block-contract.md) — `completed`；阻塞于 01。
+3. [隔离并迁移安全图片派生物](issues/03-private-preview-storage-migration.md) — `completed`；阻塞于 01。
+4. [打通首个 GPT 图片问答纵向切片](issues/04-first-gpt-vision-slice.md) — `completed`；阻塞于 02、03。
+5. [让图片跨历史、工具循环与重试可靠重放](issues/05-replay-images-across-model-calls.md) — `completed`；阻塞于 04。
+6. [在上传前处理模型兼容与图片草稿冲突](issues/06-image-draft-model-compatibility.md) — `completed`；阻塞于 04。
+7. [约束视觉依赖会话并恢复兼容模型](issues/07-vision-dependent-conversation.md) — `completed`；阻塞于 05。
+8. [升级历史仅展示图片](issues/08-upgrade-legacy-display-only-images.md) — `completed`；阻塞于 05、07。
+9. [完成纯图片标题与公开分享隐私边界](issues/09-image-title-share-privacy.md) — `completed`；阻塞于 04。
+10. [完成视觉发布门禁、遥测与运行手册](issues/10-vision-rollout-gates-observability.md) — `completed`；阻塞于 06、08、09。
+11. [真实资源灰度并开启视觉能力](issues/11-enable-vision-with-real-resources.md) — `ready-for-human`；阻塞于 10，需要人工环境验收。
 
 ## Further Notes
 
