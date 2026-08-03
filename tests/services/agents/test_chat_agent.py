@@ -8,6 +8,8 @@ are covered by the worker integration tests.
 from dataclasses import dataclass, field
 from typing import Any
 
+import pytest
+
 from app.agent.events import (
     AgentFinal,
     MessageDone,
@@ -15,6 +17,7 @@ from app.agent.events import (
     ToolCallStarted,
 )
 from app.agent.messages import (
+    ImageBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -22,9 +25,15 @@ from app.agent.messages import (
     ToolResultBlock,
     user_text,
 )
-from app.agent.provider import ReasoningDelta, StreamDone, TextDelta, ToolCallDone
+from app.agent.provider import ProviderError, ReasoningDelta, StreamDone, TextDelta, ToolCallDone
 from app.agent.tools import ToolRegistry, ToolResult, ToolSpec
-from app.services.agents.chat_agent import ChatAgent, RetryPolicy
+from app.core.config import get_settings
+from app.services.agents.chat_agent import (
+    ChatAgent,
+    ChatAgentOptions,
+    RetryPolicy,
+    build_chat_agent,
+)
 from tests.agent.fake import FakeProvider
 
 
@@ -85,6 +94,76 @@ def make_agent(
 
 async def collect(agent: ChatAgent) -> list[object]:
     return [event async for event in agent.stream()]
+
+
+def _image_history() -> list[Message]:
+    return [
+        Message(
+            role="user",
+            blocks=[
+                ImageBlock(
+                    file_id="image-1",
+                    filename="diagram.webp",
+                    media_type="image/webp",
+                    sha256="a" * 64,
+                    width=640,
+                    height=480,
+                    processor_version="image-v1",
+                )
+            ],
+        )
+    ]
+
+
+def _settings_with(**overrides: object):
+    return get_settings().model_copy(update=overrides)
+
+
+def test_build_chat_agent_rejects_image_for_model_removed_from_vision_allowlist() -> None:
+    provider = FakeProvider()
+    settings = _settings_with(
+        openai_api_key="sk-test",
+        openai_models="gpt-5-mini",
+        openai_vision_models="",
+    )
+
+    def resolve(_name: str, *, settings: object) -> FakeProvider:
+        return provider
+
+    with pytest.raises(ProviderError) as exc_info:
+        build_chat_agent(
+            settings=settings,
+            history=_image_history(),
+            options=ChatAgentOptions(provider_name="openai", model="gpt-5-mini"),
+            resolve_provider=resolve,
+        )
+
+    assert exc_info.value.code == "openai_image_input_not_supported"
+    assert provider.calls == []
+
+
+async def test_build_chat_agent_allows_image_for_explicit_vision_model() -> None:
+    provider = FakeProvider(script=[StreamDone(finish_reason="stop")])
+    settings = _settings_with(
+        openai_api_key="sk-test",
+        openai_models="gpt-5-mini",
+        openai_vision_models="gpt-5-mini",
+    )
+
+    def resolve(_name: str, *, settings: object) -> FakeProvider:
+        return provider
+
+    agent = build_chat_agent(
+        settings=settings,
+        history=_image_history(),
+        options=ChatAgentOptions(provider_name="openai", model="gpt-5-mini"),
+        resolve_provider=resolve,
+    )
+
+    assert agent.image_count == 1
+    await collect(agent)
+    assert provider.last_messages is not None
+    assert any(isinstance(block, ImageBlock) for block in provider.last_messages[1].blocks)
 
 
 async def test_multi_tool_turn_yields_events_and_messages() -> None:

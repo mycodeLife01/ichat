@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.agent.messages import Message
 from app.agent.provider import (
+    ImageInputResolver,
     Provider,
     ProviderCapabilities,
     ProviderError,
@@ -21,6 +22,7 @@ from app.agent.tools.base import ToolSpec
 class RaiseError:
     code: str
     message: str
+    retryable: bool = False
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class FakeProvider(Provider):
         self._generate_result = generate_result
         self.last_reasoning: ReasoningConfig | None = None
         self.last_tools: list[ToolSpec] | None = None
+        self.last_image_resolver: ImageInputResolver | None = None
         self.last_messages: list[Message] | None = None
         self.calls: list[list[Message]] = []
 
@@ -77,9 +80,11 @@ class FakeProvider(Provider):
         messages: list[Message],
         reasoning: ReasoningConfig | None = None,
         tools: list[ToolSpec] | None = None,
+        image_resolver: ImageInputResolver | None = None,
     ) -> AsyncIterator[StreamEvent]:
         self.last_reasoning = reasoning
         self.last_tools = tools
+        self.last_image_resolver = image_resolver
         self.last_messages = messages
         self.calls.append(list(messages))
         call_index = len(self.calls) - 1
@@ -94,7 +99,11 @@ class FakeProvider(Provider):
             script = self._script
         for item in script:
             if isinstance(item, RaiseError):
-                raise ProviderError(code=item.code, message=item.message)
+                raise ProviderError(
+                    code=item.code,
+                    message=item.message,
+                    retryable=item.retryable,
+                )
             if isinstance(item, Sleep):
                 await asyncio.sleep(item.seconds)
                 continue

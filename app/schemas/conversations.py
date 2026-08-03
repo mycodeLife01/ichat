@@ -63,7 +63,7 @@ class MessageCreateRequest(RunOptionsRequest):
     @model_validator(mode="after")
     def require_text_or_attachment(self) -> "MessageCreateRequest":
         if not self.content.strip() and not self.attachment_ids:
-            raise ValueError("Enter a message or attach a readable document")
+            raise ValueError("Enter a message or attach a readable file")
         return self
 
 
@@ -126,13 +126,25 @@ class RunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ImageContextResponse(BaseModel):
+    state: Literal["none", "vision_required", "legacy_upgrade_required"]
+    legacy_message_id: uuid.UUID | None = None
+    recommended_model: str | None = None
+
+
+def _default_image_context() -> ImageContextResponse:
+    return ImageContextResponse(state="none")
+
+
 class ConversationDetailResponse(ConversationResponse):
     messages: list[MessageResponse]
+    image_context: ImageContextResponse = Field(default_factory=_default_image_context)
 
 
 class SendMessageResponse(BaseModel):
     message: MessageResponse
     run: RunResponse
+    image_context: ImageContextResponse = Field(default_factory=_default_image_context)
 
 
 class ConversationCreateWithMessageResponse(SendMessageResponse):

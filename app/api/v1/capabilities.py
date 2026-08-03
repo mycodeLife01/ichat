@@ -44,7 +44,6 @@ async def get_capabilities_route(
                 quota_bytes=settings.files_quota_bytes,
                 target_turn_tokens=settings.attachment_target_turn_tokens,
                 context_budget_tokens=settings.context_budget_tokens,
-                image_model_input=False,
             ),
             models=[
                 ChatModelResponse(
@@ -52,6 +51,7 @@ async def get_capabilities_route(
                     provider=entry.provider_name,
                     label=entry.label,
                     thinking_levels=list(entry.thinking_levels),
+                    supports_image_input=entry.supports_image_input,
                     default=index == 0,
                 )
                 for index, entry in enumerate(models)

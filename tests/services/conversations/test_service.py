@@ -308,6 +308,7 @@ async def test_submit_user_message_persists_provider_options_on_run(
     assert stored_run.provider_options == {
         "thinking_enabled": True,
         "reasoning_effort": "max",
+        "image_token_reserve": None,
     }
 
 

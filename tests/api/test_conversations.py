@@ -114,7 +114,7 @@ async def register_user(
         "/api/v1/auth/register",
         json={"username": username, "email": email, "password": "correct-password"},
     )
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.text
     return cast(dict[str, Any], response.json()["data"])
 
 
@@ -298,6 +298,7 @@ async def test_send_message_creates_user_message_and_queued_run(
             "reasoning_effort": "high",
             "web_search_enabled": False,
             "web_search_suppressed_by_user": False,
+            "image_token_reserve": None,
         }
         # The faithful prompt snapshot is written by the worker at execution
         # time (it depends on the final web-search decision and date), so a
@@ -363,6 +364,7 @@ async def test_create_conversation_with_message_creates_all_records_and_queues_r
             "reasoning_effort": "max",
             "web_search_enabled": False,
             "web_search_suppressed_by_user": False,
+            "image_token_reserve": None,
         }
         assert run_queued_publisher.published == [run.id]
 
@@ -396,6 +398,7 @@ async def test_send_message_with_thinking_override_persists_provider_options(
             "reasoning_effort": "max",
             "web_search_enabled": False,
             "web_search_suppressed_by_user": False,
+            "image_token_reserve": None,
         }
 
 
@@ -539,7 +542,7 @@ async def test_edit_and_regenerate_endpoint_creates_new_message_and_run(
         headers=auth_headers(alice),
     )
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.text
     body = response.json()["data"]
     assert body["message"]["role"] == "user"
     assert body["message"]["content"] == "rewritten"
@@ -615,6 +618,7 @@ async def test_regenerate_endpoint_accepts_thinking_options_body(
             "reasoning_effort": "high",
             "web_search_enabled": False,
             "web_search_suppressed_by_user": False,
+            "image_token_reserve": None,
         }
 
 
@@ -703,7 +707,6 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
             "quota_bytes": 1024 * 1024 * 1024,
             "target_turn_tokens": 128_000,
             "context_budget_tokens": 256_000,
-            "image_model_input": False,
         },
         "models": [
             {
@@ -711,6 +714,7 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
                 "provider": "deepseek",
                 "label": "deepseek-v4-flash",
                 "thinking_levels": ["low", "high", "max"],
+                "supports_image_input": False,
                 "default": True,
             },
             {
@@ -718,6 +722,7 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
                 "provider": "deepseek",
                 "label": "deepseek-v4-pro",
                 "thinking_levels": ["high", "max"],
+                "supports_image_input": False,
                 "default": False,
             },
         ],
@@ -730,6 +735,7 @@ async def test_capabilities_lists_openai_models_when_configured(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("OPENAI_MODELS", "openai/gpt-5.6-luna")
+    monkeypatch.setenv("OPENAI_VISION_MODELS", "openai/gpt-5.6-luna")
     monkeypatch.setenv("DEEPSEEK_MODELS", "deepseek-v4-flash,deepseek-v4-pro")
     get_settings.cache_clear()
 
@@ -747,6 +753,7 @@ async def test_capabilities_lists_openai_models_when_configured(
         "provider": "openai",
         "label": "gpt-5.6-luna",
         "thinking_levels": ["low", "medium", "high", "xhigh", "max"],
+        "supports_image_input": True,
         "default": False,
     }
 

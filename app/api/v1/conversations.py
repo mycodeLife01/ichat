@@ -182,6 +182,8 @@ async def create_conversation_with_message_route(
         content=request.content,
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
+        supports_image_input=chat_model.supports_image_input,
+        image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
         attachment_ids=request.attachment_ids or [],
         settings=settings,
@@ -233,11 +235,13 @@ async def get_conversation_route(
     conversation_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> SuccessResponse[ConversationDetailResponse]:
     conversation = await get_conversation_detail(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
+        settings=settings,
     )
     return SuccessResponse(data=conversation)
 
@@ -325,6 +329,8 @@ async def send_message_route(
         content=request.content,
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
+        supports_image_input=chat_model.supports_image_input,
+        image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
         attachment_ids=request.attachment_ids or [],
         settings=settings,
@@ -369,6 +375,8 @@ async def edit_and_regenerate_route(
         new_content=request.content,
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
+        supports_image_input=chat_model.supports_image_input,
+        image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
         attachment_ids=(
             request.attachment_ids if "attachment_ids" in request.model_fields_set else None
@@ -409,6 +417,8 @@ async def regenerate_route(
         message_public_id=message_id,
         provider_name=chat_model.provider_name,
         provider_model=chat_model.model,
+        supports_image_input=chat_model.supports_image_input,
+        image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request),
         settings=settings,
         count_tokens=count_tokens,

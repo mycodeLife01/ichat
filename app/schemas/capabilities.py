@@ -14,7 +14,6 @@ class FileUploadCapabilityResponse(BaseModel):
     quota_bytes: int
     target_turn_tokens: int
     context_budget_tokens: int
-    image_model_input: bool
 
 
 class ChatModelResponse(BaseModel):
@@ -27,6 +26,7 @@ class ChatModelResponse(BaseModel):
     provider: str
     label: str
     thinking_levels: list[str]
+    supports_image_input: bool
     default: bool
 
 

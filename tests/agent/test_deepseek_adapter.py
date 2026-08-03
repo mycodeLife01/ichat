@@ -10,6 +10,7 @@ import pytest
 from openai import AsyncOpenAI, OpenAI
 
 from app.agent.messages import (
+    ImageBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -130,6 +131,35 @@ async def test_stream_text_and_finish_with_usage() -> None:
     assert done.finish_reason == "stop"
     assert done.usage == {"prompt_tokens": 4, "completion_tokens": 2}
     assert done.provider_request_id == "req-77"
+
+
+async def test_image_input_fails_closed_before_deepseek_sdk_request() -> None:
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return stream_response([chunk({}, finish="stop")])
+
+    image = ImageBlock(
+        file_id="file-1",
+        filename="chart.webp",
+        media_type="image/webp",
+        sha256="a" * 64,
+        width=640,
+        height=480,
+        processor_version="image-v1",
+    )
+    provider = streaming_provider(handler)
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(
+            model="deepseek-test",
+            messages=[Message(role="user", blocks=[image])],
+        ):
+            pass
+
+    assert requests == 0
+    assert exc_info.value.code == "deepseek_image_input_not_supported"
 
 
 async def test_stream_reasoning_then_text() -> None:

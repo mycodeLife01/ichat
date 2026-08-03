@@ -18,13 +18,21 @@ from app.schemas.conversations import (
     ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationResponse,
+    ImageContextResponse,
     MessageResponse,
     RunResponse,
     SendMessageResponse,
 )
 from app.schemas.files import MessageAttachmentResponse
 from app.schemas.runs import RunStatus
+from app.services.agents.catalog import available_chat_models
+from app.services.conversations.image_context import (
+    ImageContextFacts,
+    MessageImageFacts,
+    derive_image_context,
+)
 from app.services.files.bindings import (
+    ATTACHMENT_INVALID,
     bind_attachment_plan,
     current_attachment_files,
     prepare_attachment_plan,
@@ -39,6 +47,24 @@ ACTIVE_RUN_EXISTS_MESSAGE = "Active run already exists"
 MESSAGE_NOT_FOUND_MESSAGE = "Message not found"
 EDIT_TARGET_NOT_USER_MESSAGE = "Edit target must be a user message"
 CANNOT_RESOLVE_USER_MESSAGE = "Cannot resolve user message to regenerate from"
+VISION_MODEL_REQUIRED_MESSAGE = "This conversation requires a vision-capable model"
+VISION_MODEL_REQUIRED_CODE = "VISION_MODEL_REQUIRED"
+LEGACY_IMAGE_CONTEXT_MESSAGE = (
+    "Upgrade the earliest display-only image message before using a vision model"
+)
+LEGACY_IMAGE_CONTEXT_CODE = "LEGACY_IMAGE_CONTEXT"
+
+
+def _run_provider_options(
+    provider_options: dict[str, Any] | None,
+    *,
+    image_token_reserve: int | None,
+) -> dict[str, Any]:
+    """Persist the model's admission reserve as part of the run snapshot."""
+
+    options = dict(provider_options or {})
+    options["image_token_reserve"] = image_token_reserve
+    return options
 
 
 def conversation_response(conversation: Conversation) -> ConversationResponse:
@@ -161,6 +187,7 @@ async def get_conversation_detail(
     *,
     user: User,
     conversation_public_id: uuid.UUID,
+    settings: Settings | None = None,
 ) -> ConversationDetailResponse:
     conversation = await get_owned_visible_conversation(
         session,
@@ -182,8 +209,14 @@ async def get_conversation_detail(
         session,
         message_ids=[message.id for message in messages],
     )
+    image_context = await _image_context_response(
+        session,
+        conversation=conversation,
+        settings=settings or get_settings(),
+    )
     return ConversationDetailResponse(
         **conversation_response(conversation).model_dump(),
+        image_context=image_context,
         messages=[
             message_response(
                 message,
@@ -296,6 +329,8 @@ async def submit_user_message(
     content: str,
     provider_name: str,
     provider_model: str,
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
@@ -315,6 +350,8 @@ async def submit_user_message(
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
+        supports_image_input=supports_image_input,
+        image_token_reserve=image_token_reserve,
         provider_options=provider_options,
         system_prompt_snapshot=system_prompt_snapshot,
         attachment_ids=attachment_ids or [],
@@ -331,6 +368,8 @@ async def create_conversation_with_message(
     content: str,
     provider_name: str,
     provider_model: str,
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
@@ -346,6 +385,8 @@ async def create_conversation_with_message(
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
+        supports_image_input=supports_image_input,
+        image_token_reserve=image_token_reserve,
         provider_options=provider_options,
         system_prompt_snapshot=system_prompt_snapshot,
         attachment_ids=attachment_ids or [],
@@ -356,6 +397,7 @@ async def create_conversation_with_message(
         conversation=conversation_response(conversation),
         message=submitted.message,
         run=submitted.run,
+        image_context=submitted.image_context,
     )
 
 
@@ -367,6 +409,8 @@ async def _submit_user_message_to_conversation(
     content: str,
     provider_name: str,
     provider_model: str,
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
@@ -374,6 +418,15 @@ async def _submit_user_message_to_conversation(
     count_tokens: Callable[[str], int] | None = None,
 ) -> SendMessageResponse:
     await ensure_no_active_run(session, conversation_id=conversation.id)
+    current_context = await derive_image_context(
+        session,
+        conversation_id=conversation.id,
+    )
+    if supports_image_input is not None:
+        _validate_existing_image_context(
+            current_context,
+            supports_image_input=supports_image_input,
+        )
     next_position = await get_next_message_position(session, conversation_id=conversation.id)
 
     resolved_settings = settings or get_settings()
@@ -386,6 +439,9 @@ async def _submit_user_message_to_conversation(
         allowed_bound_file_ids=None,
         settings=resolved_settings,
         count_tokens=token_counter,
+        supports_image_input=supports_image_input,
+        image_token_reserve=image_token_reserve,
+        legacy_notice_file_ids=set(),
     )
 
     message = Message(
@@ -403,7 +459,10 @@ async def _submit_user_message_to_conversation(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
-        provider_options=provider_options,
+        provider_options=_run_provider_options(
+            provider_options,
+            image_token_reserve=image_token_reserve,
+        ),
         system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
@@ -422,6 +481,11 @@ async def _submit_user_message_to_conversation(
     await session.flush()
 
     attachment_map = await attachment_responses(session, message_ids=[message.id])
+    image_context = await _image_context_response(
+        session,
+        conversation=conversation,
+        settings=resolved_settings,
+    )
 
     return SendMessageResponse(
         message=message_response(
@@ -435,6 +499,7 @@ async def _submit_user_message_to_conversation(
             conversation_public_id=conversation.public_id,
             user_message_public_id=message.public_id,
         ),
+        image_context=image_context,
     )
 
 
@@ -447,6 +512,8 @@ async def edit_user_message_and_regenerate(
     new_content: str,
     provider_name: str,
     provider_model: str,
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
@@ -476,6 +543,31 @@ async def edit_user_message_and_regenerate(
     )
     resolved_settings = settings or get_settings()
     token_counter = count_tokens or len
+    current_context = await derive_image_context(
+        session,
+        conversation_id=conversation.id,
+    )
+    target_image_facts = current_context.for_message(target.id)
+    selected_public_ids = {str(public_id) for public_id in selected_ids}
+    if attachment_ids is None:
+        _validate_snapshot_attachments(target_image_facts, selected_public_ids)
+    if supports_image_input is not None:
+        _validate_existing_image_context(
+            current_context.before(target.position),
+            supports_image_input=supports_image_input,
+        )
+        if (
+            not supports_image_input
+            and target_image_facts is not None
+            and bool(target_image_facts.vision_file_ids & selected_public_ids)
+        ):
+            _raise_vision_model_required()
+    legacy_notice_file_ids = {
+        file.id
+        for file in inherited_files
+        if target_image_facts is not None
+        and str(file.public_id) in target_image_facts.legacy_file_ids
+    }
     plan = await prepare_attachment_plan(
         session,
         user=active_user,
@@ -484,6 +576,9 @@ async def edit_user_message_and_regenerate(
         allowed_bound_file_ids={file.id for file in inherited_files},
         settings=resolved_settings,
         count_tokens=token_counter,
+        supports_image_input=supports_image_input,
+        image_token_reserve=image_token_reserve,
+        legacy_notice_file_ids=legacy_notice_file_ids,
     )
     await _archive_messages_at_or_after_position(
         session,
@@ -507,7 +602,10 @@ async def edit_user_message_and_regenerate(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
-        provider_options=provider_options,
+        provider_options=_run_provider_options(
+            provider_options,
+            image_token_reserve=image_token_reserve,
+        ),
         system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
@@ -530,6 +628,11 @@ async def edit_user_message_and_regenerate(
     await session.flush()
 
     attachment_map = await attachment_responses(session, message_ids=[new_message.id])
+    image_context = await _image_context_response(
+        session,
+        conversation=conversation,
+        settings=resolved_settings,
+    )
 
     return SendMessageResponse(
         message=message_response(
@@ -543,6 +646,7 @@ async def edit_user_message_and_regenerate(
             conversation_public_id=conversation.public_id,
             user_message_public_id=new_message.public_id,
         ),
+        image_context=image_context,
     )
 
 
@@ -554,6 +658,8 @@ async def regenerate_from_message(
     message_public_id: uuid.UUID,
     provider_name: str,
     provider_model: str,
+    supports_image_input: bool | None = None,
+    image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
     system_prompt_snapshot: str | None = None,
     settings: Settings | None = None,
@@ -589,15 +695,43 @@ async def regenerate_from_message(
 
     await ensure_no_active_run(session, conversation_id=conversation.id)
     attached_files = await current_attachment_files(session, message_id=anchor.id)
+    resolved_settings = settings or get_settings()
     token_counter = count_tokens or len
+    current_context = await derive_image_context(
+        session,
+        conversation_id=conversation.id,
+    )
+    anchor_image_facts = current_context.for_message(anchor.id)
+    selected_public_ids = {str(file.public_id) for file in attached_files}
+    _validate_snapshot_attachments(anchor_image_facts, selected_public_ids)
+    if supports_image_input is not None:
+        _validate_existing_image_context(
+            current_context.before(anchor.position),
+            supports_image_input=supports_image_input,
+        )
+        if (
+            not supports_image_input
+            and anchor_image_facts is not None
+            and anchor_image_facts.vision_file_ids
+        ):
+            _raise_vision_model_required()
+    legacy_notice_file_ids = {
+        file.id
+        for file in attached_files
+        if anchor_image_facts is not None
+        and str(file.public_id) in anchor_image_facts.legacy_file_ids
+    }
     plan = await prepare_attachment_plan(
         session,
         user=active_user,
         content=anchor.content,
         attachment_ids=[file.public_id for file in attached_files],
         allowed_bound_file_ids={file.id for file in attached_files},
-        settings=settings or get_settings(),
+        settings=resolved_settings,
         count_tokens=token_counter,
+        supports_image_input=supports_image_input,
+        image_token_reserve=image_token_reserve,
+        legacy_notice_file_ids=legacy_notice_file_ids,
     )
     await _archive_messages_after_position(
         session,
@@ -611,12 +745,16 @@ async def regenerate_from_message(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
-        provider_options=provider_options,
+        provider_options=_run_provider_options(
+            provider_options,
+            image_token_reserve=image_token_reserve,
+        ),
         system_prompt_snapshot=system_prompt_snapshot,
     )
     session.add(run)
     await session.flush()
 
+    anchor.run_id = run.id
     await append_transcript_message(
         session,
         run_id=run.id,
@@ -628,17 +766,18 @@ async def regenerate_from_message(
     conversation.updated_at = await get_database_now(session)
     await session.flush()
 
-    anchor_run_public_id: uuid.UUID | None = None
-    if anchor.run_id is not None:
-        anchor_run = await session.get(Run, anchor.run_id)
-        anchor_run_public_id = anchor_run.public_id if anchor_run is not None else None
     attachment_map = await attachment_responses(session, message_ids=[anchor.id])
+    image_context = await _image_context_response(
+        session,
+        conversation=conversation,
+        settings=resolved_settings,
+    )
 
     return SendMessageResponse(
         message=message_response(
             anchor,
             conversation_public_id=conversation.public_id,
-            run_public_id=anchor_run_public_id,
+            run_public_id=run.public_id,
             attachments=attachment_map.get(anchor.id, []),
         ),
         run=run_response(
@@ -646,6 +785,7 @@ async def regenerate_from_message(
             conversation_public_id=conversation.public_id,
             user_message_public_id=anchor.public_id,
         ),
+        image_context=image_context,
     )
 
 
@@ -858,6 +998,95 @@ async def _run_public_id_map(
         return {}
     rows = await session.execute(select(Run.id, Run.public_id).where(Run.id.in_(run_ids)))
     return {row.id: row.public_id for row in rows}
+
+
+def _validate_existing_image_context(
+    image_context: ImageContextFacts,
+    *,
+    supports_image_input: bool,
+) -> None:
+    if image_context.has_vision and not supports_image_input:
+        _raise_vision_model_required()
+    if image_context.has_legacy and supports_image_input:
+        legacy_message_id = image_context.legacy_message_id
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            LEGACY_IMAGE_CONTEXT_MESSAGE,
+            code=LEGACY_IMAGE_CONTEXT_CODE,
+            context=(
+                {"legacy_message_id": str(legacy_message_id)}
+                if legacy_message_id is not None
+                else None
+            ),
+        )
+
+
+def _validate_snapshot_attachments(
+    facts: MessageImageFacts | None,
+    selected_public_ids: set[str],
+) -> None:
+    """Fail closed when a current image transcript lost its file relation."""
+
+    if facts is None:
+        return
+    expected = facts.vision_file_ids | facts.legacy_file_ids
+    if not expected.issubset(selected_public_ids):
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
+
+
+def _raise_vision_model_required() -> None:
+    raise AppError(
+        status.HTTP_409_CONFLICT,
+        VISION_MODEL_REQUIRED_MESSAGE,
+        code=VISION_MODEL_REQUIRED_CODE,
+    )
+
+
+async def _image_context_response(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    settings: Settings,
+) -> ImageContextResponse:
+    facts = await derive_image_context(session, conversation_id=conversation.id)
+    models = available_chat_models(settings)
+
+    def compatible(model_index: int) -> bool:
+        model = models[model_index]
+        if facts.state == "vision_required":
+            return model.supports_image_input
+        if facts.state == "legacy_upgrade_required":
+            return not model.supports_image_input
+        return True
+
+    model_indexes = {model.model: index for index, model in enumerate(models)}
+    recent_models = list(
+        (
+            await session.scalars(
+                select(Run.provider_model)
+                .join(Message, Message.run_id == Run.id)
+                .where(
+                    Message.conversation_id == conversation.id,
+                    Message.role == "user",
+                    Message.archived_at.is_(None),
+                )
+                .order_by(Run.created_at.desc(), Run.id.desc())
+            )
+        ).all()
+    )
+    recommended_model = next(
+        (
+            model
+            for model in recent_models
+            if model in model_indexes and compatible(model_indexes[model])
+        ),
+        None,
+    )
+    return ImageContextResponse(
+        state=facts.state,
+        legacy_message_id=facts.legacy_message_id,
+        recommended_model=recommended_model,
+    )
 
 
 def normalize_optional_title(title: str | None) -> str | None:

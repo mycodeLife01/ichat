@@ -22,6 +22,7 @@ from app.agent.messages import (
     ToolCallBlock,
 )
 from app.agent.provider import (
+    ImageInputResolver,
     Provider,
     ProviderError,
     ReasoningConfig,
@@ -50,6 +51,7 @@ async def stream_model_call(
     messages: list[Message],
     reasoning: ReasoningConfig | None,
     tools: list[ToolSpec] | None,
+    image_resolver: ImageInputResolver | None = None,
 ) -> AsyncIterator[TextDelta | ReasoningDelta | ModelCallResult]:
     """Stream one model call.
 
@@ -63,7 +65,15 @@ async def stream_model_call(
     reasoning_parts: list[str] = []
     tool_calls: list[ToolCallBlock] = []
 
-    stream = provider.stream(model=model, messages=messages, reasoning=reasoning, tools=tools)
+    stream_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "reasoning": reasoning,
+        "tools": tools,
+    }
+    if image_resolver is not None:
+        stream_kwargs["image_resolver"] = image_resolver
+    stream = provider.stream(**stream_kwargs)
     try:
         async for event in stream:
             if isinstance(event, ReasoningDelta):

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent import (
     AgentFinal,
+    ImageInputResolver,
     Message,
     MessageDone,
     Provider,
@@ -76,6 +77,7 @@ async def execute_run(
     worker_id: str,
     settings: Settings,
     resolve_provider: ProviderResolver,
+    image_resolver: ImageInputResolver | None = None,
     run_event_stream: RedisRunEventStream | None = None,
     run_cancel_listener: RunCancelListener | None = None,
 ) -> None:
@@ -96,8 +98,10 @@ async def execute_run(
                     provider_name=run.provider_name,
                     model=run.provider_model,
                     provider_options=run.provider_options or {},
+                    image_token_reserve=_run_image_token_reserve(run, settings=settings),
                 ),
                 resolve_provider=resolve_provider,
+                image_resolver=image_resolver,
             )
             run.system_prompt_snapshot = agent.system_prompt
         except Exception as exc:
@@ -174,8 +178,19 @@ async def execute_run(
                 initial_seq=initial_seq,
             )
             await sink.flush()
+            _emit_vision_run_metric(run_logger, agent=agent, outcome=outcome)
         except Exception as exc:
-            run_logger.exception("Agent runtime failed")
+            if agent.image_count > 0:
+                # Unexpected adapter/runtime exceptions can carry serialized
+                # request details. Never log or persist their text after a
+                # signed image URL has been assembled in memory.
+                run_logger.bind(error_type=type(exc).__name__).error(
+                    "Agent runtime failed while processing image input"
+                )
+                failure_message = "Agent runtime failed while processing image input"
+            else:
+                run_logger.exception("Agent runtime failed")
+                failure_message = str(exc)
             cancel.set()
             with contextlib.suppress(Exception):
                 await sink.aclose()
@@ -183,7 +198,7 @@ async def execute_run(
                 session_factory,
                 run_id=run_id,
                 code="agent_runtime_error",
-                message=str(exc),
+                message=failure_message,
                 event_seq=sink.latest_seq + 1,
             )
             await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
@@ -277,6 +292,7 @@ async def _consume_agent(
                 and not transcript
                 and attempt < agent.retry_policy.max_attempts
                 and agent.retry_policy.is_retryable(exc.code)
+                and _error_allows_retry(exc)
                 and not cancel.is_set()
             )
             if retryable:
@@ -287,6 +303,67 @@ async def _consume_agent(
                 last_seq=seq,
                 error=exc,
             )
+
+
+def _run_image_token_reserve(run: Run, *, settings: Settings) -> int:
+    """Recover the admission reserve persisted with the run.
+
+    Rows created before the option was persisted fall back to the current
+    model-level allowlist so in-flight runs from the same release still trim
+    context consistently.
+    """
+
+    raw = (run.provider_options or {}).get("image_token_reserve")
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+        return raw
+    if run.provider_name == "openai" and run.provider_model in settings.openai_vision_models_list:
+        return settings.openai_image_token_reserve
+    return 0
+
+
+def _error_allows_retry(exc: ProviderError) -> bool:
+    """Keep legacy provider retry behavior while honoring image permanence."""
+
+    if "image_input" in exc.code:
+        return exc.retryable
+    return True
+
+
+def _emit_vision_run_metric(
+    run_logger: object,
+    *,
+    agent: ChatAgent,
+    outcome: _StreamOutcome,
+) -> None:
+    """Log only bounded aggregate facts for runs whose context contains images."""
+
+    if agent.image_count == 0:
+        return
+    bind = getattr(run_logger, "bind", None)
+    if not callable(bind):
+        return
+    bind(
+        metric="vision_run",
+        provider_name=agent.provider_name,
+        provider_model=agent.model,
+        image_count=agent.image_count,
+        image_reserved_tokens=agent.image_count * agent.image_token_reserve,
+        outcome=outcome.status,
+        error_code=outcome.error.code if outcome.error is not None else None,
+        provider_request_id=outcome.provider_request_id,
+        usage=_numeric_usage(outcome.usage),
+    ).info("Vision run metric")
+
+
+def _numeric_usage(usage: dict[str, object] | None) -> dict[str, int | float] | None:
+    if usage is None:
+        return None
+    safe = {
+        key: value
+        for key, value in usage.items()
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    }
+    return safe or None
 
 
 async def _iter_until_cancel(

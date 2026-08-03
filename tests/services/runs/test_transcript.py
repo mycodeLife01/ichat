@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent.messages import (
+    ImageBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -17,7 +18,12 @@ from app.models.conversation import Conversation
 from app.models.conversation import Message as MessageRow
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
-from app.services.runs.transcript import append_transcript_message, load_transcript
+from app.services.runs.transcript import (
+    _deserialize_blocks,
+    append_transcript_message,
+    load_transcript,
+    serialize_blocks,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "TRANSCRIPT_TEST_DATABASE_URL",
@@ -109,6 +115,67 @@ def transcript_messages() -> list[Message]:
             blocks=[ReasoningBlock("Use evidence"), TextBlock("Final answer [1]")],
         ),
     ]
+
+
+def test_image_block_round_trips_all_snapshot_fields_without_storage_details() -> None:
+    image = ImageBlock(
+        file_id="file-1",
+        filename="diagram.webp",
+        media_type="image/webp",
+        sha256="a" * 64,
+        width=640,
+        height=480,
+        processor_version="image-v1",
+        warnings=("animated_first_frame",),
+    )
+
+    raw = serialize_blocks([image])
+
+    assert raw == [
+        {
+            "type": "image",
+            "file_id": "file-1",
+            "filename": "diagram.webp",
+            "media_type": "image/webp",
+            "sha256": "a" * 64,
+            "width": 640,
+            "height": 480,
+            "processor_version": "image-v1",
+            "warnings": ["animated_first_frame"],
+        }
+    ]
+    assert _deserialize_blocks(raw) == [image]
+    assert "url" not in raw[0]
+    assert "object_key" not in raw[0]
+    assert "bytes" not in raw[0]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda block: {**block, "width": 0},
+        lambda block: {**block, "warnings": "animated_first_frame"},
+        lambda block: {**block, "unexpected": "field"},
+        lambda block: {key: value for key, value in block.items() if key != "sha256"},
+    ],
+)
+def test_image_block_transcript_rejects_invalid_or_incomplete_fields(mutate) -> None:
+    block = serialize_blocks(
+        [
+            ImageBlock(
+                file_id="file-1",
+                filename="diagram.webp",
+                media_type="image/webp",
+                sha256="a" * 64,
+                width=640,
+                height=480,
+                processor_version="image-v1",
+            )
+        ]
+    )[0]
+
+    with pytest.raises(ValueError):
+        _deserialize_blocks([mutate(block)])
 
 
 async def test_new_transcript_rows_round_trip_blocks_only(

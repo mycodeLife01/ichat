@@ -73,6 +73,25 @@ class DocumentBlock:
 
 
 @dataclass(frozen=True)
+class ImageBlock:
+    """Immutable snapshot of the safe image derivative seen by a model.
+
+    The block deliberately contains no object-storage identity, temporary URL,
+    original-file hash, or image bytes.  A provider resolves the snapshot to a
+    short-lived read URL immediately before each model call.
+    """
+
+    file_id: str
+    filename: str
+    media_type: str
+    sha256: str
+    width: int
+    height: int
+    processor_version: str
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class AttachmentNoticeBlock:
     """Minimal notice for a display-only attachment such as an image."""
 
@@ -85,6 +104,7 @@ class AttachmentNoticeBlock:
 ContentBlock = (
     TextBlock
     | DocumentBlock
+    | ImageBlock
     | AttachmentNoticeBlock
     | ReasoningBlock
     | ToolCallBlock

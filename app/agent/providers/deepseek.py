@@ -28,7 +28,11 @@ from app.agent.providers.openai_compat import (
     decode_arguments,
 )
 
-_CAPABILITIES = ProviderCapabilities(supports_tool_history=False, supports_reasoning=True)
+_CAPABILITIES = ProviderCapabilities(
+    supports_tool_history=False,
+    supports_reasoning=True,
+    supports_image_input=False,
+)
 
 
 class DeepSeekProvider(OpenAIChatCompletionsProvider):
