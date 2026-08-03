@@ -73,7 +73,7 @@ agent 循环内对 LLM provider 的一次流式请求-响应。一个 run 可含
 _Avoid_: turn（指 provider 调用时）、请求（与 HTTP 请求混淆）
 
 **内容块（Content Block）**:
-中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / DocumentBlock / AttachmentNoticeBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
+中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / DocumentBlock / ImageBlock / AttachmentNoticeBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
 _Avoid_: 直接以 DeepSeek/OpenAI wire 字段（如 `reasoning_content`、`tool_calls` 数组）描述业务内部消息
 
 ### 文件
@@ -126,6 +126,14 @@ _Avoid_: 处理后文件、预览文件
 从原件生成、服务于预览或模型消费的安全表示，例如缩略图、去元数据图片或规范化文本。文件派生物不取代原件，并与所属文件资产共享删除生命周期。
 _Avoid_: 原件、独立文件资产
 
+**模型输入表示（Model Input Representation）**:
+文件资产为模型准备的受支持内容形态，种类为文档或图像；它的存在只说明文件已具备对应安全表示，是否可进入某次 Run 仍取决于所选模型能力。
+_Avoid_: `model_consumable` 文件布尔值、模型能力、文件可用状态
+
+**安全图像派生物（Safe Image Derivative）**:
+图像原件经过完整解码和重新编码后产生的不可变表示，不含原件元数据，动画只保留首帧。视觉输入模型只接收该派生物，图像原件不进入 LLM provider。
+_Avoid_: 图片原件、带元数据的模型输入、视觉描述
+
 **文档派生文本（Document Extract）**:
 从 PDF 或 Office 原件中按页、幻灯片、工作表、段落或表格结构提取的模型可消费文本。本期它只表达可提取的语义内容，不代表 OCR、页面视觉布局、图表或嵌入图片已被模型理解。
 _Avoid_: 文档原件、完整视觉表示、OCR 结果
@@ -133,6 +141,18 @@ _Avoid_: 文档原件、完整视觉表示、OCR 结果
 **文档块（Document Block）**:
 Run 中承载一个模型可消费附件完整派生文本及其文件身份、摘要和提取版本的内容块。它随 transcript 固化模型当时实际读取的内容，并始终保留附件内容的低信任级别。
 _Avoid_: R2 引用、文档摘要、系统提示
+
+**图像块（Image Block）**:
+Run 中承载一个模型可消费图像附件稳定身份及模型所见安全派生物快照的内容块，与同一用户 turn 的文字共同参与上下文裁剪。快照记录派生物类型、哈希、尺寸、处理版本和警告，但不保存存储地址、临时 URL 或图片字节；只要该 turn 仍在视觉模型的上下文中，后续模型调用就会重新获得对应图像内容。
+_Avoid_: 附件提示块、首轮一次性图片、助手生成的图片描述
+
+**历史仅展示图片（Legacy Display-Only Image）**:
+视觉功能上线前已经进入当前消息分支、但其既有 Run transcript 只记录附件提示块的图片。它不是图像块，不得被后续视觉模型静默追溯理解；用户从当前分支最早的此类图片开始明确编辑或重新生成时，新 Run 才可产生图像块。
+_Avoid_: 图像块、可追溯升级的旧图片、重写后的历史输入
+
+**模型图像读取许可（Model Image Read Grant）**:
+系统在一次模型调用前为图像块对应的安全图像派生物签发的短期读取能力。它不是 transcript 或文件资产状态，过期后由后续模型调用重新签发。
+_Avoid_: 永久图片 URL、图像块、用户下载许可
 
 **部分可读附件（Partially Readable Attachment）**:
 已经产生非空文档派生文本、但原件仍含本期无法提取的扫描页、图表、嵌入图片或其他视觉内容的模型可消费附件。它可以进入上下文，但必须向用户明确提示模型只读取了可提取部分。
@@ -153,6 +173,18 @@ _Avoid_: 已上传文件、模型可消费文件
 **模型可消费附件（Model-Consumable Attachment）**:
 具有受支持内容表示、且当前所选 provider 明确具备相应输入能力的消息附件。系统只把模型可消费附件加入上下文；不支持的附件不得以文件名、隐式模型切换或其他伪装方式冒充已被模型理解。
 _Avoid_: 可用文件、已上传文件
+
+**视觉输入模型（Vision-Capable Model）**:
+模型目录中明确声明可以消费图像内容块的模型。该能力属于具体模型而不是 provider 品牌，未声明能力的模型一律按不支持视觉输入处理。
+_Avoid_: GPT 模型、OpenAI provider、通过模型名称猜测视觉能力
+
+**视觉依赖会话（Vision-Dependent Conversation）**:
+当前未归档用户消息的有效输入中包含图像块、因而后续 Run 必须使用视觉输入模型的会话。历史仅展示图片不构成图像块；归档消息和脱离附件不维持该约束，当前消息修订移除全部图像块后，会话不再具有视觉依赖。
+_Avoid_: GPT 会话、图片会话、按首个模型永久锁定的会话
+
+**图片上下文状态（Image Context State）**:
+从当前消息分支及其有效 Run transcript 派生的模型选择约束投影，取值表达无约束、必须使用视觉模型，或必须先从最早的历史仅展示图片开始升级。它供交互层呈现限制，不是持久化会话状态。
+_Avoid_: 会话模型字段、永久视觉标记、前端推测状态
 
 **完整附件输入（Complete Attachment Input）**:
 一次 Run 将某个模型可消费附件纳入上下文时，使用其全部文档派生文本，不进行静默截断或抽样。本期不提供检索式附件；超过完整输入预算的附件必须在提交 Run 前明确拒绝。

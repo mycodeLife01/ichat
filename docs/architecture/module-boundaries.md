@@ -48,7 +48,7 @@
 
 统一文件深模块，拥有上传会话、文件资产、物理对象、消息附件绑定、配额、读取许可、处理、维护和删除补偿。调用者只使用创建/确认/查询/取消上传、绑定附件、签发读取许可和回收等高层 interface；不得接触 bucket、object key、lease、ClamAV、解析器、R2 signer 或补偿细节。
 
-模块内部以固定且不可变的 `purpose` 隔离 `message_attachment` 与 `avatar`。它可以依赖 ORM、配置和存储/扫描/解析/publisher adapter；它不调用聊天 provider、不把原件交给 provider、也不把消息文字与派生文本拼接在一起。附件输入以中立 `DocumentBlock` / `AttachmentNoticeBlock` 返回给会话层；完整文档块由 runs transcript 固化，历史加载不能再访问 R2。
+模块内部以固定且不可变的 `purpose` 隔离 `message_attachment` 与 `avatar`。它可以依赖 ORM、配置和存储/扫描/解析/publisher adapter；它不调用聊天 provider、不把原件交给 provider、也不把消息文字与派生文本拼接在一起。附件输入以中立 `DocumentBlock` / `ImageBlock` / `AttachmentNoticeBlock` 返回给会话层；完整文档块和稳定图像块由 runs transcript 固化，历史加载不能再访问 R2。files 服务实现模型图像解析窄接口，在每次模型调用前校验安全派生物快照并签发临时读取许可。
 
 `FileObjectDeletion` 是所有正式对象删除的唯一持久事实：私有对象只需 R2 delete，公开头像必须同时完成 R2 delete 和 CDN purge。PG 状态行仍是事实源；任务消息只负责唤醒或重投。
 
@@ -70,7 +70,7 @@
 
 agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
 
-边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部；OpenAI provider 只依赖注入的中立图像解析协议把稳定 `ImageBlock` 投影成临时 wire URL，协议实现及存储凭证仍在 files 服务；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
 
 ## `app/services/agents`
 
