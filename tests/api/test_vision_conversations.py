@@ -314,6 +314,7 @@ async def test_with_message_vision_model_persists_image_snapshot(
     assert body["run"]["provider_name"] == "openai"
     assert body["run"]["provider_model"] == "gpt-5-mini"
     assert body["message"]["attachments"][0]["name"] == "new-image.png"
+    assert body["message"]["attachments"][0]["stats"] == {"width": 640, "height": 480}
     assert body["image_context"]["state"] == "vision_required"
     assert body["image_context"]["recommended_model"] == "gpt-5-mini"
     assert body["image_context"].get("legacy_message_id") is None

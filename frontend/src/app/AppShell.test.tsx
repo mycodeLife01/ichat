@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError } from "../api/errors";
@@ -27,6 +27,9 @@ import { createAuthSession, tokenStore } from "../auth/tokenStore";
 import { createFakeServices, fakeStream, renderWithApp } from "../test/appHarness";
 import { AppShell } from "./AppShell";
 
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location">{location.pathname}</div>;
@@ -46,7 +49,20 @@ function createWithMessageResponse(
 
 describe("AppShell", () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+  afterAll(() => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
+  });
 
   it("loads and lists conversations on mount", async () => {
     const list = vi.fn(async () => [conversationResponse]);
@@ -356,6 +372,195 @@ describe("AppShell", () => {
     expect(submitting).toBeDisabled();
     expect(submitting).toHaveAttribute("aria-busy", "true");
     await waitFor(() => expect(createWithMessage).toHaveBeenCalledOnce());
+  });
+
+  it("keeps sent image pixels stable after placement", async () => {
+    const verifiedUser: AuthUserResponse = {
+      ...authTokenResponse.user,
+      email_verified: true,
+    };
+    tokenStore.save(
+      createAuthSession({
+        ...authTokenResponse,
+        user: verifiedUser,
+      }),
+    );
+
+    const createObjectURL = vi.fn<(blob: Blob | MediaSource) => string>(() =>
+      "blob:composer-preview",
+    );
+    const revokeObjectURL = vi.fn<(url: string) => void>();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(null, {
+          status: 200,
+          headers: { ETag: '"upload-etag"' },
+        }),
+      ),
+    );
+
+    const attachment = {
+      id: "file-1",
+      name: "photo.png",
+      media_type: "image/png",
+      size_bytes: 7,
+      category: "image" as const,
+      model_input_kind: "image" as const,
+      warning: [],
+      preview_available: true,
+      stats: { width: 1329, height: 1434 },
+    };
+    const draft: ConversationResponse = {
+      id: "77",
+      title: null,
+      activated_at: null,
+      created_at: "t",
+      updated_at: "t",
+    };
+    const userMessage: MessageResponse = {
+      id: "1",
+      conversation_id: draft.id,
+      run_id: "100",
+      role: "user",
+      content: "look",
+      reasoning: null,
+      position: 1,
+      created_at: "t",
+      attachments: [attachment],
+    };
+    const run: RunResponse = {
+      id: "100",
+      conversation_id: draft.id,
+      user_message_id: userMessage.id,
+      status: "streaming",
+      provider_name: "openai",
+      provider_model: "gpt-5-mini",
+      created_at: "t",
+    };
+    const readUrl = vi.fn(async () => ({
+      url: "https://downloads.example.test/file-1/preview",
+      expires_at: "2026-08-08T10:05:00Z",
+    }));
+    const createWithMessage = vi
+      .fn<() => Promise<ConversationCreateWithMessageResponse>>()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValue(createWithMessageResponse(draft, { message: userMessage, run }));
+    const services = createFakeServices(
+      { me: async () => verifiedUser },
+      { list: async () => [], createWithMessage },
+      { streamEvents: () => fakeStream([]) },
+      {
+        get: async () => ({
+          web_search: { enabled: false },
+          models: [
+            {
+              id: "gpt-5-mini",
+              provider: "openai",
+              label: "GPT-5 mini",
+              thinking_levels: ["low"],
+              default: true,
+              supports_image_input: true,
+            },
+          ],
+          files: {
+            enabled: true,
+            allowed_extensions: ["png"],
+            category_max_bytes: { image: 10_000_000 },
+            max_attachments_per_message: 10,
+            max_message_bytes: 10_000_000,
+            quota_bytes: 100_000_000,
+            target_turn_tokens: 8_000,
+            context_budget_tokens: 32_000,
+          },
+        }),
+      },
+      {},
+      {
+        createUpload: async () => ({
+          upload_id: "upload-1",
+          upload_url: "https://uploads.example.test/upload-1",
+          upload_headers: { "Content-Type": "image/png" },
+          upload_url_expires_at: "2026-08-08T10:05:00Z",
+          session_expires_at: "2026-08-08T10:30:00Z",
+        }),
+        confirm: async () => ({
+          upload_id: "upload-1",
+          status: "succeeded",
+          error_code: null,
+          file: attachment,
+        }),
+        readUrl,
+      },
+    );
+
+    const rendered = renderWithApp(<AppShell />, services);
+
+    await waitFor(() =>
+      expect(document.querySelector<HTMLInputElement>('input[type="file"]')).not.toBeNull(),
+    );
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: { files: [new File(["picture"], "photo.png", { type: "image/png" })] },
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-attachment-status="succeeded"]')).not.toBeNull(),
+    );
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "look" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => expect(createWithMessage).toHaveBeenCalledOnce());
+    await waitFor(() => expect(textarea).toHaveValue("look"));
+    expect(document.querySelector<HTMLImageElement>('img[alt="photo.png"]')?.src).toContain(
+      "blob:composer-preview",
+    );
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:composer-preview");
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => expect(createWithMessage).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const visibleImage = document.querySelector<HTMLImageElement>('img[alt="photo.png"]');
+      expect(visibleImage).not.toBeNull();
+      expect(visibleImage?.getAttribute("src")).toBe("blob:composer-preview");
+    });
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:composer-preview");
+    const localImage = document.querySelector<HTMLImageElement>('img[alt="photo.png"]');
+    const imageGroup = localImage?.closest('[data-attachment-group="images"]');
+    expect(imageGroup?.className).not.toMatch(/\banimate-/);
+    expect(localImage?.src).toContain("blob:composer-preview");
+    expect(localImage).not.toHaveClass("transition-opacity", "opacity-0", "opacity-100");
+    expect(localImage?.className).not.toMatch(/\b(?:animate|scale)-/);
+    expect(document.querySelector('img[data-preview-preload="true"]')).toBeNull();
+    expect(readUrl).not.toHaveBeenCalled();
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:composer-preview");
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    });
+
+    expect(document.querySelector<HTMLImageElement>('img[alt="photo.png"]')).toBe(localImage);
+    expect(localImage?.src).toContain("blob:composer-preview");
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:composer-preview");
+
+    rendered.unmount();
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(revokeObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:composer-preview");
   });
 
   it("preserves the thinking status node when the pending submission becomes a run", async () => {

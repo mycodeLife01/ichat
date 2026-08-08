@@ -1,10 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
   Download,
   Eye,
   FileCode2,
@@ -75,13 +73,12 @@ type AttachmentCardProps = {
   attachment: AttachmentDisplay;
   mode?: "composer" | "message" | "share" | "editor";
   getReadUrl?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  localPreviewUrl?: string;
   onCancel?: (clientId: string) => void;
   onRetry?: (clientId: string) => void;
   onMove?: (clientId: string, direction: -1 | 1) => void;
   canMoveBack?: boolean;
   canMoveForward?: boolean;
-  onRemove?: (fileId: string) => void;
-  onMoveFile?: (fileId: string, direction: -1 | 1) => void;
   imageLayout?: "single" | "collection" | "mixed";
   imageCollectionPosition?: "first" | "middle" | "last";
 };
@@ -94,6 +91,25 @@ function hasFileId(
   attachment: FileAttachment | SharedAttachmentPlaceholder,
 ): attachment is FileAttachment {
   return "id" in attachment;
+}
+
+function positiveDimension(value: number | string | undefined): number | null {
+  const dimension = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(dimension) && dimension > 0 ? dimension : null;
+}
+
+function fittedImageFrame(
+  width: number | null,
+  height: number | null,
+  maxWidth: number,
+  maxHeight: number,
+): CSSProperties | undefined {
+  if (width === null || height === null) return undefined;
+  const scale = Math.min(1, maxWidth / width, maxHeight / height);
+  return {
+    width: Math.max(1, width * scale),
+    height: Math.max(1, height * scale),
+  };
 }
 
 function formatBytes(bytes: number): string {
@@ -169,12 +185,9 @@ export function AttachmentCard({
   attachment,
   mode = "message",
   getReadUrl,
+  localPreviewUrl,
   onCancel,
   onRetry,
-  canMoveBack = false,
-  canMoveForward = false,
-  onRemove,
-  onMoveFile,
   imageLayout = "single",
   imageCollectionPosition = "middle",
 }: AttachmentCardProps) {
@@ -194,6 +207,7 @@ export function AttachmentCard({
 
   const resolvePreviewUrl = async (): Promise<string | null> => {
     if (draft?.local_preview_url) return draft.local_preview_url;
+    if (localPreviewUrl) return localPreviewUrl;
     if (previewUrl) return previewUrl;
     if (!fileId || !getReadUrl || !file?.preview_available) return null;
     if (!previewRequestRef.current) {
@@ -220,15 +234,23 @@ export function AttachmentCard({
     }
   };
 
-  // Sent images need a signed preview to paint their thumbnail. Composer
-  // images use their local object URL and therefore make no read-url request.
+  // Images without a transferable local preview need a signed thumbnail.
+  // Freshly sent images keep their object URL for the current mounted view.
   useEffect(() => {
-    if (!isImage || draft?.local_preview_url || previewUrl || !file?.preview_available) return;
+    if (
+      !isImage ||
+      draft?.local_preview_url ||
+      localPreviewUrl ||
+      previewUrl ||
+      !file?.preview_available
+    ) {
+      return;
+    }
     void resolvePreviewUrl();
     // resolvePreviewUrl intentionally keys on the stable file identity. Local
     // state updates must not start a second signed-URL request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileId, file?.preview_available, isImage, draft?.local_preview_url]);
+  }, [fileId, file?.preview_available, isImage, draft?.local_preview_url, localPreviewUrl]);
 
   const read = async (role: FileReadRole) => {
     if (role === "preview") {
@@ -274,7 +296,8 @@ export function AttachmentCard({
         : name;
 
     if (isImage) {
-      const imageUrl = draft?.local_preview_url ?? previewUrl;
+      const immediatePreviewUrl = draft?.local_preview_url ?? localPreviewUrl;
+      const imageUrl = immediatePreviewUrl ?? previewUrl;
       const canPreview = Boolean(imageUrl || (fileId && getReadUrl && file?.preview_available));
       const isComposer = mode === "composer" || mode === "editor";
       const isCollection = imageLayout !== "single";
@@ -285,6 +308,29 @@ export function AttachmentCard({
           : imageCollectionPosition === "last"
             ? "rounded-lg rounded-e-2xl"
             : "rounded-lg";
+      const imageStats = file && hasFileId(file) ? file.stats : undefined;
+      const imageWidth = positiveDimension(imageStats?.width);
+      const imageHeight = positiveDimension(imageStats?.height);
+      const isLandscapeMessageImage =
+        mode === "message" &&
+        !isCollection &&
+        imageWidth !== null &&
+        imageHeight !== null &&
+        imageWidth > imageHeight;
+      const singleMessageImageClass = isLandscapeMessageImage
+        ? "max-h-64 max-w-96"
+        : "max-h-96 max-w-64";
+      // Reserve the final single-image box while its signed preview loads.
+      // Landscape images use ChatGPT's wider 384 x 256 bounds, while portrait
+      // images retain the established 256 x 384 bounds.
+      const imageFrameStyle = mode === "message" && !isCollection
+        ? fittedImageFrame(
+            imageWidth,
+            imageHeight,
+            isLandscapeMessageImage ? 384 : 256,
+            isLandscapeMessageImage ? 256 : 384,
+          )
+        : undefined;
       const imageFrameClass = isComposer
         ? isMixedComposerImage
           ? "h-[60px] w-14 rounded-xl"
@@ -296,7 +342,7 @@ export function AttachmentCard({
         : isCollection
           ? `h-32 w-32 ${collectionRadius}`
           : imageUrl
-            ? "max-h-96 max-w-64 rounded-[28px]"
+            ? `${singleMessageImageClass} rounded-[28px]`
             : "h-40 w-40 rounded-[28px]";
       const imageClass = isComposer
         ? isCollection
@@ -304,7 +350,7 @@ export function AttachmentCard({
           : "max-h-[120px] max-w-[160px]"
         : isCollection
           ? "h-full w-full"
-          : "max-h-96 max-w-64";
+          : singleMessageImageClass;
 
       return (
         <article
@@ -312,18 +358,27 @@ export function AttachmentCard({
           aria-label={name}
           aria-busy={progress ? "true" : undefined}
           className={`group/attachment relative shrink-0 text-left ${imageFrameClass}`}
+          style={imageFrameStyle}
           data-attachment-status={draft?.status ?? "bound"}
           data-attachment-kind="image"
         >
           <button
             type="button"
             className={`relative block overflow-hidden border border-border bg-sunken transition-opacity duration-[120ms] enabled:hover:opacity-90 disabled:cursor-default ${imageFrameClass}`}
+            style={imageFrameStyle}
             aria-label={`打开图片：${name}`}
             disabled={!canPreview}
             onClick={() => void read("preview")}
           >
             {imageUrl ? (
               <img
+                key={
+                  localPreviewUrl
+                    ? "local-preview"
+                    : previewUrl
+                      ? "remote-preview"
+                      : "image-preview"
+                }
                 className={`block object-cover ${imageClass}`}
                 src={imageUrl}
                 alt={name}
@@ -333,7 +388,7 @@ export function AttachmentCard({
                 <ImageIcon size={24} aria-hidden="true" />
               </span>
             )}
-            {(progress || loadingRole === "preview") && (
+            {(progress || (loadingRole === "preview" && !localPreviewUrl)) && (
               <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white">
                 <LoaderCircle className="animate-spin" size={24} aria-label="正在上传" />
               </span>
@@ -380,33 +435,6 @@ export function AttachmentCard({
                 >
                   <X size={15} />
                 </button>
-              )}
-            </div>
-          )}
-          {mode === "editor" && fileId && (
-            <div className="absolute -top-1 -right-1 z-[3] flex gap-1 rounded-full bg-surface/90 p-0.5 opacity-0 shadow-popover transition-opacity duration-[120ms] group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100">
-              {onMoveFile && (
-                <>
-                  <CardButton
-                    label="Move attachment earlier"
-                    disabled={!canMoveBack}
-                    onClick={() => onMoveFile(fileId, -1)}
-                  >
-                    <ChevronLeft size={15} />
-                  </CardButton>
-                  <CardButton
-                    label="Move attachment later"
-                    disabled={!canMoveForward}
-                    onClick={() => onMoveFile(fileId, 1)}
-                  >
-                    <ChevronRight size={15} />
-                  </CardButton>
-                </>
-              )}
-              {onRemove && (
-                <CardButton label="Remove attachment" onClick={() => onRemove(fileId)}>
-                  <X size={15} />
-                </CardButton>
               )}
             </div>
           )}
@@ -549,33 +577,6 @@ export function AttachmentCard({
           ))}
           {readError && <p className="mt-1 text-[11.5px] text-error-foreground">{readError}</p>}
         </div>
-        {mode === "editor" && fileId && (
-          <div className="flex shrink-0 items-center gap-0.5">
-            {onMoveFile && (
-              <>
-                <CardButton
-                  label="Move attachment earlier"
-                  disabled={!canMoveBack}
-                  onClick={() => onMoveFile(fileId, -1)}
-                >
-                  <ChevronLeft size={15} />
-                </CardButton>
-                <CardButton
-                  label="Move attachment later"
-                  disabled={!canMoveForward}
-                  onClick={() => onMoveFile(fileId, 1)}
-                >
-                  <ChevronRight size={15} />
-                </CardButton>
-              </>
-            )}
-            {onRemove && (
-              <CardButton label="Remove attachment" onClick={() => onRemove(fileId)}>
-                <X size={15} />
-              </CardButton>
-            )}
-          </div>
-        )}
       </div>
 
       {fileId && getReadUrl && file?.preview_available && (
@@ -698,30 +699,6 @@ function ImagePreviewDialog({
       </div>
     </div>,
     document.body,
-  );
-}
-
-function CardButton({
-  label,
-  disabled = false,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className="inline-flex h-7 w-7 items-center justify-center rounded-control text-text-muted hover:bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </button>
   );
 }
 

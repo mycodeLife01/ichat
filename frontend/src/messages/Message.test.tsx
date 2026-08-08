@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatModelCapability, MessageResponse } from "../api/types";
+import type { MessageResponse } from "../api/types";
 import type { FileAttachment } from "../files/types";
 import { Message } from "./Message";
 
@@ -48,25 +48,7 @@ const attachments: FileAttachment[] = [
     model_input_kind: "image",
     warning: [],
     preview_available: true,
-  },
-];
-
-const models: ChatModelCapability[] = [
-  {
-    id: "deepseek-v4-flash",
-    provider: "deepseek",
-    label: "DeepSeek",
-    thinking_levels: ["low", "high"],
-    default: true,
-    supports_image_input: false,
-  },
-  {
-    id: "gpt-5-mini",
-    provider: "openai",
-    label: "GPT-5 mini",
-    thinking_levels: ["low", "high"],
-    default: false,
-    supports_image_input: true,
+    stats: { width: 640, height: 480 },
   },
 ];
 
@@ -121,6 +103,56 @@ describe("Message", () => {
     expect(onReadAttachment).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps sent-image frame geometry stable while the signed preview loads", async () => {
+    let resolveReadUrl!: (value: { url: string }) => void;
+    const onReadAttachment = vi.fn(
+      () =>
+        new Promise<{ url: string }>((resolve) => {
+          resolveReadUrl = resolve;
+        }),
+    );
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    const imageButton = screen.getByRole("button", { name: "打开图片：photo.png" });
+    const frameBeforePreview = imageButton.style.cssText;
+    expect(imageButton).toHaveStyle({ width: "341.3333333333333px", height: "256px" });
+
+    resolveReadUrl({ url: "https://signed.example.test/preview" });
+    const image = await screen.findByAltText("photo.png");
+
+    expect(imageButton.style.cssText).toBe(frameBeforePreview);
+    expect(imageButton).toHaveClass("max-h-64", "max-w-96", "rounded-[28px]");
+    expect(image).toHaveClass("block", "object-cover", "max-h-64", "max-w-96");
+  });
+
+  it("matches the wider ChatGPT frame for one landscape image", async () => {
+    const onReadAttachment = vi.fn(async () => ({
+      url: "https://signed.example.test/landscape-preview",
+    }));
+    const landscapeImage = {
+      ...attachments[1],
+      stats: { width: 2048, height: 1152 },
+    };
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [landscapeImage] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    const image = await screen.findByAltText("photo.png");
+    const imageButton = screen.getByRole("button", { name: "打开图片：photo.png" });
+
+    expect(imageButton).toHaveClass("max-h-64", "max-w-96", "rounded-[28px]");
+    expect(imageButton).toHaveStyle({ width: "384px", height: "216px" });
+    expect(image).toHaveClass("block", "object-cover", "max-h-64", "max-w-96");
+  });
+
   it("places sent files above and outside the user bubble", () => {
     render(<Message message={{ ...userMessage, attachments }} />);
 
@@ -157,7 +189,10 @@ describe("Message", () => {
     const onReadAttachment = vi.fn(async (fileId: string) => ({
       url: `https://signed.example.test/${fileId}`,
     }));
-    const image = attachments[1];
+    const image = {
+      ...attachments[1],
+      stats: { width: 640, height: 960 },
+    };
     const secondImage = { ...image, id: "file-3", name: "second.png" };
     const { rerender } = render(
       <Message
@@ -167,6 +202,7 @@ describe("Message", () => {
     );
 
     await waitFor(() => expect(onReadAttachment).toHaveBeenCalledTimes(1));
+    await screen.findByAltText("photo.png");
     const singleGroup = screen.getByLabelText("附件").querySelector(
       '[data-attachment-group="images"]',
     );
@@ -177,6 +213,10 @@ describe("Message", () => {
       "max-w-64",
       "rounded-[28px]",
     );
+    expect(screen.getByRole("button", { name: "打开图片：photo.png" })).toHaveStyle({
+      width: "256px",
+      height: "384px",
+    });
 
     rerender(
       <Message
@@ -348,33 +388,25 @@ describe("Message", () => {
     expect(onEditAndRegenerate).not.toHaveBeenCalled();
   });
 
-  it("can remove the last edited image and choose DeepSeek in the same mutation", async () => {
+  it("keeps image attachment controls absent on hover while editing text", async () => {
     const user = userEvent.setup();
     const onEditAndRegenerate = vi.fn();
     render(
       <Message
         message={{ ...userMessage, attachments: [attachments[1]] }}
         onEditAndRegenerate={onEditAndRegenerate}
-        allowAttachmentEditing
-        visionEditModels={models}
-        visionEditModel="gpt-5-mini"
       />,
     );
 
     await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
-    const modelSelect = screen.getByRole("combobox", { name: "Model for edited message" });
-    expect(screen.getByRole("option", { name: "DeepSeek" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Remove attachment" }));
-    expect(screen.getByRole("option", { name: "DeepSeek" })).toBeEnabled();
-    await user.selectOptions(modelSelect, "deepseek-v4-flash");
+    await user.hover(screen.getByRole("group", { name: "photo.png" }));
+    expect(screen.queryByRole("button", { name: /Move attachment|Remove attachment/ })).toBeNull();
+    const textbox = screen.getByRole("textbox");
+    await user.clear(textbox);
+    await user.type(textbox, "只修改文字");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(onEditAndRegenerate).toHaveBeenCalledWith(
-      userMessage.id,
-      userMessage.content,
-      [],
-      "deepseek-v4-flash",
-    );
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "只修改文字");
   });
 
   it("regenerates an assistant message", async () => {

@@ -78,6 +78,10 @@ export function AppShell() {
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
   const [fileCapability, setFileCapability] = useState<FilesCapability>();
+  const sentImagePreviewUrlsRef = useRef(new Map<string, string>());
+  const [sentImagePreviews, setSentImagePreviews] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   // Thinking level drives the per-request thinking options sent with every
   // send/edit/regenerate call (read from the store at call time); persisted so
   // the choice survives reloads.
@@ -155,6 +159,20 @@ export function AppShell() {
         tone: "warning",
       }),
   });
+  const releaseSentImagePreview = useCallback((fileId: string) => {
+    const url = sentImagePreviewUrlsRef.current.get(fileId);
+    if (!url) return;
+    sentImagePreviewUrlsRef.current.delete(fileId);
+    URL.revokeObjectURL(url);
+    setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
+  }, []);
+  useEffect(
+    () => () => {
+      sentImagePreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      sentImagePreviewUrlsRef.current.clear();
+    },
+    [],
+  );
   const onComposerValueChange = (value: string) => {
     setComposerValue(value);
     attachmentUploads.setDraftContent(value);
@@ -201,6 +219,15 @@ export function AppShell() {
       attachmentUploads.readyAttachmentIds.length > 0
         ? attachmentUploads.readyAttachmentIds
         : undefined;
+    const detachedImagePreviews = attachmentUploads.detachImagePreviews(attachmentIds ?? []);
+    if (detachedImagePreviews.length > 0) {
+      for (const preview of detachedImagePreviews) {
+        const previousUrl = sentImagePreviewUrlsRef.current.get(preview.fileId);
+        if (previousUrl && previousUrl !== preview.url) URL.revokeObjectURL(previousUrl);
+        sentImagePreviewUrlsRef.current.set(preview.fileId, preview.url);
+      }
+      setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
+    }
     void send(text, attachmentIds).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
@@ -213,6 +240,15 @@ export function AppShell() {
       }
       if (sent) {
         attachmentUploads.clear();
+      } else if (detachedImagePreviews.length > 0) {
+        attachmentUploads.restoreImagePreviews(detachedImagePreviews);
+        let changed = false;
+        for (const preview of detachedImagePreviews) {
+          if (sentImagePreviewUrlsRef.current.get(preview.fileId) !== preview.url) continue;
+          sentImagePreviewUrlsRef.current.delete(preview.fileId);
+          changed = true;
+        }
+        if (changed) setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
       }
     });
   };
@@ -519,11 +555,10 @@ export function AppShell() {
               pendingMessage={pendingMessage}
               isMobile={isMobile}
               mutateDisabledReason={mutationDisabledReason}
-              onEditAndRegenerate={(id, content, attachmentIds, editModelId) => {
-                void editAndRegenerate(id, content, attachmentIds, editModelId);
+              onEditAndRegenerate={(id, content, attachmentIds) => {
+                void editAndRegenerate(id, content, attachmentIds);
               }}
               onRegenerate={(id) => void regenerate(id)}
-              allowAttachmentEditing={selectedModel?.supports_image_input === true}
               legacyMessageId={imageContext.legacy_message_id}
               onUpgradeLegacy={(messageId) => {
                 const visual = models.find((entry) => entry.supports_image_input);
@@ -553,10 +588,9 @@ export function AppShell() {
               }}
               onStartNewConversation={onNewConversation}
               onReadAttachment={services.filesApi.readUrl}
+              localImagePreviews={sentImagePreviews}
+              onLocalImagePreviewConsumed={releaseSentImagePreview}
               onShowSources={showSources}
-              models={models}
-              model={modelId}
-              imageContext={imageContext}
             >
               {pendingMessage ||
               (activeRun && activeRun.conversationId === selectedId) ? (

@@ -35,6 +35,12 @@ type AttachmentUploadOptions = {
   fetchImpl?: typeof fetch;
 };
 
+type DetachedImagePreview = {
+  clientId: string;
+  fileId: string;
+  url: string;
+};
+
 function randomId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
@@ -397,6 +403,42 @@ export function useAttachmentUploads({
     [commit],
   );
 
+  // Hand the already-decoded composer object URL to the sent message. Removing
+  // it from this hook's ownership prevents clear/scope cleanup from revoking it
+  // during the composer-to-thread transition.
+  const detachImagePreviews = useCallback(
+    (fileIds: readonly string[]): DetachedImagePreview[] => {
+      const selectedIds = new Set(fileIds);
+      const detached: DetachedImagePreview[] = [];
+      for (const attachment of attachmentsRef.current) {
+        const fileId = attachment.file?.id;
+        if (!fileId || !selectedIds.has(fileId) || attachment.category !== "image") continue;
+        const url = previewUrlsRef.current.get(attachment.client_id);
+        if (!url) continue;
+        previewUrlsRef.current.delete(attachment.client_id);
+        detached.push({ clientId: attachment.client_id, fileId, url });
+      }
+      return detached;
+    },
+    [],
+  );
+
+  // A failed send leaves the attachments in the composer, so return ownership
+  // to the upload hook. If the user removed one meanwhile, release its orphaned
+  // object URL here instead.
+  const restoreImagePreviews = useCallback((previews: readonly DetachedImagePreview[]) => {
+    for (const preview of previews) {
+      const attachment = attachmentsRef.current.find(
+        (item) =>
+          item.client_id === preview.clientId &&
+          item.file?.id === preview.fileId &&
+          item.local_preview_url === preview.url,
+      );
+      if (attachment) previewUrlsRef.current.set(preview.clientId, preview.url);
+      else URL.revokeObjectURL(preview.url);
+    }
+  }, []);
+
   const clear = useCallback(() => {
     if (userId != null) attachmentDraftStore.clear(userId, conversationId);
     abortControllersRef.current.forEach((controller) => controller.abort());
@@ -551,6 +593,8 @@ export function useAttachmentUploads({
     cancelAttachment,
     retryAttachment,
     moveAttachment,
+    detachImagePreviews,
+    restoreImagePreviews,
     clear,
     setDraftContent,
   };

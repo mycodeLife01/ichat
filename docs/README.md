@@ -29,6 +29,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
 | File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
+| Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 
 ## Directory guide
@@ -77,6 +78,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-07-14-r2-avatar-upload.md` — browser-cropped avatar direct upload to private R2, media queue validation/transcoding, public CDN URL, replacement/deletion compensation, account-deletion exception, Cloudflare setup/smoke/rollback.
 - `2026-08-01-unified-file-upload.md` — unified files domain for message attachments and new avatars: data model/state machine, format and parser security, transcript/privacy behavior, retention/quota/account rules, queues/credential topology, feature flag, R2/ClamAV smoke, rollout and rollback. This is the current authority; ticket 15 contract remains gated on production verification.
 - `2026-08-03-gpt-vision-input.md` — GPT 图片输入实现、独立 preview bucket/五凭证矩阵、维护窗口、backfill 门禁、真实资源 smoke、可观测性与回滚手册；生产白名单默认保持为空。
+- `2026-08-09-sent-image-placement-stability.md` — stable sent-image placement from composer to user message: local Blob ownership transfer, frame reservation, single-node pixel stability, discarded transition attempts, verification results, and the pending real-Chrome smoke.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 
 ### `docs/handover/frontend/`

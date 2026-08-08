@@ -91,6 +91,7 @@ class MessageAttachmentResponse(BaseModel):
     model_input_kind: FileModelInputKindValue | None = None
     warnings: list[str] = Field(default_factory=list)
     preview_available: bool = False
+    stats: dict[str, int | str] = Field(default_factory=dict)
     position: int
 
 

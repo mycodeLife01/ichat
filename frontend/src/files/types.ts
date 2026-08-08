@@ -29,6 +29,7 @@ export type FileAttachment = {
   warning?: string[];
   warnings?: string[];
   preview_available: boolean;
+  stats?: Record<string, number | string>;
   upload_expires_at?: string | null;
   unbound_expires_at?: string | null;
 };

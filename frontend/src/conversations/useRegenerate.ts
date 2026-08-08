@@ -4,7 +4,6 @@ import type { RunResponse } from "../api/types";
 import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
 import { currentRunOptions } from "../runs/runOptions";
-import { modelPreferenceStore } from "../runs/modelPreference";
 
 type StartStream = (
   runId: string,
@@ -73,7 +72,6 @@ export function useRegenerate(start: StartStream) {
       messageId: string,
       content: string,
       attachmentIds?: string[],
-      modelId?: string,
     ): Promise<boolean> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       const trimmed = content.trim();
@@ -90,18 +88,17 @@ export function useRegenerate(start: StartStream) {
                 conversationId,
                 messageId,
                 trimmed,
-                currentRunOptions(modelId),
+                currentRunOptions(),
               )
             : conversationApi.editAndRegenerate(
                 conversationId,
                 messageId,
                 trimmed,
-                currentRunOptions(modelId),
+                currentRunOptions(),
                 attachmentIds,
               ),
         conversationId,
       );
-      if (succeeded && modelId !== undefined) modelPreferenceStore.save(modelId);
       return succeeded;
     },
     [run, conversationApi, stateRef],

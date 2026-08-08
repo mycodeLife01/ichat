@@ -579,6 +579,13 @@ async def attachment_responses(
                 ),
                 warnings=list(attachment.warnings or []),
                 preview_available=preview_available,
+                stats={
+                    key: value
+                    for key, value in (file.summary_metadata or {}).items()
+                    if isinstance(value, int | str)
+                }
+                if file is not None
+                else {},
                 position=attachment.position,
             )
         )

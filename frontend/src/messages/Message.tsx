@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { ChatModelCapability, MessageResponse, MessageSource } from "../api/types";
+import type { MessageResponse, MessageSource } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
 import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -29,20 +29,17 @@ type MessageProps = {
     messageId: string,
     content: string,
     attachmentIds?: string[],
-    modelId?: string,
   ) => void;
   onRegenerate?: (messageId: string) => void;
-  allowAttachmentEditing?: boolean;
   legacyUpgradeAvailable?: boolean;
   onUpgradeLegacy?: (messageId: string) => void;
   onEditUpgradeLegacy?: (messageId: string) => boolean | void | Promise<boolean | void>;
   onStartNewConversation?: () => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  localImagePreviews?: ReadonlyMap<string, string>;
+  onLocalImagePreviewConsumed?: (fileId: string) => void;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
-  visionEditModels?: ChatModelCapability[];
-  visionEditModel?: string | null;
-  visionEditHasPriorImage?: boolean;
 };
 
 function copy(text: string) {
@@ -62,21 +59,17 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
-  allowAttachmentEditing = false,
   legacyUpgradeAvailable = false,
   onUpgradeLegacy,
   onEditUpgradeLegacy,
   onStartNewConversation,
   onReadAttachment,
+  localImagePreviews,
+  onLocalImagePreviewConsumed,
   onShowSources,
-  visionEditModels = [],
-  visionEditModel = null,
-  visionEditHasPriorImage = false,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
-  const [editedAttachments, setEditedAttachments] = useState(message.attachments ?? []);
-  const [editModelId, setEditModelId] = useState<string | null>(visionEditModel);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // Long user messages collapse to COLLAPSE_MAX_HEIGHT with an expand toggle;
@@ -135,8 +128,6 @@ export function Message({
 
   const startEditing = () => {
     setDraft(message.content);
-    setEditedAttachments(message.attachments ?? []);
-    setEditModelId(visionEditModel);
     setEditing(true);
   };
   const editAndUpgradeLegacy = () => {
@@ -154,17 +145,9 @@ export function Message({
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
   const messageAttachments = message.attachments ?? [];
-  const hasEditedModelInput = editedAttachments.some(
+  const hasMessageModelInput = messageAttachments.some(
     (attachment) => attachment.model_input_kind !== null,
   );
-  const attachmentsChanged =
-    editedAttachments.map((attachment) => attachment.id).join("\u0000") !==
-    messageAttachments.map((attachment) => attachment.id).join("\u0000");
-  const editedHasImage = editedAttachments.some(
-    (attachment) =>
-      attachment.model_input_kind === "image" || attachment.category === "image",
-  );
-
   // Copy shows a transient check (已复制) before reverting to the copy icon.
   const handleCopy = () => {
     copy(message.content);
@@ -273,19 +256,11 @@ export function Message({
   if (isUser && editing) {
     const save = () => {
       const trimmed = draft.trim();
-      if (trimmed === "" && !hasEditedModelInput) return;
+      if (trimmed === "" && !hasMessageModelInput) return;
       setEditing(false);
-      // Omitting attachment_ids inherits the current revision's attachments.
-      const attachmentIds = attachmentsChanged
-        ? editedAttachments.map((attachment) => attachment.id)
-        : undefined;
-      if (visionEditModels.length > 0 && editModelId !== null) {
-        onEditAndRegenerate?.(message.id, trimmed, attachmentIds, editModelId);
-      } else if (attachmentIds !== undefined) {
-        onEditAndRegenerate?.(message.id, trimmed, attachmentIds);
-      } else {
-        onEditAndRegenerate?.(message.id, trimmed);
-      }
+      // Message editing is text-only. Omitting attachment_ids preserves the
+      // current revision's immutable attachment set and ordering.
+      onEditAndRegenerate?.(message.id, trimmed);
     };
     const cancel = () => {
       setDraft(message.content);
@@ -299,35 +274,19 @@ export function Message({
           className="w-full animate-edit-in rounded-[24px] bg-sunken px-3 py-3"
           data-testid="message-editor"
         >
-          {editedAttachments.length > 0 && (
+          {messageAttachments.length > 0 && (
             <div
               className="flex flex-wrap gap-2"
               aria-label="编辑消息附件"
               data-attachment-group="editor"
             >
-            {editedAttachments.map((attachment, index) => (
+              {messageAttachments.map((attachment) => (
                 <AttachmentCard
                   key={attachment.id}
                   attachment={attachment}
                   mode="editor"
                   getReadUrl={onReadAttachment}
                   imageLayout={attachment.category === "image" ? "mixed" : undefined}
-                  canMoveBack={allowAttachmentEditing && index > 0}
-                  canMoveForward={allowAttachmentEditing && index < editedAttachments.length - 1}
-                  onRemove={allowAttachmentEditing ? (fileId) => setEditedAttachments((current) => current.filter((item) => item.id !== fileId)) : undefined}
-                  onMoveFile={
-                    allowAttachmentEditing
-                      ? (fileId, direction) =>
-                          setEditedAttachments((current) => {
-                            const at = current.findIndex((item) => item.id === fileId);
-                            const next = at + direction;
-                            if (at < 0 || next < 0 || next >= current.length) return current;
-                            const copy = [...current];
-                            [copy[at], copy[next]] = [copy[next], copy[at]];
-                            return copy;
-                          })
-                      : undefined
-                  }
                 />
               ))}
             </div>
@@ -349,30 +308,6 @@ export function Message({
             />
           </div>
           <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
-            {visionEditModels.length > 0 && editModelId !== null && (
-              <label className="mr-auto flex items-center gap-2 text-[13px] text-text-muted">
-                Model
-                <select
-                  aria-label="Model for edited message"
-                  className="h-9 rounded-control border border-border bg-surface px-2 text-text-primary"
-                  value={editModelId}
-                  onChange={(event) => setEditModelId(event.target.value)}
-                >
-                  {visionEditModels.map((entry) => (
-                    <option
-                      key={entry.id}
-                      value={entry.id}
-                      disabled={
-                        !entry.supports_image_input &&
-                        (visionEditHasPriorImage || editedHasImage)
-                      }
-                    >
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <button
               className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
               onClick={cancel}
@@ -382,7 +317,7 @@ export function Message({
             <button
               className={`${primaryButton} h-9 rounded-full px-[13px] text-[14px] font-medium leading-5`}
               onClick={save}
-              disabled={draft.trim() === "" && !hasEditedModelInput}
+              disabled={draft.trim() === "" && !hasMessageModelInput}
             >
               发送
             </button>
@@ -434,6 +369,8 @@ export function Message({
             <MessageAttachments
               attachments={messageAttachments}
               onReadAttachment={onReadAttachment}
+              localImagePreviews={localImagePreviews}
+              onLocalImagePreviewConsumed={onLocalImagePreviewConsumed}
               align="end"
             />
           )}
@@ -511,10 +448,14 @@ export function Message({
 function MessageAttachments({
   attachments,
   onReadAttachment,
+  localImagePreviews,
+  onLocalImagePreviewConsumed,
   align = "start",
 }: {
   attachments: NonNullable<MessageResponse["attachments"]>;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  localImagePreviews?: ReadonlyMap<string, string>;
+  onLocalImagePreviewConsumed?: (fileId: string) => void;
   align?: "start" | "end";
 }) {
   const isEnd = align === "end";
@@ -524,6 +465,31 @@ function MessageAttachments({
       (left.attachment.position ?? left.index) - (right.attachment.position ?? right.index),
     )
     .map(({ attachment }) => attachment);
+  const localImageFileIds = orderedAttachments
+    .filter(
+      (attachment) =>
+        attachment.category === "image" && localImagePreviews?.has(attachment.id),
+    )
+    .map((attachment) => attachment.id);
+  const localImageFileIdsRef = useRef(localImageFileIds);
+  const previewReleaseTimerRef = useRef<number | null>(null);
+  localImageFileIdsRef.current = localImageFileIds;
+
+  useEffect(() => {
+    if (previewReleaseTimerRef.current !== null) {
+      window.clearTimeout(previewReleaseTimerRef.current);
+      previewReleaseTimerRef.current = null;
+    }
+    return () => {
+      if (!onLocalImagePreviewConsumed || localImageFileIdsRef.current.length === 0) return;
+      const fileIds = [...localImageFileIdsRef.current];
+      // Defer cleanup so React Strict Mode's effect replay can cancel it.
+      previewReleaseTimerRef.current = window.setTimeout(() => {
+        for (const fileId of fileIds) onLocalImagePreviewConsumed(fileId);
+      }, 0);
+    };
+  }, [onLocalImagePreviewConsumed]);
+
   const imageCount = orderedAttachments.filter((attachment) => attachment.category === "image").length;
   const singleImage = imageCount === 1 && orderedAttachments.length === 1;
   const groups: Array<{
@@ -561,6 +527,7 @@ function MessageAttachments({
                 key={attachment.id}
                 attachment={attachment}
                 getReadUrl={onReadAttachment}
+                localPreviewUrl={localImagePreviews?.get(attachment.id)}
                 imageLayout={singleImage ? "single" : "collection"}
                 imageCollectionPosition={
                   index === 0 ? "first" : index === group.items.length - 1 ? "last" : "middle"
