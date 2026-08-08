@@ -10,13 +10,15 @@
 
 ## When to consult docs/
 
+A task may match multiple rows. Treat the situation column as triggers and read every matching row.
+
 | Situation | Read this first |
 |-----------|-----------------|
 | Understanding overall runtime architecture, data flow, service topology | `docs/architecture/overview.md` |
 | Refactoring, crossing module boundaries, or reviewing structural changes | `docs/architecture/module-boundaries.md` |
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
-| Working on the frontend (React SPA) | The newest matching `docs/handover/frontend/*.md` + `docs/superpowers/specs/2026-05-24-frontend-react-rebuild-design.md` |
+| Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
@@ -36,6 +38,7 @@
 Authoritative architectural rules.
 
 - `overview.md` — runtime architecture: service topology, end-to-end data flow, run/file state machines, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
+- `frontend.md` — current React SPA boundaries: state/effect ownership, API/auth, routing, SSE/Run recovery, attachments/model capabilities, styling, and verification invariants.
 - `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including `app/services/files` and the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
 - `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, file/media Celery ownership, why streaming runs stay out of Celery, and the three questions every task table must answer.
 
@@ -78,7 +81,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 
 ### `docs/handover/frontend/`
 
-Frontend rebuild handover series (React SPA, in chronological order — the newest file for a topic wins):
+Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` first for the current architecture, then use the matching handover for implementation rationale and feature-specific verification:
 
 - `2026-05-24-react-scaffold-and-pnpm.md` — Vite + React + TypeScript scaffold, pnpm switch, old vanilla frontend removed
 - `2026-05-24-frontend-communication-foundation.md` — API client, error types, SSE parsing layer
@@ -101,7 +104,7 @@ Pre-implementation design specs. Consult for product/design rationale.
 
 - `2026-05-16-ai-chat-backend-mvp-design.md` — overall MVP scope, architecture, technical decisions
 - `2026-05-17-run-cancellation-design.md` — cancellation design details and HTTP semantics
-- `2026-05-24-frontend-react-rebuild-design.md` — master plan for the React frontend rebuild (step sequence, hooks design, deployment topology)
+- `2026-05-24-frontend-react-rebuild-design.md` — historical master plan for the React rebuild; use `docs/architecture/frontend.md` for the current structure and invariants
 - `2026-06-11-web-search-tool-design.md` — web search tool design (tool schema, query planner, agent loop budget, source dedup, evidence compression). Note: the rule-based query planner / pre-search it specifies was removed 2026-06-17 (now model-driven); `system_prompt_snapshot` semantics also superseded — see `docs/handover/2026-06-17-system-prompt-management.md`.
 - `2026-06-18-public-id-and-conversation-sharing-design.md` — opaque `public_id` (dual-key, keep bigint PK) to drop sequential IDs from the API surface, plus conversation sharing via a separate `share_links` token + read-only snapshot. Includes scope/format/sharing-semantics open decisions.
 - other dated specs — per-feature designs (auto-title, regenerate, thinking mode, frontend sub-steps)

@@ -27,6 +27,7 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 
 - Inspect the relevant entry points and existing implementation before editing.
 - For any non-trivial implementation, review, architecture, or deployment work, start at `docs/README.md` and read every document selected by its matching situation.
+- For frontend work, read `docs/architecture/frontend.md`, then use `docs/README.md` to select every additional feature-specific design, handover, and deployment document.
 - When exploring a new code area, changing domain terminology, or proposing a decision that may affect an ADR, follow `docs/agents/domain.md`.
 - Define observable success criteria and the checks that will prove them before implementation. State assumptions when they materially affect behavior, compatibility, data, or external state.
 
