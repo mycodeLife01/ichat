@@ -26,7 +26,7 @@ from app.services.files.dependencies import (
     get_file_preview_api_storage,
     get_file_upload_storage,
 )
-from app.services.files.protocols import FileStorage
+from app.services.files.protocols import CompletedPart, FileStorage
 from app.services.files.publisher import CeleryFileTaskPublisher, get_file_task_publisher
 from app.services.files.service import (
     cancel_upload,
@@ -63,6 +63,7 @@ async def create_file_upload_route(
         filename=body.filename,
         content_type=body.content_type,
         size_bytes=body.size_bytes,
+        multipart_supported=body.multipart_supported,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
     )
@@ -124,6 +125,14 @@ async def confirm_file_upload_route(
             user=user,
             upload_id=upload_id,
             etag=body.etag,
+            parts=(
+                tuple(
+                    CompletedPart(part_number=part.part_number, etag=part.etag)
+                    for part in body.parts
+                )
+                if body.parts is not None
+                else None
+            ),
             settings=settings,
         )
     )

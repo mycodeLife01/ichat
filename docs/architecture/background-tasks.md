@@ -36,6 +36,8 @@
 | 事实源 | PostgreSQL | PostgreSQL | PostgreSQL |
 | Redis/Broker 角色 | pub/sub 唤醒 + Run Stream 实时传输；不参与 claim 仲裁，PG poll/checkpoint 兜底 | 仅作 broker/加速器，不持有业务状态 | 仅作 broker/加速器；`available_at`、lease 与补偿完成时间在 PG |
 
+file-worker 每个文件任务新建带 TCP keepalive、超时和标准重试的 R2 client，避免长寿命连接池退化跨任务传播；`max-tasks-per-child` 只作为资源与连接状态的进程级兜底，不改变 PG claim、lease 或重试语义。
+
 三条链路都**只把 PG 当事实源**，把广播组件（Redis pub/sub / Stream、Celery broker）当加速器。
 唤醒信号即便全部丢失，兜底扫描仍能保证任务最终被执行——这是「Redis 只作加速器、
 PG 永远是事实源」这一项目级约定在后台任务上的落地。

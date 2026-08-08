@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from urllib.parse import parse_qs, urlparse
+from uuid import UUID
 
 import pytest
 from fakeredis import aioredis
@@ -28,6 +30,7 @@ from app.models.files import (
     FilePurpose,
     FileStorageLocation,
     FileUpload,
+    FileUploadMethod,
     FileUploadStatus,
     MessageAttachment,
 )
@@ -201,6 +204,84 @@ async def test_create_accepts_platform_specific_python_mime_type(
     assert response.json()["data"]["upload_headers"]["Content-Type"] == (
         "text/x-python-script"
     )
+
+
+async def test_large_upload_uses_multipart_only_for_capable_clients(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    infra: Infra,
+) -> None:
+    data = await register(client, "multipart-upload")
+    await verify_user(session_factory, data)
+    size = 5 * 1024 * 1024 + 1
+
+    response = await client.post(
+        "/api/v1/files/uploads",
+        headers=auth_header(data),
+        json={
+            "filename": "photo.png",
+            "content_type": "image/png",
+            "size_bytes": size,
+            "multipart_supported": True,
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    created = response.json()["data"]
+    assert created["upload_method"] == "multipart"
+    assert created["upload_url"] is None
+    assert created["part_size_bytes"] == 5 * 1024 * 1024
+    assert [part["part_number"] for part in created["upload_parts"]] == [1, 2]
+
+    upload_id = parse_qs(urlparse(created["upload_parts"][0]["upload_url"]).query)[
+        "uploadId"
+    ][0]
+    first = infra.storage.put_multipart_part(upload_id, 1, b"a" * (5 * 1024 * 1024))
+    second = infra.storage.put_multipart_part(upload_id, 2, b"b")
+    confirmed = await client.post(
+        f"/api/v1/files/uploads/{created['upload_id']}/confirm",
+        headers=auth_header(data),
+        json={
+            "parts": [
+                {"part_number": 1, "etag": first},
+                {"part_number": 2, "etag": second},
+            ]
+        },
+    )
+
+    assert confirmed.status_code == status.HTTP_200_OK, confirmed.text
+    assert confirmed.json()["data"]["status"] == "queued"
+    async with session_factory() as session:
+        row = await session.scalar(
+            select(FileUpload).where(FileUpload.public_id == UUID(created["upload_id"]))
+        )
+        assert row is not None
+        assert row.upload_method == FileUploadMethod.MULTIPART
+        assert row.confirmed_etag is not None
+
+
+async def test_large_legacy_client_keeps_single_put_contract(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "legacy-large-upload")
+    await verify_user(session_factory, data)
+
+    response = await client.post(
+        "/api/v1/files/uploads",
+        headers=auth_header(data),
+        json={
+            "filename": "photo.png",
+            "content_type": "image/png",
+            "size_bytes": 5 * 1024 * 1024 + 1,
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    created = response.json()["data"]
+    assert created["upload_method"] == "single"
+    assert created["upload_url"]
+    assert created["upload_parts"] == []
 
 
 async def test_create_confirm_query_cancel_and_ownership(

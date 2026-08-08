@@ -26,7 +26,12 @@ describe("filesApi", () => {
 
     expect(client.request).toHaveBeenNthCalledWith(1, "/files/uploads", {
       method: "POST",
-      body: { filename: "notes.txt", content_type: "text/plain", size_bytes: 5 },
+      body: {
+        filename: "notes.txt",
+        content_type: "text/plain",
+        size_bytes: 5,
+        multipart_supported: true,
+      },
     });
     expect(client.request).toHaveBeenNthCalledWith(2, "/files/uploads/upload-1/confirm", {
       method: "POST",
@@ -65,13 +70,51 @@ describe("putFileToUpload", () => {
     );
     const file = new File(["hello"], "notes.txt", { type: "text/plain" });
 
-    await expect(putFileToUpload(session, file, undefined, fetchImpl)).resolves.toBe('"r2-etag"');
+    await expect(putFileToUpload(session, file, undefined, fetchImpl)).resolves.toEqual({
+      etag: '"r2-etag"',
+    });
     expect(fetchImpl).toHaveBeenCalledWith(session.upload_url, {
       method: "PUT",
       headers: session.upload_headers,
       body: file,
       signal: undefined,
     });
+  });
+
+  it("uploads multipart plans with at most three concurrent requests and ordered ETags", async () => {
+    const partSize = 5 * 1024 * 1024;
+    let active = 0;
+    let maxActive = 0;
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active -= 1;
+      const partNumber = Number(String(url).split("part-")[1]);
+      return new Response(null, { status: 200, headers: { ETag: `"etag-${partNumber}"` } });
+    }) as unknown as typeof fetch;
+    const multipartSession = {
+      ...session,
+      upload_method: "multipart" as const,
+      upload_url: null,
+      part_size_bytes: partSize,
+      upload_parts: [1, 2, 3, 4].map((part_number) => ({
+        part_number,
+        upload_url: `https://uploads.example.test/part-${part_number}`,
+        upload_headers: {},
+      })),
+    };
+    const file = new File([new Uint8Array(partSize * 3 + 1)], "large.bin");
+
+    await expect(
+      putFileToUpload(multipartSession, file, undefined, fetchImpl),
+    ).resolves.toEqual({
+      parts: [1, 2, 3, 4].map((part_number) => ({
+        part_number,
+        etag: `"etag-${part_number}"`,
+      })),
+    });
+    expect(maxActive).toBeLessThanOrEqual(3);
   });
 
   it("rejects a response without an exposed ETag", async () => {

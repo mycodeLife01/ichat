@@ -25,6 +25,7 @@ from app.models.user import User
 from app.services.files.formats import policy_for_filename
 from app.services.files.lifecycle import retry_available_at, transition_upload
 from app.services.files.protocols import (
+    FileDerivative,
     FileParser,
     FileProcessingError,
     FileStorage,
@@ -97,6 +98,7 @@ def process_upload(
         declared_size = upload.declared_size_bytes
         attempt_count = upload.attempt_count
         existing_manifest = list(upload.output_manifest or [])
+        multipart_upload_id = upload.multipart_upload_id
         queue_wait_seconds = max(
             0.0,
             (moment - (upload.queued_at or upload.created_at)).total_seconds(),
@@ -133,19 +135,40 @@ def process_upload(
                 manifest=manifest,
             )
         with observe_file_phase("r2_write", upload_id=str(public_id)):
-            for derivative, entry in zip(processed.derivatives, manifest, strict=True):
-                if _manifest_location(entry) == FileStorageLocation.MODEL_PREVIEW_PRIVATE:
-                    storage.put_preview(
-                        str(entry["object_key"]),
-                        content=derivative.content,
-                        content_type=derivative.content_type,
-                    )
+            derivatives: dict[str, FileDerivative] = {
+                derivative.role: derivative for derivative in processed.derivatives
+            }
+            for entry in manifest:
+                role = str(entry["role"])
+                try:
+                    derivative = derivatives[role]
+                except KeyError as exc:
+                    raise FileProcessingError("manifest_conflict") from exc
+                if role == "original":
+                    with observe_file_phase("r2_promote", upload_id=str(public_id)):
+                        storage.promote_staging_original(
+                            staging_key,
+                            str(entry["object_key"]),
+                            if_match=etag,
+                            expected_size_bytes=int(entry["size_bytes"]),
+                            expected_sha256=str(entry["sha256"]),
+                            content_type=derivative.content_type,
+                        )
+                elif _manifest_location(entry) == FileStorageLocation.MODEL_PREVIEW_PRIVATE:
+                    with observe_file_phase("preview_write", upload_id=str(public_id)):
+                        storage.put_preview(
+                            str(entry["object_key"]),
+                            content=derivative.content,
+                            content_type=derivative.content_type,
+                        )
                 else:
-                    storage.put_canonical(
-                        str(entry["object_key"]),
-                        content=derivative.content,
-                        content_type=derivative.content_type,
-                    )
+                    # Compatibility path for a manifest committed by a pre-cutover worker.
+                    with observe_file_phase("legacy_extract_write", upload_id=str(public_id)):
+                        storage.put_canonical(
+                            str(entry["object_key"]),
+                            content=derivative.content,
+                            content_type=derivative.content_type,
+                        )
     except FileProcessingError as exc:
         return _finish_error(
             factory,
@@ -182,6 +205,11 @@ def process_upload(
         )
     try:
         with observe_file_phase("staging_cleanup", upload_id=str(public_id)):
+            if multipart_upload_id is not None:
+                storage.abort_multipart_upload(
+                    staging_key,
+                    upload_id=multipart_upload_id,
+                )
             storage.delete_staging(staging_key)
             with factory() as session:
                 current = session.scalar(
@@ -210,6 +238,7 @@ def _build_manifest(processed: ProcessedFile) -> list[dict[str, Any]]:
             ),
         }
         for derivative in processed.derivatives
+        if derivative.role != "document_extract"
     ]
 
 

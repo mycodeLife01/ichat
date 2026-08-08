@@ -285,10 +285,10 @@ export function useAttachmentUploads({
 
         const controller = new AbortController();
         abortControllersRef.current.set(clientId, controller);
-        const etag = await putFileToUpload(session, file, controller.signal, fetchImpl);
+        const confirmation = await putFileToUpload(session, file, controller.signal, fetchImpl);
         abortControllersRef.current.delete(clientId);
         if (!isCurrentScope()) return;
-        const record = await filesApi.confirm(session.upload_id, etag);
+        const record = await filesApi.confirm(session.upload_id, confirmation);
         if (!isCurrentScope()) return;
         updateUploadRecord(record, clientId);
       } catch (error) {

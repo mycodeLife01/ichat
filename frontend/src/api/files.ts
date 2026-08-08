@@ -10,7 +10,12 @@ export type CreateFileUploadRequest = {
   filename: string;
   content_type: string;
   size_bytes: number;
+  multipart_supported?: boolean;
 };
+
+export type UploadConfirmation =
+  | { etag: string }
+  | { parts: Array<{ part_number: number; etag: string }> };
 
 type FilesClient = Pick<ApiClient, "request">;
 
@@ -21,13 +26,16 @@ export function createFilesApi(client?: FilesClient) {
     createUpload(body: CreateFileUploadRequest): Promise<FileUploadSession> {
       return resolveClient().request<FileUploadSession>("/files/uploads", {
         method: "POST",
-        body,
+        body: { ...body, multipart_supported: body.multipart_supported ?? true },
       });
     },
-    confirm(uploadId: string, etag: string): Promise<FileUploadRecord> {
+    confirm(
+      uploadId: string,
+      confirmation: string | UploadConfirmation,
+    ): Promise<FileUploadRecord> {
       return resolveClient().request<FileUploadRecord>(`/files/uploads/${uploadId}/confirm`, {
         method: "POST",
-        body: { etag },
+        body: typeof confirmation === "string" ? { etag: confirmation } : confirmation,
       });
     },
     status(uploadIds: string[]): Promise<FileUploadRecord[]> {
@@ -65,7 +73,13 @@ export async function putFileToUpload(
   file: File,
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
-): Promise<string> {
+): Promise<UploadConfirmation> {
+  if (session.upload_method === "multipart") {
+    return putMultipartFile(session, file, signal, fetchImpl);
+  }
+  if (!session.upload_url) {
+    throw new Error("Storage did not provide an upload URL. Please try again.");
+  }
   let response: Response;
   try {
     response = await fetchImpl(session.upload_url, {
@@ -88,5 +102,58 @@ export async function putFileToUpload(
   if (!etag) {
     throw new Error("Storage did not return an upload confirmation. Please try again.");
   }
-  return etag;
+  return { etag };
+}
+
+async function putMultipartFile(
+  session: FileUploadSession,
+  file: File,
+  signal: AbortSignal | undefined,
+  fetchImpl: typeof fetch,
+): Promise<UploadConfirmation> {
+  const parts = session.upload_parts ?? [];
+  const partSize = session.part_size_bytes ?? 0;
+  if (parts.length === 0 || partSize < 5 * 1024 * 1024) {
+    throw new Error("Storage returned an invalid multipart upload plan. Please try again.");
+  }
+  const completed: Array<{ part_number: number; etag: string }> = [];
+  let cursor = 0;
+
+  const uploadNext = async () => {
+    while (cursor < parts.length) {
+      const index = cursor++;
+      const part = parts[index];
+      const start = index * partSize;
+      const body = file.slice(start, Math.min(start + partSize, file.size));
+      let response: Response | undefined;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+        try {
+          response = await fetchImpl(part.upload_url, {
+            method: "PUT",
+            headers: part.upload_headers,
+            body,
+            signal,
+          });
+          if (response.ok && response.headers.get("ETag")) break;
+          lastError = new Error(`Multipart upload part ${part.part_number} failed`);
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") throw error;
+          lastError = error;
+        }
+      }
+      const etag = response?.ok ? response.headers.get("ETag") : null;
+      if (!etag) {
+        throw new Error("A multipart upload part failed after retries. Please try again.", {
+          cause: lastError,
+        });
+      }
+      completed.push({ part_number: part.part_number, etag });
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(3, parts.length) }, () => uploadNext()));
+  completed.sort((left, right) => left.part_number - right.part_number);
+  return { parts: completed };
 }

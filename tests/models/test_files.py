@@ -7,6 +7,7 @@ from app.models.files import (
     FileObjectRole,
     FilePurpose,
     FileStorageLocation,
+    FileUploadMethod,
     FileUploadStatus,
 )
 
@@ -31,6 +32,7 @@ def test_file_domain_uses_fixed_vocabulary() -> None:
         "expired",
         "cancelled",
     }
+    assert {method.value for method in FileUploadMethod} == {"single", "multipart"}
     assert {role.value for role in FileObjectRole} == {
         "original",
         "preview",
@@ -58,6 +60,9 @@ def test_file_upload_and_asset_store_the_required_lifecycle_facts() -> None:
         "declared_content_type",
         "declared_size_bytes",
         "staging_object_key",
+        "upload_method",
+        "multipart_upload_id",
+        "multipart_part_size_bytes",
         "confirmed_etag",
         "status",
         "attempt_count",

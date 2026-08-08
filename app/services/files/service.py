@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unicodedata
 from datetime import UTC, datetime, timedelta
+from math import ceil
 from pathlib import PurePath
 from typing import Literal
 from uuid import UUID, uuid4
@@ -26,6 +27,7 @@ from app.models.files import (
     FileQuota,
     FileStorageLocation,
     FileUpload,
+    FileUploadMethod,
     FileUploadStatus,
     MessageAttachment,
 )
@@ -37,11 +39,18 @@ from app.schemas.files import (
     FileReadUrlResponse,
     FileUploadResponse,
     MessageAttachmentResponse,
+    UploadPart,
 )
 from app.services.auth import rate_limit
 from app.services.files.formats import normalized_extension, validate_upload_declaration
 from app.services.files.lifecycle import ACTIVE_UPLOAD_STATUSES, transition_upload
-from app.services.files.protocols import FileProcessingError, FileStorage, FileTaskPublisher
+from app.services.files.protocols import (
+    CompletedPart,
+    FileProcessingError,
+    FileStorage,
+    FileTaskPublisher,
+)
+from app.services.files.telemetry import observe_file_phase
 
 UPLOAD_UNAVAILABLE = "File upload is temporarily unavailable"
 EMAIL_VERIFICATION_REQUIRED = "Verify your email before uploading files"
@@ -176,6 +185,7 @@ async def create_upload(
     filename: str,
     content_type: str,
     size_bytes: int,
+    multipart_supported: bool = False,
     client_ip: str,
     settings: Settings,
     purpose: FilePurpose = FilePurpose.MESSAGE_ATTACHMENT,
@@ -224,36 +234,87 @@ async def create_upload(
     quota.reserved_bytes += size_bytes
 
     key = staging_object_key()
+    use_multipart = (
+        multipart_supported
+        and size_bytes >= settings.files_multipart_threshold_bytes
+    )
     upload = FileUpload(
+        public_id=uuid4(),
         user_id=user.id,
         purpose=purpose,
         original_filename=safe_name,
         declared_content_type=content_type.split(";", 1)[0].strip().lower(),
         declared_size_bytes=size_bytes,
         staging_object_key=key,
+        upload_method=(
+            FileUploadMethod.MULTIPART if use_multipart else FileUploadMethod.SINGLE
+        ),
+        multipart_part_size_bytes=(
+            settings.files_multipart_part_size_bytes if use_multipart else None
+        ),
         status=FileUploadStatus.PENDING,
         available_at=moment,
         expires_at=moment + timedelta(seconds=settings.files_upload_session_ttl_seconds),
     )
     session.add(upload)
-    await session.flush()
+    multipart = None
+    signed = None
     try:
-        signed = await asyncio.to_thread(
-            storage.presign_upload,
-            key,
-            size_bytes=size_bytes,
-            ttl_seconds=settings.files_upload_presign_ttl_seconds,
-            content_type=upload.declared_content_type,
-        )
+        if use_multipart:
+            with observe_file_phase("upload_sign", upload_id=str(upload.public_id)):
+                multipart = await asyncio.to_thread(
+                    storage.create_multipart_upload,
+                    key,
+                    size_bytes=size_bytes,
+                    part_size_bytes=settings.files_multipart_part_size_bytes,
+                    ttl_seconds=settings.files_upload_presign_ttl_seconds,
+                    content_type=upload.declared_content_type,
+                )
+            upload.multipart_upload_id = multipart.upload_id
+        else:
+            with observe_file_phase("upload_sign", upload_id=str(upload.public_id)):
+                signed = await asyncio.to_thread(
+                    storage.presign_upload,
+                    key,
+                    size_bytes=size_bytes,
+                    ttl_seconds=settings.files_upload_presign_ttl_seconds,
+                    content_type=upload.declared_content_type,
+                )
+        await session.flush()
+        await session.commit()
     except Exception:
         await session.rollback()
+        if upload.multipart_upload_id is not None:
+            try:
+                await asyncio.to_thread(
+                    storage.abort_multipart_upload,
+                    key,
+                    upload_id=upload.multipart_upload_id,
+                )
+            except Exception:
+                logger.bind(upload_id=str(upload.public_id)).warning(
+                    "Multipart upload rollback cleanup failed"
+                )
         raise AppError(status.HTTP_503_SERVICE_UNAVAILABLE, UPLOAD_UNAVAILABLE) from None
-    await session.commit()
     return CreateFileUploadResponse(
         upload_id=upload.public_id,
         status="pending",
-        upload_url=signed.url,
-        upload_headers=dict(signed.headers),
+        upload_method=upload.upload_method.value,
+        upload_url=signed.url if signed is not None else None,
+        upload_headers=dict(signed.headers) if signed is not None else {},
+        upload_parts=(
+            [
+                UploadPart(
+                    part_number=part.part_number,
+                    upload_url=part.url,
+                    upload_headers=dict(part.headers),
+                )
+                for part in multipart.parts
+            ]
+            if multipart is not None
+            else []
+        ),
+        part_size_bytes=upload.multipart_part_size_bytes,
         upload_url_expires_at=moment
         + timedelta(seconds=settings.files_upload_presign_ttl_seconds),
         session_expires_at=upload.expires_at,
@@ -267,7 +328,8 @@ async def confirm_upload(
     *,
     user: User,
     upload_id: UUID,
-    etag: str,
+    etag: str | None,
+    parts: tuple[CompletedPart, ...] | None = None,
     settings: Settings,
     now: datetime | None = None,
 ) -> FileUploadResponse:
@@ -279,9 +341,25 @@ async def confirm_upload(
     )
     if upload is None:
         raise AppError(status.HTTP_404_NOT_FOUND, UPLOAD_NOT_FOUND)
-    normalized_etag = etag.strip().strip('"')
+    if upload.upload_method == FileUploadMethod.SINGLE:
+        if etag is None or parts is not None:
+            raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_UPLOAD)
+        normalized_etag = etag.strip().strip('"')
+    else:
+        if etag is not None or parts is None:
+            raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_UPLOAD)
+        expected_count = ceil(
+            upload.declared_size_bytes / int(upload.multipart_part_size_bytes or 1)
+        )
+        if [part.part_number for part in parts] != list(range(1, expected_count + 1)):
+            raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_UPLOAD)
+        normalized_etag = None
     if upload.status != FileUploadStatus.PENDING:
-        if upload.confirmed_etag is not None and upload.confirmed_etag != normalized_etag:
+        if (
+            normalized_etag is not None
+            and upload.confirmed_etag is not None
+            and upload.confirmed_etag != normalized_etag
+        ):
             raise AppError(status.HTTP_409_CONFLICT, "The confirmed upload cannot be replaced")
         return await upload_response(session, upload)
     if upload.expires_at <= moment:
@@ -297,7 +375,22 @@ async def confirm_upload(
         return await upload_response(session, upload)
 
     try:
-        metadata = await asyncio.to_thread(storage.head_staging, upload.staging_object_key)
+        if upload.upload_method == FileUploadMethod.MULTIPART:
+            if upload.multipart_upload_id is None or parts is None:
+                raise RuntimeError("missing multipart state")
+            with observe_file_phase("multipart_complete", upload_id=str(upload.public_id)):
+                metadata = await asyncio.to_thread(
+                    storage.complete_multipart_upload,
+                    upload.staging_object_key,
+                    upload_id=upload.multipart_upload_id,
+                    parts=parts,
+                )
+            normalized_etag = metadata.etag.strip().strip('"')
+        else:
+            with observe_file_phase("confirm_head", upload_id=str(upload.public_id)):
+                metadata = await asyncio.to_thread(
+                    storage.head_staging, upload.staging_object_key
+                )
     except Exception:
         raise AppError(status.HTTP_400_BAD_REQUEST, INVALID_UPLOAD) from None
     actual_type = metadata.content_type.split(";", 1)[0].strip().lower()

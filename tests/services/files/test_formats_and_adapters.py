@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from hashlib import sha256
 
 import pytest
 
@@ -10,7 +11,7 @@ from app.services.files.formats import (
     policy_for_filename,
     validate_upload_declaration,
 )
-from app.services.files.protocols import FileProcessingError, ScanVerdict
+from app.services.files.protocols import CompletedPart, FileProcessingError, ScanVerdict
 from app.services.files.scanner import (
     ClamAvScanner,
     FakeMalwareScanner,
@@ -113,6 +114,35 @@ def test_fake_storage_enforces_staging_etag_and_safe_download_headers() -> None:
     assert "\n" not in signed.headers["Content-Disposition"]
     assert "../" not in signed.headers["Content-Disposition"]
     assert "filename*=UTF-8''" in safe_content_disposition("inline", "中文.png")
+
+
+def test_fake_storage_completes_multipart_and_promotes_original_without_reupload() -> None:
+    storage = FakeFileStorage()
+    plan = storage.create_multipart_upload(
+        "staging/object",
+        size_bytes=6,
+        part_size_bytes=5 * 1024 * 1024,
+        ttl_seconds=600,
+        content_type="text/plain",
+    )
+    etag = storage.put_multipart_part(plan.upload_id, 1, b"source")
+    staged = storage.complete_multipart_upload(
+        "staging/object",
+        upload_id=plan.upload_id,
+        parts=(CompletedPart(part_number=1, etag=etag),),
+    )
+
+    storage.promote_staging_original(
+        "staging/object",
+        "files/object/original",
+        if_match=staged.etag,
+        expected_size_bytes=6,
+        expected_sha256=sha256(b"source").hexdigest(),
+        content_type="text/plain",
+    )
+
+    assert storage.canonical["files/object/original"].content == b"source"
+    assert storage.promoted_originals == [("staging/object", "files/object/original")]
 
 
 def test_r2_adapter_role_gates_operations_before_the_sdk_client_is_used() -> None:

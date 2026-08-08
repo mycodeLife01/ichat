@@ -333,6 +333,11 @@ def cleanup_staging_objects(
                 "staging_cleanup",
                 upload_id=str(upload.public_id),
             ):
+                if upload.multipart_upload_id is not None:
+                    storage.abort_multipart_upload(
+                        upload.staging_object_key,
+                        upload_id=upload.multipart_upload_id,
+                    )
                 storage.delete_staging(upload.staging_object_key)
         except Exception:
             continue

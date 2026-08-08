@@ -58,8 +58,15 @@ export type FileUploadRecord = {
 
 export type FileUploadSession = {
   upload_id: string;
-  upload_url: string;
+  upload_method?: "single" | "multipart";
+  upload_url?: string | null;
   upload_headers: Record<string, string>;
+  upload_parts?: Array<{
+    part_number: number;
+    upload_url: string;
+    upload_headers: Record<string, string>;
+  }>;
+  part_size_bytes?: number | null;
   upload_url_expires_at: string;
   session_expires_at: string;
 };

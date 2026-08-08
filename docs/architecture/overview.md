@@ -44,23 +44,26 @@ Nginx ──► API (FastAPI)
 ## 文件上传与消息附件数据流
 
 ```text
-浏览器 ──预签名 PUT──► 私有 files staging bucket
-    │ POST confirm                 │
+浏览器 ──预签名单次 PUT / multipart parts──► 私有 files staging bucket
+    │ POST confirm（API Complete）            │
     ▼                              ▼
 API ── FileUpload queued ──► Celery files queue / file-worker
                                       │ If-Match GET → ClamAV → 受限解析
                                       ▼
-                     FileAsset/FileObject + 私有 canonical bucket
+                     R2 条件 Copy 原件 + FileAsset/FileObject
                                       │
                          MessageAttachment + Run transcript DocumentBlock
 ```
 
 1. API 只在 active、已验证邮箱用户创建固定为 `message_attachment` purpose 的上传会话；创建时
-   锁住每用户配额行预留声明大小，返回短期 staging PUT URL，字节不经 FastAPI。
-2. confirm 通过 HEAD 固化 ETag 后把 `FileUpload` 置为 queued，并尽力投递 files queue。Celery
+   锁住每用户配额行预留声明大小；小文件返回短期 staging PUT URL，支持新协议的大文件返回
+   multipart 分片计划，字节均不经 FastAPI。
+2. confirm 对 multipart 调用 Complete、对单次 PUT 执行 HEAD，核验后固化 ETag 并把
+   `FileUpload` 置为 queued，再尽力投递 files queue。Celery
    丢失只会增加延迟：beat 的有界 sweep 按 PG `available_at` 再次投递。
 3. file-worker 按 ETag 用 `If-Match` 条件读取，计算 SHA-256、ClamAV 扫描、在资源受限子进程
-   解析并先写 output manifest；成功后才建立 `FileAsset`、`FileObject` 和配额转移。
+   解析并先写 output manifest；成功后在 R2 内条件复制原件到 canonical，再建立 `FileAsset`、
+   `FileObject` 和配额转移。新文档派生文本只写 PostgreSQL，不重复写对象存储。
 4. 会话服务在同一事务中建立 Message、显式 `MessageAttachment` 和 Run。文档的完整
    `DocumentBlock` 写入 Run transcript；图片只写 `AttachmentNoticeBlock`，不会触发视觉理解。
 5. `FileObjectDeletion` 是正式对象删除的 PG 事实。私有对象 delete 完成即可终态；公开头像的

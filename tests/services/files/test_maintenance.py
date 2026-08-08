@@ -26,6 +26,7 @@ from app.models.files import (
     FileQuota,
     FileStorageLocation,
     FileUpload,
+    FileUploadMethod,
     FileUploadStatus,
     MessageAttachment,
 )
@@ -33,6 +34,7 @@ from app.models.user import User
 from app.services.files.avatar import sweep_avatar_uploads
 from app.services.files.maintenance import (
     backfill_model_previews,
+    cleanup_staging_objects,
     file_maintenance_snapshot,
     process_deletions,
     purge_deleted_conversations,
@@ -451,6 +453,53 @@ def test_pending_ttl_releases_reservation_without_extending_on_reads(
         assert refreshed is not None and refreshed.status == FileUploadStatus.EXPIRED
         assert refreshed.error_code == "upload_expired"
         assert quota is not None and quota.reserved_bytes == 0
+
+
+def test_expired_multipart_staging_cleanup_aborts_incomplete_upload(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    with session_factory() as session:
+        user = _user(session)
+        session.add(FileQuota(user_id=user.id, reserved_bytes=6 * 1024 * 1024))
+        key = f"file-staging/{uuid4().hex}.png"
+        plan = storage.create_multipart_upload(
+            key,
+            size_bytes=6 * 1024 * 1024,
+            part_size_bytes=5 * 1024 * 1024,
+            ttl_seconds=600,
+            content_type="image/png",
+        )
+        upload = FileUpload(
+            user_id=user.id,
+            purpose=FilePurpose.MESSAGE_ATTACHMENT,
+            original_filename="pending.png",
+            declared_content_type="image/png",
+            declared_size_bytes=6 * 1024 * 1024,
+            staging_object_key=key,
+            upload_method=FileUploadMethod.MULTIPART,
+            multipart_upload_id=plan.upload_id,
+            multipart_part_size_bytes=5 * 1024 * 1024,
+            status=FileUploadStatus.PENDING,
+            available_at=now,
+            expires_at=now,
+        )
+        session.add(upload)
+        session.commit()
+
+        assert sweep_uploads(session, settings=file_settings, now=now) == []
+        session.commit()
+        assert cleanup_staging_objects(
+            session,
+            settings=file_settings,
+            storage=storage,
+            now=now + timedelta(seconds=file_settings.files_cleanup_safety_seconds + 1),
+        ) == 1
+        session.commit()
+
+        assert plan.upload_id in storage.aborted_multipart
+        assert upload.staging_deleted_at is not None
 
 
 @pytest.mark.parametrize("purpose", [FilePurpose.MESSAGE_ATTACHMENT, FilePurpose.AVATAR])

@@ -53,6 +53,25 @@ class PresignedUpload:
 
 
 @dataclass(frozen=True)
+class PresignedUploadPart:
+    part_number: int
+    url: str
+    headers: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MultipartUpload:
+    upload_id: str
+    parts: tuple[PresignedUploadPart, ...]
+
+
+@dataclass(frozen=True)
+class CompletedPart:
+    part_number: int
+    etag: str
+
+
+@dataclass(frozen=True)
 class PresignedDownload:
     url: str
     headers: Mapping[str, str] = field(default_factory=dict)
@@ -138,6 +157,24 @@ class UploadStorage(Protocol):
         content_type: str,
     ) -> PresignedUpload: ...
 
+    def create_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        size_bytes: int,
+        part_size_bytes: int,
+        ttl_seconds: int,
+        content_type: str,
+    ) -> MultipartUpload: ...
+
+    def complete_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        upload_id: str,
+        parts: tuple[CompletedPart, ...],
+    ) -> StorageObjectMetadata: ...
+
     def head_staging(self, object_key: str) -> StorageObjectMetadata: ...
 
 
@@ -147,6 +184,19 @@ class WorkerStorage(Protocol):
     def get_staging(self, object_key: str, *, if_match: str) -> bytes: ...
 
     def delete_staging(self, object_key: str) -> None: ...
+
+    def abort_multipart_upload(self, object_key: str, *, upload_id: str) -> None: ...
+
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata: ...
 
     def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None: ...
 

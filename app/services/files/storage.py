@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import md5, sha256
 from io import BytesIO
+from math import ceil
 from pathlib import PurePath
 from typing import Any, Literal
 from unicodedata import normalize
@@ -19,10 +20,13 @@ from uuid import uuid4
 
 from app.models.files import FileStorageLocation
 from app.services.files.protocols import (
+    CompletedPart,
     DerivativeRole,
+    MultipartUpload,
     ObjectDisposition,
     PresignedDownload,
     PresignedUpload,
+    PresignedUploadPart,
     StorageObjectMetadata,
 )
 
@@ -141,6 +145,85 @@ class S3FileStorage:
             declared_size_bytes=int(declared_size) if declared_size is not None else None,
         )
 
+    def create_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        size_bytes: int,
+        part_size_bytes: int,
+        ttl_seconds: int,
+        content_type: str,
+    ) -> MultipartUpload:
+        response = self._client.create_multipart_upload(
+            Bucket=self._staging_bucket,
+            Key=object_key,
+            ContentType=content_type,
+            Metadata={"declared-size": str(size_bytes)},
+        )
+        upload_id = str(response["UploadId"])
+        try:
+            parts = tuple(
+                PresignedUploadPart(
+                    part_number=part_number,
+                    url=str(
+                        self._client.generate_presigned_url(
+                            "upload_part",
+                            Params={
+                                "Bucket": self._staging_bucket,
+                                "Key": object_key,
+                                "UploadId": upload_id,
+                                "PartNumber": part_number,
+                            },
+                            ExpiresIn=ttl_seconds,
+                            HttpMethod="PUT",
+                        )
+                    ),
+                )
+                for part_number in range(1, ceil(size_bytes / part_size_bytes) + 1)
+            )
+        except Exception:
+            self.abort_multipart_upload(object_key, upload_id=upload_id)
+            raise
+        return MultipartUpload(upload_id=upload_id, parts=parts)
+
+    def complete_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        upload_id: str,
+        parts: tuple[CompletedPart, ...],
+    ) -> StorageObjectMetadata:
+        try:
+            self._client.complete_multipart_upload(
+                Bucket=self._staging_bucket,
+                Key=object_key,
+                UploadId=upload_id,
+                MultipartUpload={
+                    "Parts": [
+                        {"PartNumber": part.part_number, "ETag": _quoted_etag(part.etag)}
+                        for part in parts
+                    ]
+                },
+            )
+        except Exception as exc:
+            # Complete is not safely repeatable at the provider boundary. If a
+            # prior response was lost, the upload id is gone but the object is
+            # already durable; HEAD makes the API retry idempotent.
+            if _storage_error_code(exc) not in {"404", "NoSuchUpload", "NotFound"}:
+                raise
+        return self.head_staging(object_key)
+
+    def abort_multipart_upload(self, object_key: str, *, upload_id: str) -> None:
+        try:
+            self._client.abort_multipart_upload(
+                Bucket=self._staging_bucket,
+                Key=object_key,
+                UploadId=upload_id,
+            )
+        except Exception as exc:
+            if _storage_error_code(exc) not in {"404", "NoSuchUpload", "NotFound"}:
+                raise
+
     def get_staging(self, object_key: str, *, if_match: str) -> bytes:
         response = self._client.get_object(
             Bucket=self._staging_bucket,
@@ -151,6 +234,55 @@ class S3FileStorage:
 
     def delete_staging(self, object_key: str) -> None:
         self._client.delete_object(Bucket=self._staging_bucket, Key=object_key)
+
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata:
+        try:
+            existing = self._client.head_object(
+                Bucket=self._canonical_bucket,
+                Key=canonical_object_key,
+            )
+        except Exception as exc:
+            if _storage_error_code(exc) not in {"404", "NoSuchKey", "NotFound"}:
+                raise
+            existing = None
+        if existing is None:
+            self._client.copy_object(
+                Bucket=self._canonical_bucket,
+                Key=canonical_object_key,
+                CopySource={"Bucket": self._staging_bucket, "Key": staging_object_key},
+                CopySourceIfMatch=_quoted_etag(if_match),
+                ContentType=content_type,
+                MetadataDirective="REPLACE",
+                Metadata={
+                    "x-content-type-options": "nosniff",
+                    "sha256": expected_sha256,
+                },
+            )
+            existing = self._client.head_object(
+                Bucket=self._canonical_bucket,
+                Key=canonical_object_key,
+            )
+        metadata = existing.get("Metadata") or {}
+        if (
+            int(existing["ContentLength"]) != expected_size_bytes
+            or metadata.get("sha256") != expected_sha256
+        ):
+            raise StorageIntegrityError
+        return StorageObjectMetadata(
+            size_bytes=int(existing["ContentLength"]),
+            content_type=str(existing.get("ContentType") or content_type),
+            etag=str(existing.get("ETag") or "").strip('"'),
+            sha256=expected_sha256,
+        )
 
     def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None:
         self._client.put_object(
@@ -365,6 +497,40 @@ class R2FileStorage(S3FileStorage):
         self._require("upload", "worker")
         return super().head_staging(object_key)
 
+    def create_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        size_bytes: int,
+        part_size_bytes: int,
+        ttl_seconds: int,
+        content_type: str,
+    ) -> MultipartUpload:
+        self._require("upload")
+        return super().create_multipart_upload(
+            object_key,
+            size_bytes=size_bytes,
+            part_size_bytes=part_size_bytes,
+            ttl_seconds=ttl_seconds,
+            content_type=content_type,
+        )
+
+    def complete_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        upload_id: str,
+        parts: tuple[CompletedPart, ...],
+    ) -> StorageObjectMetadata:
+        self._require("upload")
+        return super().complete_multipart_upload(
+            object_key, upload_id=upload_id, parts=parts
+        )
+
+    def abort_multipart_upload(self, object_key: str, *, upload_id: str) -> None:
+        self._require("upload", "worker")
+        super().abort_multipart_upload(object_key, upload_id=upload_id)
+
     def get_staging(self, object_key: str, *, if_match: str) -> bytes:
         self._require("worker")
         return super().get_staging(object_key, if_match=if_match)
@@ -372,6 +538,26 @@ class R2FileStorage(S3FileStorage):
     def delete_staging(self, object_key: str) -> None:
         self._require("worker")
         super().delete_staging(object_key)
+
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata:
+        self._require("worker")
+        return super().promote_staging_original(
+            staging_object_key,
+            canonical_object_key,
+            if_match=if_match,
+            expected_size_bytes=expected_size_bytes,
+            expected_sha256=expected_sha256,
+            content_type=content_type,
+        )
 
     def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None:
         self._require("worker")
@@ -518,6 +704,9 @@ class FakeFileStorage:
         self.deleted_staging: list[str] = []
         self.deleted_canonical: list[str] = []
         self.deleted_preview: list[str] = []
+        self.multipart: dict[str, dict[str, Any]] = {}
+        self.aborted_multipart: list[str] = []
+        self.promoted_originals: list[tuple[str, str]] = []
 
     def put_staging(
         self,
@@ -556,6 +745,70 @@ class FakeFileStorage:
             },
         )
 
+    def create_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        size_bytes: int,
+        part_size_bytes: int,
+        ttl_seconds: int,
+        content_type: str,
+    ) -> MultipartUpload:
+        upload_id = uuid4().hex
+        self.multipart[upload_id] = {
+            "object_key": object_key,
+            "size_bytes": size_bytes,
+            "content_type": content_type,
+            "parts": {},
+        }
+        return MultipartUpload(
+            upload_id=upload_id,
+            parts=tuple(
+                PresignedUploadPart(
+                    part_number=part_number,
+                    url=(
+                        f"https://upload.invalid/{quote(object_key, safe='/')}"
+                        f"?uploadId={upload_id}&partNumber={part_number}&ttl={ttl_seconds}"
+                    ),
+                )
+                for part_number in range(1, ceil(size_bytes / part_size_bytes) + 1)
+            ),
+        )
+
+    def put_multipart_part(self, upload_id: str, part_number: int, content: bytes) -> str:
+        etag = md5(content, usedforsecurity=False).hexdigest()
+        self.multipart[upload_id]["parts"][part_number] = (content, etag)
+        return etag
+
+    def complete_multipart_upload(
+        self,
+        object_key: str,
+        *,
+        upload_id: str,
+        parts: tuple[CompletedPart, ...],
+    ) -> StorageObjectMetadata:
+        state = self.multipart.pop(upload_id, None)
+        if state is None:
+            return self.head_staging(object_key)
+        chunks: list[bytes] = []
+        for part in parts:
+            content, etag = state["parts"][part.part_number]
+            if etag != part.etag.strip('"'):
+                raise StoragePreconditionFailed
+            chunks.append(content)
+        content = b"".join(chunks)
+        self.put_staging(
+            object_key,
+            content,
+            content_type=str(state["content_type"]),
+            declared_size_bytes=int(state["size_bytes"]),
+        )
+        return self.head_staging(object_key)
+
+    def abort_multipart_upload(self, object_key: str, *, upload_id: str) -> None:
+        self.multipart.pop(upload_id, None)
+        self.aborted_multipart.append(upload_id)
+
     def head_staging(self, object_key: str) -> StorageObjectMetadata:
         item = self._staging_object(object_key)
         return StorageObjectMetadata(
@@ -574,6 +827,41 @@ class FakeFileStorage:
     def delete_staging(self, object_key: str) -> None:
         self.staging.pop(object_key, None)
         self.deleted_staging.append(object_key)
+
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata:
+        existing = self.canonical.get(canonical_object_key)
+        if existing is None:
+            content = self.get_staging(staging_object_key, if_match=if_match)
+            if (
+                len(content) != expected_size_bytes
+                or sha256(content).hexdigest() != expected_sha256
+            ):
+                raise StorageIntegrityError
+            self.put_canonical(
+                canonical_object_key,
+                content=content,
+                content_type=content_type,
+            )
+            existing = self.canonical[canonical_object_key]
+            self.promoted_originals.append((staging_object_key, canonical_object_key))
+        actual_hash = sha256(existing.content).hexdigest()
+        if len(existing.content) != expected_size_bytes or actual_hash != expected_sha256:
+            raise StorageIntegrityError
+        return StorageObjectMetadata(
+            size_bytes=len(existing.content),
+            content_type=existing.content_type,
+            etag=existing.etag,
+            sha256=actual_hash,
+        )
 
     def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None:
         self.canonical[object_key] = _FakeObject(

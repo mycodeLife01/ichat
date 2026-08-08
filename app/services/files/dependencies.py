@@ -36,7 +36,16 @@ def build_file_storage(settings: Settings, *, role: CredentialRole) -> R2FileSto
         region_name=settings.files_r2_region,
         aws_access_key_id=access_key or "disabled",
         aws_secret_access_key=secret_key or "disabled",
-        config=Config(signature_version="s3v4"),
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=settings.files_r2_connect_timeout_seconds,
+            read_timeout=settings.files_r2_read_timeout_seconds,
+            tcp_keepalive=True,
+            retries={
+                "max_attempts": settings.files_r2_max_attempts,
+                "mode": "standard",
+            },
+        ),
     )
     return R2FileStorage(
         client,

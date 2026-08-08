@@ -109,7 +109,7 @@ describe("useAttachmentUploads", () => {
       content_type: "text/plain",
       size_bytes: 5,
     });
-    expect(filesApi.confirm).toHaveBeenCalledWith("upload-1", '"r2-etag"');
+    expect(filesApi.confirm).toHaveBeenCalledWith("upload-1", { etag: '"r2-etag"' });
     expect(fetchImpl).toHaveBeenCalledWith(session.upload_url, expect.objectContaining({ method: "PUT" }));
     expect(attachmentDraftStore.read(7, "conversation-1")).toMatchObject({
       content: "please read this",

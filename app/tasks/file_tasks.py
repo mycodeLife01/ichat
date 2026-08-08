@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.sync_session import get_sync_session_factory
 from app.models.files import FileStorageLocation, FileUpload
-from app.services.files.dependencies import get_file_worker_storage
+from app.services.files.dependencies import build_file_storage
 from app.services.files.maintenance import (
     backfill_model_previews,
     cleanup_staging_objects,
@@ -64,7 +64,9 @@ def process_file_upload(upload_id: str) -> str:
         get_sync_session_factory(),
         upload_id=upload_id,
         settings=settings,
-        storage=get_file_worker_storage(),
+        # File tasks get a fresh SDK client so a degraded long-lived HTTP pool
+        # cannot poison later uploads in the same Celery child.
+        storage=build_file_storage(settings, role="worker"),
         scanner=scanner,
         parser=RestrictedFileParser(timeout_seconds=settings.files_parser_timeout_seconds),
         task_id=uuid4().hex,
@@ -107,7 +109,7 @@ def maintain_files() -> dict[str, int]:
             "quota_rows_reconciled": 0,
         }
     settings = get_settings()
-    storage = get_file_worker_storage()
+    storage = build_file_storage(settings, role="worker")
     factory = get_sync_session_factory()
     with factory() as session:
         due = sweep_uploads(session, settings=settings)

@@ -19,12 +19,18 @@ from loguru import logger
 from app.services.files.protocols import FileProcessingError
 
 FilePhase = Literal[
+    "upload_sign",
+    "confirm_head",
+    "multipart_complete",
     "queue_wait",
     "if_match_get",
     "clamav",
     "parse",
     "manifest_commit",
     "r2_write",
+    "r2_promote",
+    "preview_write",
+    "legacy_extract_write",
     "final_commit",
     "staging_cleanup",
     "object_delete",

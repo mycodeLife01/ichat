@@ -159,6 +159,11 @@ class Settings(BaseSettings):
     files_preview_llm_access_key_id: str = ""
     files_preview_llm_secret_access_key: str = ""
     files_upload_presign_ttl_seconds: int = 600
+    files_multipart_threshold_bytes: int = 5 * 1024 * 1024
+    files_multipart_part_size_bytes: int = 5 * 1024 * 1024
+    files_r2_connect_timeout_seconds: float = 5.0
+    files_r2_read_timeout_seconds: float = 30.0
+    files_r2_max_attempts: int = 3
     files_download_ttl_seconds: int = 300
     files_upload_session_ttl_seconds: int = 1_800
     files_unbound_ttl_seconds: int = 86_400
@@ -216,6 +221,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_external_services(self) -> Self:
+        if self.files_multipart_threshold_bytes <= 0:
+            raise ValueError("files_multipart_threshold_bytes must be positive")
+        if self.files_multipart_part_size_bytes < 5 * 1024 * 1024:
+            raise ValueError("files_multipart_part_size_bytes must be at least 5 MiB")
+        if self.files_r2_connect_timeout_seconds <= 0 or self.files_r2_read_timeout_seconds <= 0:
+            raise ValueError("files R2 timeouts must be positive")
+        if self.files_r2_max_attempts < 1:
+            raise ValueError("files_r2_max_attempts must be positive")
         openai_models = _strict_model_list(self.openai_models, allow_empty=False)
         vision_models = _strict_model_list(self.openai_vision_models, allow_empty=True)
         unknown_vision_models = sorted(set(vision_models) - set(openai_models))

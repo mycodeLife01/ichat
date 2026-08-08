@@ -48,6 +48,8 @@
 
 统一文件深模块，拥有上传会话、文件资产、物理对象、消息附件绑定、配额、读取许可、处理、维护和删除补偿。调用者只使用创建/确认/查询/取消上传、绑定附件、签发读取许可和回收等高层 interface；不得接触 bucket、object key、lease、ClamAV、解析器、R2 signer 或补偿细节。
 
+该 interface 返回单次 PUT 或 multipart 上传计划，但 multipart 只属于存储 adapter：API 完成分片，PG `FileUpload` 持有 upload ID 与生命周期事实。worker 扫描解析成功后在 R2 内条件晋升原件；新文档派生文本由 `FileAsset.document_text` 单独持有，不再新增重复对象。旧 `document_extract` manifest/对象只作为兼容读取和补偿输入。
+
 模块内部以固定且不可变的 `purpose` 隔离 `message_attachment` 与 `avatar`。它可以依赖 ORM、配置和存储/扫描/解析/publisher adapter；它不调用聊天 provider、不把原件交给 provider、也不把消息文字与派生文本拼接在一起。附件输入以中立 `DocumentBlock` / `ImageBlock` / `AttachmentNoticeBlock` 返回给会话层；完整文档块和稳定图像块由 runs transcript 固化，历史加载不能再访问 R2。files 服务实现模型图像解析窄接口，在每次模型调用前校验安全派生物快照并签发临时读取许可。
 
 `FileObjectDeletion` 是所有正式对象删除的唯一持久事实：私有对象只需 R2 delete，公开头像必须同时完成 R2 delete 和 CDN purge。PG 状态行仍是事实源；任务消息只负责唤醒或重投。

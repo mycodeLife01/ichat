@@ -187,6 +187,9 @@ services:
       FILES_PREVIEW_BUCKET: ${FILES_PREVIEW_BUCKET:-}
       FILES_WORKER_ACCESS_KEY_ID: ${FILES_WORKER_ACCESS_KEY_ID:-}
       FILES_WORKER_SECRET_ACCESS_KEY: ${FILES_WORKER_SECRET_ACCESS_KEY:-}
+      FILES_R2_CONNECT_TIMEOUT_SECONDS: ${FILES_R2_CONNECT_TIMEOUT_SECONDS:-5}
+      FILES_R2_READ_TIMEOUT_SECONDS: ${FILES_R2_READ_TIMEOUT_SECONDS:-30}
+      FILES_R2_MAX_ATTEMPTS: ${FILES_R2_MAX_ATTEMPTS:-3}
       FILES_PROCESSING_LEASE_SECONDS: ${FILES_PROCESSING_LEASE_SECONDS:-300}
       FILES_PROCESSING_MAX_ATTEMPTS: ${FILES_PROCESSING_MAX_ATTEMPTS:-3}
       FILES_PARSER_TIMEOUT_SECONDS: ${FILES_PARSER_TIMEOUT_SECONDS:-120}
@@ -213,7 +216,7 @@ services:
       WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
       SUMMARY_PROVIDER_NAME: deepseek
       SUMMARY_MODEL: disabled
-    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=files", "--concurrency=2", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=files", "--concurrency=2", "--prefetch-multiplier=1", "--max-tasks-per-child=${FILES_WORKER_MAX_TASKS_PER_CHILD:-50}"]
     depends_on:
       postgres:
         condition: service_healthy

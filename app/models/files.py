@@ -41,6 +41,11 @@ class FileUploadStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class FileUploadMethod(StrEnum):
+    SINGLE = "single"
+    MULTIPART = "multipart"
+
+
 class FileObjectRole(StrEnum):
     ORIGINAL = "original"
     PREVIEW = "preview"
@@ -69,6 +74,14 @@ class FileUpload(Base):
         CheckConstraint("declared_size_bytes > 0", name="declared_size_positive"),
         CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
         CheckConstraint("purpose IN ('avatar', 'message_attachment')", name="purpose_valid"),
+        CheckConstraint("upload_method IN ('single', 'multipart')", name="upload_method_valid"),
+        CheckConstraint(
+            "(upload_method = 'single' AND multipart_upload_id IS NULL "
+            "AND multipart_part_size_bytes IS NULL) OR "
+            "(upload_method = 'multipart' AND multipart_upload_id IS NOT NULL "
+            "AND multipart_part_size_bytes >= 5242880)",
+            name="multipart_fields_valid",
+        ),
         CheckConstraint(
             "status IN "
             "('pending', 'queued', 'processing', 'succeeded', 'rejected', 'failed', "
@@ -109,6 +122,19 @@ class FileUpload(Base):
     declared_content_type: Mapped[str] = mapped_column(String(255), nullable=False)
     declared_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     staging_object_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    upload_method: Mapped[FileUploadMethod] = mapped_column(
+        SAEnum(
+            FileUploadMethod,
+            native_enum=False,
+            values_callable=lambda methods: [method.value for method in methods],
+            validate_strings=True,
+            length=16,
+        ),
+        nullable=False,
+        server_default=FileUploadMethod.SINGLE.value,
+    )
+    multipart_upload_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    multipart_part_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     confirmed_etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[FileUploadStatus] = mapped_column(
         SAEnum(

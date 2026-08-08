@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from uuid import uuid4
 
 import pytest
@@ -21,13 +22,14 @@ from app.models.files import (
     FileObjectRole,
     FilePurpose,
     FileQuota,
+    FileStorageLocation,
     FileUpload,
     FileUploadStatus,
 )
 from app.models.user import User
 from app.services.files.parsers import DirectFileParser
 from app.services.files.processing import process_upload
-from app.services.files.protocols import ScanVerdict
+from app.services.files.protocols import ScanVerdict, StorageObjectMetadata
 from app.services.files.scanner import FakeMalwareScanner
 from app.services.files.storage import FakeFileStorage
 
@@ -162,7 +164,6 @@ def test_processing_success_commits_asset_manifest_and_quota_atomically(
         )
         assert {row.role for row in object_rows} == {
             FileObjectRole.ORIGINAL,
-            FileObjectRole.DOCUMENT_EXTRACT,
         }
         quota = session.get(FileQuota, user_id)
         assert quota is not None
@@ -170,8 +171,63 @@ def test_processing_success_commits_asset_manifest_and_quota_atomically(
         assert upload.output_manifest is not None
         assert {entry["role"] for entry in upload.output_manifest} == {
             "original",
-            "document_extract",
         }
+        assert len(storage.canonical) == 1
+        assert storage.promoted_originals
+
+
+def test_pre_cutover_document_extract_manifest_remains_retry_compatible(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    content = b"legacy document"
+    _, upload_id = _seed_queued_upload(
+        session_factory,
+        storage,
+        content=content,
+        now=now,
+    )
+    with session_factory() as session:
+        upload = session.scalar(select(FileUpload).where(FileUpload.public_id == upload_id))
+        assert upload is not None
+        digest = sha256(content).hexdigest()
+        upload.output_manifest = [
+            {
+                "role": "original",
+                "object_key": f"files/{uuid4().hex}/original",
+                "media_type": "text/plain",
+                "size_bytes": len(content),
+                "sha256": digest,
+                "storage_location": FileStorageLocation.CANONICAL_PRIVATE.value,
+            },
+            {
+                "role": "document_extract",
+                "object_key": f"files/{uuid4().hex}/document_extract",
+                "media_type": "text/plain; charset=utf-8",
+                "size_bytes": len(content),
+                "sha256": digest,
+                "storage_location": FileStorageLocation.CANONICAL_PRIVATE.value,
+            },
+        ]
+        session.commit()
+
+    assert process_upload(
+        session_factory,
+        upload_id=upload_id,
+        settings=file_settings,
+        storage=storage,
+        scanner=FakeMalwareScanner(),
+        parser=DirectFileParser(),
+        now=now,
+    ) == "succeeded"
+    with session_factory() as session:
+        upload = session.scalar(select(FileUpload).where(FileUpload.public_id == upload_id))
+        assert upload is not None and upload.file_id is not None
+        roles = set(
+            session.scalars(select(FileObject.role).where(FileObject.file_id == upload.file_id))
+        )
+        assert roles == {FileObjectRole.ORIGINAL, FileObjectRole.DOCUMENT_EXTRACT}
 
 
 def test_if_match_overwrite_race_retries_without_creating_an_asset(
@@ -216,11 +272,28 @@ class _FailingCanonicalStorage(FakeFileStorage):
         super().__init__()
         self.failures_remaining = failures_remaining
 
-    def put_canonical(self, object_key: str, *, content: bytes, content_type: str) -> None:
-        super().put_canonical(object_key, content=content, content_type=content_type)
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata:
+        result = super().promote_staging_original(
+            staging_object_key,
+            canonical_object_key,
+            if_match=if_match,
+            expected_size_bytes=expected_size_bytes,
+            expected_sha256=expected_sha256,
+            content_type=content_type,
+        )
         if self.failures_remaining > 0:
             self.failures_remaining -= 1
             raise ConnectionError("temporary write failure")
+        return result
 
 
 def test_manifest_is_durable_across_retries_and_terminal_failure_enqueues_cleanup(

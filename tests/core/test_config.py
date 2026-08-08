@@ -176,6 +176,14 @@ def test_settings_can_be_constructed_directly() -> None:
     assert settings.log_level == "INFO"
 
 
+def test_file_multipart_settings_reject_parts_below_provider_minimum() -> None:
+    values = get_settings().model_dump()
+    values["files_multipart_part_size_bytes"] = 5 * 1024 * 1024 - 1
+
+    with pytest.raises(ValidationError, match="at least 5 MiB"):
+        Settings.model_validate(values)
+
+
 def test_reasoning_effort_defaults_to_high_and_normalizes_case(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
     settings = Settings(
