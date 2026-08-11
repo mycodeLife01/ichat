@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from hashlib import sha256
+from io import BytesIO
+from threading import Barrier
 
 import pytest
 
@@ -22,10 +24,36 @@ from app.services.files.scanner import (
 from app.services.files.storage import (
     FakeFileStorage,
     R2FileStorage,
+    S3FileStorage,
     StoragePermissionDenied,
     StoragePreconditionFailed,
     safe_content_disposition,
 )
+
+
+class _RangeGetClient:
+    def __init__(self, content: bytes, *, workers: int) -> None:
+        self.content = content
+        self.calls: list[dict[str, object]] = []
+        self.barrier = Barrier(workers, timeout=1)
+
+    def get_object(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(kwargs)
+        byte_range = str(kwargs["Range"])
+        start_text, end_text = byte_range.removeprefix("bytes=").split("-", 1)
+        self.barrier.wait()
+        start, end = int(start_text), int(end_text)
+        return {"Body": BytesIO(self.content[start : end + 1])}
+
+
+class _SingleGetClient:
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+        self.calls: list[dict[str, object]] = []
+
+    def get_object(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(kwargs)
+        return {"Body": BytesIO(self.content)}
 
 
 def test_format_policy_is_extension_controlled_and_checks_size() -> None:
@@ -143,6 +171,55 @@ def test_fake_storage_completes_multipart_and_promotes_original_without_reupload
 
     assert storage.canonical["files/object/original"].content == b"source"
     assert storage.promoted_originals == [("staging/object", "files/object/original")]
+
+
+def test_s3_storage_downloads_large_staging_objects_with_parallel_conditional_ranges() -> None:
+    content = b"0123456789"
+    client = _RangeGetClient(content, workers=3)
+    storage = S3FileStorage(
+        client,
+        staging_bucket="staging",
+        canonical_bucket="canonical",
+        parallel_download_threshold_bytes=8,
+        parallel_download_max_concurrency=3,
+    )
+
+    result = storage.get_staging(
+        "staging/object",
+        if_match="etag",
+        expected_size_bytes=len(content),
+    )
+
+    assert result == content
+    assert {str(call["Range"]) for call in client.calls} == {
+        "bytes=0-3",
+        "bytes=4-7",
+        "bytes=8-9",
+    }
+    assert {str(call["IfMatch"]) for call in client.calls} == {'"etag"'}
+
+
+def test_s3_storage_keeps_small_staging_downloads_as_a_single_request() -> None:
+    content = b"source"
+    client = _SingleGetClient(content)
+    storage = S3FileStorage(
+        client,
+        staging_bucket="staging",
+        canonical_bucket="canonical",
+        parallel_download_threshold_bytes=8,
+        parallel_download_max_concurrency=3,
+    )
+
+    result = storage.get_staging(
+        "staging/object",
+        if_match="etag",
+        expected_size_bytes=len(content),
+    )
+
+    assert result == content
+    assert len(client.calls) == 1
+    assert "Range" not in client.calls[0]
+    assert client.calls[0]["IfMatch"] == '"etag"'
 
 
 def test_r2_adapter_role_gates_operations_before_the_sdk_client_is_used() -> None:

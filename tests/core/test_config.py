@@ -125,6 +125,8 @@ def test_env_example_values_match_settings_shape(monkeypatch: MonkeyPatch) -> No
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    assert settings.files_r2_parallel_download_threshold_bytes == 5 * 1024 * 1024
+    assert settings.files_r2_parallel_download_max_concurrency == 3
 
 
 def test_ci_workflow_provides_required_settings_env() -> None:
@@ -181,6 +183,21 @@ def test_file_multipart_settings_reject_parts_below_provider_minimum() -> None:
     values["files_multipart_part_size_bytes"] = 5 * 1024 * 1024 - 1
 
     with pytest.raises(ValidationError, match="at least 5 MiB"):
+        Settings.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "files_r2_parallel_download_threshold_bytes",
+        "files_r2_parallel_download_max_concurrency",
+    ],
+)
+def test_file_parallel_download_settings_must_be_positive(field_name: str) -> None:
+    values = get_settings().model_dump()
+    values[field_name] = 0
+
+    with pytest.raises(ValidationError, match=f"{field_name} must be positive"):
         Settings.model_validate(values)
 
 

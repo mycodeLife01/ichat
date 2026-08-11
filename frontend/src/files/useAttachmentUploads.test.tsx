@@ -79,6 +79,7 @@ function makeApi(overrides: Partial<FilesApi> = {}): FilesApi {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   localStorage.clear();
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   vi.restoreAllMocks();
@@ -140,6 +141,48 @@ describe("useAttachmentUploads", () => {
     await waitFor(() => expect(filesApi.status).toHaveBeenCalledWith(["upload-1"]));
     await waitFor(() => expect(result.current.readyAttachmentIds).toEqual(["file-1"]));
     expect(result.current.attachments[0]?.file).toEqual(readyRecord.file);
+  });
+
+  it("fast-polls queued uploads every 250ms during the initial processing window", async () => {
+    vi.useFakeTimers();
+    attachmentDraftStore.write(7, "conversation-1", {
+      content: "",
+      attachments: [
+        {
+          client_id: "local-1",
+          upload_id: "upload-1",
+          status: "queued",
+          error_code: null,
+          file: null,
+          name: "notes.txt",
+          media_type: "text/plain",
+          size_bytes: 5,
+          category: "text",
+        },
+      ],
+    });
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce([queuedRecordWithoutFile])
+      .mockResolvedValueOnce([readyRecord]);
+    const filesApi = makeApi({ status });
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+      }),
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(status).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(249));
+    expect(status).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(result.current.readyAttachmentIds).toEqual(["file-1"]);
   });
 
   it("blocks unsupported files and enforces the local count limit before creating uploads", () => {

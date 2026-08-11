@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any
@@ -114,7 +115,11 @@ def process_upload(
 
     try:
         with observe_file_phase("if_match_get", upload_id=str(public_id)):
-            source = storage.get_staging(staging_key, if_match=etag)
+            source = storage.get_staging(
+                staging_key,
+                if_match=etag,
+                expected_size_bytes=declared_size,
+            )
             if len(source) != declared_size:
                 raise FileProcessingError("object_changed")
         source_hash = sha256(source).hexdigest()
@@ -138,7 +143,7 @@ def process_upload(
             derivatives: dict[str, FileDerivative] = {
                 derivative.role: derivative for derivative in processed.derivatives
             }
-            for entry in manifest:
+            def write_entry(entry: dict[str, Any]) -> None:
                 role = str(entry["role"])
                 try:
                     derivative = derivatives[role]
@@ -169,6 +174,15 @@ def process_upload(
                             content=derivative.content,
                             content_type=derivative.content_type,
                         )
+
+            if len(manifest) == 1:
+                write_entry(manifest[0])
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=min(3, len(manifest)),
+                    thread_name_prefix="file-r2-write",
+                ) as executor:
+                    list(executor.map(write_entry, manifest))
     except FileProcessingError as exc:
         return _finish_error(
             factory,

@@ -164,6 +164,8 @@ class Settings(BaseSettings):
     files_r2_connect_timeout_seconds: float = 5.0
     files_r2_read_timeout_seconds: float = 30.0
     files_r2_max_attempts: int = 3
+    files_r2_parallel_download_threshold_bytes: int = 5 * 1024 * 1024
+    files_r2_parallel_download_max_concurrency: int = 3
     files_download_ttl_seconds: int = 300
     files_upload_session_ttl_seconds: int = 1_800
     files_unbound_ttl_seconds: int = 86_400
@@ -229,6 +231,10 @@ class Settings(BaseSettings):
             raise ValueError("files R2 timeouts must be positive")
         if self.files_r2_max_attempts < 1:
             raise ValueError("files_r2_max_attempts must be positive")
+        if self.files_r2_parallel_download_threshold_bytes < 1:
+            raise ValueError("files_r2_parallel_download_threshold_bytes must be positive")
+        if self.files_r2_parallel_download_max_concurrency < 1:
+            raise ValueError("files_r2_parallel_download_max_concurrency must be positive")
         openai_models = _strict_model_list(self.openai_models, allow_empty=False)
         vision_models = _strict_model_list(self.openai_vision_models, allow_empty=True)
         unknown_vision_models = sorted(set(vision_models) - set(openai_models))

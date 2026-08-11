@@ -18,7 +18,9 @@ import type {
 } from "./types";
 import type { ChatModelCapability } from "../api/types";
 
-const INITIAL_POLL_DELAY_MS = 1_000;
+const FAST_POLL_DELAY_MS = 250;
+const FAST_POLL_WINDOW_MS = 10_000;
+const INITIAL_BACKOFF_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 5_000;
 export const FILE_UPLOAD_FAILURE_MESSAGE = "文件上传失败，请稍后再试";
 
@@ -470,7 +472,8 @@ export function useAttachmentUploads({
     if (pollingKey === "" || document.visibilityState === "hidden") return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let delay = INITIAL_POLL_DELAY_MS;
+    const pollingStartedAt = performance.now();
+    let backoffDelay = INITIAL_BACKOFF_POLL_DELAY_MS;
 
     const poll = async () => {
       const uploadIds = attachmentsRef.current
@@ -527,8 +530,12 @@ export function useAttachmentUploads({
       }
 
       if (!cancelled && document.visibilityState === "visible") {
-        delay = Math.min(Math.round(delay * 1.5), MAX_POLL_DELAY_MS);
-        timer = setTimeout(() => void poll(), delay);
+        const fastPolling = performance.now() - pollingStartedAt < FAST_POLL_WINDOW_MS;
+        const nextDelay = fastPolling ? FAST_POLL_DELAY_MS : backoffDelay;
+        if (!fastPolling) {
+          backoffDelay = Math.min(Math.round(backoffDelay * 1.5), MAX_POLL_DELAY_MS);
+        }
+        timer = setTimeout(() => void poll(), nextDelay);
       }
     };
 

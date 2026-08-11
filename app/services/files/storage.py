@@ -8,6 +8,7 @@ domain-service authorization decision.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import md5, sha256
 from io import BytesIO
@@ -98,6 +99,8 @@ class S3FileStorage:
         staging_bucket: str,
         canonical_bucket: str,
         preview_bucket: str | None = None,
+        parallel_download_threshold_bytes: int = 5 * 1024 * 1024,
+        parallel_download_max_concurrency: int = 3,
     ) -> None:
         self._client = client
         self._staging_bucket = staging_bucket
@@ -106,6 +109,8 @@ class S3FileStorage:
         # tooling and old fakes; production dependencies always pass a
         # distinct preview bucket.
         self._preview_bucket = preview_bucket or canonical_bucket
+        self._parallel_download_threshold_bytes = parallel_download_threshold_bytes
+        self._parallel_download_max_concurrency = parallel_download_max_concurrency
 
     def presign_upload(
         self,
@@ -224,13 +229,62 @@ class S3FileStorage:
             if _storage_error_code(exc) not in {"404", "NoSuchUpload", "NotFound"}:
                 raise
 
-    def get_staging(self, object_key: str, *, if_match: str) -> bytes:
+    def get_staging(
+        self,
+        object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int | None = None,
+    ) -> bytes:
+        if (
+            expected_size_bytes is not None
+            and expected_size_bytes >= self._parallel_download_threshold_bytes
+            and self._parallel_download_max_concurrency > 1
+        ):
+            return self._get_staging_in_parallel_ranges(
+                object_key,
+                if_match=if_match,
+                expected_size_bytes=expected_size_bytes,
+            )
         response = self._client.get_object(
             Bucket=self._staging_bucket,
             Key=object_key,
             IfMatch=_quoted_etag(if_match),
         )
-        return bytes(response["Body"].read())
+        return _read_response_body(response)
+
+    def _get_staging_in_parallel_ranges(
+        self,
+        object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+    ) -> bytes:
+        worker_count = min(self._parallel_download_max_concurrency, expected_size_bytes)
+        chunk_size = ceil(expected_size_bytes / worker_count)
+        ranges = [
+            (start, min(start + chunk_size - 1, expected_size_bytes - 1))
+            for start in range(0, expected_size_bytes, chunk_size)
+        ]
+
+        def read_range(byte_range: tuple[int, int]) -> bytes:
+            start, end = byte_range
+            response = self._client.get_object(
+                Bucket=self._staging_bucket,
+                Key=object_key,
+                IfMatch=_quoted_etag(if_match),
+                Range=f"bytes={start}-{end}",
+            )
+            content = _read_response_body(response)
+            if len(content) != end - start + 1:
+                raise StorageIntegrityError
+            return content
+
+        with ThreadPoolExecutor(
+            max_workers=len(ranges),
+            thread_name_prefix="file-r2-range",
+        ) as executor:
+            return b"".join(executor.map(read_range, ranges))
 
     def delete_staging(self, object_key: str) -> None:
         self._client.delete_object(Bucket=self._staging_bucket, Key=object_key)
@@ -468,12 +522,16 @@ class R2FileStorage(S3FileStorage):
         canonical_bucket: str,
         preview_bucket: str | None = None,
         credential_role: StorageCredentialRole,
+        parallel_download_threshold_bytes: int = 5 * 1024 * 1024,
+        parallel_download_max_concurrency: int = 3,
     ) -> None:
         super().__init__(
             client,
             staging_bucket=staging_bucket,
             canonical_bucket=canonical_bucket,
             preview_bucket=preview_bucket,
+            parallel_download_threshold_bytes=parallel_download_threshold_bytes,
+            parallel_download_max_concurrency=parallel_download_max_concurrency,
         )
         self._credential_role = credential_role
 
@@ -531,9 +589,19 @@ class R2FileStorage(S3FileStorage):
         self._require("upload", "worker")
         super().abort_multipart_upload(object_key, upload_id=upload_id)
 
-    def get_staging(self, object_key: str, *, if_match: str) -> bytes:
+    def get_staging(
+        self,
+        object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int | None = None,
+    ) -> bytes:
         self._require("worker")
-        return super().get_staging(object_key, if_match=if_match)
+        return super().get_staging(
+            object_key,
+            if_match=if_match,
+            expected_size_bytes=expected_size_bytes,
+        )
 
     def delete_staging(self, object_key: str) -> None:
         self._require("worker")
@@ -679,6 +747,16 @@ def _quoted_etag(etag: str) -> str:
     return etag if etag.startswith('"') and etag.endswith('"') else f'"{etag}"'
 
 
+def _read_response_body(response: dict[str, Any]) -> bytes:
+    body = response["Body"]
+    try:
+        return bytes(body.read())
+    finally:
+        close = getattr(body, "close", None)
+        if callable(close):
+            close()
+
+
 def _storage_error_code(exc: Exception) -> str:
     response = getattr(exc, "response", None)
     return str((response or {}).get("Error", {}).get("Code", ""))
@@ -818,7 +896,13 @@ class FakeFileStorage:
             declared_size_bytes=item.declared_size_bytes,
         )
 
-    def get_staging(self, object_key: str, *, if_match: str) -> bytes:
+    def get_staging(
+        self,
+        object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int | None = None,
+    ) -> bytes:
         item = self._staging_object(object_key)
         if item.etag != if_match.strip('"'):
             raise StoragePreconditionFailed

@@ -39,6 +39,22 @@
 - `FILES_R2_READ_TIMEOUT_SECONDS=30`
 - `FILES_R2_MAX_ATTEMPTS=3`
 - `FILES_WORKER_MAX_TASKS_PER_CHILD=50`
+- `FILES_R2_PARALLEL_DOWNLOAD_THRESHOLD_BYTES=5242880`
+- `FILES_R2_PARALLEL_DOWNLOAD_MAX_CONCURRENCY=3`
+
+## 保守型可用态加速
+
+在 VLESS 节点下复测后，浏览器直传已不再是主要瓶颈：1.6–2.5 MiB 单次 PUT 约 0.88–1.79 s，6.27 MiB multipart PUT 约 1.70–3.31 s。worker 从入队到 ready 的小图约 5.1–5.5 s，6.27 MiB 图片约 8.1–18.9 s；其中大文件 staging GET 波动约 2.1–11.8 s，前端旧退避轮询还会额外延迟感知 ready。
+
+当前采用保守方案，不改变状态和发送语义：文件必须实际进入 `ready` 后，前端才结束上传态并允许发送。只缩短安全路径上的等待：
+
+- 前端在进入服务端处理后的前 10 秒每 250 ms 查询一次状态，之后从 1 秒开始退避，最高 5 秒；页面卸载和状态终结仍会停止轮询。
+- worker 对 5 MiB 及以上 staging 对象使用最多三路带同一 `If-Match` 的 Range GET，并按字节顺序合并；小文件继续单请求下载，避免增加请求成本。
+- 原文件服务端晋升和预览写入在解析、扫描均成功后并行执行；任一失败仍进入原有重试/失败处理，不会提前提交 `ready`。
+
+这组改动主要降低大文件 GET 长尾、图片双写串行等待和前端发现 ready 的延迟；不会跳过病毒扫描、解析、R2 持久化或 PG 最终提交。
+
+重建 API 与 file-worker 后，以 5,939,558 B 有效 PNG 对真实 R2 连续执行三次 smoke，全部成功。multipart PUT 为 1.280–1.311 s，confirm 为 0.849–0.927 s，confirm 后到 250 ms 轮询观测 `succeeded` 为 4.774–5.376 s，总计 7.542–8.350 s。worker 阶段中 queue wait 为 0.850–1.110 s、三路 Range GET 为 1.532–2.088 s、解析为 1.556–1.600 s；preview write 为 0.343–0.422 s，原件晋升为 1.388–1.726 s，而并行后的总 `r2_write` 为 1.388–1.727 s，验证了两个写入分支按较慢者收敛而非串行相加。
 
 ## 实现后真实 smoke
 

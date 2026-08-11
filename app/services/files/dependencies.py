@@ -53,6 +53,12 @@ def build_file_storage(settings: Settings, *, role: CredentialRole) -> R2FileSto
         canonical_bucket=settings.files_canonical_bucket or "disabled",
         preview_bucket=getattr(settings, "files_preview_bucket", "") or "disabled",
         credential_role=role,
+        parallel_download_threshold_bytes=(
+            settings.files_r2_parallel_download_threshold_bytes
+        ),
+        parallel_download_max_concurrency=(
+            settings.files_r2_parallel_download_max_concurrency
+        ),
     )
 
 

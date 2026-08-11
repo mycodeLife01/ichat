@@ -181,7 +181,13 @@ class UploadStorage(Protocol):
 class WorkerStorage(Protocol):
     """The file-worker's staging/canonical/preview mutation subset."""
 
-    def get_staging(self, object_key: str, *, if_match: str) -> bytes: ...
+    def get_staging(
+        self,
+        object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int | None = None,
+    ) -> bytes: ...
 
     def delete_staging(self, object_key: str) -> None: ...
 

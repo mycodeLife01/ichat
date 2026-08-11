@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from threading import Barrier, get_ident
 from uuid import uuid4
 
 import pytest
@@ -29,7 +30,12 @@ from app.models.files import (
 from app.models.user import User
 from app.services.files.parsers import DirectFileParser
 from app.services.files.processing import process_upload
-from app.services.files.protocols import ScanVerdict, StorageObjectMetadata
+from app.services.files.protocols import (
+    FileDerivative,
+    ProcessedFile,
+    ScanVerdict,
+    StorageObjectMetadata,
+)
 from app.services.files.scanner import FakeMalwareScanner
 from app.services.files.storage import FakeFileStorage
 
@@ -294,6 +300,75 @@ class _FailingCanonicalStorage(FakeFileStorage):
             self.failures_remaining -= 1
             raise ConnectionError("temporary write failure")
         return result
+
+
+class _PreviewParser:
+    def parse(self, content: bytes, _policy: object) -> ProcessedFile:
+        return ProcessedFile(
+            format="png",
+            media_type="image/png",
+            kind="display_only",
+            derivatives=(
+                FileDerivative(role="original", content_type="image/png", content=content),
+                FileDerivative(role="preview", content_type="image/webp", content=b"preview"),
+            ),
+        )
+
+
+class _ConcurrentWriteStorage(FakeFileStorage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.write_barrier = Barrier(2, timeout=1)
+        self.write_threads: set[int] = set()
+
+    def promote_staging_original(
+        self,
+        staging_object_key: str,
+        canonical_object_key: str,
+        *,
+        if_match: str,
+        expected_size_bytes: int,
+        expected_sha256: str,
+        content_type: str,
+    ) -> StorageObjectMetadata:
+        self.write_threads.add(get_ident())
+        self.write_barrier.wait()
+        return super().promote_staging_original(
+            staging_object_key,
+            canonical_object_key,
+            if_match=if_match,
+            expected_size_bytes=expected_size_bytes,
+            expected_sha256=expected_sha256,
+            content_type=content_type,
+        )
+
+    def put_preview(self, object_key: str, *, content: bytes, content_type: str) -> None:
+        self.write_threads.add(get_ident())
+        self.write_barrier.wait()
+        super().put_preview(object_key, content=content, content_type=content_type)
+
+
+def test_original_promotion_and_preview_write_run_concurrently(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = _ConcurrentWriteStorage()
+    _, upload_id = _seed_queued_upload(session_factory, storage, now=now)
+
+    result = process_upload(
+        session_factory,
+        upload_id=upload_id,
+        settings=file_settings,
+        storage=storage,
+        scanner=FakeMalwareScanner(),
+        parser=_PreviewParser(),
+        now=now,
+    )
+
+    assert result == "succeeded"
+    assert len(storage.write_threads) == 2
+    assert len(storage.canonical) == 1
+    assert len(storage.model_preview) == 1
 
 
 def test_manifest_is_durable_across_retries_and_terminal_failure_enqueues_cleanup(
