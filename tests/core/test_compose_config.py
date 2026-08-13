@@ -64,3 +64,31 @@ def test_compose_isolates_preview_credentials_by_process_role() -> None:
             assert "OPENAI_API_KEY" not in service
             assert "DEEPSEEK_API_KEY" not in service
             assert "FILES_" not in service
+
+
+def test_clamav_startup_and_healthcheck_are_signature_aware() -> None:
+    entrypoint_path = "./deploy/clamav/entrypoint.sh:/usr/local/bin/ichat-clamav-entrypoint.sh:ro"
+    healthcheck_path = (
+        "./deploy/clamav/healthcheck.sh:/usr/local/bin/ichat-clamav-healthcheck.sh:ro"
+    )
+
+    for filename in ("compose.yml", "compose.prod.yml"):
+        compose = Path(filename).read_text()
+        clamav = compose.split("  clamav:", 1)[1].split("  file-worker:", 1)[0]
+
+        assert entrypoint_path in clamav
+        assert healthcheck_path in clamav
+        assert 'entrypoint: ["/bin/sh", "/usr/local/bin/ichat-clamav-entrypoint.sh"]' in clamav
+        assert (
+            "CLAMAV_SIGNATURE_MAX_AGE_SECONDS: "
+            "${CLAMAV_SIGNATURE_MAX_AGE_SECONDS:-172800}"
+        ) in clamav
+        assert 'test: ["CMD", "/bin/sh", "/usr/local/bin/ichat-clamav-healthcheck.sh"]' in clamav
+
+    entrypoint = Path("deploy/clamav/entrypoint.sh").read_text()
+    healthcheck = Path("deploy/clamav/healthcheck.sh").read_text()
+    assert "freshclam --foreground --stdout" in entrypoint
+    assert "exec /init" in entrypoint
+    assert "zVERSION" in healthcheck
+    assert "freshclam --version" in healthcheck
+    assert "CLAMAV_SIGNATURE_MAX_AGE_SECONDS" in healthcheck

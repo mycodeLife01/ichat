@@ -52,11 +52,14 @@ cd /opt/ichat
 
 - `compose.prod.yml`
 - `deploy/nginx.conf`
+- `deploy/clamav/entrypoint.sh`
+- `deploy/clamav/healthcheck.sh`
 - `.env`（基于 `.env.example` 修改）
 
 ```bash
 # 从本地复制（在本地执行）
 scp compose.prod.yml deploy/nginx.conf user@your-server:/opt/ichat/
+scp -r deploy/clamav user@your-server:/opt/ichat/deploy/
 scp .env.example user@your-server:/opt/ichat/.env
 ```
 
@@ -159,6 +162,12 @@ CLAMAV_PORT=3310
 CLAMAV_SIGNATURE_MAX_AGE_SECONDS=172800
 ```
 
+ClamAV 容器通过仓库内的启动脚本先同步执行一次 `freshclam`，成功或重试耗尽后才启动
+clamd，避免持久卷中的旧病毒库与 clamd 并发加载。健康检查同时比较 clamd 内存版本与
+磁盘版本，并按 `CLAMAV_SIGNATURE_MAX_AGE_SECONDS` 校验签名时间；仅能响应 `PING` 或
+普通扫描不足以进入 healthy。`file-worker` 继续依赖该健康状态启动，因此不能删除
+`deploy/clamav` 脚本挂载，也不能把健康检查退回单纯的 `clamdscan --ping`。
+
 compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。
 
 `media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical/preview 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)；视觉白名单、preview backfill、真实 GPT/R2 smoke 与回滚见[GPT 图片输入交接](handover/2026-08-03-gpt-vision-input.md)。
@@ -209,11 +218,11 @@ docker compose -f compose.prod.yml logs -f
 - **CI** (`.github/workflows/ci.yml`)：每次 push/PR 到 `main` 时运行 lint、类型检查、测试和镜像构建
 - **Deploy** (`.github/workflows/deploy.yml`)：push 到 `main` 后自动构建镜像并部署到服务器
 
-Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml` 与
-`deploy/nginx.conf` 同步到 `DEPLOY_PATH`，同步成功后才通过 SSH 执行镜像拉取、迁移和
-`up -d --remove-orphans`。生产部署按工作流串行执行，避免并发提交覆盖彼此的部署定义；
-最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。任一步失败都会终止部署，不会
-继续使用服务器上的旧拓扑。
+Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml`、
+`deploy/nginx.conf` 与 `deploy/clamav/` 启动/健康脚本同步到 `DEPLOY_PATH`，同步成功后才
+通过 SSH 执行镜像拉取、迁移和 `up -d --remove-orphans`。生产部署按工作流串行执行，避免
+并发提交覆盖彼此的部署定义；最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。
+任一步失败都会终止部署，不会继续使用服务器上的旧拓扑。
 
 ### 配置 GitHub Secrets
 

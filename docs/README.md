@@ -27,7 +27,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
-| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
+| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
@@ -81,6 +81,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-08-03-gpt-vision-input.md` — GPT 图片输入实现、独立 preview bucket/五凭证矩阵、维护窗口、backfill 门禁、真实资源 smoke、可观测性与回滚手册；生产白名单默认保持为空。
 - `2026-08-09-sent-image-placement-stability.md` — stable sent-image placement from composer to user message: local Blob ownership transfer, frame reservation, single-node pixel stability, discarded transition attempts, verification results, and the pending real-Chrome smoke.
 - `2026-08-09-file-upload-performance.md` — measured upload phase baseline and the adaptive multipart, server-side promotion, fresh-client, worker recycling, telemetry, rollout, and real-R2 verification changes.
+- `2026-08-13-clamav-startup-readiness.md` — ClamAV startup refresh ordering, signature-aware readiness, the persisted-database race, and local/production verification.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 
 ### `docs/handover/frontend/`

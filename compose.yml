@@ -155,13 +155,19 @@ services:
 
   clamav:
     image: clamav/clamav:1.4-debian
+    entrypoint: ["/bin/sh", "/usr/local/bin/ichat-clamav-entrypoint.sh"]
+    environment:
+      CLAMAV_SIGNATURE_MAX_AGE_SECONDS: ${CLAMAV_SIGNATURE_MAX_AGE_SECONDS:-172800}
     volumes:
       - clamav_data:/var/lib/clamav
+      - ./deploy/clamav/entrypoint.sh:/usr/local/bin/ichat-clamav-entrypoint.sh:ro
+      - ./deploy/clamav/healthcheck.sh:/usr/local/bin/ichat-clamav-healthcheck.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "clamdscan --ping=1 --wait /etc/hosts >/dev/null 2>&1"]
+      test: ["CMD", "/bin/sh", "/usr/local/bin/ichat-clamav-healthcheck.sh"]
       interval: 15s
       timeout: 10s
       retries: 20
+      start_period: 10m
 
   file-worker:
     build:

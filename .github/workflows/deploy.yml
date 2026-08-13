@@ -59,7 +59,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "compose.prod.yml,deploy/nginx.conf"
+          source: "compose.prod.yml,deploy/nginx.conf,deploy/clamav/entrypoint.sh,deploy/clamav/healthcheck.sh"
           target: ${{ secrets.DEPLOY_PATH }}
           overwrite: true
 
