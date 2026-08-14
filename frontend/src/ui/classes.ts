@@ -14,6 +14,11 @@ const iconControlStateBase =
 export const iconControl =
   `${iconControlStateBase} text-text-muted hover:bg-hover hover:text-text-primary`;
 
+// The collapsed desktop rail mirrors ChatGPT's near-black action marks instead
+// of inheriting the muted color used by secondary icon controls elsewhere.
+export const railIconControl =
+  `${iconControlStateBase} text-[#0d0d0d] hover:bg-hover hover:text-[#0d0d0d]`;
+
 // Danger entry points stay red at rest and gain the soft red surface on
 // hover/focus, per the danger action rule.
 export const dangerIconControl =

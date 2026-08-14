@@ -192,6 +192,12 @@ describe("Sidebar", () => {
       "transition-[width]",
     );
     expect(screen.getByRole("button", { name: "新建对话" })).toHaveClass("mt-4");
+    for (const name of ["展开侧栏", "新建对话", "最近聊天"]) {
+      expect(screen.getByRole("button", { name })).toHaveClass(
+        "text-[#0d0d0d]",
+        "hover:text-[#0d0d0d]",
+      );
+    }
     expect(document.querySelector('[data-icon="recent-chats"]')).toBeInTheDocument();
   });
 

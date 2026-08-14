@@ -21,7 +21,7 @@ describe("Icons", () => {
     expect(icon).toBeInTheDocument();
     expect(icon).toHaveAttribute("viewBox", "0 0 20 20");
     expect(icon).toHaveAttribute("fill", "currentColor");
-    expect(icon?.querySelectorAll("path")).toHaveLength(1);
+    expect(icon?.querySelectorAll("path")).toHaveLength(2);
   });
 
   it("provides the ChatGPT-style sidebar toggle icon", () => {
@@ -29,7 +29,8 @@ describe("Icons", () => {
     const icon = container.querySelector('[data-icon="sidebar-toggle"]');
     expect(icon).toBeInTheDocument();
     expect(icon).toHaveAttribute("viewBox", "0 0 20 20");
-    expect(icon?.querySelectorAll("path")).toHaveLength(2);
+    expect(icon).toHaveAttribute("fill", "currentColor");
+    expect(icon?.querySelectorAll("path")).toHaveLength(1);
   });
 
   it("provides the ChatGPT-style composer send icon", () => {

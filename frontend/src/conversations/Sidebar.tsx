@@ -18,6 +18,7 @@ import {
   mobileActionItem,
   neutralMenuItem,
   popoverSurface,
+  railIconControl,
   titleSkeleton,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
@@ -556,14 +557,14 @@ export function Sidebar({
               inert={railCollapsed ? undefined : true}
             >
             <button
-              className={`${iconControl} h-9 w-9`}
+              className={`${railIconControl} h-9 w-9`}
               aria-label="展开侧栏"
               onClick={onToggleCollapsed}
             >
               <Icons.PanelLeft size={20} />
             </button>
             <button
-              className={`${iconControl} mt-4 h-9 w-9`}
+              className={`${railIconControl} mt-4 h-9 w-9`}
               aria-label="新建对话"
               onClick={onNew}
             >
@@ -571,7 +572,7 @@ export function Sidebar({
             </button>
             <button
               ref={recentTriggerRef}
-              className={`${iconControl} h-9 w-9`}
+              className={`${railIconControl} h-9 w-9`}
               aria-label="最近聊天"
               aria-haspopup="true"
               aria-expanded={recent !== null}
