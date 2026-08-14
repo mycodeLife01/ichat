@@ -7,7 +7,6 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
-  MessageCircle,
   Mic,
   MoreHorizontal,
   Paperclip,
@@ -89,6 +88,25 @@ function sidebarToggleIcon({ size = 20, ...props }: CustomIconProps) {
   );
 }
 
+// ChatGPT's collapsed-rail recent-chat mark: a single filled bubble outline
+// with a low, rounded tail rather than Lucide's narrower speech circle.
+function recentChatsIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      data-icon="recent-chats"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M16.835 10c0-3.51-3.024-6.418-6.835-6.418S3.165 6.49 3.165 10c0 1.414.567 2.35 1.282 3.765.087.171.111.367.07.555l-.327 1.469 1.59-.412.145-.024a.8.8 0 0 1 .287.028l.136.051.459.212c1.062.472 2.06.775 3.193.775 3.811 0 6.835-2.91 6.835-6.42m1.33 0c0 4.314-3.692 7.749-8.165 7.749-1.52 0-2.804-.453-4.06-1.04l-2.204.572a.832.832 0 0 1-1.02-.986l.463-2.089C2.537 12.954 1.835 11.73 1.835 10 1.835 5.685 5.527 2.25 10 2.25S18.165 5.685 18.165 10" />
+    </svg>
+  );
+}
+
 export const Icons = {
   More: MoreHorizontal,
   Pen: PenLine,
@@ -98,7 +116,7 @@ export const Icons = {
   PanelLeft: sidebarToggleIcon,
   LogOut: LogOut,
   Menu: Menu,
-  Chats: MessageCircle,
+  Chats: recentChatsIcon,
   Chevron: ChevronDown,
   Copy: Copy,
   Globe: Globe,

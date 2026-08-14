@@ -25,6 +25,9 @@ type UserMenuProps = {
   // The collapsed rail has room for the avatar only; the menu itself is
   // identical, so only the trigger and its measured width change.
   compact?: boolean;
+  // Desktop keeps one trigger mounted across expanded and rail states. Its
+  // fixed left/bottom anchor lets the sidebar's right edge crop around it.
+  railPinned?: boolean;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
@@ -50,6 +53,7 @@ export function UserMenu({
   user,
   isMobile,
   compact = false,
+  railPinned = false,
   onLogout,
   onResendVerification,
   onUpdateNickname,
@@ -75,6 +79,7 @@ export function UserMenu({
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const name = user?.name || "User";
   const email = user?.email || "you@example.com";
+  const pinnedToDesktopRail = railPinned && !isMobile;
 
   const closeLogout = useCallback(() => {
     setLogoutOpen(false);
@@ -213,13 +218,21 @@ export function UserMenu({
     <div
       ref={rootRef}
       className={
-        compact ? "relative" : "relative mt-2 border-t border-border pt-2 pb-1"
+        pinnedToDesktopRail
+          ? `relative z-20 -mx-2.5 mt-2 w-[var(--sidebar-width)] border-t pt-2 pb-1 ${
+              compact ? "border-transparent" : "border-border"
+            }`
+          : compact
+            ? "relative"
+            : "relative mt-2 border-t border-border pt-2 pb-1"
       }
     >
       <button
         ref={triggerRef}
         className={
-          compact
+          pinnedToDesktopRail
+            ? `flex h-13 w-full items-center gap-2.5 px-2 text-left aria-expanded:bg-selected ${interactiveItem}`
+            : compact
             ? `flex h-9 w-9 items-center justify-center rounded-full aria-expanded:bg-selected ${interactiveItem}`
             : `flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`
         }

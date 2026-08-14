@@ -132,9 +132,11 @@ describe("Sidebar", () => {
     );
     render(<Sidebar {...props} collapsed items={items} />);
 
-    // The full history list only exists in the expanded sidebar.
-    expect(screen.queryByTestId("conversation-history")).toBeNull();
-    expect(screen.queryByText("聊天")).toBeNull();
+    // The fixed-width panel stays mounted so the outer edge can crop it without
+    // moving its contents; inert/aria-hidden remove it from interaction.
+    const history = screen.getByTestId("conversation-history");
+    expect(history.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(history.parentElement).toHaveAttribute("inert");
 
     await user.click(screen.getByRole("button", { name: "新建对话" }));
     expect(props.onNew).toHaveBeenCalledTimes(1);
@@ -148,6 +150,18 @@ describe("Sidebar", () => {
     expect(within(panel).getByRole("button", { name: "对话1" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "对话10" })).toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "对话11" })).toBeNull();
+  });
+
+  it("desktop: keeps the same account trigger mounted while the right edge collapses", () => {
+    const props = baseProps();
+    const { rerender } = render(<Sidebar {...props} />);
+    const accountTrigger = screen.getByRole("button", { name: "打开个人中心" });
+
+    rerender(<Sidebar {...props} collapsed />);
+
+    expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
+    expect(accountTrigger).toHaveClass("h-13", "px-2");
+    expect(document.querySelector('[data-icon="recent-chats"]')).toBeInTheDocument();
   });
 
   it("collapsed: recent rows keep share / rename / delete and close on select", async () => {

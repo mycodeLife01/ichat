@@ -218,7 +218,7 @@ export function Sidebar({
     );
   } else {
     sidebarClasses.push(
-      "shrink-0 transition-[width,margin-left] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] border-r border-border",
+      "shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none",
       collapsed ? "collapsed w-[var(--sidebar-rail-width)]" : "w-[var(--sidebar-width)]",
     );
   }
@@ -242,7 +242,7 @@ export function Sidebar({
 
   const renderRow = (
     c: ConversationResponse,
-    options: { onSelected?: () => void } = {},
+    options: { onSelected?: () => void; renderDesktopMenu?: boolean } = {},
   ) => {
     const isRenaming = renameId === c.id;
     const menuOpen = menu?.conversationId === c.id;
@@ -402,7 +402,7 @@ export function Sidebar({
           </button>
         )}
         {/* Desktop escapes the sidebar's overflow boundary; mobile uses a bottom sheet. */}
-        {!isRenaming && menuOpen && !isMobile && (
+        {!isRenaming && menuOpen && !isMobile && options.renderDesktopMenu !== false && (
           createPortal(
             <div
               className={`history-menu fixed z-40 w-[156px] p-1.5 ${popoverSurface}`}
@@ -430,11 +430,12 @@ export function Sidebar({
     );
   };
 
-  const renderUserMenu = (compact: boolean) => (
+  const renderUserMenu = (compact: boolean, railPinned = false) => (
     <UserMenu
       user={user}
       isMobile={isMobile}
       compact={compact}
+      railPinned={railPinned}
       onLogout={onLogout}
       onResendVerification={onResendVerification}
       onUpdateNickname={onUpdateNickname}
@@ -456,8 +457,83 @@ export function Sidebar({
         aria-hidden={isMobile && !mobileOpen ? "true" : undefined}
         inert={isMobile && !mobileOpen ? true : undefined}
       >
-        {railCollapsed ? (
-          <div className="flex h-full w-[var(--sidebar-rail-width)] flex-col items-center gap-1 px-1.5 pt-3 pb-2.5">
+        <div
+          className={`relative h-full ${
+            isMobile ? "w-full" : "w-[var(--sidebar-width)]"
+          }`}
+        >
+          <div
+            className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
+              isMobile ? "w-full" : "w-[var(--sidebar-width)]"
+            }`}
+          >
+            <div
+              className="flex min-h-0 flex-1 flex-col"
+              aria-hidden={railCollapsed ? "true" : undefined}
+              inert={railCollapsed ? true : undefined}
+            >
+              <div className="flex items-center justify-between px-2 pb-3.5">
+                <Wordmark size={isMobile ? 20 : 18} />
+                {!isMobile && (
+                  <button
+                    className={`${iconControl} h-8 w-8`}
+                    aria-label="收起侧栏"
+                    onClick={onToggleCollapsed}
+                  >
+                    <Icons.PanelLeft size={20} />
+                  </button>
+                )}
+              </div>
+
+              <button
+                className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
+                onClick={() => {
+                  onNew();
+                  if (isMobile) onCloseMobile();
+                }}
+              >
+                <Icons.NewChat size={20} />
+                新建对话
+              </button>
+
+              {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
+                  against the sidebar's right border; rows keep their position. */}
+              <div
+                ref={historyRef}
+                className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
+                data-testid="conversation-history"
+                onScroll={handleHistoryScroll}
+              >
+                <div className={sectionLabel}>聊天</div>
+                {items.map((c) =>
+                  renderRow(c, { renderDesktopMenu: !railCollapsed }),
+                )}
+                {items.length === 0 && (
+                  <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+                    还没有已保存的对话。开始一次对话后会自动出现在这里。
+                  </div>
+                )}
+                {isLoadingMore && (
+                  <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+                    正在加载...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {renderUserMenu(railCollapsed, !isMobile)}
+          </div>
+
+          {!isMobile && (
+            <div
+              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center gap-1 bg-bg px-1.5 pt-2 pb-2.5 transition-opacity duration-150 ease-[steps(1,start)] motion-reduce:transition-none ${
+                railCollapsed
+                  ? "pointer-events-auto opacity-100"
+                  : "pointer-events-none opacity-0"
+              }`}
+              aria-hidden={railCollapsed ? undefined : "true"}
+              inert={railCollapsed ? undefined : true}
+            >
             <button
               className={`${iconControl} h-9 w-9`}
               aria-label="展开侧栏"
@@ -485,63 +561,9 @@ export function Sidebar({
             >
               <Icons.Chats size={20} />
             </button>
-            <div className="mt-auto">{renderUserMenu(true)}</div>
-          </div>
-        ) : (
-        <div
-          className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
-            isMobile ? "w-full" : "w-[var(--sidebar-width)]"
-          }`}
-        >
-          <div className="flex items-center justify-between px-2 pb-3.5">
-            <Wordmark size={isMobile ? 20 : 18} />
-            {!isMobile && (
-              <button
-                className={`${iconControl} h-8 w-8`}
-                aria-label="收起侧栏"
-                onClick={onToggleCollapsed}
-              >
-                <Icons.PanelLeft size={20} />
-              </button>
-            )}
-          </div>
-
-          <button
-            className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
-            onClick={() => {
-              onNew();
-              if (isMobile) onCloseMobile();
-            }}
-          >
-            <Icons.NewChat size={20} />
-            新建对话
-          </button>
-
-          {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
-              against the sidebar's right border; rows keep their position. */}
-          <div
-            ref={historyRef}
-            className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
-            data-testid="conversation-history"
-            onScroll={handleHistoryScroll}
-          >
-            <div className={sectionLabel}>聊天</div>
-            {items.map((c) => renderRow(c))}
-            {items.length === 0 && (
-              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                还没有已保存的对话。开始一次对话后会自动出现在这里。
-              </div>
-            )}
-            {isLoadingMore && (
-              <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
-                正在加载...
-              </div>
-            )}
-          </div>
-
-          {renderUserMenu(false)}
+            </div>
+          )}
         </div>
-        )}
       </aside>
       {railCollapsed && recent !== null &&
         createPortal(
