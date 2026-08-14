@@ -137,6 +137,17 @@ describe("Sidebar", () => {
     const history = screen.getByTestId("conversation-history");
     expect(history.parentElement).toHaveAttribute("aria-hidden", "true");
     expect(history.parentElement).toHaveAttribute("inert");
+    expect(history.parentElement).toHaveClass(
+      "opacity-0",
+      "transition-opacity",
+      "duration-[220ms]",
+      "ease-[cubic-bezier(0.4,0,0.2,1)]",
+      "overflow-x-clip",
+      "whitespace-nowrap",
+    );
+    expect(
+      screen.getByRole("button", { name: "展开侧栏" }).parentElement,
+    ).toHaveClass("ease-[steps(1,start)]");
 
     await user.click(screen.getByRole("button", { name: "新建对话" }));
     expect(props.onNew).toHaveBeenCalledTimes(1);
@@ -152,15 +163,25 @@ describe("Sidebar", () => {
     expect(within(panel).queryByRole("button", { name: "对话11" })).toBeNull();
   });
 
-  it("desktop: keeps the same account trigger mounted while the right edge collapses", () => {
+  it("desktop: keeps the account anchored and reverses the panel crossfade", () => {
     const props = baseProps();
     const { rerender } = render(<Sidebar {...props} />);
     const accountTrigger = screen.getByRole("button", { name: "打开个人中心" });
+    const historyPanel = screen.getByTestId("conversation-history").parentElement;
+
+    expect(historyPanel).toHaveClass("opacity-100");
+    expect(historyPanel).not.toHaveClass("blur-[1px]");
+    expect(document.querySelector('button[aria-label="展开侧栏"]')?.parentElement).toHaveClass(
+      "ease-linear",
+    );
+    expect(screen.getByRole("button", { name: "收起侧栏" })).toHaveClass("h-9", "w-9");
 
     rerender(<Sidebar {...props} collapsed />);
 
     expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
     expect(accountTrigger).toHaveClass("h-13", "px-2");
+    expect(historyPanel).toHaveClass("opacity-0");
+    expect(screen.getByRole("button", { name: "新建对话" })).toHaveClass("mt-4");
     expect(document.querySelector('[data-icon="recent-chats"]')).toBeInTheDocument();
   });
 

@@ -463,20 +463,32 @@ export function Sidebar({
           }`}
         >
           <div
-            className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
-              isMobile ? "w-full" : "w-[var(--sidebar-width)]"
+            className={`flex h-full flex-col px-2.5 pb-2.5 ${
+              isMobile
+                ? "w-full pt-3"
+                : "w-[var(--sidebar-width)] pt-2"
             }`}
           >
             <div
-              className="flex min-h-0 flex-1 flex-col"
+              className={`flex min-h-0 flex-1 flex-col overflow-x-clip whitespace-nowrap ${
+                isMobile
+                  ? ""
+                  : "will-change-[opacity] transition-opacity duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+              } ${
+                railCollapsed ? "opacity-0" : "opacity-100"
+              }`}
               aria-hidden={railCollapsed ? "true" : undefined}
               inert={railCollapsed ? true : undefined}
             >
-              <div className="flex items-center justify-between px-2 pb-3.5">
+              <div
+                className={`flex items-center justify-between px-2 ${
+                  isMobile ? "pb-3.5" : "mb-4 h-9"
+                }`}
+              >
                 <Wordmark size={isMobile ? 20 : 18} />
                 {!isMobile && (
                   <button
-                    className={`${iconControl} h-8 w-8`}
+                    className={`${iconControl} h-9 w-9`}
                     aria-label="收起侧栏"
                     onClick={onToggleCollapsed}
                   >
@@ -526,10 +538,10 @@ export function Sidebar({
 
           {!isMobile && (
             <div
-              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center gap-1 bg-bg px-1.5 pt-2 pb-2.5 transition-opacity duration-150 ease-[steps(1,start)] motion-reduce:transition-none ${
+              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-bg px-1.5 pt-2 pb-2.5 transition-opacity duration-150 motion-reduce:transition-none ${
                 railCollapsed
-                  ? "pointer-events-auto opacity-100"
-                  : "pointer-events-none opacity-0"
+                  ? "pointer-events-auto opacity-100 ease-[steps(1,start)]"
+                  : "pointer-events-none opacity-0 ease-linear"
               }`}
               aria-hidden={railCollapsed ? undefined : "true"}
               inert={railCollapsed ? undefined : true}
@@ -542,7 +554,7 @@ export function Sidebar({
               <Icons.PanelLeft size={20} />
             </button>
             <button
-              className={`${iconControl} h-9 w-9`}
+              className={`${iconControl} mt-4 h-9 w-9`}
               aria-label="新建对话"
               onClick={onNew}
             >
