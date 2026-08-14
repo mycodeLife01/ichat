@@ -577,10 +577,16 @@ describe("AppShell", () => {
       url: "https://downloads.example.test/file-1/preview",
       expires_at: "2026-08-08T10:05:00Z",
     }));
+    let resolveSuccessfulSend!: (value: ConversationCreateWithMessageResponse) => void;
     const createWithMessage = vi
       .fn<() => Promise<ConversationCreateWithMessageResponse>>()
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValue(createWithMessageResponse(draft, { message: userMessage, run }));
+      .mockImplementationOnce(
+        () =>
+          new Promise<ConversationCreateWithMessageResponse>((resolve) => {
+            resolveSuccessfulSend = resolve;
+          }),
+      );
     const services = createFakeServices(
       { me: async () => verifiedUser },
       { list: async () => [], createWithMessage },
@@ -657,14 +663,24 @@ describe("AppShell", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() => expect(createWithMessage).toHaveBeenCalledTimes(2));
-    await waitFor(() => {
-      const visibleImage = document.querySelector<HTMLImageElement>('img[alt="photo.png"]');
-      expect(visibleImage).not.toBeNull();
-      expect(visibleImage?.getAttribute("src")).toBe("blob:composer-preview");
+    const pendingMessage = document.querySelector('[data-state="pending"]');
+    const pendingImage = pendingMessage?.querySelector<HTMLImageElement>('img[alt="photo.png"]');
+    expect(pendingMessage).toHaveTextContent("look");
+    expect(pendingImage?.getAttribute("src")).toBe("blob:composer-preview");
+    expect(document.querySelector('[data-testid="composer"] img[alt="photo.png"]')).toBeNull();
+
+    await act(async () => {
+      resolveSuccessfulSend(createWithMessageResponse(draft, { message: userMessage, run }));
+      await Promise.resolve();
     });
+
+    await waitFor(() => expect(document.querySelector('[data-state="pending"]')).toBeNull());
+    const visibleImage = document.querySelector<HTMLImageElement>('img[alt="photo.png"]');
+    expect(visibleImage).toBe(pendingImage);
+    expect(visibleImage?.getAttribute("src")).toBe("blob:composer-preview");
     expect(createObjectURL).toHaveBeenCalledOnce();
     expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:composer-preview");
-    const localImage = document.querySelector<HTMLImageElement>('img[alt="photo.png"]');
+    const localImage = visibleImage;
     const imageGroup = localImage?.closest('[data-attachment-group="images"]');
     expect(imageGroup?.className).not.toMatch(/\banimate-/);
     expect(localImage?.src).toContain("blob:composer-preview");

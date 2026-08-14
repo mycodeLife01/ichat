@@ -9,7 +9,7 @@ import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
-import type { FilesCapability } from "../files/types";
+import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
 import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
@@ -33,7 +33,7 @@ import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import type { ToastHandler } from "../ui/state";
 import { useAppActions, useAppState } from "./context";
-import type { ChatModelCapability, MessageSource } from "../api/types";
+import type { ChatModelCapability, MessageResponse, MessageSource } from "../api/types";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -81,6 +81,9 @@ export function AppShell() {
   const [fileCapability, setFileCapability] = useState<FilesCapability>();
   const sentImagePreviewUrlsRef = useRef(new Map<string, string>());
   const [sentImagePreviews, setSentImagePreviews] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const [messageRenderKeys, setMessageRenderKeys] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
   );
   // Thinking level drives the per-request thinking options sent with every
@@ -136,7 +139,17 @@ export function AppShell() {
     setSourcesPanel((prev) => (prev.open ? { ...prev, open: false } : prev));
 
   const { start, cancel } = useRunStream();
-  const send = useSendMessage(start);
+  const registerCommittedSubmission = useCallback(
+    (messageId: string, clientSubmissionId: string) => {
+      setMessageRenderKeys((current) => {
+        const next = new Map(current);
+        next.set(messageId, clientSubmissionId);
+        return next;
+      });
+    },
+    [],
+  );
+  const send = useSendMessage(start, registerCommittedSubmission);
   const { editAndRegenerate, regenerate } = useRegenerate(start);
   const recover = useRunRecovery(start);
   const pollTitle = useTitlePolling();
@@ -221,6 +234,13 @@ export function AppShell() {
       attachmentUploads.readyAttachmentIds.length > 0
         ? attachmentUploads.readyAttachmentIds
         : undefined;
+    const selectedAttachmentIds = new Set(attachmentIds ?? []);
+    const optimisticAttachments = attachmentUploads.attachments
+      .map((attachment) => attachment.file)
+      .filter(
+        (file): file is FileAttachment =>
+          file !== null && selectedAttachmentIds.has(file.id),
+      );
     const detachedImagePreviews = attachmentUploads.detachImagePreviews(attachmentIds ?? []);
     if (detachedImagePreviews.length > 0) {
       for (const preview of detachedImagePreviews) {
@@ -230,7 +250,7 @@ export function AppShell() {
       }
       setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
     }
-    void send(text, attachmentIds).then((sent) => {
+    void send(text, attachmentIds, optimisticAttachments).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
       if (!sent && stateRef.current.pendingSubmission === null) {
@@ -400,11 +420,24 @@ export function AppShell() {
   }, [pendingTitleIds, pollTitle]);
 
   const messages = detail.messages;
-  const pendingMessage =
+  const visiblePendingSubmission =
     pendingSubmission !== null &&
     pendingSubmission.conversationId === selectedId
-      ? pendingSubmission.content
+      ? pendingSubmission
       : null;
+  const pendingMessage: MessageResponse | null = visiblePendingSubmission
+    ? {
+        id: visiblePendingSubmission.clientId,
+        conversation_id: visiblePendingSubmission.conversationId ?? "",
+        run_id: null,
+        role: "user",
+        content: visiblePendingSubmission.content,
+        reasoning: null,
+        attachments: visiblePendingSubmission.attachments,
+        position: (messages.at(-1)?.position ?? 0) + 1,
+        created_at: "",
+      }
+    : null;
   const showWelcome =
     (selectedId == null || messages.length === 0) &&
     activeRun == null &&
@@ -568,6 +601,8 @@ export function AppShell() {
             <MessageThread
               messages={messages}
               pendingMessage={pendingMessage}
+              pendingMessageKey={visiblePendingSubmission?.clientId}
+              messageRenderKeys={messageRenderKeys}
               isMobile={isMobile}
               mutateDisabledReason={mutationDisabledReason}
               onEditAndRegenerate={(id, content, attachmentIds) => {
@@ -607,9 +642,9 @@ export function AppShell() {
               onLocalImagePreviewConsumed={releaseSentImagePreview}
               onShowSources={showSources}
             >
-              {pendingMessage ||
+              {visiblePendingSubmission !== null ||
               (activeRun && activeRun.conversationId === selectedId) ? (
-                <StreamingMessage run={pendingMessage ? null : activeRun} />
+                <StreamingMessage run={visiblePendingSubmission !== null ? null : activeRun} />
               ) : null}
             </MessageThread>
           )}
@@ -647,7 +682,7 @@ export function AppShell() {
               onRemoveImages={attachmentUploads.removeImages}
             fileCapability={fileCapability}
             fileUploadAllowed={user?.email_verified === true}
-            attachments={attachmentUploads.attachments}
+            attachments={pendingSubmission === null ? attachmentUploads.attachments : []}
             onSelectFiles={attachmentUploads.addFiles}
             onCancelAttachment={(clientId) => void attachmentUploads.cancelAttachment(clientId)}
             onRetryAttachment={attachmentUploads.retryAttachment}

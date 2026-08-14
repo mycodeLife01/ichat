@@ -131,10 +131,12 @@ describe("useSendMessage", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.pendingSubmission).toEqual({
+    expect(result.current.pendingSubmission).toMatchObject({
       content: "世界",
       conversationId: "55",
+      attachments: [],
     });
+    expect(result.current.pendingSubmission?.clientId).toEqual(expect.any(String));
     expect(result.current.conversationDetail.messages).toEqual([]);
     expect(result.current.activeRun).toBeNull();
 

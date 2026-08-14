@@ -46,6 +46,22 @@
 
 对应回归测试为 [`Message.test.tsx`](../../frontend/src/messages/Message.test.tsx) 中的 `keeps image attachment controls absent on hover while editing text`，验证 hover 图片后不存在附件操作按钮，提交回调也只包含消息 ID 和新文字。
 
+## 2026-08-15 追加：提交等待阶段的图文同步落位
+
+真实 Chrome 复验发现，原修复只覆盖了发送 API 返回后的已物化消息：`pendingSubmission`
+仍只保存文字，因此请求等待期间先出现文字气泡，附件要等服务端消息返回后才进入消息区。
+
+本次把 ready 附件的可序列化快照加入提交中状态，并让临时用户消息复用正式的
+`Message` / `MessageAttachments` 展示链路。Composer 在提交期间隐藏已转交附件，避免同一图片
+同时出现在输入框和消息区；纯图片消息也按提交状态本身渲染，不再依赖空文字的 truthy 判断。
+
+客户端提交 ID 会在服务端消息返回时继续作为 React render key。乐观消息和已物化消息因此位于
+同一扁平消息列表并复用同一个 `AttachmentCard`、`<img>` 节点与 Blob URL。临时消息只借用
+Blob，不负责释放；服务端消息接管后才获得卸载清理职责，发送失败则仍由 Composer 恢复所有权。
+
+对应回归覆盖：发送 Promise 未完成时图文已同时位于 pending 消息、Composer 不重复显示附件、
+纯图片 pending 可见，以及响应返回前后 `<img>` DOM 身份和 Blob URL 保持不变。
+
 ## 测试覆盖与验证结果
 
 新增或强化的关键回归点：
