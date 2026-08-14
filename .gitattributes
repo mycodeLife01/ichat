@@ -1,0 +1,3 @@
+# Scripts consumed by Linux containers must keep LF endings: they are bind
+# mounted into the image and executed by /bin/sh, which fails on CRLF.
+*.sh text eol=lf
