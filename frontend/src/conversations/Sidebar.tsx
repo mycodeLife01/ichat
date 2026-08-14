@@ -76,6 +76,10 @@ const desktopMenuWidth = 156;
 const desktopMenuHeight = 126;
 const desktopMenuOverlap = 44;
 const viewportInset = 8;
+// The collapsed rail lists only the newest conversations; the full history stays
+// behind the expanded sidebar.
+const railRecentLimit = 10;
+const railRecentWidth = 260;
 const rowActionOrder = ["share", "rename", "delete"] as const;
 type RowActionKey = (typeof rowActionOrder)[number];
 
@@ -109,6 +113,10 @@ export function Sidebar({
 }: SidebarProps) {
   const [renameId, setRenameId] = useState<string | null>(null);
   const [menu, setMenu] = useState<ConversationMenu | null>(null);
+  // Collapsed-rail recent-chats flyout: portaled like the row menu so the rail's
+  // overflow boundary cannot clip it.
+  const [recent, setRecent] = useState<{ left: number; top: number } | null>(null);
+  const recentTriggerRef = useRef<HTMLButtonElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const lastAutoLoadItemCountRef = useRef<number | null>(null);
 
@@ -127,6 +135,28 @@ export function Sidebar({
       window.removeEventListener("resize", closeMenu);
     };
   }, []);
+
+  useEffect(() => {
+    if (recent === null) return;
+    const close = () => setRecent(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("click", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", close);
+    };
+  }, [recent]);
+
+  // The rail only exists while the sidebar is expanded away; closing it there
+  // keeps a stale flyout from surviving the expand.
+  useEffect(() => {
+    if (!collapsed || isMobile) setRecent(null);
+  }, [collapsed, isMobile]);
 
   const requestNextPageIfNeeded = useCallback((
     element: HTMLDivElement,
@@ -188,12 +218,32 @@ export function Sidebar({
     );
   } else {
     sidebarClasses.push(
-      "shrink-0 transition-[width,margin-left] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-      collapsed ? "collapsed w-0" : "w-[var(--sidebar-width)] border-r border-border",
+      "shrink-0 transition-[width,margin-left] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] border-r border-border",
+      collapsed ? "collapsed w-[var(--sidebar-rail-width)]" : "w-[var(--sidebar-width)]",
     );
   }
 
-  const renderRow = (c: ConversationResponse) => {
+  // Rail-only entry point for the newest conversations. Positioned from the
+  // trigger like the row menu, and portaled for the same reason.
+  const toggleRecent = () => {
+    if (recent !== null) {
+      setRecent(null);
+      return;
+    }
+    const rect = recentTriggerRef.current?.getBoundingClientRect();
+    const left = rect
+      ? Math.min(rect.right + 8, window.innerWidth - railRecentWidth - viewportInset)
+      : viewportInset;
+    const top = rect
+      ? Math.min(Math.max(viewportInset, rect.top - 6), Math.max(viewportInset, window.innerHeight - 360))
+      : viewportInset;
+    setRecent({ left: Math.max(viewportInset, left), top });
+  };
+
+  const renderRow = (
+    c: ConversationResponse,
+    options: { onSelected?: () => void } = {},
+  ) => {
     const isRenaming = renameId === c.id;
     const menuOpen = menu?.conversationId === c.id;
     const active = selectedId === c.id;
@@ -287,6 +337,7 @@ export function Sidebar({
             aria-current={active ? "page" : undefined}
             onClick={() => {
               onSelect(c.id);
+              options.onSelected?.();
               if (isMobile) onCloseMobile();
             }}
           >
@@ -379,6 +430,25 @@ export function Sidebar({
     );
   };
 
+  const renderUserMenu = (compact: boolean) => (
+    <UserMenu
+      user={user}
+      isMobile={isMobile}
+      compact={compact}
+      onLogout={onLogout}
+      onResendVerification={onResendVerification}
+      onUpdateNickname={onUpdateNickname}
+      onUploadAvatar={onUploadAvatar}
+      onChangePassword={onChangePassword}
+      onRequestDeletion={onRequestDeletion}
+      onLoadShares={onLoadShares}
+      onRevokeShare={onRevokeShare}
+      onToast={onToast}
+    />
+  );
+
+  const railCollapsed = collapsed && !isMobile;
+
   return (
     <>
       <aside
@@ -386,6 +456,38 @@ export function Sidebar({
         aria-hidden={isMobile && !mobileOpen ? "true" : undefined}
         inert={isMobile && !mobileOpen ? true : undefined}
       >
+        {railCollapsed ? (
+          <div className="flex h-full w-[var(--sidebar-rail-width)] flex-col items-center gap-1 px-1.5 pt-3 pb-2.5">
+            <button
+              className={`${iconControl} h-9 w-9`}
+              aria-label="展开侧栏"
+              onClick={onToggleCollapsed}
+            >
+              <Icons.PanelLeft size={20} />
+            </button>
+            <button
+              className={`${iconControl} h-9 w-9`}
+              aria-label="新建对话"
+              onClick={onNew}
+            >
+              <Icons.NewChat size={20} />
+            </button>
+            <button
+              ref={recentTriggerRef}
+              className={`${iconControl} h-9 w-9`}
+              aria-label="最近聊天"
+              aria-haspopup="true"
+              aria-expanded={recent !== null}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleRecent();
+              }}
+            >
+              <Icons.Chats size={20} />
+            </button>
+            <div className="mt-auto">{renderUserMenu(true)}</div>
+          </div>
+        ) : (
         <div
           className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
             isMobile ? "w-full" : "w-[var(--sidebar-width)]"
@@ -424,7 +526,7 @@ export function Sidebar({
             onScroll={handleHistoryScroll}
           >
             <div className={sectionLabel}>聊天</div>
-            {items.map(renderRow)}
+            {items.map((c) => renderRow(c))}
             {items.length === 0 && (
               <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
                 还没有已保存的对话。开始一次对话后会自动出现在这里。
@@ -437,21 +539,30 @@ export function Sidebar({
             )}
           </div>
 
-          <UserMenu
-            user={user}
-            isMobile={isMobile}
-            onLogout={onLogout}
-            onResendVerification={onResendVerification}
-            onUpdateNickname={onUpdateNickname}
-            onUploadAvatar={onUploadAvatar}
-            onChangePassword={onChangePassword}
-            onRequestDeletion={onRequestDeletion}
-            onLoadShares={onLoadShares}
-            onRevokeShare={onRevokeShare}
-            onToast={onToast}
-          />
+          {renderUserMenu(false)}
         </div>
+        )}
       </aside>
+      {railCollapsed && recent !== null &&
+        createPortal(
+          <nav
+            className={`rail-recent fixed z-40 max-h-[min(70vh,520px)] overflow-y-auto p-1.5 ${popoverSurface}`}
+            style={{ left: recent.left, top: recent.top, width: railRecentWidth }}
+            aria-label="最近聊天"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={`${sectionLabel} pt-1 text-text-muted`}>最近聊天</div>
+            {items
+              .slice(0, railRecentLimit)
+              .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
+            {items.length === 0 && (
+              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
+                还没有已保存的对话。
+              </div>
+            )}
+          </nav>,
+          document.body,
+        )}
       {isMobile && (
         <div
           className={`scrim fixed inset-0 z-[29] bg-overlay ${

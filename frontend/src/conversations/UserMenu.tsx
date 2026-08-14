@@ -22,6 +22,9 @@ import type { UserShareResponse } from "../api/types";
 type UserMenuProps = {
   user: { email: string; username: string; name: string; emailVerified: boolean; avatarUrl?: string | null } | null;
   isMobile: boolean;
+  // The collapsed rail has room for the avatar only; the menu itself is
+  // identical, so only the trigger and its measured width change.
+  compact?: boolean;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
@@ -46,6 +49,7 @@ function UserAvatar({ name, url, size = "md" }: { name: string; url?: string | n
 export function UserMenu({
   user,
   isMobile,
+  compact = false,
   onLogout,
   onResendVerification,
   onUpdateNickname,
@@ -129,7 +133,9 @@ export function UserMenu({
     }
     if (!isMobile && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      const width = Math.min(rect.width, window.innerWidth - 16);
+      // A rail avatar is far narrower than the menu needs, so compact mode asks
+      // for a fixed panel width instead of mirroring the trigger.
+      const width = Math.min(compact ? 260 : rect.width, window.innerWidth - 16);
       setMenuPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
         bottom: Math.max(8, window.innerHeight - rect.top + 8),
@@ -204,24 +210,35 @@ export function UserMenu({
   };
 
   return (
-    <div ref={rootRef} className="relative mt-2 border-t border-border pt-2 pb-1">
+    <div
+      ref={rootRef}
+      className={
+        compact ? "relative" : "relative mt-2 border-t border-border pt-2 pb-1"
+      }
+    >
       <button
         ref={triggerRef}
-        className={`flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`}
+        className={
+          compact
+            ? `flex h-9 w-9 items-center justify-center rounded-full aria-expanded:bg-selected ${interactiveItem}`
+            : `flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`
+        }
         aria-expanded={open}
         aria-haspopup={isMobile ? "dialog" : "menu"}
         aria-label="打开个人中心"
         onClick={toggleMenu}
       >
         <UserAvatar name={name} url={user?.avatarUrl} size="sm" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-medium leading-[1.35] text-fg">
-            {name}
+        {!compact && (
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-medium leading-[1.35] text-fg">
+              {name}
+            </span>
+            <span className="block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle">
+              Pro
+            </span>
           </span>
-          <span className="block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle">
-            Pro
-          </span>
-        </span>
+        )}
       </button>
 
       {open && !isMobile && menuPosition &&

@@ -197,6 +197,8 @@
 :root {
   --reading-width: 820px;
   --sidebar-width: 280px;
+  /* Collapsed sidebar rail: new chat / recent chats / account only. */
+  --sidebar-rail-width: 52px;
   --scrollbar-thumb: rgba(20, 20, 19, 0.18);
   --scrollbar-thumb-hover: rgba(20, 20, 19, 0.32);
 }

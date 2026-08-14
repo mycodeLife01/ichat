@@ -19,6 +19,7 @@ import {
   conversationResponse,
   reasoningDeltaEvent,
   runStateResponse,
+  shareLinkResponse,
   succeededEvent,
   textDeltaEvent,
 } from "../test/apiFixtures";
@@ -144,6 +145,132 @@ describe("AppShell", () => {
 
     // user message content from the detail fixture
     expect(await screen.findByText("Hello")).toBeInTheDocument();
+  });
+
+  it("copies a permanent share link from the chat header actions", async () => {
+    const create = vi.fn(async () => shareLinkResponse);
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "Hi!",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
+      },
+      {},
+      {},
+      // No active link yet, so sharing mints a permanent one.
+      { list: async () => [], create },
+    );
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    renderWithApp(<AppShell />, services);
+
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    await user.click(await screen.findByRole("button", { name: "分享" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/share/${shareLinkResponse.token}`,
+      ),
+    );
+    expect(create).toHaveBeenCalledWith(conversationResponse.id, null, undefined);
+    expect(await screen.findByText("公开链接已复制到剪贴板")).toBeInTheDocument();
+  });
+
+  it("reuses an existing active share link instead of creating another", async () => {
+    const create = vi.fn(async () => shareLinkResponse);
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "Hi!",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
+      },
+      {},
+      {},
+      { list: async () => [shareLinkResponse], create },
+    );
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    renderWithApp(<AppShell />, services);
+
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    await user.click(await screen.findByRole("button", { name: "分享" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("deletes the open conversation from the chat three-dot menu", async () => {
+    const remove = vi.fn(async () => ({ status: "ok" as const }));
+    const services = createFakeServices(
+      {},
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "Hi!",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
+        remove,
+      },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    await user.click(await screen.findByRole("button", { name: "更多操作" }));
+    const menu = screen.getByRole("menu", { name: "对话操作" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "删除",
+    ]);
+    await user.click(within(menu).getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(conversationResponse.id));
   });
 
   it("loads the conversation named in the URL on a deep link", async () => {

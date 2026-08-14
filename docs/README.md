@@ -31,6 +31,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Public share pages, share snapshots, anonymous attachment reads | `docs/handover/2026-08-14-share-attachment-parity.md` + ADR `0011-grant-attachment-reads-to-public-shares.md` + `docs/handover/2026-06-18-conversation-sharing.md` |
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
+| Sidebar rail / collapsed navigation, chat-page floating actions, one-click share copy | `docs/handover/frontend/2026-08-14-sidebar-rail-and-chat-actions.md` + `docs/architecture/frontend.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 
 ## Directory guide
@@ -100,6 +101,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-06-10-frontend-refresh-recovery.md` — refresh recovery of in-flight runs, partial restore, cancel robustness
 - `2026-06-10-frontend-toast-and-bottomsheet.md` — Toast, mobile BottomSheet actions
 - `2026-06-10-frontend-tailwind-v4-styles.md` — Tailwind CSS v4 migration (CSS-first `@theme`, all hand-written CSS removed, pixel-parity verified)
+- `2026-08-14-sidebar-rail-and-chat-actions.md` — collapsed sidebar becomes a 52px rail (new chat / recent 10 / account), the chat header is removed in favor of floating share + three-dot actions, and chat-page sharing copies a permanent link without a dialog
 
 ### `docs/goals/`
 

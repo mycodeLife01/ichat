@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
-import { Topbar } from "../conversations/Topbar";
+import { ThreadActions } from "../conversations/ThreadActions";
 import { useConversationLoader } from "../conversations/useConversationLoader";
+import { useQuickShare } from "../conversations/useQuickShare";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
@@ -139,6 +140,7 @@ export function AppShell() {
   const { editAndRegenerate, regenerate } = useRegenerate(start);
   const recover = useRunRecovery(start);
   const pollTitle = useTitlePolling();
+  const quickShare = useQuickShare();
   const pendingTitleIds = conversationIndex.pendingTitleIds;
   const restoreComposerContent = useCallback((content: string) => {
     setComposerValue(content);
@@ -397,7 +399,6 @@ export function AppShell() {
     }
   }, [pendingTitleIds, pollTitle]);
 
-  const activeConversation = detail.conversation;
   const messages = detail.messages;
   const pendingMessage =
     pendingSubmission !== null &&
@@ -531,24 +532,38 @@ export function AppShell() {
         }}
       >
         <VerifyEmailBanner />
-        <Topbar
-          title={activeConversation?.title ?? null}
-          titlePending={selectedId != null && pendingTitleIds.includes(selectedId)}
-          isMobile={isMobile}
-          sidebarCollapsed={sidebarCollapsed}
-          onOpenMobile={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
-          onToggleSidebar={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
-          onNewMobile={onNewConversation}
-        />
 
         {/* scrollbar-gutter reserved so expanding a thinking block (which adds
             height and toggles the scrollbar) does not narrow the chat column.
             both-edges keeps the column centered: a right-only gutter would
             shift it 5px left of the composer's axis. */}
-        <div
-          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
-          ref={threadRef}
-        >
+        <div className="relative flex min-h-0 flex-[1_1_0%] flex-col">
+          <ThreadActions
+            isMobile={isMobile}
+            hasConversation={selectedId != null}
+            onOpenMobileSidebar={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
+            onNew={onNewConversation}
+            onShare={() => {
+              if (selectedId == null) return;
+              void quickShare(
+                selectedId,
+                detail.messages.some((message) => (message.attachments?.length ?? 0) > 0),
+              );
+            }}
+            onDelete={() => {
+              if (selectedId == null) return;
+              dispatch({
+                type: "ui/openConfirm",
+                dialog: { kind: "deleteConversation", conversationId: selectedId },
+              });
+            }}
+          />
+          {/* Mobile pads the scroll container so the floating actions do not sit
+              on top of the first message when the thread is at the top. */}
+          <div
+            className="thread-region min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+            ref={threadRef}
+          >
           {!showWelcome && (
             <MessageThread
               messages={messages}
@@ -598,6 +613,7 @@ export function AppShell() {
               ) : null}
             </MessageThread>
           )}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-col">
@@ -640,6 +656,7 @@ export function AppShell() {
             canSend={canSend}
             sendDisabledReason={sendDisabledReason}
             readOnly={visionMutationBlocked}
+            isMobile={isMobile}
           />
         </div>
         <div

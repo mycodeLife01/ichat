@@ -124,6 +124,55 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("collapsed: keeps a rail with new chat, recent chats and the account avatar", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    const items = Array.from({ length: 12 }, (_, index) =>
+      makeConversation(`${index + 1}`, `对话${index + 1}`, today),
+    );
+    render(<Sidebar {...props} collapsed items={items} />);
+
+    // The full history list only exists in the expanded sidebar.
+    expect(screen.queryByTestId("conversation-history")).toBeNull();
+    expect(screen.queryByText("聊天")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "新建对话" }));
+    expect(props.onNew).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
+    expect(props.onToggleCollapsed).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "打开个人中心" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "最近聊天" }));
+    const panel = screen.getByRole("navigation", { name: "最近聊天" });
+    expect(panel.parentElement).toBe(document.body);
+    expect(within(panel).getByRole("button", { name: "对话1" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "对话10" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "对话11" })).toBeNull();
+  });
+
+  it("collapsed: recent rows keep share / rename / delete and close on select", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} collapsed />);
+
+    await user.click(screen.getByRole("button", { name: "最近聊天" }));
+    const panel = screen.getByRole("navigation", { name: "最近聊天" });
+
+    await user.click(within(panel).getByRole("button", { name: "更多" }));
+    const menu = screen.getByRole("menu", { name: "会话操作" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "分享",
+      "重命名",
+      "删除",
+    ]);
+    await user.click(within(menu).getByRole("menuitem", { name: "分享" }));
+    expect(props.onRequestShare).toHaveBeenCalledWith("1");
+
+    await user.click(within(panel).getByRole("button", { name: "今天的对话" }));
+    expect(props.onSelect).toHaveBeenCalledWith("1");
+    expect(screen.queryByRole("navigation", { name: "最近聊天" })).toBeNull();
+  });
+
   it("renames in place on Enter", async () => {
     const props = baseProps();
     const user = userEvent.setup();
