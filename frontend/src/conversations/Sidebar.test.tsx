@@ -140,14 +140,19 @@ describe("Sidebar", () => {
     expect(history.parentElement).toHaveClass(
       "opacity-0",
       "transition-opacity",
-      "duration-[220ms]",
-      "ease-[cubic-bezier(0.4,0,0.2,1)]",
+      "duration-[110ms]",
+      "delay-[70ms]",
+      "ease-linear",
       "overflow-x-clip",
       "whitespace-nowrap",
     );
+    // The panel is cropped in place, never shifted, so the crop edge reads as
+    // the main column covering it.
+    expect(history.parentElement).not.toHaveClass("-translate-x-2");
+    // The rail board only lands after the panel has faded past it.
     expect(
       screen.getByRole("button", { name: "展开侧栏" }).parentElement,
-    ).toHaveClass("ease-[steps(1,start)]");
+    ).toHaveClass("delay-[110ms]", "duration-[110ms]");
 
     await user.click(screen.getByRole("button", { name: "新建对话" }));
     expect(props.onNew).toHaveBeenCalledTimes(1);
@@ -181,6 +186,11 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
     expect(accountTrigger).toHaveClass("h-13", "px-2");
     expect(historyPanel).toHaveClass("opacity-0");
+    // The cropping edge starts on the first frame in both directions.
+    expect(document.querySelector("aside.sidebar")).toHaveClass(
+      "delay-0",
+      "transition-[width]",
+    );
     expect(screen.getByRole("button", { name: "新建对话" })).toHaveClass("mt-4");
     expect(document.querySelector('[data-icon="recent-chats"]')).toBeInTheDocument();
   });

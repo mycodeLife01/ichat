@@ -218,7 +218,10 @@ export function Sidebar({
     );
   } else {
     sidebarClasses.push(
-      "shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none",
+      // The moving right edge is the whole animation: it starts on the first
+      // frame in both directions so the main column reads as sliding over the
+      // still panel, not as the panel sliding out of the viewport.
+      "shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] delay-0 motion-reduce:transition-none",
       collapsed ? "collapsed w-[var(--sidebar-rail-width)]" : "w-[var(--sidebar-width)]",
     );
   }
@@ -469,13 +472,19 @@ export function Sidebar({
                 : "w-[var(--sidebar-width)] pt-2"
             }`}
           >
+            {/* The panel never moves. It stays fully opaque while the shell's
+                right edge sweeps in over it, so the crop itself is the motion;
+                the trailing fade only clears the residual strip before the rail
+                board takes over. Expanding mirrors it. */}
             <div
               className={`flex min-h-0 flex-1 flex-col overflow-x-clip whitespace-nowrap ${
                 isMobile
                   ? ""
-                  : "will-change-[opacity] transition-opacity duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+                  : "will-change-[opacity] transition-opacity ease-linear motion-reduce:transition-none"
               } ${
-                railCollapsed ? "opacity-0" : "opacity-100"
+                railCollapsed
+                  ? "opacity-0 duration-[110ms] delay-[70ms]"
+                  : "opacity-100 duration-[130ms] delay-[90ms]"
               }`}
               aria-hidden={railCollapsed ? "true" : undefined}
               inert={railCollapsed ? true : undefined}
@@ -538,10 +547,10 @@ export function Sidebar({
 
           {!isMobile && (
             <div
-              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-bg px-1.5 pt-2 pb-2.5 transition-opacity duration-150 motion-reduce:transition-none ${
+              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-bg px-1.5 pt-2 pb-2.5 transition-opacity ease-linear motion-reduce:transition-none ${
                 railCollapsed
-                  ? "pointer-events-auto opacity-100 ease-[steps(1,start)]"
-                  : "pointer-events-none opacity-0 ease-linear"
+                  ? "pointer-events-auto opacity-100 duration-[110ms] delay-[110ms]"
+                  : "pointer-events-none opacity-0 duration-[90ms] delay-0"
               }`}
               aria-hidden={railCollapsed ? undefined : "true"}
               inert={railCollapsed ? undefined : true}
