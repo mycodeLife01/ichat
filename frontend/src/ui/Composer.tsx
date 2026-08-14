@@ -56,6 +56,7 @@ type ComposerProps = {
   canSend?: boolean;
   sendDisabledReason?: string | null;
   readOnly?: boolean;
+  isMobile?: boolean;
 };
 
 // ChatGPT lets the prompt occupy up to 30% of the viewport before scrolling.
@@ -159,6 +160,7 @@ export function Composer({
   canSend,
   sendDisabledReason = null,
   readOnly = false,
+  isMobile = false,
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -318,10 +320,14 @@ export function Composer({
     allowedLevels.includes(option.value),
   );
   const levelLabel = thinkingLevelLabel(effectiveLevel);
-  const pickerLabel = [
-    selectedModel?.label,
-    levelOptions.length > 0 ? levelLabel : undefined,
-  ]
+  // Mobile has no room for both names on the pill, so it shows the thinking
+  // level alone — unless the model has no tiers, where the model name is the
+  // only label left to keep the picker reachable.
+  const pickerLabel = (
+    isMobile && levelOptions.length > 0
+      ? [levelLabel]
+      : [selectedModel?.label, levelOptions.length > 0 ? levelLabel : undefined]
+  )
     .filter(Boolean)
     .join(" ");
   const primaryRowHeight = attachments.length > 0 ? "min-h-[52px]" : "min-h-[42px]";
@@ -494,7 +500,7 @@ export function Composer({
               if (!readOnly) onChange(event.target.value);
             }}
             onPaste={handlePromptPaste}
-            placeholder="有问题，尽管问"
+            placeholder={isMobile ? "" : "有问题，尽管问"}
             rows={1}
             style={{ maxHeight: PROMPT_MAX_HEIGHT }}
             onKeyDown={(event) => {

@@ -479,6 +479,12 @@ describe("Composer", () => {
     );
   });
 
+  it("drops the prompt placeholder on mobile", () => {
+    renderComposer({ isMobile: true });
+
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "");
+  });
+
   it("accepts files dropped anywhere on the page", () => {
     const onSelectFiles = vi.fn();
     renderComposer({ fileCapability: FILES, onSelectFiles });
@@ -681,6 +687,19 @@ describe("Composer", () => {
       screen.getByRole("button", { name: "模型与思考强度" }),
     ).toHaveTextContent("deepseek-v4-flash 极致");
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("shows only the thinking level on the picker trigger on mobile", () => {
+    renderComposer({
+      models: MODELS,
+      model: FLASH.id,
+      thinkingLevel: "max",
+      isMobile: true,
+    });
+    expect(screen.getByRole("button", { name: "模型与思考强度" })).toHaveTextContent(
+      "极致",
+    );
+    expect(screen.queryByText("deepseek-v4-flash")).toBeNull();
   });
 
   it("shows only the thinking level before capabilities load", () => {
