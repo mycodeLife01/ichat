@@ -213,7 +213,7 @@ describe("ShareDialog", () => {
     expect(screen.getByText(/keep-me/)).toBeInTheDocument();
   });
 
-  it("requires a privacy acknowledgement before sharing a conversation with attachments", async () => {
+  it("shows the attachment visibility notice and shares without an extra opt-in", async () => {
     const user = userEvent.setup();
     const create = vi.fn(async () => ({
       token: "attachment-link",
@@ -224,12 +224,13 @@ describe("ShareDialog", () => {
     renderDialog({ list: async () => [], create }, true);
 
     const createButton = await screen.findByRole("button", { name: /创建链接/ });
-    expect(createButton).toBeDisabled();
-    expect(screen.getByText(/files, previews, and downloads are not shared/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("checkbox"));
+    // The notice is informational only — no checkbox gates the button.
+    expect(screen.getByText("本对话中的附件将对访问者可见")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
     expect(createButton).toBeEnabled();
+
     await user.click(createButton);
+    // The API still receives the explicit confirmation flag.
     expect(create).toHaveBeenCalledWith("conv-1", 7, true);
   });
 });

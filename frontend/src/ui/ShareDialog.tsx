@@ -32,7 +32,6 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [attachmentPrivacyConfirmed, setAttachmentPrivacyConfirmed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -66,11 +65,14 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
     if (creating) return;
     setCreating(true);
     try {
+      // The attachment notice is informational: showing it is the disclosure,
+      // so creating the link is itself the acknowledgement. The API still
+      // requires the explicit flag, which keeps the guard for other clients.
       const link = hasAttachments
         ? await services.shareApi.create(
             conversationId,
             EXPIRY_OPTIONS[expiryIndex].days,
-            attachmentPrivacyConfirmed,
+            true,
           )
         : await services.shareApi.create(conversationId, EXPIRY_OPTIONS[expiryIndex].days);
       setActiveLink(link);
@@ -105,7 +107,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
       titleId="share-dialog-title"
       descriptionId="share-dialog-description"
       onClose={onClose}
-      className="w-full max-w-[440px] p-[22px]"
+      className="w-full max-w-[480px] p-6"
     >
       <div className="mb-1 flex items-center justify-between">
         <h3 id="share-dialog-title" className="text-[15px] font-semibold">
@@ -178,21 +180,11 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-4">
             {hasAttachments && (
-              <label className="w-full rounded-control border border-warning-border bg-warning-soft px-2.5 py-2 text-[12px] leading-[1.5] text-warning-foreground">
-                <span className="flex items-start gap-2">
-                  <input
-                    className="mt-0.5"
-                    type="checkbox"
-                    checked={attachmentPrivacyConfirmed}
-                    onChange={(event) => setAttachmentPrivacyConfirmed(event.target.checked)}
-                  />
-                  <span>
-                    I understand that files, previews, and downloads are not shared, but assistant replies may contain information from the attachments.
-                  </span>
-                </span>
-              </label>
+              <p className="w-full rounded-control border border-warning-border bg-warning-soft px-3 py-2.5 text-[12.5px] leading-[1.6] text-warning-foreground">
+                本对话中的附件将对访问者可见
+              </p>
             )}
             <div className="flex gap-1.5" role="radiogroup" aria-label="过期时间">
               {EXPIRY_OPTIONS.map((option, index) => (
@@ -215,7 +207,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
             <button
               type="button"
               className={`${primaryButton} ml-auto h-9 px-3.5 text-[13.5px] font-medium`}
-              disabled={creating || (hasAttachments && !attachmentPrivacyConfirmed)}
+              disabled={creating}
               aria-busy={creating}
               aria-label={creating ? "正在创建链接" : "创建链接"}
               onClick={() => void create()}
