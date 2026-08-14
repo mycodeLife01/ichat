@@ -10,6 +10,7 @@ const MODELS: ChatModelCapability[] = [
     label: "deepseek-v4-flash",
     thinking_levels: ["low", "high", "max"],
     default: true,
+    supports_image_input: false,
   },
   {
     id: "openai/gpt-5.6-luna",
@@ -17,6 +18,7 @@ const MODELS: ChatModelCapability[] = [
     label: "gpt-5.6-luna",
     thinking_levels: ["low", "medium", "high", "xhigh", "max"],
     default: false,
+    supports_image_input: true,
   },
 ];
 
@@ -50,5 +52,25 @@ describe("modelPreferenceStore", () => {
     modelPreferenceStore.save("openai/gpt-5.6-luna");
 
     expect(modelPreferenceStore.read()).toBe("openai/gpt-5.6-luna");
+  });
+
+  it("prefers the recommended compatible model for a vision context", () => {
+    modelPreferenceStore.setAvailable(MODELS);
+    modelPreferenceStore.save("deepseek-v4-flash");
+
+    expect(
+      modelPreferenceStore.resolveForImageContext({
+        state: "vision_required",
+        legacy_message_id: null,
+        recommended_model: "openai/gpt-5.6-luna",
+      })?.id,
+    ).toBe("openai/gpt-5.6-luna");
+  });
+
+  it("falls back to the first compatible model when no vision model is available", () => {
+    modelPreferenceStore.setAvailable([MODELS[0]]);
+    expect(
+      modelPreferenceStore.resolveForImageContext({ state: "vision_required", legacy_message_id: null }),
+    ).toBeNull();
   });
 });

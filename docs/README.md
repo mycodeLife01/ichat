@@ -10,13 +10,15 @@
 
 ## When to consult docs/
 
+A task may match multiple rows. Treat the situation column as triggers and read every matching row.
+
 | Situation | Read this first |
 |-----------|-----------------|
 | Understanding overall runtime architecture, data flow, service topology | `docs/architecture/overview.md` |
 | Refactoring, crossing module boundaries, or reviewing structural changes | `docs/architecture/module-boundaries.md` |
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
-| Working on the frontend (React SPA) | The newest matching `docs/handover/frontend/*.md` + `docs/superpowers/specs/2026-05-24-frontend-react-rebuild-design.md` |
+| Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
@@ -25,7 +27,12 @@
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
-| Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-07-14-r2-avatar-upload.md` |
+| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
+| Public share pages, share snapshots, anonymous attachment reads | `docs/handover/2026-08-14-share-attachment-parity.md` + ADR `0011-grant-attachment-reads-to-public-shares.md` + `docs/handover/2026-06-18-conversation-sharing.md` |
+| GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
+| Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
+| Sidebar rail / collapsed navigation, chat-page floating actions, one-click share copy | `docs/handover/frontend/2026-08-14-sidebar-rail-and-chat-actions.md` + `docs/architecture/frontend.md` |
+| Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 
 ## Directory guide
 
@@ -33,15 +40,19 @@
 
 Authoritative architectural rules.
 
-- `overview.md` — runtime architecture: service topology, end-to-end data flow, run state machine, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
-- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
-- `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, why streaming runs stay out of Celery, and the three questions every task table must answer.
+- `overview.md` — runtime architecture: service topology, end-to-end data flow, run/file state machines, persistence model, concurrency model, LISTEN/NOTIFY channels, cross-module data-flow invariants.
+- `frontend.md` — current React SPA boundaries: state/effect ownership, API/auth, routing, SSE/Run recovery, attachments/model capabilities, styling, and verification invariants.
+- `module-boundaries.md` — module responsibilities for `app/api`, `app/core`, `app/db`, `app/models`, `app/schemas`, `app/services/*` (including `app/services/files` and the agent orchestration layer `app/services/agents`), the provider-neutral agent kernel `app/agent`, `app/search`, `app/worker`, and forbidden cross-module dependencies.
+- `background-tasks.md` — the background-task convention (transactional state row + wakeup signal + idempotent claim), the async-runtime-vs-Celery ownership test, file/media Celery ownership, why streaming runs stay out of Celery, and the three questions every task table must answer.
 
 ### `docs/adr/`
 
 Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching your area before proposing changes; conflicts with an ADR must be raised explicitly, never silently overridden (see `docs/agents/domain.md`).
 
 - `2026-07-13-account-deletion-soft-deactivation.md` — account deletion = soft deactivation (`is_active=false` + full credential revocation), data retained; physical erasure (cooling-off period + periodic job) deferred to a later iteration.
+- `0002-unify-file-assets-and-avatar-uploads.md` — the later decision that replaces the former avatar-only-files boundary; implementation and the still-deferred legacy-avatar contract are recorded in `handover/2026-08-01-unified-file-upload.md`.
+- `0010-use-adaptive-multipart-and-server-side-promotion.md` — adaptive multipart transport, PG-owned upload lifecycle, R2 server-side original promotion, and PG-only derived document text for new uploads.
+- `0011-grant-attachment-reads-to-public-shares.md` — public shares now exchange an opaque snapshot `ref` for short-lived preview/download URLs (superseding the placeholder-only boundary), with the threat model and the guards that bound it.
 
 ### `docs/handover/`
 
@@ -69,11 +80,16 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-06-26-email-verification.md` — email verification + auth-email infra: `auth_tokens`/`email_outbox` tables, Redis cooldown + IP sliding-window rate limiting, Postmark/console/fake providers, Celery worker/beat outbox delivery (claim/lease/retry/dead/sweep), `GET /auth/me` + `POST /auth/verify-email` + `POST /auth/resend-verification-email`, nginx Cloudflare realip + firewall ops checklist.
 - `2026-07-13-password-reset-account-deletion.md` — password reset / change-password / account deletion (five new auth endpoints), purpose-generalized token service, cross-invalidation matrix, anti-enumeration constant responses, per-endpoint rate-limit & Redis failure modes, soft-deactivation semantics + ops recovery notes.
 - `2026-07-14-r2-avatar-upload.md` — browser-cropped avatar direct upload to private R2, media queue validation/transcoding, public CDN URL, replacement/deletion compensation, account-deletion exception, Cloudflare setup/smoke/rollback.
+- `2026-08-01-unified-file-upload.md` — foundational unified files domain for message attachments and new avatars: data model/state machine, format and parser security, transcript/privacy behavior, retention/quota/account rules, queues/credential topology, feature flag, R2/ClamAV smoke, rollout and rollback. Read the 2026-08-09 performance handover for the current transport and storage-write path; ticket 15 contract remains gated on production verification.
+- `2026-08-03-gpt-vision-input.md` — GPT 图片输入实现、独立 preview bucket/五凭证矩阵、维护窗口、backfill 门禁、真实资源 smoke、可观测性与回滚手册；生产白名单默认保持为空。
+- `2026-08-09-sent-image-placement-stability.md` — stable sent-image placement from composer to user message: local Blob ownership transfer, frame reservation, single-node pixel stability, discarded transition attempts, verification results, and the pending real-Chrome smoke.
+- `2026-08-09-file-upload-performance.md` — measured upload phase baseline and the adaptive multipart, server-side promotion, fresh-client, worker recycling, telemetry, rollout, and real-R2 verification changes.
+- `2026-08-13-clamav-startup-readiness.md` — ClamAV startup refresh ordering, signature-aware readiness, the persisted-database race, and local/production verification.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 
 ### `docs/handover/frontend/`
 
-Frontend rebuild handover series (React SPA, in chronological order — the newest file for a topic wins):
+Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` first for the current architecture, then use the matching handover for implementation rationale and feature-specific verification:
 
 - `2026-05-24-react-scaffold-and-pnpm.md` — Vite + React + TypeScript scaffold, pnpm switch, old vanilla frontend removed
 - `2026-05-24-frontend-communication-foundation.md` — API client, error types, SSE parsing layer
@@ -85,6 +101,7 @@ Frontend rebuild handover series (React SPA, in chronological order — the newe
 - `2026-06-10-frontend-refresh-recovery.md` — refresh recovery of in-flight runs, partial restore, cancel robustness
 - `2026-06-10-frontend-toast-and-bottomsheet.md` — Toast, mobile BottomSheet actions
 - `2026-06-10-frontend-tailwind-v4-styles.md` — Tailwind CSS v4 migration (CSS-first `@theme`, all hand-written CSS removed, pixel-parity verified)
+- `2026-08-14-sidebar-rail-and-chat-actions.md` — collapsed sidebar becomes a 52px rail (new chat / recent 10 / account), the chat header is removed in favor of floating share + three-dot actions, and chat-page sharing copies a permanent link without a dialog
 
 ### `docs/goals/`
 
@@ -96,7 +113,7 @@ Pre-implementation design specs. Consult for product/design rationale.
 
 - `2026-05-16-ai-chat-backend-mvp-design.md` — overall MVP scope, architecture, technical decisions
 - `2026-05-17-run-cancellation-design.md` — cancellation design details and HTTP semantics
-- `2026-05-24-frontend-react-rebuild-design.md` — master plan for the React frontend rebuild (step sequence, hooks design, deployment topology)
+- `2026-05-24-frontend-react-rebuild-design.md` — historical master plan for the React rebuild; use `docs/architecture/frontend.md` for the current structure and invariants
 - `2026-06-11-web-search-tool-design.md` — web search tool design (tool schema, query planner, agent loop budget, source dedup, evidence compression). Note: the rule-based query planner / pre-search it specifies was removed 2026-06-17 (now model-driven); `system_prompt_snapshot` semantics also superseded — see `docs/handover/2026-06-17-system-prompt-management.md`.
 - `2026-06-18-public-id-and-conversation-sharing-design.md` — opaque `public_id` (dual-key, keep bigint PK) to drop sequential IDs from the API surface, plus conversation sharing via a separate `share_links` token + read-only snapshot. Includes scope/format/sharing-semantics open decisions.
 - other dated specs — per-feature designs (auto-title, regenerate, thinking mode, frontend sub-steps)
@@ -107,4 +124,4 @@ Historical implementation checklists, one per past sprint. **Not active referenc
 
 ### `docs/deployment.md`
 
-Production deployment runbook — Linux server setup, Docker Compose, Nginx reverse proxy, Cloudflare SSL/TLS, Cloudflare Pages frontend hosting, environment variables.
+Production deployment runbook — Linux server setup, Docker Compose, Nginx reverse proxy, Cloudflare SSL/TLS, Cloudflare Pages frontend hosting, environment variables. File-upload-specific R2/ClamAV smoke and rollout gates are in `handover/2026-08-01-unified-file-upload.md`.

@@ -48,7 +48,7 @@ export function Toast({ toast, onDismiss, duration = 2600 }: ToastProps) {
   return (
     <div
       key={toast.id}
-      className={`toast fixed bottom-20 left-1/2 z-[60] [transform:translateX(-50%)] animate-toast-in ${toastSurface} ${classes}`}
+      className={`toast fixed top-5 left-1/2 z-[60] [transform:translateX(-50%)] animate-toast-in ${toastSurface} ${classes}`}
       data-tone={toast.tone}
       role={toast.tone === "error" ? "alert" : "status"}
       aria-atomic="true"

@@ -92,6 +92,7 @@ export const failedEvent: RunEventResponse = {
 
 export const runStateResponse: RunStateResponse = {
   run_id: assistantRun.id,
+  provider_name: assistantRun.provider_name,
   status: "streaming",
   latest_seq: 1,
   draft_text: "Hello",

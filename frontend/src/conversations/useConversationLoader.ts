@@ -87,8 +87,13 @@ export function useConversationLoader() {
       dispatch({ type: "ui/setMobileSidebar", open: false });
       try {
         const detail = await conversationApi.detail(id);
-        const { messages, ...conversation } = detail;
-        dispatch({ type: "conversations/detailLoaded", conversation, messages });
+        const { messages, image_context: imageContext, ...conversation } = detail;
+        dispatch({
+          type: "conversations/detailLoaded",
+          conversation,
+          messages,
+          imageContext,
+        });
         selectionStore.save(id);
       } catch (error) {
         // 403/404/422: invalid or inaccessible URL selection; clear back to blank.
@@ -123,7 +128,7 @@ export function useConversationLoader() {
 
   const deleteConversation = useCallback(
     async (id: string) => {
-      await conversationApi.remove(id);
+      const deletion = await conversationApi.remove(id);
       const remaining = conversationIndex.items.filter((c) => c.id !== id);
       dispatch({ type: "conversations/removed", id });
       dispatch({ type: "ui/closeConfirm" });
@@ -134,8 +139,15 @@ export function useConversationLoader() {
           newConversation();
         }
       }
+      return deletion;
     },
-    [dispatch, conversationApi, conversationIndex, selectConversation, newConversation],
+    [
+      dispatch,
+      conversationApi,
+      conversationIndex,
+      selectConversation,
+      newConversation,
+    ],
   );
 
   return {

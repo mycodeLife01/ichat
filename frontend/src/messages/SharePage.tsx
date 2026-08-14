@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CircleAlert } from "lucide-react";
 
@@ -9,6 +9,8 @@ import { buttonControl, messageBubble, primaryButton } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
+import type { FileReadRole } from "../files/types";
+import { MessageAttachments } from "./MessageAttachments";
 import { SourcesTrigger } from "./Message";
 import { SourcesPanel } from "./SourcesPanel";
 
@@ -66,6 +68,18 @@ export function SharePage() {
       active = false;
     };
   }, [token, services]);
+
+  // Bound to this share token: the attachment `ref` from the snapshot is the
+  // only handle a public reader has, and the server resolves it. AttachmentCard
+  // caches per (handle, role) against this function identity, so it must stay
+  // stable across renders.
+  const readAttachment = useCallback(
+    (ref: string, role: FileReadRole) =>
+      token
+        ? services.shareApi.readAttachment(token, ref, role)
+        : Promise.reject(new Error("Missing share token")),
+    [token, services],
+  );
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -130,6 +144,7 @@ export function SharePage() {
             <SharedThread
               share={state.share}
               isMobile={isMobile}
+              onReadAttachment={readAttachment}
               onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
             />
           )}
@@ -151,10 +166,12 @@ export function SharePage() {
 function SharedThread({
   share,
   isMobile,
+  onReadAttachment,
   onShowSources,
 }: {
   share: PublicShareResponse;
   isMobile: boolean;
+  onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
   onShowSources: (sources: MessageSource[]) => void;
 }) {
   return (
@@ -171,6 +188,7 @@ function SharedThread({
             key={index}
             message={message}
             isMobile={isMobile}
+            onReadAttachment={onReadAttachment}
             onShowSources={onShowSources}
           />
         ))}
@@ -182,19 +200,35 @@ function SharedThread({
 function SharedMessageView({
   message,
   isMobile,
+  onReadAttachment,
   onShowSources,
 }: {
   message: SharedMessage;
   isMobile: boolean;
+  onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
   onShowSources: (sources: MessageSource[]) => void;
 }) {
+  const attachments = message.attachments ?? [];
   if (message.role === "user") {
     return (
       <div className="msg user flex scroll-mt-[60px] flex-col items-end gap-1.5">
-        <div className={`max-w-[70%] ${messageBubble}`}>
-          <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
-            {message.content}
-          </div>
+        {/* Attachments sit above the bubble, matching the live thread rather
+            than nesting inside it. */}
+        <div className="flex w-full flex-col items-end gap-1">
+          {attachments.length > 0 && (
+            <MessageAttachments
+              attachments={attachments}
+              onReadAttachment={onReadAttachment}
+              align="end"
+            />
+          )}
+          {message.content !== "" && (
+            <div className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}`}>
+              <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
+                {message.content}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -209,6 +243,9 @@ function SharedMessageView({
           sources={sources.length > 0 ? sources : undefined}
           isMobile={isMobile}
         />
+        {attachments.length > 0 && (
+          <MessageAttachments attachments={attachments} onReadAttachment={onReadAttachment} />
+        )}
         {sources.length > 0 && (
           <SourcesTrigger sources={sources} onClick={() => onShowSources(sources)} />
         )}

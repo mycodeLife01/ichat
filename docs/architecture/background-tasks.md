@@ -2,7 +2,7 @@
 
 > 本文把项目已在实践、但从未成文的后台任务模式明文化，终结「新任务归谁执行」的
 > 逐案争论。约定与 [架构总览](overview.md)、[模块边界](module-boundaries.md) 及
-> [邮件验证交接](../handover/2026-06-26-email-verification.md) 一致。
+> [邮件验证交接](../handover/2026-06-26-email-verification.md) 与 [统一文件上传交接](../handover/2026-08-01-unified-file-upload.md) 一致。
 
 ## 1. 统一模式
 
@@ -24,19 +24,21 @@
   抢到才干活。多个 worker、重复投递、崩溃重放都安全：同一行只会被一个活着的租约持有，
   租约过期后由 sweep/recover 归还。
 
-### 两条现存链路都是该模式的实例
+### 三条现存链路都是该模式的实例
 
-| 维度 | LLM run（自研 async 运行时） | 邮件发送（Celery） |
-|------|------------------------------|--------------------|
-| 状态表 | `runs`（`status`、`lease_expires_at`、`heartbeat_at`…） | `email_outbox`（`status`、`locked_until`、`attempt_count`…） |
-| 入队 | 写 user message + 建 `runs` 行，同事务提交 | 业务事务内插入 `email_outbox` 行 |
-| 唤醒信号 | commit 后 Redis `PUBLISH runs_queued`（`app/services/runs/wakeup.py` + `app/worker/run_queued_listener.py`） | Celery 任务投递（`send_task`，携带 `outbox_id`） |
-| 兜底 | worker 周期 poll + 租约过期 recover | `celery-beat` 周期 `sweep_outbox` 归还过期租约、补投 due 行 |
-| 幂等 claim | `FOR UPDATE SKIP LOCKED` 抢 run + 写 lease（`app/services/runs/lifecycle.py`） | 原子 `UPDATE ... RETURNING` 抢 `pending→sending` + `locked_until`（`app/services/email/outbox.py`） |
-| 事实源 | PostgreSQL | PostgreSQL |
-| Redis/Broker 角色 | pub/sub 唤醒 + Run Stream 实时传输；不参与 claim 仲裁，PG poll/checkpoint 兜底 | 仅作 broker/加速器，不持有业务状态 |
+| 维度 | LLM run（自研 async 运行时） | 邮件发送（Celery） | 文件处理/删除补偿（Celery） |
+|------|------------------------------|--------------------|--------------------------------|
+| 状态表 | `runs`（`status`、`lease_expires_at`、`heartbeat_at`…） | `email_outbox`（`status`、`locked_until`、`attempt_count`…） | `file_uploads`（状态、lease、`available_at`、attempt）、`file_object_deletions`（分步 delete/purge）、配额与资产生命周期行 |
+| 入队 | 写 user message + 建 `runs` 行，同事务提交 | 业务事务内插入 `email_outbox` 行 | confirm 在 PG 中把 `FileUpload` 置 queued；资产删除在同一事务建立 `FileObjectDeletion` |
+| 唤醒信号 | commit 后 Redis `PUBLISH runs_queued`（`app/services/runs/wakeup.py` + `app/worker/run_queued_listener.py`） | Celery 任务投递（`send_task`，携带 `outbox_id`） | Celery `files` queue（携带 upload public ID）；任务投递失败只增加延迟 |
+| 兜底 | worker 周期 poll + 租约过期 recover | `celery-beat` 周期 `sweep_outbox` 归还过期租约、补投 due 行 | 单实例 beat 投递 `maintain_files`：归还过期 lease、补投 due、清理 staging、回收资产、处理删除补偿、reconcile quota |
+| 幂等 claim | `FOR UPDATE SKIP LOCKED` 抢 run + 写 lease（`app/services/runs/lifecycle.py`） | 原子 `UPDATE ... RETURNING` 抢 `pending→sending` + `locked_until`（`app/services/email/outbox.py`） | `FileUpload` 行锁 + purpose/status/lease owner 条件；终态和 manifest 可重复读取，重复 Celery 消息不会再次产生资产 |
+| 事实源 | PostgreSQL | PostgreSQL | PostgreSQL |
+| Redis/Broker 角色 | pub/sub 唤醒 + Run Stream 实时传输；不参与 claim 仲裁，PG poll/checkpoint 兜底 | 仅作 broker/加速器，不持有业务状态 | 仅作 broker/加速器；`available_at`、lease 与补偿完成时间在 PG |
 
-两条链路都**只把 PG 当事实源**，把广播组件（Redis pub/sub / Stream、Celery broker）当加速器。
+file-worker 每个文件任务新建带 TCP keepalive、超时和标准重试的 R2 client，避免长寿命连接池退化跨任务传播；`max-tasks-per-child` 只作为资源与连接状态的进程级兜底，不改变 PG claim、lease 或重试语义。
+
+三条链路都**只把 PG 当事实源**，把广播组件（Redis pub/sub / Stream、Celery broker）当加速器。
 唤醒信号即便全部丢失，兜底扫描仍能保证任务最终被执行——这是「Redis 只作加速器、
 PG 永远是事实源」这一项目级约定在后台任务上的落地。
 
@@ -47,7 +49,7 @@ PG 永远是事实源」这一项目级约定在后台任务上的落地。
 | 任务形状 | 归属 |
 |----------|------|
 | 流式、交互、需要中途取消（协作式取消 + 心跳精度要求） | **自研 async 运行时**（如 LLM run worker） |
-| 有限时长、非流式、fire-and-forget、可重试 | **Celery**（如邮件发送、头像处理、标题生成） |
+| 有限时长、非流式、fire-and-forget、可重试 | **Celery**（如邮件发送、头像处理、文件扫描/解析/回收、标题生成） |
 
 判据是任务的**运行形态**，而非它「是不是 AI 任务」。标题生成同样调用 LLM，但它
 有限、非流式、可重试、不需要中途取消，因此归 Celery（见
@@ -58,6 +60,12 @@ PG 永远是事实源」这一项目级约定在后台任务上的落地。
 标题任务的三问答案：最多重试 3 次；以 5 秒为基数做指数退避并封顶 60 秒；耗尽后
 Celery 将任务标为失败并记录日志，conversation `title` 保持 NULL（不污染业务事实），后续
 首个成功 Run 的重复投递仍可按 `title IS NULL` 幂等补写。
+
+文件任务的三问答案：上传处理最多 3 次；暂时故障按 30 秒、5 分钟退避，第三次耗尽进入
+`failed`；格式/安全/资源上限等永久失败进入 `rejected`。`FileObjectDeletion` 不因短暂
+外部故障丢弃，按其 `available_at` 持续重试至私有 delete 或公开 delete+purge 均完成。
+`file-worker` 只消费 `files` queue；`media-worker` 只消费 `media` queue。二者共享 files
+状态机而不共享不可信文档解析或公开 CDN 权限。
 
 ## 3. 反例：为什么流式 LLM run 不进 Celery
 
@@ -92,3 +100,4 @@ Celery 将任务标为失败并记录日志，conversation `title` 保持 NULL�
 - [架构总览](overview.md) — 服务拓扑、run 状态机、LISTEN/NOTIFY 频道。
 - [模块边界](module-boundaries.md) — `app/worker`、`app/services/runs`、`app/tasks` 职责。
 - [邮件验证交接](../handover/2026-06-26-email-verification.md) — Celery/Redis/outbox 细节。
+- [统一文件上传交接](../handover/2026-08-01-unified-file-upload.md) — files 状态机、manifest、删除补偿、ClamAV 与部署/灰度要求。

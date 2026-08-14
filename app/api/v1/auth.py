@@ -126,9 +126,10 @@ async def logout_route(
     response_model_exclude_none=True,
 )
 async def me(
+    session: Annotated[AsyncSession, Depends(get_session)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[AuthUserResponse]:
-    return SuccessResponse(data=user_response(user))
+    return SuccessResponse(data=await user_response(session, user))
 
 
 @router.patch(

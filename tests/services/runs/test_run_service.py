@@ -410,6 +410,7 @@ async def test_get_owned_run_state_builds_draft_reasoning_from_reasoning_delta_e
 
     assert state.draft_text == "answer"
     assert state.draft_reasoning == "think more"
+    assert state.provider_name == "deepseek"
 
 
 async def test_cancel_owned_run_deleted_conversation_returns_not_found(

@@ -1,5 +1,11 @@
 # Cloudflare R2 用户头像上传（交接）
 
+> **后续状态（2026-08-01）**：本文保留为旧头像 expand 路径的历史记录。新头像、
+> 文件资产、公开 delete+purge 与消息附件的当前权威设计见
+> [统一文件上传交接](2026-08-01-unified-file-upload.md)。旧 `avatar_object_key`、
+> `avatar_uploads` / `avatar_deletions`、任务和双读回退仍为安全排空而保留；file-upload
+> ticket 15 的 contract 前置生产验证尚未完成，不能据本文删表、撤销旧凭证或移除 fallback。
+
 日期：2026-07-14  
 需求来源：`.scratch/r2-avatar-upload/PRD.md`
 

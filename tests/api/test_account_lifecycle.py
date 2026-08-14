@@ -22,7 +22,20 @@ from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import create_app
 from app.models.auth_token import AuthToken
+from app.models.conversation import Conversation
 from app.models.email_outbox import EmailOutbox
+from app.models.files import (
+    FileAsset,
+    FileModelInputKind,
+    FileObject,
+    FileObjectDeletion,
+    FileObjectRole,
+    FilePurpose,
+    FileQuota,
+    FileStorageLocation,
+    FileUpload,
+    FileUploadStatus,
+)
 from app.models.user import User
 from app.services.auth import orchestration, rate_limit
 from app.services.auth.token_service import (
@@ -57,6 +70,18 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
     async def _clean() -> None:
         async with factory() as s:
+            user_ids = select(User.id).where(User.email.like(f"%@{TEST_DOMAIN}"))
+            object_ids = select(FileObject.id).where(
+                FileObject.file_id.in_(select(FileAsset.id).where(FileAsset.user_id.in_(user_ids)))
+            )
+            await s.execute(
+                delete(FileObjectDeletion).where(FileObjectDeletion.file_object_id.in_(object_ids))
+            )
+            await s.execute(
+                delete(FileObjectDeletion).where(
+                    FileObjectDeletion.object_key == "files/inflight/original"
+                )
+            )
             await s.execute(delete(User).where(User.email.like(f"%@{TEST_DOMAIN}")))
             await s.execute(
                 delete(EmailOutbox).where(EmailOutbox.recipient_email.like(f"%@{TEST_DOMAIN}"))
@@ -837,6 +862,150 @@ async def test_confirm_deletion_end_to_end_locks_out_account(
             )
         ).scalars().all()
         assert len(conversations) == 1
+
+
+async def test_confirm_deletion_cancels_inflight_files_and_removes_only_public_avatar(
+    client: AsyncClient,
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, username="files-on-deactivate")
+    user_id = user_id_of(data)
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        user = await session.get(User, user_id)
+        assert user is not None
+        avatar = FileAsset(
+            user_id=user.id,
+            purpose=FilePurpose.AVATAR,
+            original_filename="avatar.webp",
+            media_type="image/webp",
+            size_bytes=123,
+            sha256="a" * 64,
+            warnings=[],
+            model_input_kind=None,
+        )
+        attachment = FileAsset(
+            user_id=user.id,
+            purpose=FilePurpose.MESSAGE_ATTACHMENT,
+            original_filename="retained.txt",
+            media_type="text/plain",
+            size_bytes=17,
+            sha256="b" * 64,
+            warnings=[],
+            model_input_kind=FileModelInputKind.DOCUMENT,
+            document_text="retained",
+            bound_at=now,
+        )
+        session.add_all([avatar, attachment])
+        await session.flush()
+        avatar_object = FileObject(
+            file_id=avatar.id,
+            role=FileObjectRole.AVATAR_512,
+            storage_location=FileStorageLocation.AVATAR_PUBLIC,
+            object_key="avatars/active.webp",
+            media_type="image/webp",
+            size_bytes=123,
+            sha256="a" * 64,
+        )
+        attachment_object = FileObject(
+            file_id=attachment.id,
+            role=FileObjectRole.ORIGINAL,
+            storage_location=FileStorageLocation.CANONICAL_PRIVATE,
+            object_key="files/retained/original",
+            media_type="text/plain",
+            size_bytes=17,
+            sha256="b" * 64,
+        )
+        upload = FileUpload(
+            user_id=user.id,
+            purpose=FilePurpose.MESSAGE_ATTACHMENT,
+            original_filename="inflight.txt",
+            declared_content_type="text/plain",
+            declared_size_bytes=11,
+            staging_object_key="staging/account-deactivate",
+            confirmed_etag="etag",
+            status=FileUploadStatus.PROCESSING,
+            available_at=now,
+            expires_at=now + timedelta(minutes=30),
+            lease_owner="worker",
+            lease_expires_at=now + timedelta(minutes=5),
+            output_manifest=[
+                {
+                    "role": "original",
+                    "object_key": "files/inflight/original",
+                    "media_type": "text/plain",
+                    "size_bytes": 11,
+                    "sha256": "c" * 64,
+                }
+            ],
+        )
+        user.avatar_file_id = avatar.id
+        user.avatar_object_key = "avatars/active.webp"
+        deleted_conversation = Conversation(
+            user_id=user.id,
+            title="keep deletion state",
+            deleted_at=now,
+            deletion_due_at=now + timedelta(days=30),
+        )
+        session.add_all(
+            [
+                avatar_object,
+                attachment_object,
+                upload,
+                deleted_conversation,
+                FileQuota(user_id=user.id, reserved_bytes=11),
+            ]
+        )
+        await session.commit()
+
+    email = f"files-on-deactivate@{TEST_DOMAIN}"
+    await request_deletion(client, data, PASSWORD)
+    token = await latest_deletion_token(session_factory, email)
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"avatar_public_base_url": "https://assets.test"}
+    )
+
+    response = await confirm_deletion(client, token)
+
+    assert response.status_code == status.HTTP_200_OK
+    async with session_factory() as session:
+        user = await session.get(User, user_id)
+        cancelled = await session.scalar(select(FileUpload).where(FileUpload.id == upload.id))
+        quota = await session.get(FileQuota, user_id)
+        retained = await session.get(FileAsset, attachment.id)
+        conversation = await session.get(Conversation, deleted_conversation.id)
+        public_deletion = await session.scalar(
+            select(FileObjectDeletion).where(FileObjectDeletion.file_object_id == avatar_object.id)
+        )
+        private_deletion = await session.scalar(
+            select(FileObjectDeletion).where(
+                FileObjectDeletion.storage_location == FileStorageLocation.CANONICAL_PRIVATE,
+                FileObjectDeletion.object_key == "files/inflight/original",
+            )
+        )
+        assert user is not None and user.is_active is False
+        assert user.avatar_file_id is None and user.avatar_object_key is None
+        assert cancelled is not None and cancelled.status == FileUploadStatus.CANCELLED
+        assert cancelled.error_code == "account_inactive"
+        assert quota is not None and quota.reserved_bytes == 0
+        assert retained is not None and retained.deletion_started_at is None
+        assert conversation is not None and conversation.deleted_at is not None
+        assert public_deletion is not None
+        assert public_deletion.purge_url == "https://assets.test/avatars/active.webp"
+        assert private_deletion is not None
+
+        # Operations recovery is intentionally just ``is_active=true``. It
+        # does not resurrect a purged avatar or reset per-conversation deletion.
+        user.is_active = True
+        await session.commit()
+
+    async with session_factory() as session:
+        restored = await session.get(User, user_id)
+        conversation = await session.get(Conversation, deleted_conversation.id)
+        assert restored is not None
+        assert restored.avatar_file_id is None and restored.avatar_object_key is None
+        assert conversation is not None and conversation.deleted_at is not None
 
 
 async def test_confirm_deletion_revokes_tokens_of_every_purpose(

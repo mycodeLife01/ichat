@@ -33,6 +33,8 @@ class ChatModel:
     model: str
     label: str
     thinking_levels: tuple[str, ...]
+    supports_image_input: bool = False
+    image_token_reserve: int | None = None
 
 
 def _display_label(model: str) -> str:
@@ -61,16 +63,23 @@ def available_chat_models(settings: Settings) -> list[ChatModel]:
             model=model,
             label=_display_label(model),
             thinking_levels=_deepseek_levels(model),
+            supports_image_input=False,
+            image_token_reserve=None,
         )
         for model in settings.deepseek_models_list
     ]
     if settings.openai_available:
+        vision_models = set(settings.openai_vision_models_list)
         models.extend(
             ChatModel(
                 provider_name="openai",
                 model=model,
                 label=_display_label(model),
                 thinking_levels=_openai_levels(model),
+                supports_image_input=model in vision_models,
+                image_token_reserve=(
+                    settings.openai_image_token_reserve if model in vision_models else None
+                ),
             )
             for model in settings.openai_models_list
         )

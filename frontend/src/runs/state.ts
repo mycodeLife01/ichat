@@ -6,6 +6,7 @@ import type { AppAction } from "../app/store";
 export type ActiveRunState = {
   runId: string;
   conversationId: string;
+  providerName: string | null;
   latestSeq: number;
   draftText: string;
   draftReasoning: string;
@@ -17,11 +18,17 @@ export type ActiveRunState = {
 export const initialActiveRunState: ActiveRunState = null;
 
 export type ActiveRunAction =
-  | { type: "run/started"; runId: string; conversationId: string }
+  | {
+      type: "run/started";
+      runId: string;
+      conversationId: string;
+      providerName?: string | null;
+    }
   | {
       type: "run/restored";
       runId: string;
       conversationId: string;
+      providerName?: string | null;
       latestSeq: number;
       draftText: string;
       draftReasoning: string;
@@ -45,6 +52,7 @@ export function activeRunReducer(
       return {
         runId: action.runId,
         conversationId: action.conversationId,
+        providerName: action.providerName ?? null,
         latestSeq: 0,
         draftText: "",
         draftReasoning: "",
@@ -100,6 +108,7 @@ export function activeRunReducer(
       return {
         runId: action.runId,
         conversationId: action.conversationId,
+        providerName: action.providerName ?? null,
         latestSeq: action.latestSeq,
         draftText: action.draftText,
         draftReasoning: keepThinking ? action.draftReasoning : "",

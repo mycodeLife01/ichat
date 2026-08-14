@@ -232,6 +232,7 @@ async def get_owned_run_state(
 
     return RunStateResponse(
         run_id=run.public_id,
+        provider_name=run.provider_name,
         status=cast(RunStatus, run.status),
         latest_seq=latest_seq,
         draft_text=draft_text,

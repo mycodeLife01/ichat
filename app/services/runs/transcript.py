@@ -6,7 +6,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
+    ImageBlock,
     Message,
     ReasoningBlock,
     Role,
@@ -78,6 +81,44 @@ def serialize_blocks(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
     for block in blocks:
         if isinstance(block, TextBlock):
             serialized.append({"type": "text", "text": block.text})
+        elif isinstance(block, DocumentBlock):
+            serialized.append(
+                {
+                    "type": "document",
+                    "file_id": block.file_id,
+                    "filename": block.filename,
+                    "media_type": block.media_type,
+                    "text": block.text,
+                    "sha256": block.sha256,
+                    "extractor_version": block.extractor_version,
+                    "warnings": list(block.warnings),
+                    "summary": block.summary,
+                }
+            )
+        elif isinstance(block, ImageBlock):
+            serialized.append(
+                {
+                    "type": "image",
+                    "file_id": block.file_id,
+                    "filename": block.filename,
+                    "media_type": block.media_type,
+                    "sha256": block.sha256,
+                    "width": block.width,
+                    "height": block.height,
+                    "processor_version": block.processor_version,
+                    "warnings": list(block.warnings),
+                }
+            )
+        elif isinstance(block, AttachmentNoticeBlock):
+            serialized.append(
+                {
+                    "type": "attachment_notice",
+                    "file_id": block.file_id,
+                    "filename": block.filename,
+                    "media_type": block.media_type,
+                    "notice": block.notice,
+                }
+            )
         elif isinstance(block, ReasoningBlock):
             serialized.append({"type": "reasoning", "text": block.text})
         elif isinstance(block, ToolCallBlock):
@@ -117,6 +158,70 @@ def _deserialize_blocks(raw_blocks: object) -> list[ContentBlock]:
         block_type = raw.get("type")
         if block_type == "text":
             blocks.append(TextBlock(text=_required_string(raw, "text")))
+        elif block_type == "document":
+            warnings = raw.get("warnings", [])
+            if not isinstance(warnings, list) or not all(
+                isinstance(item, str) for item in warnings
+            ):
+                raise ValueError("Transcript document warnings must be a string array")
+            summary = raw.get("summary")
+            if summary is not None and not isinstance(summary, dict):
+                raise ValueError("Transcript document summary must be a JSON object")
+            blocks.append(
+                DocumentBlock(
+                    file_id=_required_string(raw, "file_id"),
+                    filename=_required_string(raw, "filename"),
+                    media_type=_required_string(raw, "media_type"),
+                    text=_required_string(raw, "text"),
+                    sha256=_required_string(raw, "sha256"),
+                    extractor_version=_required_string(raw, "extractor_version"),
+                    warnings=tuple(warnings),
+                    summary=summary,
+                )
+            )
+        elif block_type == "attachment_notice":
+            blocks.append(
+                AttachmentNoticeBlock(
+                    file_id=_required_string(raw, "file_id"),
+                    filename=_required_string(raw, "filename"),
+                    media_type=_required_string(raw, "media_type"),
+                    notice=_required_string(raw, "notice"),
+                )
+            )
+        elif block_type == "image":
+            _require_exact_fields(
+                raw,
+                {
+                    "type",
+                    "file_id",
+                    "filename",
+                    "media_type",
+                    "sha256",
+                    "width",
+                    "height",
+                    "processor_version",
+                    "warnings",
+                },
+            )
+            warnings = raw.get("warnings")
+            if not isinstance(warnings, list) or not all(
+                isinstance(item, str) for item in warnings
+            ):
+                raise ValueError("Transcript image warnings must be a string array")
+            width = _required_positive_int(raw, "width")
+            height = _required_positive_int(raw, "height")
+            blocks.append(
+                ImageBlock(
+                    file_id=_required_string(raw, "file_id"),
+                    filename=_required_string(raw, "filename"),
+                    media_type=_required_string(raw, "media_type"),
+                    sha256=_required_string(raw, "sha256"),
+                    width=width,
+                    height=height,
+                    processor_version=_required_string(raw, "processor_version"),
+                    warnings=tuple(warnings),
+                )
+            )
         elif block_type == "reasoning":
             blocks.append(ReasoningBlock(text=_required_string(raw, "text")))
         elif block_type == "tool_call":
@@ -170,6 +275,18 @@ def _required_string(raw: Mapping[object, object], field: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"Transcript block field {field!r} must be a string")
     return value
+
+
+def _required_positive_int(raw: Mapping[object, object], field: str) -> int:
+    value = raw.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"Transcript image field {field!r} must be a positive integer")
+    return value
+
+
+def _require_exact_fields(raw: Mapping[object, object], expected: set[str]) -> None:
+    if set(raw) != expected:
+        raise ValueError("Transcript image fields are incomplete or inconsistent")
 
 
 def _estimate_tokens(

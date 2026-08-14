@@ -89,6 +89,7 @@ describe("useRunRecovery", () => {
     expect(result.current.activeRun).toEqual({
       runId: "100",
       conversationId: conversationResponse.id,
+      providerName: runStateResponse.provider_name,
       latestSeq: runStateResponse.latest_seq,
       draftText: runStateResponse.draft_text,
       draftReasoning: "",

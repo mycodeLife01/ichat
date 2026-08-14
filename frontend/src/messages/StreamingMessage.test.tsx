@@ -8,6 +8,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
   return {
     runId: "1",
     conversationId: "10",
+    providerName: "openai",
     latestSeq: 1,
     draftText: "",
     draftReasoning: "",
@@ -38,14 +39,76 @@ describe("StreamingMessage", () => {
     expect(screen.queryByText("正在思考")).toBeNull();
   });
 
-  it("hides reasoning after the formal answer starts", () => {
+  it("auto-expands DeepSeek raw reasoning behind the generic thinking label", () => {
     render(
       <StreamingMessage
-        run={run({ draftText: "正式回答", draftReasoning: "不再展示", status: "streaming" })}
+        run={run({
+          providerName: "deepseek",
+          draftReasoning: "正在逐步推导答案",
+          status: "streaming",
+        })}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("正在逐步推导答案");
+    expect(screen.getByText("正在逐步推导答案")).not.toHaveClass("hidden");
+  });
+
+  it("auto-expands recovered DeepSeek reasoning behind the thinking label", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          providerName: "deepseek",
+          draftReasoning: "刷新前已经生成的思考过程",
+          status: "streaming",
+        })}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("刷新前已经生成的思考过程");
+    expect(screen.getByText("刷新前已经生成的思考过程")).not.toHaveClass("hidden");
+  });
+
+  it("collapses reasoning above the formal answer instead of removing it", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          providerName: "deepseek",
+          draftText: "正式回答",
+          draftReasoning: "收起的思考",
+          status: "streaming",
+        })}
       />,
     );
     expect(screen.getByText("正式回答")).toBeInTheDocument();
-    expect(screen.queryByText("不再展示")).toBeNull();
+    expect(screen.getByText("收起的思考")).toHaveClass("hidden");
+    expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps reasoning visible while the first answer delta is only whitespace", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          providerName: "deepseek",
+          draftText: "\n",
+          draftReasoning: "仍在展示的思考",
+          status: "streaming",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("仍在展示的思考")).not.toHaveClass("hidden");
+    expect(screen.getByRole("button", { name: /正在思考/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("surfaces web search phases in the collapsible header and shows no preview box", () => {

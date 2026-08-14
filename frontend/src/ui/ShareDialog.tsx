@@ -8,6 +8,7 @@ import { ModalDialog } from "./ModalDialog";
 
 type ShareDialogProps = {
   conversationId: string;
+  hasAttachments?: boolean;
   onClose: () => void;
 };
 
@@ -22,7 +23,7 @@ function shareUrl(token: string): string {
   return `${window.location.origin}/share/${token}`;
 }
 
-export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
+export function ShareDialog({ conversationId, hasAttachments = false, onClose }: ShareDialogProps) {
   const { services, dispatch } = useAppActions();
   const [expiryIndex, setExpiryIndex] = useState(0);
   // The API returns only the active link (at most one per conversation);
@@ -64,7 +65,16 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
     if (creating) return;
     setCreating(true);
     try {
-      const link = await services.shareApi.create(conversationId, EXPIRY_OPTIONS[expiryIndex].days);
+      // The attachment notice is informational: showing it is the disclosure,
+      // so creating the link is itself the acknowledgement. The API still
+      // requires the explicit flag, which keeps the guard for other clients.
+      const link = hasAttachments
+        ? await services.shareApi.create(
+            conversationId,
+            EXPIRY_OPTIONS[expiryIndex].days,
+            true,
+          )
+        : await services.shareApi.create(conversationId, EXPIRY_OPTIONS[expiryIndex].days);
       setActiveLink(link);
       // Creation succeeded regardless of what the clipboard does next; the
       // copy attempt then reports its own success/failure on top.
@@ -97,7 +107,7 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
       titleId="share-dialog-title"
       descriptionId="share-dialog-description"
       onClose={onClose}
-      className="w-full max-w-[440px] p-[22px]"
+      className="w-full max-w-[480px] p-6"
     >
       <div className="mb-1 flex items-center justify-between">
         <h3 id="share-dialog-title" className="text-[15px] font-semibold">
@@ -170,7 +180,12 @@ export function ShareDialog({ conversationId, onClose }: ShareDialogProps) {
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-4">
+            {hasAttachments && (
+              <p className="w-full rounded-control border border-warning-border bg-warning-soft px-3 py-2.5 text-[12.5px] leading-[1.6] text-warning-foreground">
+                本对话中的附件将对访问者可见
+              </p>
+            )}
             <div className="flex gap-1.5" role="radiogroup" aria-label="过期时间">
               {EXPIRY_OPTIONS.map((option, index) => (
                 <button

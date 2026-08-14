@@ -13,6 +13,10 @@ export type ConversationListParams = {
   skip?: number;
 };
 
+export type ConversationDeletionResponse = CommandStatusResponse & {
+  deletion_due_at?: string | null;
+};
+
 export function createConversationApi(client?: Pick<ApiClient, "request">) {
   const resolveClient = () => client ?? getDefaultApiClient();
 
@@ -35,12 +39,18 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       content: string,
       options?: RunOptionsRequest,
       title?: string,
+      attachmentIds?: string[],
     ): Promise<ConversationCreateWithMessageResponse> {
       return resolveClient().request<ConversationCreateWithMessageResponse>(
         "/conversations/with-message",
         {
           method: "POST",
-          body: { title: title ?? null, content, ...options },
+          body: {
+            title: title ?? null,
+            content,
+            ...options,
+            ...(attachmentIds === undefined ? {} : { attachment_ids: attachmentIds }),
+          },
         },
       );
     },
@@ -55,8 +65,8 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         body: { title },
       });
     },
-    remove(conversationId: string): Promise<CommandStatusResponse> {
-      return resolveClient().request<CommandStatusResponse>(
+    remove(conversationId: string): Promise<ConversationDeletionResponse> {
+      return resolveClient().request<ConversationDeletionResponse>(
         `/conversations/${conversationId}`,
         { method: "DELETE" },
       );
@@ -65,10 +75,18 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       conversationId: string,
       content: string,
       options?: RunOptionsRequest,
+      attachmentIds?: string[],
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages`,
-        { method: "POST", body: { content, ...options } },
+        {
+          method: "POST",
+          body: {
+            content,
+            ...options,
+            ...(attachmentIds === undefined ? {} : { attachment_ids: attachmentIds }),
+          },
+        },
       );
     },
     editAndRegenerate(
@@ -76,10 +94,18 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       messageId: string,
       content: string,
       options?: RunOptionsRequest,
+      attachmentIds?: string[],
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages/${messageId}/edit-and-regenerate`,
-        { method: "POST", body: { content, ...options } },
+        {
+          method: "POST",
+          body: {
+            content,
+            ...options,
+            ...(attachmentIds === undefined ? {} : { attachment_ids: attachmentIds }),
+          },
+        },
       );
     },
     regenerate(

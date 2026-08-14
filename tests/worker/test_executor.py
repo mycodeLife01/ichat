@@ -303,7 +303,7 @@ async def test_execute_run_keeps_title_job_when_broker_publish_fails(
         assert job is not None and job.status == "pending"
 
 
-async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
+async def test_execute_run_retries_temporary_image_failure_before_any_delta(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
@@ -336,7 +336,11 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
         ) -> AsyncIterator[StreamEvent]:
             call_count["n"] += 1
             if call_count["n"] == 1:
-                raise ProviderError(code="transient", message="first attempt")
+                raise ProviderError(
+                    code="image_input_temporary",
+                    message="first attempt",
+                    retryable=True,
+                )
             yield TextDelta(text="Recovered")
             yield StreamDone(finish_reason="stop")
 
@@ -368,7 +372,7 @@ async def test_execute_run_retries_once_when_provider_fails_before_any_delta(
         ]
 
 
-async def test_execute_run_does_not_retry_after_persisted_delta(
+async def test_execute_run_does_not_retry_temporary_image_failure_after_persisted_delta(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
@@ -387,7 +391,11 @@ async def test_execute_run_does_not_retry_after_persisted_delta(
     fake = FakeProvider(
         script=[
             TextDelta(text="partial"),
-            RaiseError(code="upstream_5xx", message="boom mid-stream"),
+            RaiseError(
+                code="image_input_temporary",
+                message="boom mid-stream",
+                retryable=True,
+            ),
         ]
     )
 
@@ -403,7 +411,7 @@ async def test_execute_run_does_not_retry_after_persisted_delta(
         run = await session.get(Run, run_id)
         assert run is not None
         assert run.status == "failed"
-        assert run.error_code == "upstream_5xx"
+        assert run.error_code == "image_input_temporary"
 
         events = (
             await session.scalars(
@@ -477,6 +485,61 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
         assert run is not None
         assert run.status == "failed"
         assert run.error_code == "dead"
+
+
+async def test_execute_run_does_not_retry_permanent_image_failure(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    call_count = {"n": 0}
+
+    class PermanentlyFailingProvider(GenerateMixin, Provider):
+        @property
+        def name(self) -> str:
+            return "fake"
+
+        async def stream(
+            self,
+            *,
+            model: str,
+            messages: list[AgentMessage],
+            reasoning: ReasoningConfig | None = None,
+            tools: list[ToolSpec] | None = None,
+        ) -> AsyncIterator[StreamEvent]:
+            call_count["n"] += 1
+            raise ProviderError(
+                code="image_input_unavailable",
+                message="snapshot mismatch",
+                retryable=False,
+            )
+            yield  # pragma: no cover
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(PermanentlyFailingProvider()),
+    )
+
+    assert call_count["n"] == 1
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_code == "image_input_unavailable"
 
 
 async def test_execute_run_marks_cancelled_when_context_build_fails_after_db_cancelling(

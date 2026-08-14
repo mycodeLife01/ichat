@@ -14,6 +14,8 @@ def test_deployment_definitions_are_uploaded_before_compose_commands() -> None:
     assert checkout_position < upload_position < compose_position
     assert "compose.prod.yml" in workflow[upload_position:compose_position]
     assert "deploy/nginx.conf" in workflow[upload_position:compose_position]
+    assert "deploy/clamav/entrypoint.sh" in workflow[upload_position:compose_position]
+    assert "deploy/clamav/healthcheck.sh" in workflow[upload_position:compose_position]
 
 
 def test_remote_deployment_is_fail_fast_and_updates_the_complete_topology() -> None:

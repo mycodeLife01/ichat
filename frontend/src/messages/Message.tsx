@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
+import { AttachmentCard } from "../files/AttachmentCard";
+import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
   buttonControl,
@@ -13,6 +15,7 @@ import {
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
+import { MessageAttachments } from "./MessageAttachments";
 import { SourceFavicon } from "./SourcesPanel";
 
 type MessageProps = {
@@ -23,8 +26,19 @@ type MessageProps = {
   isMobile?: boolean;
   // null = enabled; a string = disabled with that Chinese reason.
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onEditAndRegenerate?: (
+    messageId: string,
+    content: string,
+    attachmentIds?: string[],
+  ) => void;
   onRegenerate?: (messageId: string) => void;
+  legacyUpgradeAvailable?: boolean;
+  onUpgradeLegacy?: (messageId: string) => void;
+  onEditUpgradeLegacy?: (messageId: string) => boolean | void | Promise<boolean | void>;
+  onStartNewConversation?: () => void;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  localImagePreviews?: ReadonlyMap<string, string>;
+  onLocalImagePreviewConsumed?: (fileId: string) => void;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };
@@ -46,6 +60,13 @@ export function Message({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  legacyUpgradeAvailable = false,
+  onUpgradeLegacy,
+  onEditUpgradeLegacy,
+  onStartNewConversation,
+  onReadAttachment,
+  localImagePreviews,
+  onLocalImagePreviewConsumed,
   onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
@@ -110,10 +131,24 @@ export function Message({
     setDraft(message.content);
     setEditing(true);
   };
+  const editAndUpgradeLegacy = () => {
+    if (!onEditUpgradeLegacy) return;
+    const result = onEditUpgradeLegacy(message.id);
+    if (result instanceof Promise) {
+      void result.then((allowed) => {
+        if (allowed !== false) startEditing();
+      }).catch(() => {});
+      return;
+    }
+    if (result !== false) startEditing();
+  };
   const mutate = isUser ? startEditing : () => onRegenerate?.(message.id);
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
-
+  const messageAttachments = message.attachments ?? [];
+  const hasMessageModelInput = messageAttachments.some(
+    (attachment) => attachment.model_input_kind !== null,
+  );
   // Copy shows a transient check (已复制) before reverting to the copy icon.
   const handleCopy = () => {
     copy(message.content);
@@ -222,8 +257,10 @@ export function Message({
   if (isUser && editing) {
     const save = () => {
       const trimmed = draft.trim();
-      if (trimmed === "") return;
+      if (trimmed === "" && !hasMessageModelInput) return;
       setEditing(false);
+      // Message editing is text-only. Omitting attachment_ids preserves the
+      // current revision's immutable attachment set and ordering.
       onEditAndRegenerate?.(message.id, trimmed);
     };
     const cancel = () => {
@@ -234,7 +271,27 @@ export function Message({
       <div className={`${msgBase} user items-end`}>
         {/* Editing uses a full-width panel rather than stretching the compact
             message bubble, matching the visual hierarchy of the reference. */}
-        <div className="w-full animate-edit-in rounded-[24px] bg-sunken p-3">
+        <div
+          className="w-full animate-edit-in rounded-[24px] bg-sunken px-3 py-3"
+          data-testid="message-editor"
+        >
+          {messageAttachments.length > 0 && (
+            <div
+              className="flex flex-wrap gap-2"
+              aria-label="编辑消息附件"
+              data-attachment-group="editor"
+            >
+              {messageAttachments.map((attachment) => (
+                <AttachmentCard
+                  key={attachment.id}
+                  attachment={attachment}
+                  mode="editor"
+                  getReadUrl={onReadAttachment}
+                  imageLayout={attachment.category === "image" ? "mixed" : undefined}
+                />
+              ))}
+            </div>
+          )}
           <div className="m-2 max-h-[25dvh] overflow-y-auto">
             <textarea
               autoFocus
@@ -259,11 +316,11 @@ export function Message({
               取消
             </button>
             <button
-              className={`${primaryButton} h-9 rounded-full px-3 text-[14px] font-medium leading-5`}
+              className={`${primaryButton} h-9 rounded-full px-[13px] text-[14px] font-medium leading-5`}
               onClick={save}
-              disabled={draft.trim() === ""}
+              disabled={draft.trim() === "" && !hasMessageModelInput}
             >
-              保存
+              发送
             </button>
           </div>
         </div>
@@ -275,44 +332,90 @@ export function Message({
     const collapsed = overflowing && !expanded;
     return (
       <div className={`${msgBase} user items-end`}>
-        <div
-          className={`max-w-[70%] ${messageBubble}${
-            isMobile ? " select-none [-webkit-touch-callout:none]" : ""
-          }`}
-          onTouchStart={isMobile ? startLongPress : undefined}
-          onTouchEnd={isMobile ? cancelLongPress : undefined}
-          onTouchMove={isMobile ? cancelLongPress : undefined}
-          onTouchCancel={isMobile ? cancelLongPress : undefined}
-          // Android fires contextmenu on long-press — keep the sheet, not the
-          // system menu. (select-none/touch-callout cover iOS selection.)
-          onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
-        >
-          <div className="relative">
+        <div className="flex w-full flex-col items-end gap-1">
+          {legacyUpgradeAvailable && (
             <div
-              ref={contentRef}
-              className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
-              style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
+              className="w-full max-w-[70%] rounded-xl border border-warning-border bg-warning-soft px-3 py-2 text-left text-[13px] text-warning-foreground"
+              data-testid="legacy-image-upgrade"
             >
-              {message.content}
+              <p>Upgrade this image message with a vision model to ask questions about it.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  onClick={() => onUpgradeLegacy?.(message.id)}
+                >
+                  Upgrade with GPT
+                </button>
+                <button
+                  type="button"
+                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  onClick={editAndUpgradeLegacy}
+                >
+                  编辑并升级
+                </button>
+                {onStartNewConversation && (
+                  <button
+                    type="button"
+                    className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                    onClick={onStartNewConversation}
+                  >
+                    Start new conversation
+                  </button>
+                )}
+              </div>
             </div>
-            {/* Fade the clipped last line into the bubble background. */}
-            {collapsed && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
-            )}
-          </div>
-          {overflowing && (
-            <button
-              className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
+          )}
+          {messageAttachments.length > 0 && (
+            <MessageAttachments
+              attachments={messageAttachments}
+              onReadAttachment={onReadAttachment}
+              localImagePreviews={localImagePreviews}
+              onLocalImagePreviewConsumed={onLocalImagePreviewConsumed}
+              align="end"
+            />
+          )}
+          {message.content !== "" && (
+            <div
+              className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}${
+                isMobile ? " select-none [-webkit-touch-callout:none]" : ""
+              }`}
+              onTouchStart={isMobile ? startLongPress : undefined}
+              onTouchEnd={isMobile ? cancelLongPress : undefined}
+              onTouchMove={isMobile ? cancelLongPress : undefined}
+              onTouchCancel={isMobile ? cancelLongPress : undefined}
+              // Android fires contextmenu on long-press — keep the sheet, not the
+              // system menu. (select-none/touch-callout cover iOS selection.)
+              onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
             >
-              {expanded ? "收起" : "展开"}
-              <Icons.Chevron
-                size={13}
-                className={`transition-transform duration-[160ms]${expanded ? " rotate-180" : ""}`}
-              />
-            </button>
+              <div className="relative">
+                <div
+                  ref={contentRef}
+                  className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
+                  style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
+                >
+                  {message.content}
+                </div>
+                {/* Fade the clipped last line into the bubble background. */}
+                {collapsed && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
+                )}
+              </div>
+              {overflowing && (
+                <button
+                  className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  {expanded ? "收起" : "展开"}
+                  <Icons.Chevron
+                    size={13}
+                    className={`transition-transform duration-[160ms]${expanded ? " rotate-180" : ""}`}
+                  />
+                </button>
+              )}
+            </div>
           )}
         </div>
         {actionBar}
@@ -328,6 +431,12 @@ export function Message({
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}
         <Markdown content={message.content} sources={message.metadata?.sources} isMobile={isMobile} />
+        {messageAttachments.length > 0 && (
+          <MessageAttachments
+            attachments={messageAttachments}
+            onReadAttachment={onReadAttachment}
+          />
+        )}
         {sources.length > 0 && (
           <SourcesTrigger sources={sources} onClick={() => onShowSources?.(sources)} />
         )}

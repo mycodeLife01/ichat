@@ -4,8 +4,10 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     # Bumped from default 100 to cover the API and worker SQLAlchemy pools.
     command:
       - "postgres"
@@ -36,8 +38,8 @@ services:
 
   migrate:
     image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
-    env_file:
-      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
     command: ["python", "-m", "alembic", "upgrade", "head"]
     depends_on:
       postgres:
@@ -50,6 +52,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      FILES_WORKER_ACCESS_KEY_ID: ""
+      FILES_WORKER_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_LLM_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_LLM_SECRET_ACCESS_KEY: ""
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     expose:
       - "8000"
@@ -64,6 +71,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      FILE_UPLOAD_ENABLED: "false"
+      FILES_UPLOAD_ACCESS_KEY_ID: ""
+      FILES_UPLOAD_SECRET_ACCESS_KEY: ""
+      FILES_STAGING_BUCKET: ""
+      FILES_CANONICAL_BUCKET: ""
+      FILES_WORKER_ACCESS_KEY_ID: ""
+      FILES_WORKER_SECRET_ACCESS_KEY: ""
+      FILES_DOWNLOAD_ACCESS_KEY_ID: ""
+      FILES_DOWNLOAD_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_API_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_API_SECRET_ACCESS_KEY: ""
     command: ["python", "-m", "app.worker"]
     deploy:
       replicas: 2
@@ -76,6 +95,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      FILE_UPLOAD_ENABLED: "false"
+      FILES_UPLOAD_ACCESS_KEY_ID: ""
+      FILES_UPLOAD_SECRET_ACCESS_KEY: ""
+      FILES_WORKER_ACCESS_KEY_ID: ""
+      FILES_WORKER_SECRET_ACCESS_KEY: ""
+      FILES_DOWNLOAD_ACCESS_KEY_ID: ""
+      FILES_DOWNLOAD_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_API_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_API_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_LLM_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_LLM_SECRET_ACCESS_KEY: ""
     # Executes email and finite LLM tasks (conversation titles). Safe to scale to N.
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
     depends_on:
@@ -89,11 +120,98 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      FILE_UPLOAD_ENABLED: "false"
+      FILES_UPLOAD_ACCESS_KEY_ID: ""
+      FILES_UPLOAD_SECRET_ACCESS_KEY: ""
+      FILES_WORKER_ACCESS_KEY_ID: ""
+      FILES_WORKER_SECRET_ACCESS_KEY: ""
+      FILES_DOWNLOAD_ACCESS_KEY_ID: ""
+      FILES_DOWNLOAD_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_API_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_API_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_LLM_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_LLM_SECRET_ACCESS_KEY: ""
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=media", "--concurrency=2"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/usr/local/bin/ichat-clamav-entrypoint.sh"]
+    environment:
+      CLAMAV_SIGNATURE_MAX_AGE_SECONDS: ${CLAMAV_SIGNATURE_MAX_AGE_SECONDS:-172800}
+    volumes:
+      - clamav_data:/var/lib/clamav
+      - ./deploy/clamav/entrypoint.sh:/usr/local/bin/ichat-clamav-entrypoint.sh:ro
+      - ./deploy/clamav/healthcheck.sh:/usr/local/bin/ichat-clamav-healthcheck.sh:ro
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/usr/local/bin/ichat-clamav-healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 10m
+
+  file-worker:
+    image: ghcr.io/${GITHUB_REPO:-mycodelife01/ichat}:latest
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?CELERY_BROKER_URL is required}
+      CELERY_RESULT_BACKEND: ""
+      FILE_UPLOAD_ENABLED: "false"
+      FILES_R2_ENDPOINT_URL: ${FILES_R2_ENDPOINT_URL:-}
+      FILES_R2_REGION: ${FILES_R2_REGION:-auto}
+      FILES_STAGING_BUCKET: ${FILES_STAGING_BUCKET:-}
+      FILES_CANONICAL_BUCKET: ${FILES_CANONICAL_BUCKET:-}
+      FILES_PREVIEW_BUCKET: ${FILES_PREVIEW_BUCKET:-}
+      FILES_WORKER_ACCESS_KEY_ID: ${FILES_WORKER_ACCESS_KEY_ID:-}
+      FILES_WORKER_SECRET_ACCESS_KEY: ${FILES_WORKER_SECRET_ACCESS_KEY:-}
+      FILES_R2_CONNECT_TIMEOUT_SECONDS: ${FILES_R2_CONNECT_TIMEOUT_SECONDS:-5}
+      FILES_R2_READ_TIMEOUT_SECONDS: ${FILES_R2_READ_TIMEOUT_SECONDS:-30}
+      FILES_R2_MAX_ATTEMPTS: ${FILES_R2_MAX_ATTEMPTS:-3}
+      FILES_R2_PARALLEL_DOWNLOAD_THRESHOLD_BYTES: ${FILES_R2_PARALLEL_DOWNLOAD_THRESHOLD_BYTES:-5242880}
+      FILES_R2_PARALLEL_DOWNLOAD_MAX_CONCURRENCY: ${FILES_R2_PARALLEL_DOWNLOAD_MAX_CONCURRENCY:-3}
+      FILES_PROCESSING_LEASE_SECONDS: ${FILES_PROCESSING_LEASE_SECONDS:-300}
+      FILES_PROCESSING_MAX_ATTEMPTS: ${FILES_PROCESSING_MAX_ATTEMPTS:-3}
+      FILES_PARSER_TIMEOUT_SECONDS: ${FILES_PARSER_TIMEOUT_SECONDS:-120}
+      FILES_ATTEMPT_TIMEOUT_SECONDS: ${FILES_ATTEMPT_TIMEOUT_SECONDS:-180}
+      FILES_MAINTENANCE_INTERVAL_SECONDS: ${FILES_MAINTENANCE_INTERVAL_SECONDS:-60}
+      FILES_MAINTENANCE_BATCH_SIZE: ${FILES_MAINTENANCE_BATCH_SIZE:-100}
+      FILES_CLEANUP_SAFETY_SECONDS: ${FILES_CLEANUP_SAFETY_SECONDS:-300}
+      FILES_DETACHED_RETENTION_SECONDS: ${FILES_DETACHED_RETENTION_SECONDS:-2592000}
+      CONVERSATION_DELETION_RETENTION_SECONDS: ${CONVERSATION_DELETION_RETENTION_SECONDS:-2592000}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_SECONDS: ${CLAMAV_TIMEOUT_SECONDS:-30}
+      CLAMAV_SIGNATURE_MAX_AGE_SECONDS: ${CLAMAV_SIGNATURE_MAX_AGE_SECONDS:-172800}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      JWT_SECRET: file-worker-unused-not-a-real-secret
+      JWT_ACCESS_TOKEN_TTL_SECONDS: "900"
+      REFRESH_TOKEN_TTL_SECONDS: "2592000"
+      DEEPSEEK_API_KEY: file-worker-unused
+      DEEPSEEK_BASE_URL: https://disabled.invalid
+      DEEPSEEK_MODEL: disabled
+      DEEPSEEK_THINKING_ENABLED: "false"
+      RUN_LEASE_SECONDS: "60"
+      WORKER_POLL_INTERVAL_SECONDS: "30"
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
+      SUMMARY_PROVIDER_NAME: deepseek
+      SUMMARY_MODEL: disabled
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--queues=files", "--concurrency=2", "--prefetch-multiplier=1", "--max-tasks-per-child=${FILES_WORKER_MAX_TASKS_PER_CHILD:-50}"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
 
   celery-beat:
@@ -103,6 +221,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      FILE_UPLOAD_ENABLED: "false"
+      FILES_UPLOAD_ACCESS_KEY_ID: ""
+      FILES_UPLOAD_SECRET_ACCESS_KEY: ""
+      FILES_WORKER_ACCESS_KEY_ID: ""
+      FILES_WORKER_SECRET_ACCESS_KEY: ""
+      FILES_DOWNLOAD_ACCESS_KEY_ID: ""
+      FILES_DOWNLOAD_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_API_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_API_SECRET_ACCESS_KEY: ""
+      FILES_PREVIEW_LLM_ACCESS_KEY_ID: ""
+      FILES_PREVIEW_LLM_SECRET_ACCESS_KEY: ""
     command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
     depends_on:
       redis:
@@ -122,3 +252,4 @@ services:
 
 volumes:
   postgres_data:
+  clamav_data:

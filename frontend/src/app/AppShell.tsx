@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
-import { Topbar } from "../conversations/Topbar";
+import { ThreadActions } from "../conversations/ThreadActions";
 import { useConversationLoader } from "../conversations/useConversationLoader";
+import { useQuickShare } from "../conversations/useQuickShare";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { useTitlePolling } from "../conversations/useTitlePolling";
+import { useAttachmentUploads } from "../files/useAttachmentUploads";
+import type { FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
 import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
@@ -75,6 +78,11 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  const [fileCapability, setFileCapability] = useState<FilesCapability>();
+  const sentImagePreviewUrlsRef = useRef(new Map<string, string>());
+  const [sentImagePreviews, setSentImagePreviews] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   // Thinking level drives the per-request thinking options sent with every
   // send/edit/regenerate call (read from the store at call time); persisted so
   // the choice survives reloads.
@@ -89,6 +97,9 @@ export function AppShell() {
   // applies while the server still offers it (modelPreferenceStore.resolve()).
   const [models, setModels] = useState<ChatModelCapability[]>([]);
   const [modelId, setModelId] = useState<string | null>(null);
+  const appliedImageContextRef = useRef<string | null>(null);
+  const imageContext = detail.imageContext;
+  const selectedModel = models.find((entry) => entry.id === modelId) ?? null;
   const onThinkingLevelChange = (level: ThinkingLevel) => {
     thinkingLevelStore.save(level);
     setThinkingLevel(level);
@@ -129,7 +140,45 @@ export function AppShell() {
   const { editAndRegenerate, regenerate } = useRegenerate(start);
   const recover = useRunRecovery(start);
   const pollTitle = useTitlePolling();
+  const quickShare = useQuickShare();
   const pendingTitleIds = conversationIndex.pendingTitleIds;
+  const restoreComposerContent = useCallback((content: string) => {
+    setComposerValue(content);
+  }, []);
+  const attachmentUploads = useAttachmentUploads({
+    userId: user?.id ?? null,
+    conversationId: selectedId,
+    capability: fileCapability,
+    selectedModel,
+    canCreate: user?.email_verified === true,
+    filesApi: services.filesApi,
+    onRestoredContent: restoreComposerContent,
+    onError: (message) => dispatch({ type: "ui/showToast", message, tone: "error" }),
+    onImagesBlocked: () =>
+      dispatch({
+        type: "ui/showToast",
+        message: "Switch to a vision model before uploading images.",
+        tone: "warning",
+      }),
+  });
+  const releaseSentImagePreview = useCallback((fileId: string) => {
+    const url = sentImagePreviewUrlsRef.current.get(fileId);
+    if (!url) return;
+    sentImagePreviewUrlsRef.current.delete(fileId);
+    URL.revokeObjectURL(url);
+    setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
+  }, []);
+  useEffect(
+    () => () => {
+      sentImagePreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      sentImagePreviewUrlsRef.current.clear();
+    },
+    [],
+  );
+  const onComposerValueChange = (value: string) => {
+    setComposerValue(value);
+    attachmentUploads.setDraftContent(value);
+  };
   // The id of the newest user message in the thread; advances on send and on
   // edit-and-regenerate (the edited message is re-created with a new id).
   const lastUserMessageId = detail.messages.filter((m) => m.role === "user").at(-1)?.id;
@@ -152,18 +201,56 @@ export function AppShell() {
 
   const onSend = () => {
     const text = composerValue;
-    if (text.trim() === "" || pendingSubmission !== null) return;
+    const readyImagesAllowed =
+      !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
+    if (
+      (!text.trim() && (!attachmentUploads.hasModelConsumableAttachment || !readyImagesAllowed)) ||
+      attachmentUploads.hasPendingAttachments ||
+      attachmentUploads.hasFailedAttachments ||
+      pendingSubmission !== null
+    ) {
+      return;
+    }
     // Animate the composer only for the first message of a brand-new conversation
     // (the empty/welcome state). Follow-up messages keep the composer pinned.
     if (selectedId == null || messages.length === 0) {
       setAnimateComposer(true);
     }
-    setComposerValue("");
-    void send(text).then((sent) => {
+    onComposerValueChange("");
+    const attachmentIds =
+      attachmentUploads.readyAttachmentIds.length > 0
+        ? attachmentUploads.readyAttachmentIds
+        : undefined;
+    const detachedImagePreviews = attachmentUploads.detachImagePreviews(attachmentIds ?? []);
+    if (detachedImagePreviews.length > 0) {
+      for (const preview of detachedImagePreviews) {
+        const previousUrl = sentImagePreviewUrlsRef.current.get(preview.fileId);
+        if (previousUrl && previousUrl !== preview.url) URL.revokeObjectURL(previousUrl);
+        sentImagePreviewUrlsRef.current.set(preview.fileId, preview.url);
+      }
+      setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
+    }
+    void send(text, attachmentIds).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
       if (!sent && stateRef.current.pendingSubmission === null) {
-        setComposerValue((current) => (current === "" ? text : current));
+        setComposerValue((current) => {
+          const restored = current === "" ? text : current;
+          attachmentUploads.setDraftContent(restored);
+          return restored;
+        });
+      }
+      if (sent) {
+        attachmentUploads.clear();
+      } else if (detachedImagePreviews.length > 0) {
+        attachmentUploads.restoreImagePreviews(detachedImagePreviews);
+        let changed = false;
+        for (const preview of detachedImagePreviews) {
+          if (sentImagePreviewUrlsRef.current.get(preview.fileId) !== preview.url) continue;
+          sentImagePreviewUrlsRef.current.delete(preview.fileId);
+          changed = true;
+        }
+        if (changed) setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
       }
     });
   };
@@ -229,10 +316,12 @@ export function AppShell() {
         modelPreferenceStore.setAvailable(capabilities.models);
         setModels(capabilities.models);
         setModelId(modelPreferenceStore.resolve()?.id ?? null);
+        setFileCapability(capabilities.files);
       } catch {
         webSearchPreferenceStore.setCapability(false);
         setWebSearchAvailable(false);
         modelPreferenceStore.setAvailable([]);
+        setFileCapability(undefined);
       }
       if (!active) return;
       setRouterReady(true);
@@ -242,6 +331,23 @@ export function AppShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!detail.conversation || models.length === 0) return;
+    const key = `${detail.conversation.id}:${imageContext.state}:${imageContext.legacy_message_id ?? ""}:${imageContext.recommended_model ?? ""}`;
+    if (appliedImageContextRef.current === key) return;
+    appliedImageContextRef.current = key;
+    const resolved = modelPreferenceStore.resolveForImageContext(imageContext);
+    if (resolved && resolved.id !== modelId) {
+      modelPreferenceStore.save(resolved.id);
+      setModelId(resolved.id);
+      if (resolved.thinking_levels.length > 0) {
+        const clamped = clampThinkingLevel(thinkingLevelStore.read(), resolved.thinking_levels);
+        thinkingLevelStore.save(clamped);
+        setThinkingLevel(clamped);
+      }
+    }
+  }, [detail.conversation, imageContext, modelId, models]);
 
   // URL → state: select the conversation named in the path (and recover any
   // in-flight run), or reset to a blank new conversation at the root.
@@ -293,7 +399,6 @@ export function AppShell() {
     }
   }, [pendingTitleIds, pollTitle]);
 
-  const activeConversation = detail.conversation;
   const messages = detail.messages;
   const pendingMessage =
     pendingSubmission !== null &&
@@ -315,6 +420,38 @@ export function AppShell() {
       : composerState !== "idle"
         ? "请先停止当前生成"
         : null;
+  const visionUnavailable =
+    imageContext.state === "vision_required" &&
+    modelPreferenceStore.resolveForImageContext(imageContext) === null;
+  // A vision-dependent branch must stay read-only until a compatible model is
+  // selected. This also covers the brief render while model capabilities are
+  // loading or a stale non-vision preference is being corrected.
+  const visionMutationBlocked =
+    imageContext.state === "vision_required" &&
+    (visionUnavailable || selectedModel?.supports_image_input !== true);
+  const mutationDisabledReason =
+    mutateDisabledReason ??
+    (visionMutationBlocked ? "This conversation requires a compatible vision model." : null);
+  const readyImagesAllowed =
+    !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
+  const sendDisabledReason =
+    attachmentUploads.hasPendingAttachments
+      ? "Wait until every attachment is ready before sending."
+      : attachmentUploads.hasFailedAttachments
+        ? "Remove or retry failed attachments before sending."
+        : visionMutationBlocked
+          ? visionUnavailable
+            ? "No compatible vision model is currently available."
+            : "This conversation requires a compatible vision model."
+          : !readyImagesAllowed
+            ? "Select a vision model before sending images."
+        : !composerValue.trim() && attachmentUploads.attachments.length > 0 && !attachmentUploads.hasModelConsumableAttachment
+          ? "Add text or a readable document. Images alone cannot be sent."
+          : null;
+  const canSend = composerState === "idle" && sendDisabledReason === null && (
+    Boolean(composerValue.trim()) ||
+    (attachmentUploads.hasModelConsumableAttachment && readyImagesAllowed)
+  );
 
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"
@@ -395,32 +532,79 @@ export function AppShell() {
         }}
       >
         <VerifyEmailBanner />
-        <Topbar
-          title={activeConversation?.title ?? null}
-          titlePending={selectedId != null && pendingTitleIds.includes(selectedId)}
-          isMobile={isMobile}
-          sidebarCollapsed={sidebarCollapsed}
-          onOpenMobile={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
-          onToggleSidebar={() => dispatch({ type: "ui/toggleSidebarCollapsed" })}
-          onNewMobile={onNewConversation}
-        />
 
         {/* scrollbar-gutter reserved so expanding a thinking block (which adds
             height and toggles the scrollbar) does not narrow the chat column.
             both-edges keeps the column centered: a right-only gutter would
             shift it 5px left of the composer's axis. */}
-        <div
-          className="thread-region min-h-0 flex-[1_1_0%] overflow-y-auto [scrollbar-gutter:stable_both-edges] [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
-          ref={threadRef}
-        >
+        <div className="relative flex min-h-0 flex-[1_1_0%] flex-col">
+          <ThreadActions
+            isMobile={isMobile}
+            hasConversation={selectedId != null}
+            onOpenMobileSidebar={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
+            onNew={onNewConversation}
+            onShare={() => {
+              if (selectedId == null) return;
+              void quickShare(
+                selectedId,
+                detail.messages.some((message) => (message.attachments?.length ?? 0) > 0),
+              );
+            }}
+            onDelete={() => {
+              if (selectedId == null) return;
+              dispatch({
+                type: "ui/openConfirm",
+                dialog: { kind: "deleteConversation", conversationId: selectedId },
+              });
+            }}
+          />
+          {/* Mobile pads the scroll container so the floating actions do not sit
+              on top of the first message when the thread is at the top. */}
+          <div
+            className="thread-region min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+            ref={threadRef}
+          >
           {!showWelcome && (
             <MessageThread
               messages={messages}
               pendingMessage={pendingMessage}
               isMobile={isMobile}
-              mutateDisabledReason={mutateDisabledReason}
-              onEditAndRegenerate={(id, content) => void editAndRegenerate(id, content)}
+              mutateDisabledReason={mutationDisabledReason}
+              onEditAndRegenerate={(id, content, attachmentIds) => {
+                void editAndRegenerate(id, content, attachmentIds);
+              }}
               onRegenerate={(id) => void regenerate(id)}
+              legacyMessageId={imageContext.legacy_message_id}
+              onUpgradeLegacy={(messageId) => {
+                const visual = models.find((entry) => entry.supports_image_input);
+                if (!visual) {
+                  dispatch({
+                    type: "ui/showToast",
+                    message: "No compatible vision model is currently available.",
+                    tone: "warning",
+                  });
+                  return;
+                }
+                onModelChange(visual.id);
+                void regenerate(messageId);
+              }}
+              onEditUpgradeLegacy={() => {
+                const visual = models.find((entry) => entry.supports_image_input);
+                if (!visual) {
+                  dispatch({
+                    type: "ui/showToast",
+                    message: "No compatible vision model is currently available.",
+                    tone: "warning",
+                  });
+                  return false;
+                }
+                onModelChange(visual.id);
+                return true;
+              }}
+              onStartNewConversation={onNewConversation}
+              onReadAttachment={services.filesApi.readUrl}
+              localImagePreviews={sentImagePreviews}
+              onLocalImagePreviewConsumed={releaseSentImagePreview}
               onShowSources={showSources}
             >
               {pendingMessage ||
@@ -429,6 +613,7 @@ export function AppShell() {
               ) : null}
             </MessageThread>
           )}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-col">
@@ -446,7 +631,7 @@ export function AppShell() {
           </div>
           <Composer
             value={composerValue}
-            onChange={setComposerValue}
+            onChange={onComposerValueChange}
             onSend={onSend}
             onStop={onStop}
             state={composerState}
@@ -455,9 +640,23 @@ export function AppShell() {
             webSearchEnabled={webSearchEnabled}
             webSearchAvailable={webSearchAvailable}
             onWebSearchEnabledChange={onWebSearchEnabledChange}
-            models={models}
-            model={modelId}
-            onModelChange={onModelChange}
+              models={models}
+              model={modelId}
+              onModelChange={onModelChange}
+              imageContext={imageContext}
+              onRemoveImages={attachmentUploads.removeImages}
+            fileCapability={fileCapability}
+            fileUploadAllowed={user?.email_verified === true}
+            attachments={attachmentUploads.attachments}
+            onSelectFiles={attachmentUploads.addFiles}
+            onCancelAttachment={(clientId) => void attachmentUploads.cancelAttachment(clientId)}
+            onRetryAttachment={attachmentUploads.retryAttachment}
+            onMoveAttachment={attachmentUploads.moveAttachment}
+            onReadAttachment={services.filesApi.readUrl}
+            canSend={canSend}
+            sendDisabledReason={sendDisabledReason}
+            readOnly={visionMutationBlocked}
+            isMobile={isMobile}
           />
         </div>
         <div
@@ -475,7 +674,7 @@ export function AppShell() {
       {confirmTarget != null && (
         <ConfirmDialog
           title="删除对话？"
-          body="此对话及其全部消息将永久删除，无法恢复。"
+          body="此对话将从列表中移除，并在 30 天后永久删除。"
           confirmLabel="删除"
           destructive
           onConfirm={() =>
@@ -491,6 +690,7 @@ export function AppShell() {
       {ui.shareDialog != null && (
         <ShareDialog
           conversationId={ui.shareDialog.conversationId}
+          hasAttachments={detail.messages.some((message) => (message.attachments?.length ?? 0) > 0)}
           onClose={() => dispatch({ type: "ui/closeShare" })}
         />
       )}

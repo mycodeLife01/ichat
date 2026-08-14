@@ -156,4 +156,35 @@ describe("conversationApi", () => {
       { method: "POST", body: { thinking_enabled: true, reasoning_effort: "high" } },
     );
   });
+
+  it("sends ordered attachment ids and preserves the edit omit-versus-empty distinction", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValue(sendMessageResponse);
+    const api = createConversationApi(client);
+
+    await api.createWithMessage("", undefined, undefined, ["file-b", "file-a"]);
+    await api.sendMessage("10", "with files", undefined, ["file-a"]);
+    await api.editAndRegenerate("10", "501", "inherit");
+    await api.editAndRegenerate("10", "501", "remove files", undefined, []);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, "/conversations/with-message", {
+      method: "POST",
+      body: { title: null, content: "", attachment_ids: ["file-b", "file-a"] },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, "/conversations/10/messages", {
+      method: "POST",
+      body: { content: "with files", attachment_ids: ["file-a"] },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(
+      3,
+      "/conversations/10/messages/501/edit-and-regenerate",
+      { method: "POST", body: { content: "inherit" } },
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      4,
+      "/conversations/10/messages/501/edit-and-regenerate",
+      { method: "POST", body: { content: "remove files", attachment_ids: [] } },
+    );
+  });
+
 });

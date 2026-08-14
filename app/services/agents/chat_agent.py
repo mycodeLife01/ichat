@@ -26,13 +26,14 @@ from app.agent.events import (
     ToolCallFinished,
     ToolCallStarted,
 )
-from app.agent.messages import ContentBlock, Message, ToolCallBlock, ToolResultBlock
+from app.agent.messages import ContentBlock, ImageBlock, Message, ToolCallBlock, ToolResultBlock
 from app.agent.primitives import ModelCallResult, execute_tool, stream_model_call
-from app.agent.provider import Provider, ReasoningConfig
+from app.agent.provider import ImageInputResolver, Provider, ProviderError, ReasoningConfig
 from app.agent.tools import ToolRegistry, ToolResult, WebSearchConfig, WebSearchTool
 from app.core.config import Settings
 from app.search import SourceRegistry
 from app.search.registry import resolve_search_client
+from app.services.agents.catalog import available_chat_models
 from app.services.agents.context import build_context
 from app.services.agents.prompts import build_system_prompt
 from app.services.agents.registry import resolve_provider as default_resolve_provider
@@ -64,6 +65,7 @@ class ChatAgentOptions:
     provider_name: str
     model: str
     provider_options: Mapping[str, Any] = field(default_factory=dict)
+    image_token_reserve: int = 0
 
 
 class ChatAgent:
@@ -80,6 +82,8 @@ class ChatAgent:
         tool_backend_names: Mapping[str, str],
         assistant_metadata: Callable[[], dict[str, Any] | None],
         system_prompt: str,
+        image_resolver: ImageInputResolver | None = None,
+        image_token_reserve: int = 0,
     ) -> None:
         if max_tool_calls < 0:
             raise ValueError("max_tool_calls must be non-negative")
@@ -93,6 +97,11 @@ class ChatAgent:
         self._tool_backend_names = dict(tool_backend_names)
         self._assistant_metadata = assistant_metadata
         self._system_prompt = system_prompt
+        self._image_resolver = image_resolver
+        self._image_count = sum(
+            isinstance(block, ImageBlock) for message in messages for block in message.blocks
+        )
+        self._image_token_reserve = max(image_token_reserve, 0)
 
     @property
     def retry_policy(self) -> RetryPolicy:
@@ -105,6 +114,22 @@ class ChatAgent:
     @property
     def system_prompt(self) -> str:
         return self._system_prompt
+
+    @property
+    def provider_name(self) -> str:
+        return self._provider.name
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def image_count(self) -> int:
+        return self._image_count
+
+    @property
+    def image_token_reserve(self) -> int:
+        return self._image_token_reserve
 
     def assistant_metadata(self) -> dict[str, Any] | None:
         return self._assistant_metadata()
@@ -130,6 +155,7 @@ class ChatAgent:
                 messages=messages,
                 reasoning=self._reasoning,
                 tools=self._tools.specs() or None,
+                image_resolver=self._image_resolver,
             ):
                 if isinstance(item, ModelCallResult):
                     message = item.message
@@ -187,6 +213,7 @@ def build_chat_agent(
     options: ChatAgentOptions,
     resolve_provider: ProviderResolver = default_resolve_provider,
     now: datetime | None = None,
+    image_resolver: ImageInputResolver | None = None,
 ) -> ChatAgent:
     """Assemble a ready-to-run ``ChatAgent`` from settings + conversation history.
 
@@ -195,6 +222,22 @@ def build_chat_agent(
     its ``SourceRegistry`` internalized as a closure), the tool-call limit, and
     the retry policy.
     """
+    selected_model = next(
+        (
+            entry
+            for entry in available_chat_models(settings)
+            if entry.provider_name == options.provider_name and entry.model == options.model
+        ),
+        None,
+    )
+    if _contains_image_block(history) and (
+        selected_model is None or not selected_model.supports_image_input
+    ):
+        raise ProviderError(
+            code=f"{options.provider_name}_image_input_not_supported",
+            message="This model does not support image input",
+        )
+
     provider = resolve_provider(options.provider_name, settings=settings)
     reasoning = _reasoning_config(options.provider_options, settings)
     web_search_enabled = _web_search_enabled(options.provider_options, settings)
@@ -208,6 +251,7 @@ def build_chat_agent(
         history=history,
         budget_tokens=settings.context_budget_tokens,
         count_tokens=provider.count_tokens,
+        image_token_reserve=max(options.image_token_reserve, 0),
     )
 
     tools = ToolRegistry()
@@ -238,6 +282,8 @@ def build_chat_agent(
         tool_backend_names=tool_backend_names,
         assistant_metadata=assistant_metadata,
         system_prompt=system_prompt,
+        image_resolver=image_resolver,
+        image_token_reserve=options.image_token_reserve,
     )
 
 
@@ -263,6 +309,10 @@ def _web_search_config(settings: Settings) -> WebSearchConfig:
         max_source_chars=settings.web_search_max_source_chars,
         max_evidence_chars=settings.web_search_max_evidence_chars,
     )
+
+
+def _contains_image_block(messages: list[Message]) -> bool:
+    return any(isinstance(block, ImageBlock) for message in messages for block in message.blocks)
 
 
 def _error_result(code: str, message: str) -> ToolResult:

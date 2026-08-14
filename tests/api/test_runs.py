@@ -197,6 +197,7 @@ async def test_get_run_state_returns_current_draft(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"] == {
         "run_id": run_public_id,
+        "provider_name": "deepseek",
         "status": "streaming",
         "latest_seq": 3,
         "draft_text": "Hello world",
@@ -246,6 +247,7 @@ async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"] == {
         "run_id": run_public_id,
+        "provider_name": "deepseek",
         "status": "streaming",
         "latest_seq": 3,
         "draft_text": "Hello",

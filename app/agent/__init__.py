@@ -24,7 +24,10 @@ from app.agent.events import (
     ToolCallStarted,
 )
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
+    ImageBlock,
     Message,
     ReasoningBlock,
     Role,
@@ -37,11 +40,14 @@ from app.agent.messages import (
 )
 from app.agent.primitives import ModelCallResult, execute_tool, stream_model_call
 from app.agent.provider import (
+    ImageInputError,
+    ImageInputResolver,
     Provider,
     ProviderCapabilities,
     ProviderError,
     ReasoningConfig,
     ReasoningDelta,
+    ResolvedImageInput,
     StreamDone,
     StreamEvent,
     TextDelta,
@@ -61,7 +67,12 @@ __all__ = [
     "WEB_SEARCH_TOOL_SPEC",
     "AgentEvent",
     "AgentFinal",
+    "AttachmentNoticeBlock",
     "ContentBlock",
+    "DocumentBlock",
+    "ImageBlock",
+    "ImageInputError",
+    "ImageInputResolver",
     "Message",
     "MessageDone",
     "ModelCallResult",
@@ -72,6 +83,7 @@ __all__ = [
     "ReasoningConfig",
     "ReasoningDelta",
     "Role",
+    "ResolvedImageInput",
     "StreamDone",
     "StreamEvent",
     "TextBlock",

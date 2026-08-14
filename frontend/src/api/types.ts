@@ -1,3 +1,5 @@
+import type { FileAttachment, FilesCapability, SharedAttachmentPlaceholder } from "../files/types";
+
 export type SuccessEnvelope<T> = {
   data: T;
   meta?: Record<string, unknown> | null;
@@ -30,6 +32,16 @@ export type ConversationResponse = {
   activated_at: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
+  deletion_due_at?: string | null;
+};
+
+export type ImageContextState = "none" | "vision_required" | "legacy_upgrade_required";
+
+export type ImageContext = {
+  state: ImageContextState;
+  legacy_message_id?: string | null;
+  recommended_model?: string | null;
 };
 
 export type MessageRole = "user" | "assistant";
@@ -55,6 +67,7 @@ export type MessageResponse = {
   content: string;
   reasoning: string | null;
   metadata?: MessageMetadata | null;
+  attachments?: FileAttachment[];
   position: number;
   created_at: string;
 };
@@ -80,11 +93,13 @@ export type RunResponse = {
 
 export type ConversationDetailResponse = ConversationResponse & {
   messages: MessageResponse[];
+  image_context?: ImageContext;
 };
 
 export type SendMessageResponse = {
   message: MessageResponse;
   run: RunResponse;
+  image_context?: ImageContext;
 };
 
 export type ConversationCreateWithMessageResponse = SendMessageResponse & {
@@ -111,6 +126,7 @@ export type RunEventResponse = {
 
 export type RunStateResponse = {
   run_id: string;
+  provider_name: string;
   status: RunStatus;
   latest_seq: number;
   draft_text: string;
@@ -146,6 +162,7 @@ export type ChatModelCapability = {
   label: string;
   thinking_levels: string[];
   default: boolean;
+  supports_image_input: boolean;
 };
 
 export type CapabilitiesResponse = {
@@ -153,6 +170,7 @@ export type CapabilitiesResponse = {
     enabled: boolean;
   };
   models: ChatModelCapability[];
+  files?: FilesCapability;
 };
 
 // --- Conversation sharing (read-only snapshots) ---
@@ -186,6 +204,7 @@ export type SharedMessage = {
   content: string;
   reasoning?: string | null;
   sources: SharedSource[];
+  attachments?: SharedAttachmentPlaceholder[];
 };
 
 // Anonymous read payload — the frozen snapshot, no internal ids or user.

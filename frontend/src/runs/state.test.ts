@@ -5,6 +5,7 @@ import { activeRunReducer, initialActiveRunState, type ActiveRunState } from "./
 const started: ActiveRunState = {
   runId: "100",
   conversationId: "10",
+  providerName: null,
   latestSeq: 0,
   draftText: "",
   draftReasoning: "",
@@ -118,6 +119,7 @@ describe("activeRunReducer", () => {
       type: "run/restored",
       runId: "100",
       conversationId: "10",
+      providerName: null,
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "想",
@@ -126,6 +128,7 @@ describe("activeRunReducer", () => {
     expect(next).toEqual({
       runId: "100",
       conversationId: "10",
+      providerName: null,
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "",

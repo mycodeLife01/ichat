@@ -10,20 +10,20 @@ from app.models.user import RefreshToken, User
 from app.schemas.auth import AuthTokenResponse, AuthUserResponse, CommandStatusResponse
 from app.services.auth.passwords import hash_password, verify_password
 from app.services.auth.tokens import create_access_token, create_refresh_token, hash_refresh_token
-from app.services.avatars.storage import public_avatar_url
+from app.services.files.avatar import avatar_url_for_user
 
 INVALID_LOGIN_MESSAGE = "Invalid username, email, or password"
 INVALID_REFRESH_TOKEN_MESSAGE = "Invalid refresh token"
 
 
-def user_response(user: User) -> AuthUserResponse:
+async def user_response(session: AsyncSession, user: User) -> AuthUserResponse:
     return AuthUserResponse(
         id=user.id,
         username=user.username,
         nickname=user.nickname,
         email=user.email,
         email_verified=user.email_verified,
-        avatar_url=public_avatar_url(get_settings(), user.avatar_object_key),
+        avatar_url=await avatar_url_for_user(session, user=user, settings=get_settings()),
     )
 
 
@@ -82,7 +82,7 @@ async def update_profile(
 ) -> AuthUserResponse:
     user.nickname = nickname.strip()
     await session.flush()
-    return user_response(user)
+    return await user_response(session, user)
 
 
 async def login_user(
@@ -196,7 +196,7 @@ async def issue_tokens(
     await session.flush()
 
     return AuthTokenResponse(
-        user=user_response(user),
+        user=await user_response(session, user),
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=access_token_ttl_seconds,

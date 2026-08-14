@@ -53,6 +53,9 @@ describe("useRegenerate", () => {
       conversationDetailResponse.messages,
     );
     expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id);
+    expect(result.current.activeRun?.providerName).toBe(
+      sendMessageResponse.run.provider_name,
+    );
     expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, conversationResponse.id, 0);
   });
 
@@ -100,6 +103,32 @@ describe("useRegenerate", () => {
     });
     expect(editAndRegenerate).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it("uses an explicit empty attachment list to remove attachments on an edit", async () => {
+    const start = vi.fn();
+    const editAndRegenerate = vi.fn(async () => sendMessageResponse);
+    const services = createFakeServices({}, { editAndRegenerate });
+    const { result } = renderHook(() => useRegenProbe(start), {
+      wrapper: makeWrapper(services),
+    });
+    await selectConversation(result);
+
+    await act(async () => {
+      await result.current.editAndRegenerate("501", "new text", []);
+    });
+
+    expect(editAndRegenerate).toHaveBeenCalledWith(
+      conversationResponse.id,
+      "501",
+      "new text",
+      {
+        thinking_enabled: true,
+        reasoning_effort: "low",
+        web_search_enabled: false,
+      },
+      [],
+    );
   });
 
   it("keeps state usable when the API rejects", async () => {

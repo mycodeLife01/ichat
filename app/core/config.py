@@ -24,10 +24,18 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_models: str = "gpt-5-mini"
+    # Production image input is granted only to this explicit model-level
+    # allowlist. An empty value is the rollout kill switch.
+    openai_vision_models: str = ""
+    openai_image_token_reserve: int = 8_192
     # Optional override for the assistant's base system prompt. Empty (default)
     # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
-    context_budget_tokens: int = 64_000
+    # Production models expose a 256k context window. File attachments reserve
+    # at most half of it for the target user turn so history/system prompt still
+    # have deterministic headroom.
+    context_budget_tokens: int = 256_000
+    attachment_target_turn_tokens: int = 128_000
     run_lease_seconds: int
     worker_poll_interval_seconds: float
     worker_heartbeat_interval_seconds: float
@@ -133,6 +141,66 @@ class Settings(BaseSettings):
     avatar_history_retention_seconds: int = 7 * 86_400
     avatar_cleanup_safety_seconds: int = 300
 
+    # --- Unified private file uploads / Cloudflare R2 ---
+    file_upload_enabled: bool = False
+    files_r2_endpoint_url: str = ""
+    files_r2_region: str = "auto"
+    files_staging_bucket: str = ""
+    files_canonical_bucket: str = ""
+    files_preview_bucket: str = ""
+    files_upload_access_key_id: str = ""
+    files_upload_secret_access_key: str = ""
+    files_worker_access_key_id: str = ""
+    files_worker_secret_access_key: str = ""
+    files_download_access_key_id: str = ""
+    files_download_secret_access_key: str = ""
+    files_preview_api_access_key_id: str = ""
+    files_preview_api_secret_access_key: str = ""
+    files_preview_llm_access_key_id: str = ""
+    files_preview_llm_secret_access_key: str = ""
+    files_upload_presign_ttl_seconds: int = 600
+    files_multipart_threshold_bytes: int = 5 * 1024 * 1024
+    files_multipart_part_size_bytes: int = 5 * 1024 * 1024
+    files_r2_connect_timeout_seconds: float = 5.0
+    files_r2_read_timeout_seconds: float = 30.0
+    files_r2_max_attempts: int = 3
+    files_r2_parallel_download_threshold_bytes: int = 5 * 1024 * 1024
+    files_r2_parallel_download_max_concurrency: int = 3
+    files_download_ttl_seconds: int = 300
+    files_upload_session_ttl_seconds: int = 1_800
+    files_unbound_ttl_seconds: int = 86_400
+    files_detached_retention_seconds: int = 30 * 86_400
+    conversation_deletion_retention_seconds: int = 30 * 86_400
+    files_quota_bytes: int = 1 * 1024 * 1024 * 1024
+    files_max_inflight_uploads: int = 5
+    files_max_attachments_per_message: int = 5
+    files_max_message_bytes: int = 50 * 1024 * 1024
+    files_rate_user_limit: int = 100
+    files_rate_ip_limit: int = 500
+    files_rate_window_seconds: int = 3_600
+    files_processing_lease_seconds: int = 300
+    files_processing_max_attempts: int = 3
+    files_parser_timeout_seconds: int = 120
+    files_attempt_timeout_seconds: int = 180
+    files_maintenance_interval_seconds: int = 60
+    files_maintenance_batch_size: int = 100
+    files_cleanup_safety_seconds: int = 300
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+
+    # --- Public share attachment reads ---
+    # Anonymous callers hold only a share token, so the token itself is the
+    # abuse dimension; the IP window caps a crawler sweeping many leaked tokens.
+    # Download is deliberately tighter than preview: it hands out the original.
+    share_read_token_preview_limit: int = 120
+    share_read_token_preview_window_seconds: int = 300
+    share_read_token_download_limit: int = 30
+    share_read_token_download_window_seconds: int = 3_600
+    share_read_ip_limit: int = 300
+    share_read_ip_window_seconds: int = 3_600
+    clamav_timeout_seconds: float = 30.0
+    clamav_signature_max_age_seconds: int = 48 * 3_600
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -166,6 +234,28 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_external_services(self) -> Self:
+        if self.files_multipart_threshold_bytes <= 0:
+            raise ValueError("files_multipart_threshold_bytes must be positive")
+        if self.files_multipart_part_size_bytes < 5 * 1024 * 1024:
+            raise ValueError("files_multipart_part_size_bytes must be at least 5 MiB")
+        if self.files_r2_connect_timeout_seconds <= 0 or self.files_r2_read_timeout_seconds <= 0:
+            raise ValueError("files R2 timeouts must be positive")
+        if self.files_r2_max_attempts < 1:
+            raise ValueError("files_r2_max_attempts must be positive")
+        if self.files_r2_parallel_download_threshold_bytes < 1:
+            raise ValueError("files_r2_parallel_download_threshold_bytes must be positive")
+        if self.files_r2_parallel_download_max_concurrency < 1:
+            raise ValueError("files_r2_parallel_download_max_concurrency must be positive")
+        openai_models = _strict_model_list(self.openai_models, allow_empty=False)
+        vision_models = _strict_model_list(self.openai_vision_models, allow_empty=True)
+        unknown_vision_models = sorted(set(vision_models) - set(openai_models))
+        if unknown_vision_models:
+            raise ValueError(
+                "openai_vision_models must be a subset of openai_models; unknown: "
+                + ", ".join(unknown_vision_models)
+            )
+        if self.openai_image_token_reserve <= 0:
+            raise ValueError("openai_image_token_reserve must be positive")
         # Only enforce provider credentials when the integration is active, so
         # fake/disabled integrations can boot in dev and CI without secrets.
         if self.summary_provider_name == "openai" and not self.openai_api_key.strip():
@@ -197,7 +287,7 @@ class Settings(BaseSettings):
                     f"email_provider=resend requires non-empty: {', '.join(missing)}"
                 )
         if self.avatar_storage_enabled:
-            required = (
+            avatar_required = (
                 ("avatar_r2_endpoint_url", self.avatar_r2_endpoint_url),
                 ("avatar_upload_bucket", self.avatar_upload_bucket),
                 ("avatar_public_bucket", self.avatar_public_bucket),
@@ -209,10 +299,32 @@ class Settings(BaseSettings):
                 ("cloudflare_zone_id", self.cloudflare_zone_id),
                 ("cloudflare_purge_token", self.cloudflare_purge_token),
             )
-            missing = [name for name, value in required if not value.strip()]
+            missing = [name for name, value in avatar_required if not value.strip()]
             if missing:
                 raise ValueError(
                     f"avatar_storage_enabled=true requires non-empty: {', '.join(missing)}"
+                )
+        if self.file_upload_enabled:
+            # The feature flag is evaluated by the API.  File workers keep
+            # draining PostgreSQL facts with the flag disabled and receive
+            # only their worker credential pair, so application boot must not
+            # couple upload/download signing to the processing credential.
+            file_required = (
+                ("files_r2_endpoint_url", self.files_r2_endpoint_url),
+                ("files_staging_bucket", self.files_staging_bucket),
+                ("files_canonical_bucket", self.files_canonical_bucket),
+                ("files_preview_bucket", self.files_preview_bucket),
+                ("files_upload_access_key_id", self.files_upload_access_key_id),
+                ("files_upload_secret_access_key", self.files_upload_secret_access_key),
+                ("files_download_access_key_id", self.files_download_access_key_id),
+                ("files_download_secret_access_key", self.files_download_secret_access_key),
+                ("files_preview_api_access_key_id", self.files_preview_api_access_key_id),
+                ("files_preview_api_secret_access_key", self.files_preview_api_secret_access_key),
+            )
+            missing = [name for name, value in file_required if not value.strip()]
+            if missing:
+                raise ValueError(
+                    f"file_upload_enabled=true requires non-empty: {', '.join(missing)}"
                 )
         return self
 
@@ -230,13 +342,83 @@ class Settings(BaseSettings):
 
     @property
     def openai_models_list(self) -> list[str]:
-        return [model.strip() for model in self.openai_models.split(",") if model.strip()]
+        return _strict_model_list(self.openai_models, allow_empty=False)
+
+    @property
+    def openai_vision_models_list(self) -> list[str]:
+        return _strict_model_list(self.openai_vision_models, allow_empty=True)
 
     @property
     def deepseek_models_list(self) -> list[str]:
         return [model.strip() for model in self.deepseek_models.split(",") if model.strip()]
 
 
+def validate_api_vision_settings(settings: Settings) -> None:
+    """Fail API startup before it advertises an unusable vision catalog."""
+
+    if not settings.openai_vision_models_list:
+        return
+    _validate_preview_bucket_isolation(settings)
+    _require_non_empty(
+        "API vision runtime",
+        (
+            ("openai_api_key", settings.openai_api_key),
+            ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
+            ("files_preview_bucket", settings.files_preview_bucket),
+            ("files_preview_api_access_key_id", settings.files_preview_api_access_key_id),
+            ("files_preview_api_secret_access_key", settings.files_preview_api_secret_access_key),
+        ),
+    )
+
+
+def validate_worker_vision_settings(settings: Settings) -> None:
+    """Fail LLM-worker startup unless preview-only signing is configured."""
+
+    if not settings.openai_vision_models_list:
+        return
+    _validate_preview_bucket_isolation(settings)
+    _require_non_empty(
+        "LLM worker vision runtime",
+        (
+            ("openai_api_key", settings.openai_api_key),
+            ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
+            ("files_preview_bucket", settings.files_preview_bucket),
+            ("files_preview_llm_access_key_id", settings.files_preview_llm_access_key_id),
+            ("files_preview_llm_secret_access_key", settings.files_preview_llm_secret_access_key),
+        ),
+    )
+
+
+def _validate_preview_bucket_isolation(settings: Settings) -> None:
+    preview = settings.files_preview_bucket.strip()
+    if preview and preview in {
+        settings.files_staging_bucket.strip(),
+        settings.files_canonical_bucket.strip(),
+    }:
+        raise ValueError("files_preview_bucket must be distinct from file source buckets")
+
+
+def _require_non_empty(scope: str, values: tuple[tuple[str, str], ...]) -> None:
+    missing = [name for name, value in values if not value.strip()]
+    if missing:
+        raise ValueError(f"{scope} requires non-empty: {', '.join(missing)}")
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
+
+
+def _strict_model_list(raw: str, *, allow_empty: bool) -> list[str]:
+    """Parse a model allowlist without silently repairing bad rollout config."""
+
+    if not raw.strip():
+        if allow_empty:
+            return []
+        raise ValueError("model allowlist must not be empty")
+    values = [item.strip() for item in raw.split(",")]
+    if any(not item for item in values):
+        raise ValueError("model allowlist entries must not be empty")
+    if len(values) != len(set(values)):
+        raise ValueError("model allowlist entries must be unique")
+    return values

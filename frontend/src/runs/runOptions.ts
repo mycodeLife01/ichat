@@ -11,11 +11,14 @@ import { webSearchPreferenceStore } from "./webSearchPreference";
 // time (send / edit-and-regenerate / regenerate all use the same rules). The
 // persisted thinking level is clamped onto the selected model's levels here so
 // a stale preference never reaches the API.
-export function currentRunOptions(): RunOptionsRequest {
-  const model = modelPreferenceStore.resolve();
+export function currentRunOptions(modelId?: string): RunOptionsRequest {
+  const model =
+    modelId === undefined
+      ? modelPreferenceStore.resolve()
+      : modelPreferenceStore.available().find((entry) => entry.id === modelId) ?? null;
   return toRunOptions(
     clampThinkingLevel(thinkingLevelStore.read(), model?.thinking_levels ?? []),
     webSearchPreferenceStore.requestEnabled(),
-    model?.id,
+    modelId ?? model?.id,
   );
 }

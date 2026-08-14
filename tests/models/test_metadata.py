@@ -5,7 +5,7 @@ import app.models  # noqa: F401
 from app.db.base import Base
 
 # Tables that expose an opaque external identifier alongside their bigint PK.
-_PUBLIC_ID_TABLES = ("conversations", "runs", "messages")
+_PUBLIC_ID_TABLES = ("conversations", "files", "file_uploads", "runs", "messages")
 
 
 def test_core_tables_are_registered() -> None:
@@ -16,7 +16,13 @@ def test_core_tables_are_registered() -> None:
         "conversations",
         "conversation_title_jobs",
         "email_outbox",
+        "file_object_deletions",
+        "file_objects",
+        "file_quotas",
+        "file_uploads",
+        "files",
         "messages",
+        "message_attachments",
         "refresh_tokens",
         "run_drafts",
         "run_events",

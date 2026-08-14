@@ -6,13 +6,16 @@ typed top-level param gated by model family, and the sync path uses
 """
 
 import json
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx
 import pytest
-from openai import AsyncOpenAI, OpenAI
+from openai import APIConnectionError, AsyncOpenAI, OpenAI
 
 from app.agent.messages import (
+    DocumentBlock,
+    ImageBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -21,15 +24,37 @@ from app.agent.messages import (
     user_text,
 )
 from app.agent.provider import (
+    ImageInputError,
     ProviderError,
     ReasoningConfig,
     ReasoningDelta,
+    ResolvedImageInput,
     StreamDone,
     TextDelta,
     ToolCallDone,
 )
 from app.agent.providers.openai import OpenAIProvider, supports_reasoning_control
 from app.agent.tools.base import ToolSpec
+
+
+class _ImageResolver:
+    def __init__(self, *, fail: ImageInputError | None = None) -> None:
+        self.calls: list[tuple[ImageBlock, ...]] = []
+        self.fail = fail
+        self.counter = 0
+
+    async def resolve(self, images: tuple[ImageBlock, ...]) -> dict[str, ResolvedImageInput]:
+        self.calls.append(images)
+        if self.fail is not None:
+            raise self.fail
+        self.counter += 1
+        return {
+            image.file_id: ResolvedImageInput(
+                file_id=image.file_id,
+                url=f"https://preview.invalid/{self.counter}/{image.file_id}",
+            )
+            for image in images
+        }
 
 
 def sse_body(chunks: list[dict[str, Any]]) -> bytes:
@@ -106,6 +131,160 @@ async def test_stream_text_and_finish_with_usage() -> None:
     assert isinstance(done, StreamDone)
     assert done.finish_reason == "stop"
     assert done.provider_request_id == "req-42"
+
+
+def _image(file_id: str = "file-1", *, filename: str = "chart.webp") -> ImageBlock:
+    return ImageBlock(
+        file_id=file_id,
+        filename=filename,
+        media_type="image/webp",
+        sha256=file_id.ljust(64, "0"),
+        width=640,
+        height=480,
+        processor_version="image-v1",
+        warnings=("animated_first_frame",) if filename.endswith(".webp") else (),
+    )
+
+
+async def test_stream_projects_mixed_image_content_in_original_order_and_deduplicates() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return stream_response([chunk({}, finish="stop")])
+
+    image = _image()
+    duplicate = _image()
+    resolver = _ImageResolver()
+    provider = streaming_provider(handler)
+    message = Message(
+        role="user",
+        blocks=[
+            TextBlock("inspect"),
+            image,
+            DocumentBlock(
+                file_id="doc-1",
+                filename="notes.txt",
+                media_type="text/plain",
+                text="reference",
+                sha256="b" * 64,
+                extractor_version="text-v1",
+            ),
+            duplicate,
+        ],
+    )
+
+    async for _ in provider.stream(
+        model="gpt-5-mini",
+        messages=[message],
+        image_resolver=resolver,
+    ):
+        pass
+
+    assert len(resolver.calls) == 1
+    assert resolver.calls[0] == (image,)
+    parts = captured["messages"][0]["content"]
+    assert [part["type"] for part in parts] == [
+        "text",
+        "text",
+        "image_url",
+        "text",
+        "text",
+        "text",
+        "image_url",
+        "text",
+    ]
+    assert parts[2]["image_url"]["detail"] == "high"
+    assert parts[2]["image_url"]["url"] == parts[6]["image_url"]["url"]
+    assert '"attachment_index":1' in parts[1]["text"]
+    assert '"attachment_index":3' in parts[5]["text"]
+    assert "animated_first_frame" in parts[1]["text"]
+
+
+async def test_stream_resolves_images_again_for_each_model_call() -> None:
+    captured_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        content = payload["messages"][0]["content"]
+        captured_urls.append(
+            next(item["image_url"]["url"] for item in content if item["type"] == "image_url")
+        )
+        return stream_response([chunk({}, finish="stop")])
+
+    resolver = _ImageResolver()
+    provider = streaming_provider(handler)
+    image = _image()
+    for _ in range(2):
+        async for _ in provider.stream(
+            model="gpt-5-mini",
+            messages=[Message(role="user", blocks=[image])],
+            image_resolver=resolver,
+        ):
+            pass
+
+    assert len(resolver.calls) == 2
+    assert captured_urls == [
+        "https://preview.invalid/1/file-1",
+        "https://preview.invalid/2/file-1",
+    ]
+
+
+async def test_image_resolution_failure_makes_zero_sdk_requests_and_preserves_retryability(
+) -> None:
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return stream_response([chunk({}, finish="stop")])
+
+    resolver = _ImageResolver(
+        fail=ImageInputError(
+            code="image_input_unavailable",
+            message="temporary signer outage",
+            retryable=True,
+        )
+    )
+    provider = streaming_provider(handler)
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(
+            model="gpt-5-mini",
+            messages=[Message(role="user", blocks=[_image()])],
+            image_resolver=resolver,
+        ):
+            pass
+
+    assert requests == 0
+    assert exc_info.value.code == "image_input_unavailable"
+    assert exc_info.value.retryable is True
+    assert "temporary signer outage" not in exc_info.value.message
+
+
+async def test_duplicate_image_snapshot_mismatch_fails_before_resolver_or_sdk() -> None:
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return stream_response([chunk({}, finish="stop")])
+
+    first = _image()
+    second = _image()
+    second = ImageBlock(**{**second.__dict__, "sha256": "c" * 64})
+    resolver = _ImageResolver()
+    provider = streaming_provider(handler)
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(
+            model="gpt-5-mini",
+            messages=[Message(role="user", blocks=[first, second])],
+            image_resolver=resolver,
+        ):
+            pass
+
+    assert requests == 0
+    assert resolver.calls == []
+    assert exc_info.value.code == "image_input_snapshot_mismatch"
 
 
 async def test_stream_assembles_tool_call_from_fragments() -> None:
@@ -285,6 +464,75 @@ async def test_stream_raises_provider_error_with_openai_code() -> None:
             pass
 
     assert exc_info.value.code == "openai_http_error"
+    assert "server is sad" in exc_info.value.message
+
+
+async def test_stream_image_http_error_does_not_leak_signed_url() -> None:
+    signed_url = (
+        "https://preview.example.test/image.webp?X-Amz-Algorithm=AWS4-HMAC-SHA256&"
+        "X-Amz-Signature=secret"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={"error": {"message": f"preview failed: {signed_url}"}},
+        )
+
+    provider = streaming_provider(handler)
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(
+            model="gpt-5-mini",
+            messages=[Message(role="user", blocks=[_image()])],
+            image_resolver=_ImageResolver(),
+        ):
+            pass
+
+    assert exc_info.value.code == "openai_http_error"
+    assert exc_info.value.message == "OpenAI returned 500 while processing image input"
+    assert signed_url not in exc_info.value.message
+
+
+class _RaisingAsyncClient:
+    def __init__(self, error: Exception) -> None:
+        self.chat = SimpleNamespace(completions=_RaisingCompletions(error))
+
+
+class _RaisingCompletions:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def create(self, **_: Any) -> Any:
+        raise self._error
+
+
+async def test_stream_image_transport_error_does_not_leak_signed_url() -> None:
+    signed_url = (
+        "https://preview.example.test/image.webp?X-Amz-Credential=secret&"
+        "X-Amz-Signature=secret"
+    )
+    error = APIConnectionError(
+        message=f"transport failed for {signed_url}",
+        request=httpx.Request("POST", signed_url),
+    )
+    client = cast(AsyncOpenAI, _RaisingAsyncClient(error))
+    provider = OpenAIProvider(
+        api_key="test-key",
+        base_url="http://openai.test/v1",
+        async_client=client,
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(
+            model="gpt-5-mini",
+            messages=[Message(role="user", blocks=[_image()])],
+            image_resolver=_ImageResolver(),
+        ):
+            pass
+
+    assert exc_info.value.code == "openai_transport_error"
+    assert exc_info.value.message == "OpenAI request failed while processing image input"
+    assert signed_url not in exc_info.value.message
 
 
 def completion_response(content: Any) -> httpx.Response:

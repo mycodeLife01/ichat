@@ -6,7 +6,12 @@ from dotenv import dotenv_values
 from pydantic import ValidationError
 from pytest import MonkeyPatch
 
-from app.core.config import Settings, get_settings
+from app.core.config import (
+    Settings,
+    get_settings,
+    validate_api_vision_settings,
+    validate_worker_vision_settings,
+)
 
 ENV_KEYS = [
     "DATABASE_URL",
@@ -120,6 +125,8 @@ def test_env_example_values_match_settings_shape(monkeypatch: MonkeyPatch) -> No
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    assert settings.files_r2_parallel_download_threshold_bytes == 5 * 1024 * 1024
+    assert settings.files_r2_parallel_download_max_concurrency == 3
 
 
 def test_ci_workflow_provides_required_settings_env() -> None:
@@ -169,6 +176,29 @@ def test_settings_can_be_constructed_directly() -> None:
     )
 
     assert settings.log_level == "INFO"
+
+
+def test_file_multipart_settings_reject_parts_below_provider_minimum() -> None:
+    values = get_settings().model_dump()
+    values["files_multipart_part_size_bytes"] = 5 * 1024 * 1024 - 1
+
+    with pytest.raises(ValidationError, match="at least 5 MiB"):
+        Settings.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "files_r2_parallel_download_threshold_bytes",
+        "files_r2_parallel_download_max_concurrency",
+    ],
+)
+def test_file_parallel_download_settings_must_be_positive(field_name: str) -> None:
+    values = get_settings().model_dump()
+    values[field_name] = 0
+
+    with pytest.raises(ValidationError, match=f"{field_name} must be positive"):
+        Settings.model_validate(values)
 
 
 def test_reasoning_effort_defaults_to_high_and_normalizes_case(monkeypatch: MonkeyPatch) -> None:
@@ -284,3 +314,82 @@ def test_cors_allowed_origins_defaults_to_empty_list() -> None:
     )
 
     assert settings.cors_allowed_origins_list == []
+
+
+def _vision_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "openai_api_key": "openai-key",
+        "openai_models": "gpt-5-mini",
+        "openai_vision_models": "gpt-5-mini",
+        "files_r2_endpoint_url": "https://account.r2.cloudflarestorage.com",
+        "files_staging_bucket": "staging",
+        "files_canonical_bucket": "canonical",
+        "files_preview_bucket": "preview",
+        "files_preview_api_access_key_id": "preview-api-key",
+        "files_preview_api_secret_access_key": "preview-api-secret",
+        "files_preview_llm_access_key_id": "preview-llm-key",
+        "files_preview_llm_secret_access_key": "preview-llm-secret",
+    }
+    values.update(overrides)
+    return get_settings().model_copy(update=values)
+
+
+def _validate_settings(**overrides: object) -> Settings:
+    values = get_settings().model_dump()
+    values.update(overrides)
+    return Settings.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"openai_models": ""}, "must not be empty"),
+        ({"openai_models": "gpt-5-mini,"}, "entries must not be empty"),
+        (
+            {"openai_models": "gpt-5-mini", "openai_vision_models": "gpt-5-mini,gpt-5-mini"},
+            "entries must be unique",
+        ),
+        (
+            {"openai_models": "gpt-5-mini", "openai_vision_models": "gpt-5"},
+            "must be a subset",
+        ),
+        ({"openai_image_token_reserve": 0}, "must be positive"),
+    ],
+)
+def test_invalid_vision_model_configuration_fails_during_settings_validation(
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        _validate_settings(**overrides)
+
+
+def test_empty_vision_allowlist_is_a_valid_kill_switch_without_preview_credentials() -> None:
+    settings = _vision_settings(
+        openai_vision_models="",
+        files_preview_bucket="",
+        files_preview_api_access_key_id="",
+        files_preview_api_secret_access_key="",
+        files_preview_llm_access_key_id="",
+        files_preview_llm_secret_access_key="",
+    )
+
+    validate_api_vision_settings(settings)
+    validate_worker_vision_settings(settings)
+
+
+def test_vision_runtime_validators_require_their_separate_preview_credentials() -> None:
+    with pytest.raises(ValueError, match="files_preview_api_access_key_id"):
+        validate_api_vision_settings(_vision_settings(files_preview_api_access_key_id=""))
+
+    with pytest.raises(ValueError, match="files_preview_llm_access_key_id"):
+        validate_worker_vision_settings(_vision_settings(files_preview_llm_access_key_id=""))
+
+
+def test_vision_runtime_rejects_preview_bucket_aliasing_an_original_bucket() -> None:
+    settings = _vision_settings(files_preview_bucket="canonical")
+
+    with pytest.raises(ValueError, match="must be distinct"):
+        validate_api_vision_settings(settings)
+    with pytest.raises(ValueError, match="must be distinct"):
+        validate_worker_vision_settings(settings)

@@ -12,6 +12,7 @@
                                             → Redis (Run Stream / 唤醒 / Celery / 限流)
                                             → Celery Worker / Beat (邮件、标题、维护任务)
                                             → Media Worker → Cloudflare R2 / CDN purge (头像)
+                                            → File Worker → ClamAV → 私有 Cloudflare R2 (消息附件)
 ```
 
 部署分两条线：
@@ -51,11 +52,14 @@ cd /opt/ichat
 
 - `compose.prod.yml`
 - `deploy/nginx.conf`
+- `deploy/clamav/entrypoint.sh`
+- `deploy/clamav/healthcheck.sh`
 - `.env`（基于 `.env.example` 修改）
 
 ```bash
 # 从本地复制（在本地执行）
 scp compose.prod.yml deploy/nginx.conf user@your-server:/opt/ichat/
+scp -r deploy/clamav user@your-server:/opt/ichat/deploy/
 scp .env.example user@your-server:/opt/ichat/.env
 ```
 
@@ -121,7 +125,54 @@ LOG_LEVEL=INFO
 
 完整变量列表（含 Worker 并发、DB 连接池、Run Stream/checkpoint、Web Search 超时和证据压缩等调优项）见 `.env.example`。
 
-头像 R2 的 bucket、精确 CORS、API/media worker/purge 三类最小权限凭证、真实 smoke、运维下架和回滚步骤见 `docs/handover/2026-07-14-r2-avatar-upload.md`。生产资源配置完成前保持 `AVATAR_STORAGE_ENABLED=false`；启用或修改头像环境变量后须 force-recreate `api media-worker celery-beat`。
+头像 R2 的历史 expand 路径见 `docs/handover/2026-07-14-r2-avatar-upload.md`。统一 files 领域（消息附件、新头像写入、R2/ClamAV smoke、灰度、回滚与 ticket 15 contract 前置条件）以 `docs/handover/2026-08-01-unified-file-upload.md` 为当前权威。生产资源配置完成前保持 `AVATAR_STORAGE_ENABLED=false` 和 `FILE_UPLOAD_ENABLED=false`；旧头像兼容路径不能因此被提前删除。
+
+### 文件上传与 ClamAV 配置
+
+文件附件使用**三个私有** R2 bucket：staging（浏览器仅向随机 key PUT）、canonical（原件/文档派生物）与独立 preview（模型可见的安全图片派生物）。它们必须与头像公开 bucket 以及彼此分开，开发与生产也必须分开。`.env.example` 是完整变量清单；生产至少配置：
+
+```env
+FILE_UPLOAD_ENABLED=false
+FILES_R2_ENDPOINT_URL=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+FILES_R2_REGION=auto
+FILES_STAGING_BUCKET=ichat-prod-file-staging
+FILES_CANONICAL_BUCKET=ichat-prod-files
+FILES_PREVIEW_BUCKET=ichat-prod-file-previews
+
+# API signer：仅 staging PUT/HEAD 与 canonical 短期 GET。
+FILES_UPLOAD_ACCESS_KEY_ID=<upload-signer-key>
+FILES_UPLOAD_SECRET_ACCESS_KEY=<upload-signer-secret>
+FILES_DOWNLOAD_ACCESS_KEY_ID=<download-signer-key>
+FILES_DOWNLOAD_SECRET_ACCESS_KEY=<download-signer-secret>
+
+# API preview signer：仅 preview 短期 GET。
+FILES_PREVIEW_API_ACCESS_KEY_ID=<preview-api-key>
+FILES_PREVIEW_API_SECRET_ACCESS_KEY=<preview-api-secret>
+
+# LLM Worker：仅 preview 短期 GET，不能读取 canonical 原件。
+FILES_PREVIEW_LLM_ACCESS_KEY_ID=<preview-llm-key>
+FILES_PREVIEW_LLM_SECRET_ACCESS_KEY=<preview-llm-secret>
+
+# 仅 file-worker 接收：staging 条件 GET/delete、canonical 与 preview 写入/delete/迁移。
+FILES_WORKER_ACCESS_KEY_ID=<file-worker-key>
+FILES_WORKER_SECRET_ACCESS_KEY=<file-worker-secret>
+
+CLAMAV_HOST=clamav
+CLAMAV_PORT=3310
+CLAMAV_SIGNATURE_MAX_AGE_SECONDS=172800
+```
+
+ClamAV 容器通过仓库内的启动脚本先同步执行一次 `freshclam`，成功或重试耗尽后才启动
+clamd，避免持久卷中的旧病毒库与 clamd 并发加载。健康检查同时比较 clamd 内存版本与
+磁盘版本，并按 `CLAMAV_SIGNATURE_MAX_AGE_SECONDS` 校验签名时间；仅能响应 `PING` 或
+普通扫描不足以进入 healthy。`file-worker` 继续依赖该健康状态启动，因此不能删除
+`deploy/clamav` 脚本挂载，也不能把健康检查退回单纯的 `clamdscan --ping`。
+
+compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。
+
+`media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical/preview 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)；视觉白名单、preview backfill、真实 GPT/R2 smoke 与回滚见[GPT 图片输入交接](handover/2026-08-03-gpt-vision-input.md)。
+
+`FILE_UPLOAD_ENABLED` 只控制新附件创建：关闭后 `/capabilities` 要求前端隐藏入口，API 拒绝新会话；已有附件仍可展示/读取，files queue 仍排空，维护与删除补偿仍运行。切换该开关必须 force-recreate API；生产回滚顺序见该交接，不能先停 worker 或撤销凭证。
 
 > **注意**：修改 `.env` 中的 `CORS_ALLOWED_ORIGINS` 后，必须 `docker compose -f compose.prod.yml up -d --force-recreate api` 才会生效——`restart` 不会重新加载 env。
 
@@ -151,7 +202,7 @@ docker compose -f compose.prod.yml pull
 # 运行数据库迁移
 docker compose -f compose.prod.yml run --rm migrate
 
-# 启动所有服务
+# 启动所有服务（含 clamav 与 file-worker）
 docker compose -f compose.prod.yml up -d
 
 # 查看日志
@@ -167,11 +218,11 @@ docker compose -f compose.prod.yml logs -f
 - **CI** (`.github/workflows/ci.yml`)：每次 push/PR 到 `main` 时运行 lint、类型检查、测试和镜像构建
 - **Deploy** (`.github/workflows/deploy.yml`)：push 到 `main` 后自动构建镜像并部署到服务器
 
-Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml` 与
-`deploy/nginx.conf` 同步到 `DEPLOY_PATH`，同步成功后才通过 SSH 执行镜像拉取、迁移和
-`up -d --remove-orphans`。生产部署按工作流串行执行，避免并发提交覆盖彼此的部署定义；
-最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。任一步失败都会终止部署，不会
-继续使用服务器上的旧拓扑。
+Deploy job 会检出触发工作流的提交，先把该提交中的 `compose.prod.yml`、
+`deploy/nginx.conf` 与 `deploy/clamav/` 启动/健康脚本同步到 `DEPLOY_PATH`，同步成功后才
+通过 SSH 执行镜像拉取、迁移和 `up -d --remove-orphans`。生产部署按工作流串行执行，避免
+并发提交覆盖彼此的部署定义；最后会强制重建 nginx，使刚同步的 real-IP 配置立即生效。
+任一步失败都会终止部署，不会继续使用服务器上的旧拓扑。
 
 ### 配置 GitHub Secrets
 
@@ -246,6 +297,8 @@ docker compose -f compose.prod.yml ps
 # 查看日志
 docker compose -f compose.prod.yml logs -f api
 docker compose -f compose.prod.yml logs -f worker
+docker compose -f compose.prod.yml logs -f file-worker
+docker compose -f compose.prod.yml logs -f clamav
 
 # 重启单个服务
 docker compose -f compose.prod.yml restart api

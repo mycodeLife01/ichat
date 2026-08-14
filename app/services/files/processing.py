@@ -1,0 +1,488 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from typing import Any
+from uuid import UUID, uuid4
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.core.config import Settings
+from app.models.files import (
+    FileAsset,
+    FileModelInputKind,
+    FileObject,
+    FileObjectDeletion,
+    FileObjectRole,
+    FilePurpose,
+    FileQuota,
+    FileStorageLocation,
+    FileUpload,
+    FileUploadStatus,
+)
+from app.models.user import User
+from app.services.files.formats import policy_for_filename
+from app.services.files.lifecycle import retry_available_at, transition_upload
+from app.services.files.protocols import (
+    FileDerivative,
+    FileParser,
+    FileProcessingError,
+    FileStorage,
+    MalwareScanner,
+    ProcessedFile,
+    ScanVerdict,
+)
+from app.services.files.telemetry import emit_file_phase, observe_file_phase
+
+
+def process_upload(
+    factory: sessionmaker[Session],
+    *,
+    upload_id: str,
+    settings: Settings,
+    storage: FileStorage,
+    scanner: MalwareScanner,
+    parser: FileParser,
+    task_id: str | None = None,
+    now: datetime | None = None,
+) -> str:
+    """Claim and process one message-attachment upload by public id.
+
+    PostgreSQL owns claim/retry/terminal truth. The task id is only a lease
+    owner, and the manifest is committed before the first canonical write.
+    """
+
+    moment = now or datetime.now(UTC)
+    owner = task_id or uuid4().hex
+    try:
+        public_id = UUID(upload_id)
+    except ValueError:
+        return "missing"
+
+    with factory() as session:
+        upload_user_id = session.scalar(
+            select(FileUpload.user_id).where(FileUpload.public_id == public_id)
+        )
+        if upload_user_id is None:
+            return "missing"
+        user = session.scalar(
+            select(User).where(User.id == upload_user_id).with_for_update()
+        )
+        upload = session.scalar(
+            select(FileUpload).where(FileUpload.public_id == public_id).with_for_update()
+        )
+        if upload is None:
+            return "missing"
+        if upload.status == FileUploadStatus.SUCCEEDED:
+            return "succeeded"
+        if (
+            upload.user_id != upload_user_id
+            or user is None
+            or upload.purpose != FilePurpose.MESSAGE_ATTACHMENT
+            or upload.status != FileUploadStatus.QUEUED
+            or upload.available_at > moment
+            or not user.is_active
+            or upload.confirmed_etag is None
+        ):
+            return "not_claimable"
+        transition_upload(upload, FileUploadStatus.PROCESSING, now=moment)
+        upload.attempt_count += 1
+        upload.lease_owner = owner
+        upload.lease_expires_at = moment + timedelta(
+            seconds=settings.files_processing_lease_seconds
+        )
+        staging_key = upload.staging_object_key
+        etag = upload.confirmed_etag
+        filename = upload.original_filename
+        declared_size = upload.declared_size_bytes
+        attempt_count = upload.attempt_count
+        existing_manifest = list(upload.output_manifest or [])
+        multipart_upload_id = upload.multipart_upload_id
+        queue_wait_seconds = max(
+            0.0,
+            (moment - (upload.queued_at or upload.created_at)).total_seconds(),
+        )
+        session.commit()
+
+    emit_file_phase(
+        "queue_wait",
+        outcome="succeeded",
+        duration_seconds=queue_wait_seconds,
+        upload_id=str(public_id),
+    )
+
+    try:
+        with observe_file_phase("if_match_get", upload_id=str(public_id)):
+            source = storage.get_staging(
+                staging_key,
+                if_match=etag,
+                expected_size_bytes=declared_size,
+            )
+            if len(source) != declared_size:
+                raise FileProcessingError("object_changed")
+        source_hash = sha256(source).hexdigest()
+        with observe_file_phase("clamav", upload_id=str(public_id)):
+            verdict = scanner.scan(source)
+            if verdict == ScanVerdict.INFECTED:
+                raise FileProcessingError("malware_detected")
+        with observe_file_phase("parse", upload_id=str(public_id)):
+            processed = parser.parse(source, policy_for_filename(filename))
+            if processed.original.content != source:
+                raise FileProcessingError("original_changed")
+        manifest = existing_manifest or _build_manifest(processed)
+        with observe_file_phase("manifest_commit", upload_id=str(public_id)):
+            _persist_manifest(
+                factory,
+                public_id=public_id,
+                owner=owner,
+                manifest=manifest,
+            )
+        with observe_file_phase("r2_write", upload_id=str(public_id)):
+            derivatives: dict[str, FileDerivative] = {
+                derivative.role: derivative for derivative in processed.derivatives
+            }
+            def write_entry(entry: dict[str, Any]) -> None:
+                role = str(entry["role"])
+                try:
+                    derivative = derivatives[role]
+                except KeyError as exc:
+                    raise FileProcessingError("manifest_conflict") from exc
+                if role == "original":
+                    with observe_file_phase("r2_promote", upload_id=str(public_id)):
+                        storage.promote_staging_original(
+                            staging_key,
+                            str(entry["object_key"]),
+                            if_match=etag,
+                            expected_size_bytes=int(entry["size_bytes"]),
+                            expected_sha256=str(entry["sha256"]),
+                            content_type=derivative.content_type,
+                        )
+                elif _manifest_location(entry) == FileStorageLocation.MODEL_PREVIEW_PRIVATE:
+                    with observe_file_phase("preview_write", upload_id=str(public_id)):
+                        storage.put_preview(
+                            str(entry["object_key"]),
+                            content=derivative.content,
+                            content_type=derivative.content_type,
+                        )
+                else:
+                    # Compatibility path for a manifest committed by a pre-cutover worker.
+                    with observe_file_phase("legacy_extract_write", upload_id=str(public_id)):
+                        storage.put_canonical(
+                            str(entry["object_key"]),
+                            content=derivative.content,
+                            content_type=derivative.content_type,
+                        )
+
+            if len(manifest) == 1:
+                write_entry(manifest[0])
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=min(3, len(manifest)),
+                    thread_name_prefix="file-r2-write",
+                ) as executor:
+                    list(executor.map(write_entry, manifest))
+    except FileProcessingError as exc:
+        return _finish_error(
+            factory,
+            public_id=public_id,
+            owner=owner,
+            settings=settings,
+            code=exc.code,
+            retryable=exc.retryable,
+            attempt_count=attempt_count,
+            now=moment,
+        )
+    except Exception:
+        return _finish_error(
+            factory,
+            public_id=public_id,
+            owner=owner,
+            settings=settings,
+            code="processing_failed",
+            retryable=True,
+            attempt_count=attempt_count,
+            now=moment,
+        )
+
+    with observe_file_phase("final_commit", upload_id=str(public_id)):
+        result = _commit_success(
+            factory,
+            public_id=public_id,
+            owner=owner,
+            processed=processed,
+            manifest=manifest,
+            source_hash=source_hash,
+            settings=settings,
+            now=moment,
+        )
+    try:
+        with observe_file_phase("staging_cleanup", upload_id=str(public_id)):
+            if multipart_upload_id is not None:
+                storage.abort_multipart_upload(
+                    staging_key,
+                    upload_id=multipart_upload_id,
+                )
+            storage.delete_staging(staging_key)
+            with factory() as session:
+                current = session.scalar(
+                    select(FileUpload).where(FileUpload.public_id == public_id)
+                )
+                if current is not None:
+                    current.staging_deleted_at = datetime.now(UTC)
+                    session.commit()
+    except Exception:
+        return result
+    return result
+
+
+def _build_manifest(processed: ProcessedFile) -> list[dict[str, Any]]:
+    return [
+        {
+            "role": derivative.role,
+            "object_key": f"files/{uuid4().hex}/{derivative.role}",
+            "media_type": derivative.content_type,
+            "size_bytes": derivative.size_bytes,
+            "sha256": derivative.sha256_hex,
+            "storage_location": (
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE.value
+                if derivative.role == "preview"
+                else FileStorageLocation.CANONICAL_PRIVATE.value
+            ),
+        }
+        for derivative in processed.derivatives
+        if derivative.role != "document_extract"
+    ]
+
+
+def _persist_manifest(
+    factory: sessionmaker[Session],
+    *,
+    public_id: UUID,
+    owner: str,
+    manifest: list[dict[str, Any]],
+) -> None:
+    with factory() as session:
+        upload = session.scalar(
+            select(FileUpload).where(FileUpload.public_id == public_id).with_for_update()
+        )
+        if (
+            upload is None
+            or upload.status != FileUploadStatus.PROCESSING
+            or upload.lease_owner != owner
+        ):
+            raise FileProcessingError("upload_cancelled")
+        if upload.output_manifest is not None and upload.output_manifest != manifest:
+            raise FileProcessingError("manifest_conflict")
+        upload.output_manifest = manifest
+        session.commit()
+
+
+def _locked_quota(session: Session, *, user_id: int) -> FileQuota:
+    quota = session.scalar(select(FileQuota).where(FileQuota.user_id == user_id).with_for_update())
+    if quota is None:
+        quota = FileQuota(user_id=user_id)
+        session.add(quota)
+        session.flush()
+    return quota
+
+
+def _release_reservation(session: Session, upload: FileUpload) -> None:
+    if upload.purpose != FilePurpose.MESSAGE_ATTACHMENT:
+        return
+    quota = _locked_quota(session, user_id=upload.user_id)
+    quota.reserved_bytes = max(0, quota.reserved_bytes - upload.declared_size_bytes)
+
+
+def _finish_error(
+    factory: sessionmaker[Session],
+    *,
+    public_id: UUID,
+    owner: str,
+    settings: Settings,
+    code: str,
+    retryable: bool,
+    attempt_count: int,
+    now: datetime,
+) -> str:
+    with factory() as session:
+        upload = session.scalar(
+            select(FileUpload).where(FileUpload.public_id == public_id).with_for_update()
+        )
+        if upload is None:
+            return "missing"
+        if upload.status != FileUploadStatus.PROCESSING or upload.lease_owner != owner:
+            return "cancelled"
+        if retryable and attempt_count < settings.files_processing_max_attempts:
+            transition_upload(upload, FileUploadStatus.QUEUED, now=now)
+            upload.available_at = retry_available_at(attempt_count=attempt_count, now=now)
+            upload.error_code = None
+            session.commit()
+            return "retry"
+        target = FileUploadStatus.FAILED if retryable else FileUploadStatus.REJECTED
+        transition_upload(upload, target, now=now, error_code=code)
+        _release_reservation(session, upload)
+        _enqueue_manifest_deletions(session, upload=upload, now=now)
+        session.commit()
+        return target.value
+
+
+def _commit_success(
+    factory: sessionmaker[Session],
+    *,
+    public_id: UUID,
+    owner: str,
+    processed: ProcessedFile,
+    manifest: list[dict[str, Any]],
+    source_hash: str,
+    settings: Settings,
+    now: datetime,
+) -> str:
+    with factory() as session:
+        upload_user_id = session.scalar(
+            select(FileUpload.user_id).where(FileUpload.public_id == public_id)
+        )
+        if upload_user_id is None:
+            return "orphaned"
+        user = session.scalar(
+            select(User).where(User.id == upload_user_id).with_for_update()
+        )
+        upload = session.scalar(
+            select(FileUpload).where(FileUpload.public_id == public_id).with_for_update()
+        )
+        if upload is None:
+            return "orphaned"
+        if (
+            upload.user_id != upload_user_id
+            or upload.status != FileUploadStatus.PROCESSING
+            or upload.lease_owner != owner
+            or user is None
+            or not user.is_active
+        ):
+            _enqueue_manifest_deletions(session, upload=upload, now=now)
+            if upload.status == FileUploadStatus.PROCESSING and upload.lease_owner == owner:
+                transition_upload(
+                    upload,
+                    FileUploadStatus.CANCELLED,
+                    now=now,
+                    error_code=(
+                        "account_inactive"
+                        if user is None or not user.is_active
+                        else "upload_cancelled"
+                    ),
+                )
+                _release_reservation(session, upload)
+            session.commit()
+            return "cancelled"
+
+        extracted = processed.document_extract
+        file = FileAsset(
+            user_id=upload.user_id,
+            purpose=upload.purpose,
+            original_filename=upload.original_filename,
+            media_type=processed.media_type,
+            size_bytes=processed.original.size_bytes,
+            sha256=source_hash,
+            warnings=list(processed.warnings),
+            extractor_version=processed.extractor_version,
+            summary_metadata=dict(processed.metadata),
+            model_input_kind=(
+                FileModelInputKind.DOCUMENT
+                if processed.kind == "document"
+                and extracted is not None
+                and bool(extracted.content.strip())
+                else (
+                    FileModelInputKind.IMAGE
+                    if (
+                        processed.kind == "display_only"
+                        and processed.preview is not None
+                        and bool(processed.preview.content)
+                    )
+                    else None
+                )
+            ),
+            document_text=(
+                extracted.content.decode("utf-8") if extracted is not None else None
+            ),
+            unbound_expires_at=now + timedelta(seconds=settings.files_unbound_ttl_seconds),
+        )
+        session.add(file)
+        session.flush()
+        for entry in manifest:
+            session.add(
+                FileObject(
+                    file_id=file.id,
+                    role=_object_role(str(entry["role"])),
+                    storage_location=_manifest_location(entry),
+                    object_key=str(entry["object_key"]),
+                    media_type=str(entry["media_type"]),
+                    size_bytes=int(entry["size_bytes"]),
+                    sha256=str(entry["sha256"]),
+                )
+            )
+        quota = _locked_quota(session, user_id=upload.user_id)
+        quota.reserved_bytes = max(0, quota.reserved_bytes - upload.declared_size_bytes)
+        quota.used_bytes += processed.original.size_bytes
+        upload.file_id = file.id
+        transition_upload(upload, FileUploadStatus.SUCCEEDED, now=now)
+        session.commit()
+        return "succeeded"
+
+
+def _object_role(role: str) -> FileObjectRole:
+    return {
+        "original": FileObjectRole.ORIGINAL,
+        "preview": FileObjectRole.PREVIEW,
+        "document_extract": FileObjectRole.DOCUMENT_EXTRACT,
+    }[role]
+
+
+def _manifest_location(entry: dict[str, Any]) -> FileStorageLocation:
+    """Return a manifest location, retaining canonical compatibility for old rows."""
+
+    value = entry.get("storage_location")
+    if value is None:
+        return FileStorageLocation.CANONICAL_PRIVATE
+    try:
+        return FileStorageLocation(str(value))
+    except ValueError as exc:
+        raise FileProcessingError("manifest_conflict") from exc
+
+
+def _enqueue_manifest_deletions(
+    session: Session,
+    *,
+    upload: FileUpload,
+    now: datetime,
+) -> None:
+    for entry in upload.output_manifest or []:
+        key = str(entry.get("object_key") or "")
+        if not key:
+            continue
+        location = _manifest_location(entry)
+        locations = [location]
+        if entry.get("role") == "preview" and location in {
+            FileStorageLocation.CANONICAL_PRIVATE,
+            FileStorageLocation.MODEL_PREVIEW_PRIVATE,
+        }:
+            locations.append(
+                FileStorageLocation.MODEL_PREVIEW_PRIVATE
+                if location == FileStorageLocation.CANONICAL_PRIVATE
+                else FileStorageLocation.CANONICAL_PRIVATE
+            )
+        for current_location in locations:
+            existing = session.scalar(
+                select(FileObjectDeletion.id).where(
+                    FileObjectDeletion.storage_location == current_location,
+                    FileObjectDeletion.object_key == key,
+                )
+            )
+            if existing is None:
+                session.add(
+                    FileObjectDeletion(
+                        storage_location=current_location,
+                        object_key=key,
+                        available_at=now,
+                    )
+                )

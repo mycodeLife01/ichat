@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.files import SharedAttachmentResponse
+
 
 class ShareCreateRequest(BaseModel):
     """Owner request to mint a share link.
@@ -12,6 +14,7 @@ class ShareCreateRequest(BaseModel):
     """
 
     expires_in_days: int | None = Field(default=None, gt=0, le=365)
+    confirm_attachment_privacy: bool = False
 
 
 class SharedSource(BaseModel):
@@ -34,6 +37,7 @@ class SharedMessage(BaseModel):
     content: str
     reasoning: str | None = None
     sources: list[SharedSource] = Field(default_factory=list)
+    attachments: list[SharedAttachmentResponse] = Field(default_factory=list)
 
 
 class PublicShareResponse(BaseModel):

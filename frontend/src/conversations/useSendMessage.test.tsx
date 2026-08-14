@@ -79,6 +79,9 @@ describe("useSendMessage", () => {
     await waitFor(() =>
       expect(result.current.activeRun?.runId).toBe(sendMessageResponse.run.id),
     );
+    expect(result.current.activeRun?.providerName).toBe(
+      sendMessageResponse.run.provider_name,
+    );
   });
 
   it("sends to the already-selected conversation without creating a draft", async () => {
@@ -199,6 +202,31 @@ describe("useSendMessage", () => {
 
     expect(sendMessage).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it("allows a pure document message and preserves attachment selection order", async () => {
+    const start = vi.fn();
+    const createWithMessage = vi.fn(async () => ({
+      conversation: draft,
+      ...sendMessageResponse,
+    }));
+    const services = createFakeServices({}, { createWithMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+
+    await act(async () => {
+      await result.current.send("", ["file-b", "file-a"]);
+    });
+
+    expect(createWithMessage).toHaveBeenCalledWith(
+      "",
+      {
+        thinking_enabled: true,
+        reasoning_effort: "low",
+        web_search_enabled: false,
+      },
+      undefined,
+      ["file-b", "file-a"],
+    );
   });
 
   it("keeps state usable when sendMessage rejects", async () => {

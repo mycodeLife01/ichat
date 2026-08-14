@@ -8,11 +8,11 @@ decides by capability, never by provider name.
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
-from app.agent.messages import Message
+from app.agent.messages import ImageBlock, Message
 from app.agent.tools.base import ToolSpec
 
 
@@ -22,6 +22,7 @@ class ProviderCapabilities:
 
     supports_tool_history: bool
     supports_reasoning: bool
+    supports_image_input: bool = False
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,32 @@ class ReasoningConfig:
 
     enabled: bool
     effort: str
+
+
+@dataclass(frozen=True)
+class ResolvedImageInput:
+    """Short-lived provider input resolved from one immutable image snapshot."""
+
+    file_id: str
+    url: str
+
+
+class ImageInputError(Exception):
+    """Stable, content-free image resolution failure."""
+
+    def __init__(self, *, code: str, message: str, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+
+
+class ImageInputResolver(Protocol):
+    """Narrow batch resolver used immediately before an image model call."""
+
+    async def resolve(
+        self, images: Sequence[ImageBlock]
+    ) -> Mapping[str, ResolvedImageInput]: ...
 
 
 @dataclass(frozen=True)
@@ -66,10 +93,11 @@ StreamEvent = TextDelta | ReasoningDelta | ToolCallDone | StreamDone
 
 
 class ProviderError(Exception):
-    def __init__(self, *, code: str, message: str) -> None:
+    def __init__(self, *, code: str, message: str, retryable: bool = False) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.retryable = retryable
 
 
 class Provider(ABC):
@@ -98,6 +126,7 @@ class Provider(ABC):
         messages: list[Message],
         reasoning: ReasoningConfig | None = None,
         tools: list[ToolSpec] | None = None,
+        image_resolver: ImageInputResolver | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream one provider turn as neutral events."""
         ...

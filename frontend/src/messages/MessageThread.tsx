@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { MessageResponse, MessageSource } from "../api/types";
+import type { FileReadRole } from "../files/types";
 import { messageBubble } from "../ui/classes";
 import { Message } from "./Message";
 
@@ -9,8 +10,19 @@ type MessageThreadProps = {
   pendingMessage?: string | null;
   isMobile?: boolean;
   mutateDisabledReason?: string | null;
-  onEditAndRegenerate?: (messageId: string, content: string) => void;
+  onEditAndRegenerate?: (
+    messageId: string,
+    content: string,
+    attachmentIds?: string[],
+  ) => void;
   onRegenerate?: (messageId: string) => void;
+  legacyMessageId?: string | null;
+  onUpgradeLegacy?: (messageId: string) => void;
+  onEditUpgradeLegacy?: (messageId: string) => boolean | void | Promise<boolean | void>;
+  onStartNewConversation?: () => void;
+  onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  localImagePreviews?: ReadonlyMap<string, string>;
+  onLocalImagePreviewConsumed?: (fileId: string) => void;
   onShowSources?: (sources: MessageSource[]) => void;
   children?: ReactNode;
 };
@@ -22,6 +34,13 @@ export function MessageThread({
   mutateDisabledReason = null,
   onEditAndRegenerate,
   onRegenerate,
+  legacyMessageId = null,
+  onUpgradeLegacy,
+  onEditUpgradeLegacy,
+  onStartNewConversation,
+  onReadAttachment,
+  localImagePreviews,
+  onLocalImagePreviewConsumed,
   onShowSources,
   children,
 }: MessageThreadProps) {
@@ -38,6 +57,13 @@ export function MessageThread({
           mutateDisabledReason={mutateDisabledReason}
           onEditAndRegenerate={onEditAndRegenerate}
           onRegenerate={onRegenerate}
+          legacyUpgradeAvailable={legacyMessageId === message.id}
+          onUpgradeLegacy={onUpgradeLegacy}
+          onEditUpgradeLegacy={onEditUpgradeLegacy}
+          onStartNewConversation={onStartNewConversation}
+          onReadAttachment={onReadAttachment}
+          localImagePreviews={localImagePreviews}
+          onLocalImagePreviewConsumed={onLocalImagePreviewConsumed}
           onShowSources={onShowSources}
         />
       ))}

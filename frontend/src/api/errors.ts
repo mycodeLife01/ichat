@@ -3,6 +3,8 @@ type ApiErrorOptions = {
   message?: string;
   detail?: unknown;
   payload?: unknown;
+  code?: string;
+  legacyMessageId?: string | null;
   isAuthExpired?: boolean;
   isAbort?: boolean;
   cause?: unknown;
@@ -12,6 +14,8 @@ export class ApiError extends Error {
   readonly status: number;
   readonly detail?: unknown;
   readonly payload?: unknown;
+  readonly code?: string;
+  readonly legacyMessageId?: string | null;
   readonly isAuthExpired: boolean;
   readonly isAbort: boolean;
 
@@ -23,6 +27,8 @@ export class ApiError extends Error {
     this.status = options.status;
     this.detail = options.detail;
     this.payload = options.payload;
+    this.code = options.code;
+    this.legacyMessageId = options.legacyMessageId ?? null;
     this.isAuthExpired = options.isAuthExpired ?? false;
     this.isAbort = options.isAbort ?? false;
   }
@@ -60,6 +66,28 @@ export function toApiError(error: unknown): ApiError {
     message: "网络连接失败，请检查后重试",
     cause: error,
   });
+}
+
+export function getErrorCode(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const value = payload as Record<string, unknown>;
+  if (typeof value.code === "string" && value.code !== "") return value.code;
+  if (value.detail && typeof value.detail === "object") {
+    const detail = value.detail as Record<string, unknown>;
+    if (typeof detail.code === "string" && detail.code !== "") return detail.code;
+  }
+  return undefined;
+}
+
+export function getLegacyMessageId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  if (typeof value.legacy_message_id === "string") return value.legacy_message_id;
+  if (value.detail && typeof value.detail === "object") {
+    const detail = value.detail as Record<string, unknown>;
+    if (typeof detail.legacy_message_id === "string") return detail.legacy_message_id;
+  }
+  return null;
 }
 
 export function getErrorDetail(payload: unknown): unknown {

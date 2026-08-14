@@ -17,7 +17,10 @@ import json
 from collections.abc import Callable
 
 from app.agent.messages import (
+    AttachmentNoticeBlock,
     ContentBlock,
+    DocumentBlock,
+    ImageBlock,
     Message,
     ToolCallBlock,
     ToolResultBlock,
@@ -34,11 +37,30 @@ def build_context(
     history: list[Message],
     budget_tokens: int,
     count_tokens: Callable[[str], int],
+    image_token_reserve: int = 0,
 ) -> list[Message]:
     """Prepend the system prompt and trim the oldest turns to fit the budget."""
-    history_budget = budget_tokens - _message_tokens(system_text(system_prompt), count_tokens)
-    kept = _trim_to_budget(history, budget_tokens=history_budget, count_tokens=count_tokens)
+    history_budget = budget_tokens - _message_tokens(
+        system_text(system_prompt), count_tokens, image_token_reserve=image_token_reserve
+    )
+    kept = _trim_to_budget(
+        history,
+        budget_tokens=history_budget,
+        count_tokens=count_tokens,
+        image_token_reserve=image_token_reserve,
+    )
     return [system_text(system_prompt), *kept]
+
+
+def estimate_message_tokens(
+    message: Message,
+    *,
+    count_tokens: Callable[[str], int],
+    image_token_reserve: int = 0,
+) -> int:
+    """Public admission-control counterpart to context trimming."""
+
+    return _message_tokens(message, count_tokens, image_token_reserve=image_token_reserve)
 
 
 def _is_turn_boundary(message: Message) -> bool:
@@ -54,6 +76,7 @@ def _trim_to_budget(
     *,
     budget_tokens: int,
     count_tokens: Callable[[str], int],
+    image_token_reserve: int,
 ) -> list[Message]:
     if not history:
         return []
@@ -65,7 +88,14 @@ def _trim_to_budget(
     bounds = [*starts, len(history)]
     segments = [history[a:b] for a, b in zip(bounds, bounds[1:], strict=False)]
     costs = [
-        sum(_message_tokens(message, count_tokens) for message in segment)
+        sum(
+            _message_tokens(
+                message,
+                count_tokens,
+                image_token_reserve=image_token_reserve,
+            )
+            for message in segment
+        )
         for segment in segments
     ]
     total = sum(costs)
@@ -78,9 +108,47 @@ def _trim_to_budget(
 def _block_text(block: ContentBlock) -> str:
     if isinstance(block, ToolCallBlock):
         return json.dumps(block.arguments, ensure_ascii=False)
-    return block.content if isinstance(block, ToolResultBlock) else block.text
+    if isinstance(block, ToolResultBlock):
+        return block.content
+    if isinstance(block, AttachmentNoticeBlock):
+        return "\n".join((block.filename, block.media_type, block.notice))
+    if isinstance(block, ImageBlock):
+        metadata = "\n".join(
+            (
+                block.filename,
+                block.media_type,
+                block.sha256,
+                str(block.width),
+                str(block.height),
+                block.processor_version,
+                *block.warnings,
+            )
+        )
+        return metadata
+    if isinstance(block, DocumentBlock):
+        metadata = "\n".join(
+            (
+                block.filename,
+                block.media_type,
+                block.sha256,
+                block.extractor_version,
+                *block.warnings,
+            )
+        )
+        return f"{metadata}\n{block.text}"
+    return block.text
 
 
-def _message_tokens(message: Message, count_tokens: Callable[[str], int]) -> int:
+def _message_tokens(
+    message: Message,
+    count_tokens: Callable[[str], int],
+    *,
+    image_token_reserve: int,
+) -> int:
     text = "\n".join(part for part in (_block_text(b) for b in message.blocks) if part)
-    return count_tokens(text) + _PER_MESSAGE_OVERHEAD_TOKENS
+    image_count = sum(isinstance(block, ImageBlock) for block in message.blocks)
+    return (
+        count_tokens(text)
+        + _PER_MESSAGE_OVERHEAD_TOKENS
+        + image_count * max(image_token_reserve, 0)
+    )

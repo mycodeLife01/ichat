@@ -5,8 +5,10 @@ task outcomes are persisted to ``email_outbox``, never read back via Celery.
 """
 
 from celery import Celery
+from celery.signals import beat_init, worker_process_init
 
 from app.core.config import get_settings
+from app.core.logging import configure_logging
 
 _settings = get_settings()
 
@@ -17,6 +19,7 @@ celery_app = Celery(
         "app.tasks.email_tasks",
         "app.tasks.llm_tasks",
         "app.tasks.media_tasks",
+        "app.tasks.file_tasks",
     ],
 )
 
@@ -41,8 +44,24 @@ celery_app.conf.update(
             "schedule": float(_settings.avatar_maintenance_interval_seconds),
             "options": {"queue": "media"},
         },
+        "maintain-files": {
+            "task": "app.tasks.file_tasks.maintain_files",
+            "schedule": float(_settings.files_maintenance_interval_seconds),
+            "options": {"queue": "files"},
+        },
     },
     task_routes={
         "app.tasks.media_tasks.*": {"queue": "media"},
+        "app.tasks.file_tasks.*": {"queue": "files"},
     },
 )
+
+
+@worker_process_init.connect  # type: ignore[untyped-decorator]
+def configure_worker_logging(**_: object) -> None:
+    configure_logging(_settings.log_level)
+
+
+@beat_init.connect  # type: ignore[untyped-decorator]
+def configure_beat_logging(**_: object) -> None:
+    configure_logging(_settings.log_level)

@@ -5,8 +5,12 @@ class AppError(Exception):
         detail: str,
         *,
         headers: dict[str, str] | None = None,
+        code: str | None = None,
+        context: dict[str, object] | None = None,
     ) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
         self.headers = headers
+        self.code = code
+        self.context = context

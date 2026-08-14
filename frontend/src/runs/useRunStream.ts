@@ -85,7 +85,12 @@ export function useRunStream() {
               dispatch({ type: "conversations/draftActivated" });
               if (stateRef.current.conversationIndex.selectedId === conversationId) {
                 const { messages, ...conversation } = detail;
-                dispatch({ type: "conversations/detailLoaded", conversation, messages });
+                dispatch({
+                  type: "conversations/detailLoaded",
+                  conversation,
+                  messages,
+                  imageContext: detail.image_context,
+                });
               }
               if (isActiveRun()) dispatch({ type: "run/cleared" });
 

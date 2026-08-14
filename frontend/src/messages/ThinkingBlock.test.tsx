@@ -16,6 +16,78 @@ describe("ThinkingBlock", () => {
     expect(screen.getByText("正在思考")).toBeInTheDocument();
   });
 
+  it("auto-expands raw streaming reasoning behind a generic label", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ThinkingBlock
+        content="DeepSeek 正在逐步推理"
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveTextContent("DeepSeek 正在逐步推理");
+    expect(screen.getByText("DeepSeek 正在逐步推理")).not.toHaveClass("hidden");
+
+    await user.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("DeepSeek 正在逐步推理")).toHaveClass("hidden");
+
+    rerender(
+      <ThinkingBlock
+        content="DeepSeek 正在逐步推理，新增内容"
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+    expect(header).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps an empty streaming status at one-line height", () => {
+    const { container } = render(
+      <ThinkingBlock
+        content={"\n"}
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    const body = container.querySelector(".thinking-body");
+    expect(body).toBeNull();
+    expect(container.querySelector(".thinking")?.className).toContain("h-7");
+  });
+
+  it("auto-collapses raw reasoning when the formal answer starts", () => {
+    const { rerender } = render(
+      <ThinkingBlock
+        content="DeepSeek 思考过程"
+        streaming
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    rerender(
+      <ThinkingBlock
+        content="DeepSeek 思考过程"
+        streaming={false}
+        showStreamingPreview={false}
+        autoExpandWhileStreaming
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByText("DeepSeek 思考过程")).toHaveClass("hidden");
+  });
+
   it("prefers an explicit label over the reasoning preview", () => {
     render(<ThinkingBlock content="推理内容" streaming label="正在搜索 天气" />);
     // The collapsed body keeps the text in the DOM (hidden), so assert on the

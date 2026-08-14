@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>统一文件上传 Code Review Map</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="统一文件上传 Code Review Map" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;zh-CN&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;统一文件上传 Code Review Map&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --red: light-dark(rgb(186 38 35), rgb(250 66 62));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;section id=&quot;unified-file-upload-review-map&quot; aria-label=&quot;统一文件上传 Code Review Map&quot;&gt;
+  &lt;style&gt;
+    #unified-file-upload-review-map {
+      color: var(--foreground);
+      width: 100%;
+    }
+
+    #unified-file-upload-review-map .urm-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    #unified-file-upload-review-map .urm-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #unified-file-upload-review-map .urm-canvas {
+      position: relative;
+    }
+
+    #unified-file-upload-review-map .urm-view[hidden] {
+      display: none;
+    }
+
+    #unified-file-upload-review-map .urm-lane {
+      display: grid;
+      grid-template-columns: 108px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    #unified-file-upload-review-map .urm-lane:last-child {
+      border-bottom: 1px solid var(--border);
+    }
+
+    #unified-file-upload-review-map .urm-lane-label {
+      color: var(--muted-foreground);
+      padding-top: 7px;
+    }
+
+    #unified-file-upload-review-map .urm-node-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    #unified-file-upload-review-map .urm-node-row.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #unified-file-upload-review-map .urm-node-row.one {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #unified-file-upload-review-map .urm-node-wrap {
+      min-width: 0;
+      display: flex;
+      align-items: stretch;
+    }
+
+    #unified-file-upload-review-map .urm-node-wrap .btn {
+      justify-content: flex-start;
+      text-align: left;
+      white-space: normal;
+      min-height: 54px;
+    }
+
+    #unified-file-upload-review-map .urm-node-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    #unified-file-upload-review-map .urm-node-title {
+      color: var(--foreground);
+    }
+
+    #unified-file-upload-review-map .urm-node-meta {
+      color: var(--muted-foreground);
+    }
+
+    #unified-file-upload-review-map .urm-arrow {
+      color: var(--muted-foreground);
+      text-align: center;
+      padding: 4px 0;
+    }
+
+    #unified-file-upload-review-map .urm-detail {
+      margin-top: 14px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-title {
+      margin: 0 0 4px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-block {
+      min-width: 0;
+    }
+
+    #unified-file-upload-review-map .urm-detail-block h3 {
+      margin: 0 0 7px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-block ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    #unified-file-upload-review-map .urm-detail-block li + li {
+      margin-top: 5px;
+    }
+
+    #unified-file-upload-review-map .urm-paths {
+      display: grid;
+      gap: 5px;
+    }
+
+    #unified-file-upload-review-map .urm-paths code {
+      overflow-wrap: anywhere;
+    }
+
+    #unified-file-upload-review-map .urm-ticket-stage {
+      padding: 11px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    #unified-file-upload-review-map .urm-ticket-stage:last-child {
+      border-bottom: 1px solid var(--border);
+    }
+
+    #unified-file-upload-review-map .urm-stage-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    #unified-file-upload-review-map .urm-stage-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    #unified-file-upload-review-map .urm-stage-grid.compact {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    #unified-file-upload-review-map .urm-stage-grid .btn {
+      justify-content: flex-start;
+      text-align: left;
+      white-space: normal;
+      min-height: 52px;
+    }
+
+    #unified-file-upload-review-map .urm-gate {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted-foreground);
+    }
+
+    #unified-file-upload-review-map .urm-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--viz-series-1);
+      flex: 0 0 auto;
+    }
+
+    #unified-file-upload-review-map .urm-dot.pending {
+      background: var(--viz-series-2);
+    }
+
+    #unified-file-upload-review-map .urm-dot.blocked {
+      background: var(--muted-foreground);
+    }
+
+    @media (max-width: 620px) {
+      #unified-file-upload-review-map .urm-lane {
+        grid-template-columns: 1fr;
+        gap: 7px;
+      }
+
+      #unified-file-upload-review-map .urm-lane-label {
+        padding-top: 0;
+      }
+
+      #unified-file-upload-review-map .urm-node-row,
+      #unified-file-upload-review-map .urm-node-row.two,
+      #unified-file-upload-review-map .urm-stage-grid,
+      #unified-file-upload-review-map .urm-stage-grid.compact {
+        grid-template-columns: 1fr;
+      }
+
+      #unified-file-upload-review-map .urm-detail-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;urm-toolbar&quot;&gt;
+    &lt;div class=&quot;urm-status&quot; aria-label=&quot;开发状态摘要&quot;&gt;
+      &lt;span class=&quot;urm-gate text-small&quot;&gt;&lt;span class=&quot;urm-dot&quot;&gt;&lt;/span&gt;01–13 仓库实现完成&lt;/span&gt;
+      &lt;span class=&quot;urm-gate text-small&quot;&gt;&lt;span class=&quot;urm-dot pending&quot;&gt;&lt;/span&gt;14 待真实环境验收&lt;/span&gt;
+      &lt;span class=&quot;urm-gate text-small&quot;&gt;&lt;span class=&quot;urm-dot blocked&quot;&gt;&lt;/span&gt;15 安全阻塞&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;viz-controls&quot; aria-label=&quot;地图视角&quot;&gt;
+      &lt;label class=&quot;form-label&quot; for=&quot;urm-view-select&quot;&gt;视角&lt;/label&gt;
+      &lt;select id=&quot;urm-view-select&quot; class=&quot;form-select&quot;&gt;
+        &lt;option value=&quot;architecture&quot;&gt;架构主链（推荐）&lt;/option&gt;
+        &lt;option value=&quot;tickets&quot;&gt;Ticket 依赖链&lt;/option&gt;
+      &lt;/select&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;urm-canvas&quot;&gt;
+    &lt;div class=&quot;urm-view&quot; data-view=&quot;architecture&quot;&gt;
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;领域事实层 · P0&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row two&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;domain&quot; aria-pressed=&quot;true&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;01 统一 Files 深模块&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;Upload → Asset → Object&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;relations&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;显式业务关系&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;MessageAttachment / avatar_file_id&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;urm-arrow text-small&quot; aria-hidden=&quot;true&quot;&gt;↓ 事实行驱动状态机与外部副作用&lt;/div&gt;
+
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;上传控制面 · P0&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row three&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;create&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;02 Create + 配额预留&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;验证、限流、presigned PUT&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;confirm&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;Confirm + 不可变 ETag&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;HEAD 校验后进入 queued&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;feature_flag&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;14 动态能力与开关&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;只停新增，不停排空&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;urm-arrow text-small&quot; aria-hidden=&quot;true&quot;&gt;↓ Celery 只唤醒；PostgreSQL 才是队列事实&lt;/div&gt;
+
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;文件执行面 · P0&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row three&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;claim&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;Claim / Lease / Retry&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;If-Match 条件读取&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;security&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;ClamAV + 受限解析&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;05–09 格式纵向扩展&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;manifest&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;Manifest → Canonical&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;先记可能输出，再写 R2&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;urm-arrow text-small&quot; aria-hidden=&quot;true&quot;&gt;↓ 成功资产成为消息输入；失败路径释放 reservation&lt;/div&gt;
+
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;消息与模型 · P0&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row three&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;binding&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;03/04 原子绑定&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;Message + Attachments + Run&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;blocks&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;中立 Content Blocks&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;Document / AttachmentNotice&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;transcript&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;预算 + Transcript&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;128k turn / 256k context&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;urm-arrow text-small&quot; aria-hidden=&quot;true&quot;&gt;↓ 权限、分享与保留规则围绕稳定业务关系执行&lt;/div&gt;
+
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;生命周期边界 · P0&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row three&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;read_privacy&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;读取与分享隐私&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;短期 URL / 匿名占位&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;retention&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;11 保留与配额&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;24h / 30d / 恢复期&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;deletion&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;13 删除补偿&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;R2 delete + avatar purge&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;urm-arrow text-small&quot; aria-hidden=&quot;true&quot;&gt;↘ avatar purpose 走独立执行凭证；最终汇入同一补偿模型&lt;/div&gt;
+
+      &lt;div class=&quot;urm-lane&quot;&gt;
+        &lt;div class=&quot;urm-lane-label text-small&quot;&gt;迁移与上线 · P1&lt;/div&gt;
+        &lt;div class=&quot;urm-node-row three&quot;&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;avatar&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;12 Avatar expand&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;新写统一，旧读回退&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;rollout&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;14 Production gate&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;真实 R2 / ClamAV / 权限 / SLO&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;urm-node-wrap&quot;&gt;
+            &lt;button type=&quot;button&quot; class=&quot;btn btn-block&quot; data-node=&quot;contract&quot; aria-pressed=&quot;false&quot;&gt;
+              &lt;span class=&quot;urm-node-copy&quot;&gt;&lt;span class=&quot;urm-node-title&quot;&gt;15 Contract（阻塞）&lt;/span&gt;&lt;span class=&quot;urm-node-meta text-small&quot;&gt;不可提前删旧 avatar 路径&lt;/span&gt;&lt;/span&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;urm-view&quot; data-view=&quot;tickets&quot; hidden&gt;
+      &lt;div class=&quot;urm-ticket-stage&quot;&gt;
+        &lt;div class=&quot;urm-stage-head&quot;&gt;&lt;span&gt;阶段 1 · 建立领域骨架&lt;/span&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;所有后续工作的单一前置&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;urm-stage-grid compact&quot; data-ticket-keys=&quot;t01&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;urm-ticket-stage&quot;&gt;
+        &lt;div class=&quot;urm-stage-head&quot;&gt;&lt;span&gt;阶段 2 · 第一条纵向切片&lt;/span&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;先证明上传状态机，再接模型&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;urm-stage-grid compact&quot; data-ticket-keys=&quot;t02,t03&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;urm-ticket-stage&quot;&gt;
+        &lt;div class=&quot;urm-stage-head&quot;&gt;&lt;span&gt;阶段 3 · 并行扩展能力&lt;/span&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;均以 03 的消息 / blocks seam 为汇合点&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;urm-stage-grid&quot; data-ticket-keys=&quot;t04,t05,t06,t07,t08,t09,t10,t12&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;urm-ticket-stage&quot;&gt;
+        &lt;div class=&quot;urm-stage-head&quot;&gt;&lt;span&gt;阶段 4 · 生命周期收口&lt;/span&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;04 → 11；11 + 12 → 13&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;urm-stage-grid compact&quot; data-ticket-keys=&quot;t11,t13&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;urm-ticket-stage&quot;&gt;
+        &lt;div class=&quot;urm-stage-head&quot;&gt;&lt;span&gt;阶段 5 · 生产与 Contract&lt;/span&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;14 的真实环境证据是 15 的硬门槛&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;urm-stage-grid compact&quot; data-ticket-keys=&quot;t14,t15&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;article class=&quot;card urm-detail&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;urm-detail-head&quot;&gt;
+      &lt;div&gt;
+        &lt;h2 class=&quot;urm-detail-title&quot; id=&quot;urm-detail-title&quot;&gt;01 统一 Files 深模块&lt;/h2&gt;
+        &lt;div class=&quot;text-small text-muted&quot; id=&quot;urm-detail-subtitle&quot;&gt;首要审查：领域边界、事实归属、不可变量&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;span class=&quot;viz-badge&quot; id=&quot;urm-detail-status&quot;&gt;P0 · completed&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;urm-detail-grid&quot;&gt;
+      &lt;section class=&quot;urm-detail-block&quot;&gt;
+        &lt;h3&gt;必须守住&lt;/h3&gt;
+        &lt;ul id=&quot;urm-detail-invariants&quot;&gt;&lt;/ul&gt;
+      &lt;/section&gt;
+      &lt;section class=&quot;urm-detail-block&quot;&gt;
+        &lt;h3&gt;代码入口&lt;/h3&gt;
+        &lt;div class=&quot;urm-paths&quot; id=&quot;urm-detail-paths&quot;&gt;&lt;/div&gt;
+      &lt;/section&gt;
+      &lt;section class=&quot;urm-detail-block&quot;&gt;
+        &lt;h3&gt;验证与依赖&lt;/h3&gt;
+        &lt;ul id=&quot;urm-detail-checks&quot;&gt;&lt;/ul&gt;
+      &lt;/section&gt;
+    &lt;/div&gt;
+  &lt;/article&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;unified-file-upload-review-map&#x27;);
+      const viewSelect = root.querySelector(&#x27;#urm-view-select&#x27;);
+      const title = root.querySelector(&#x27;#urm-detail-title&#x27;);
+      const subtitle = root.querySelector(&#x27;#urm-detail-subtitle&#x27;);
+      const status = root.querySelector(&#x27;#urm-detail-status&#x27;);
+      const invariants = root.querySelector(&#x27;#urm-detail-invariants&#x27;);
+      const paths = root.querySelector(&#x27;#urm-detail-paths&#x27;);
+      const checks = root.querySelector(&#x27;#urm-detail-checks&#x27;);
+
+      const nodes = {
+        domain: {
+          title: &#x27;01 统一 Files 深模块&#x27;, subtitle: &#x27;首要审查：领域边界、事实归属、不可变量&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;FileUpload、FileAsset、FileObject 三层不可混用&#x27;, &#x27;purpose 创建时固定；avatar 与 message_attachment 不可互换&#x27;, &#x27;PostgreSQL 是上传、配额与补偿的唯一业务事实源&#x27;],
+          paths: [&#x27;app/models/files.py&#x27;, &#x27;alembic/versions/20260801_0015_add_file_domain.py&#x27;, &#x27;app/services/files/protocols.py&#x27;],
+          checks: [&#x27;tests/models/test_files.py&#x27;, &#x27;Ticket 01；阻塞 02 与 12&#x27;, &#x27;先审这里，再审所有流程代码&#x27;]
+        },
+        relations: {
+          title: &#x27;显式业务关系&#x27;, subtitle: &#x27;用真实外键保持用途隔离与可恢复历史&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;MessageAttachment 固定顺序与稳定展示元数据&#x27;, &#x27;users.avatar_file_id 只指向 avatar purpose 资产&#x27;, &#x27;禁止 entity_type/entity_id 多态复用；回收后历史元数据仍可保留&#x27;],
+          paths: [&#x27;app/models/files.py&#x27;, &#x27;app/models/user.py&#x27;, &#x27;app/models/conversation.py&#x27;],
+          checks: [&#x27;tests/models/test_files.py&#x27;, &#x27;tests/services/files/test_message_attachments.py&#x27;, &#x27;核对外键、唯一约束与删除语义&#x27;]
+        },
+        create: {
+          title: &#x27;02 Create + 配额预留&#x27;, subtitle: &#x27;上传会话建立时先锁定成本与边界&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;active + verified + allowlist + 限流 + 在途数全部由后端执行&#x27;, &#x27;锁 FileQuota 后增加 reserved_bytes，与 FileUpload 同事务提交&#x27;, &#x27;随机 staging key 不含用户身份、文件名或时间序列&#x27;],
+          paths: [&#x27;app/api/v1/files.py&#x27;, &#x27;app/services/files/service.py&#x27;, &#x27;app/services/files/formats.py&#x27;],
+          checks: [&#x27;tests/api/test_file_uploads.py&#x27;, &#x27;并发配额与 Redis fail-closed&#x27;, &#x27;Ticket 02；依赖 01&#x27;]
+        },
+        confirm: {
+          title: &#x27;Confirm + 不可变 ETag&#x27;, subtitle: &#x27;确认的是特定对象版本，而不是“某个 key 已存在”&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;HEAD 同时核对大小、declared-size metadata、类型与 ETag&#x27;, &#x27;首次成功确认的 ETag 不可替换；重复 confirm 幂等&#x27;, &#x27;worker 必须用 If-Match 读取，ETag 不当作 SHA-256&#x27;],
+          paths: [&#x27;app/services/files/service.py&#x27;, &#x27;app/services/files/storage.py&#x27;, &#x27;app/services/files/processing.py&#x27;],
+          checks: [&#x27;tests/api/test_file_uploads.py&#x27;, &#x27;覆盖 confirm 后对象覆写竞态&#x27;, &#x27;开发 R2 smoke 仍待人工执行&#x27;]
+        },
+        feature_flag: {
+          title: &#x27;14 动态能力与开关&#x27;, subtitle: &#x27;开关只控制新事实的创建，不破坏历史与排空&#x27;, status: &#x27;P1 · human gate&#x27;,
+          invariants: [&#x27;FILE_UPLOAD_ENABLED=false 仅拒绝新 create&#x27;, &#x27;queued/processing、读取、维护和 deletion 继续运行&#x27;, &#x27;前端从 capabilities 隐藏入口；后端继续独立校验&#x27;],
+          paths: [&#x27;app/api/v1/capabilities.py&#x27;, &#x27;app/core/config.py&#x27;, &#x27;frontend/src/app/AppShell.tsx&#x27;],
+          checks: [&#x27;tests/core/test_compose_config.py&#x27;, &#x27;前端 capabilities 与历史附件只读回归&#x27;, &#x27;Ticket 14 真实开关演练待执行&#x27;]
+        },
+        claim: {
+          title: &#x27;Claim / Lease / Retry&#x27;, subtitle: &#x27;任务消息可丢，状态机不可丢&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;claim 只接管 queued 且 available_at 到期的事实行&#x27;, &#x27;processing lease 5 分钟；暂时故障按 30s / 5m，最多 3 次&#x27;, &#x27;取消与成功最终提交锁同一 upload 行，终态不可重入&#x27;],
+          paths: [&#x27;app/tasks/file_tasks.py&#x27;, &#x27;app/services/files/lifecycle.py&#x27;, &#x27;app/services/files/processing.py&#x27;],
+          checks: [&#x27;tests/services/files/test_processing_lifecycle.py&#x27;, &#x27;tests/tasks/test_file_tasks.py&#x27;, &#x27;重点审重复投递、lease 过期与取消竞态&#x27;]
+        },
+        security: {
+          title: &#x27;ClamAV + 受限解析&#x27;, subtitle: &#x27;所有原件在成为可用资产前通过独立安全边界&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;扫描命中永久 rejected；scanner 不可用或签名过期 fail-closed 且可重试&#x27;, &#x27;解析在无应用凭据的子进程，wall-clock 120s，父任务终止进程组&#x27;, &#x27;真实字节与扩展名匹配；OOXML 防 ZIP bomb、穿越、XXE、外部引用&#x27;],
+          paths: [&#x27;app/services/files/scanner.py&#x27;, &#x27;app/services/files/parsers.py&#x27;, &#x27;app/services/files/parser_worker.py&#x27;],
+          checks: [&#x27;tests/services/files/test_parsers.py&#x27;, &#x27;tests/services/files/test_formats_and_adapters.py&#x27;, &#x27;Tickets 05–09；ClamAV smoke 待真实环境&#x27;]
+        },
+        manifest: {
+          title: &#x27;Manifest → Canonical&#x27;, subtitle: &#x27;外部写入之前先记录可恢复的副作用范围&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;canonical 写入前持久化 output_manifest&#x27;, &#x27;崩溃、取消或最终提交失败均从 manifest 创建删除补偿&#x27;, &#x27;成功时 reserved→used 与 FileAsset/FileObject 原子提交&#x27;],
+          paths: [&#x27;app/services/files/processing.py&#x27;, &#x27;app/services/files/maintenance.py&#x27;, &#x27;app/services/files/storage.py&#x27;],
+          checks: [&#x27;tests/services/files/test_processing_lifecycle.py&#x27;, &#x27;tests/services/files/test_maintenance.py&#x27;, &#x27;重点审写对象与 DB commit 之间的故障窗口&#x27;]
+        },
+        binding: {
+          title: &#x27;03/04 Message + Attachments + Run 原子绑定&#x27;, subtitle: &#x27;附件从 ready 草稿转成不可分割的用户 turn&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;Message、全部附件、待绑定保护与 Run 同事务；不允许部分成功&#x27;, &#x27;最多 5 个、合计 50 MiB；所有权、purpose、ready、有效期均重验&#x27;, &#x27;编辑：省略=继承，显式列表=替换，空列表=删除；regenerate 固定复用&#x27;],
+          paths: [&#x27;app/services/files/bindings.py&#x27;, &#x27;app/services/conversations/service.py&#x27;, &#x27;app/schemas/conversations.py&#x27;],
+          checks: [&#x27;tests/services/files/test_message_attachments.py&#x27;, &#x27;tests/api/test_conversations.py&#x27;, &#x27;重点审并发绑定与编辑失败回滚&#x27;]
+        },
+        blocks: {
+          title: &#x27;中立 Content Blocks&#x27;, subtitle: &#x27;文件先由 iChat 安全派生，再投影给 provider&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;文档全文进入 DocumentBlock；原件不上传 provider Files API&#x27;, &#x27;图片仅 AttachmentNoticeBlock，不含字节、URL、OCR 或虚构描述&#x27;, &#x27;附件正文始终是低信任用户数据，不获得更高提示优先级&#x27;],
+          paths: [&#x27;app/agent/messages.py&#x27;, &#x27;app/agent/providers/openai_compat.py&#x27;, &#x27;app/services/files/parsers.py&#x27;],
+          checks: [&#x27;tests/services/files/test_message_attachments.py&#x27;, &#x27;tests/services/runs/test_history.py&#x27;, &#x27;核对 provider payload 不泄露原件或签名 URL&#x27;]
+        },
+        transcript: {
+          title: &#x27;预算 + Transcript&#x27;, subtitle: &#x27;让目标 turn 完整，让历史事实可重放&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;目标 turn 最多 128k estimated tokens，且不超过 256k 总预算 50%&#x27;, &#x27;超限拒绝，不截断、不摘要、不做 RAG；历史按完整 turn 裁剪&#x27;, &#x27;Run transcript 保存实际读取的完整 block，回放不访问 R2 或重新解析&#x27;],
+          paths: [&#x27;app/services/agents/context.py&#x27;, &#x27;app/services/runs/transcript.py&#x27;, &#x27;app/services/runs/history.py&#x27;],
+          checks: [&#x27;tests/services/runs/test_history.py&#x27;, &#x27;tests/services/files/test_message_attachments.py&#x27;, &#x27;核对 blocks round-trip 与 R2 不可用回放&#x27;]
+        },
+        read_privacy: {
+          title: &#x27;读取与分享隐私&#x27;, subtitle: &#x27;业务可见性先裁决，R2 URL 后签发&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;API 不代理字节；preview/download URL 仅 5 分钟&#x27;, &#x27;停用账户、软删除会话、终态无效或 deleting 资产不得签发&#x27;, &#x27;公开分享只存稳定占位；没有原件、预览、派生文本或匿名读取能力&#x27;],
+          paths: [&#x27;app/services/files/service.py&#x27;, &#x27;app/services/shares/service.py&#x27;, &#x27;frontend/src/messages/SharePage.tsx&#x27;],
+          checks: [&#x27;tests/services/shares/test_share_service.py&#x27;, &#x27;tests/services/files/test_message_attachments.py&#x27;, &#x27;Ticket 10；重点审匿名边界&#x27;]
+        },
+        retention: {
+          title: &#x27;11 保留、恢复与配额&#x27;, subtitle: &#x27;业务生命周期、配额释放与物理删除分开推进&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;pending 30m；ready unbound 24h；detached 30d；deleted conversation 30d&#x27;, &#x27;会话恢复期内仍占 used；进入删除流程时释放 used&#x27;, &#x27;读取、轮询或编辑不续期；reconciliation 只修复漂移&#x27;],
+          paths: [&#x27;app/services/files/maintenance.py&#x27;, &#x27;app/services/conversations/service.py&#x27;, &#x27;frontend/src/conversations/Sidebar.tsx&#x27;],
+          checks: [&#x27;tests/services/files/test_maintenance.py&#x27;, &#x27;可控时钟覆盖所有边界&#x27;, &#x27;Ticket 11；依赖 04&#x27;]
+        },
+        deletion: {
+          title: &#x27;13 持久删除补偿&#x27;, subtitle: &#x27;业务行消失后，外部删除仍可独立完成&#x27;, status: &#x27;P0 · completed&#x27;,
+          invariants: [&#x27;FileObjectDeletion 不依赖 FileObject 或业务关系继续存在&#x27;, &#x27;私有对象：R2 delete；公开头像：delete 与 CDN purge 均成功才完成&#x27;, &#x27;404 视作分步成功；失败仅重试未完成步骤&#x27;],
+          paths: [&#x27;app/services/files/maintenance.py&#x27;, &#x27;app/services/files/account.py&#x27;, &#x27;app/models/files.py&#x27;],
+          checks: [&#x27;tests/services/files/test_maintenance.py&#x27;, &#x27;tests/api/test_account_lifecycle.py&#x27;, &#x27;Ticket 13；依赖 11 + 12&#x27;]
+        },
+        avatar: {
+          title: &#x27;12 Avatar expand&#x27;, subtitle: &#x27;共享领域骨架，但保留公开用途的处理与凭证边界&#x27;, status: &#x27;P1 · completed&#x27;,
+          invariants: [&#x27;新头像只产生公开 avatar_512 WebP，不保留原件且不计附件配额&#x27;, &#x27;新资产提交前旧头像保持可见；替换后旧资产 delete + purge&#x27;, &#x27;新写只写统一模型；旧 key、旧表、旧任务和双读回退暂时保留&#x27;],
+          paths: [&#x27;app/services/files/avatar.py&#x27;, &#x27;app/api/v1/avatars.py&#x27;, &#x27;app/tasks/media_tasks.py&#x27;],
+          checks: [&#x27;tests/services/files/test_avatar_runtime.py&#x27;, &#x27;tests/api/test_avatar_uploads.py&#x27;, &#x27;Ticket 12；Ticket 15 前置尚未满足&#x27;]
+        },
+        rollout: {
+          title: &#x27;14 Production gate&#x27;, subtitle: &#x27;仓库配置已完成，但生产准备声明仍缺真实环境证据&#x27;, status: &#x27;P0 gate · human&#x27;,
+          invariants: [&#x27;API、file-worker、media-worker、beat 按最小凭证隔离&#x27;, &#x27;上线顺序：migration/read compatibility → workers → API create → frontend&#x27;, &#x27;回滚先关新增并 force-recreate API，再排空 PG 事实；不能先停 worker&#x27;],
+          paths: [&#x27;compose.prod.yml&#x27;, &#x27;app/services/files/telemetry.py&#x27;, &#x27;docs/handover/2026-08-01-unified-file-upload.md&#x27;],
+          checks: [&#x27;R2 CORS / ETag / If-Match / 5 分钟 GET smoke&#x27;, &#x27;ClamAV 命中、unavailable、stale 三路径&#x27;, &#x27;P95/P99、secret inventory、灰度与回滚演练&#x27;]
+        },
+        contract: {
+          title: &#x27;15 Contract（安全阻塞）&#x27;, subtitle: &#x27;必须先证明新路径稳定且旧事实排空，才能删除兼容层&#x27;, status: &#x27;blocked · ready-for-agent&#x27;,
+          invariants: [&#x27;当前 handover 不授权删旧 avatar object-key、表、队列、任务或 fallback&#x27;, &#x27;必须核对生产 avatar 映射、旧积压归零与历史保留窗口&#x27;, &#x27;Ticket 14 灰度证据完成后，再单独执行 contract migration 与全量回归&#x27;],
+          paths: [&#x27;.scratch/file-upload/issues/15-avatar-contract-handover.md&#x27;, &#x27;app/services/files/avatar.py&#x27;, &#x27;app/services/avatars/lifecycle.py&#x27;],
+          checks: [&#x27;依赖 12 + 13 + 14&#x27;, &#x27;当前正确审查结论应是“保留兼容路径”&#x27;, &#x27;contract 完成后再更新模块边界与 handover&#x27;]
+        }
+      };
+
+      const tickets = {
+        t01: [&#x27;01 领域基础&#x27;, &#x27;completed&#x27;, &#x27;domain&#x27;],
+        t02: [&#x27;02 TXT → ready&#x27;, &#x27;completed&#x27;, &#x27;create&#x27;],
+        t03: [&#x27;03 消息与模型&#x27;, &#x27;completed&#x27;, &#x27;binding&#x27;],
+        t04: [&#x27;04 编辑/重生成&#x27;, &#x27;completed&#x27;, &#x27;binding&#x27;],
+        t05: [&#x27;05 文本/数据/源码&#x27;, &#x27;completed&#x27;, &#x27;security&#x27;],
+        t06: [&#x27;06 展示型图片&#x27;, &#x27;completed&#x27;, &#x27;blocks&#x27;],
+        t07: [&#x27;07 PDF&#x27;, &#x27;completed&#x27;, &#x27;security&#x27;],
+        t08: [&#x27;08 DOCX/PPTX&#x27;, &#x27;completed&#x27;, &#x27;security&#x27;],
+        t09: [&#x27;09 XLSX&#x27;, &#x27;completed&#x27;, &#x27;security&#x27;],
+        t10: [&#x27;10 分享/标题隐私&#x27;, &#x27;completed&#x27;, &#x27;read_privacy&#x27;],
+        t11: [&#x27;11 保留/配额/恢复&#x27;, &#x27;completed&#x27;, &#x27;retention&#x27;],
+        t12: [&#x27;12 Avatar expand&#x27;, &#x27;completed&#x27;, &#x27;avatar&#x27;],
+        t13: [&#x27;13 统一清理/账户&#x27;, &#x27;completed&#x27;, &#x27;deletion&#x27;],
+        t14: [&#x27;14 生产灰度&#x27;, &#x27;human gate&#x27;, &#x27;rollout&#x27;],
+        t15: [&#x27;15 Avatar contract&#x27;, &#x27;blocked&#x27;, &#x27;contract&#x27;]
+      };
+
+      function renderDetail(key, selectedButton) {
+        const item = nodes[key];
+        if (!item) return;
+        title.textContent = item.title;
+        subtitle.textContent = item.subtitle;
+        status.textContent = item.status;
+        invariants.replaceChildren(...item.invariants.map((value) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.textContent = value;
+          return li;
+        }));
+        paths.replaceChildren(...item.paths.map((value) =&gt; {
+          const code = document.createElement(&#x27;code&#x27;);
+          code.textContent = value;
+          return code;
+        }));
+        checks.replaceChildren(...item.checks.map((value) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.textContent = value;
+          return li;
+        }));
+        root.querySelectorAll(&#x27;[data-node]&#x27;).forEach((button) =&gt; {
+          button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+        });
+        const activeButton = selectedButton || Array.from(root.querySelectorAll(&#x27;[data-node]&#x27;)).find((button) =&gt; {
+          return button.dataset.node === key &amp;&amp; !button.closest(&#x27;[data-view]&#x27;).hidden;
+        });
+        if (activeButton) activeButton.setAttribute(&#x27;aria-pressed&#x27;, &#x27;true&#x27;);
+      }
+
+      root.querySelectorAll(&#x27;[data-ticket-keys]&#x27;).forEach((grid) =&gt; {
+        const keys = grid.dataset.ticketKeys.split(&#x27;,&#x27;);
+        keys.forEach((key) =&gt; {
+          const [label, ticketStatus, nodeKey] = tickets[key];
+          const button = document.createElement(&#x27;button&#x27;);
+          button.type = &#x27;button&#x27;;
+          button.className = &#x27;btn btn-block&#x27;;
+          button.dataset.node = nodeKey;
+          button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+          const copy = document.createElement(&#x27;span&#x27;);
+          copy.className = &#x27;urm-node-copy&#x27;;
+          const name = document.createElement(&#x27;span&#x27;);
+          name.className = &#x27;urm-node-title&#x27;;
+          name.textContent = label;
+          const meta = document.createElement(&#x27;span&#x27;);
+          meta.className = &#x27;urm-node-meta text-small&#x27;;
+          meta.textContent = ticketStatus;
+          copy.append(name, meta);
+          button.append(copy);
+          grid.append(button);
+        });
+      });
+
+      root.addEventListener(&#x27;click&#x27;, (event) =&gt; {
+        const button = event.target.closest(&#x27;[data-node]&#x27;);
+        if (!button || !root.contains(button)) return;
+        renderDetail(button.dataset.node, button);
+      });
+
+      viewSelect.addEventListener(&#x27;change&#x27;, () =&gt; {
+        root.querySelectorAll(&#x27;[data-view]&#x27;).forEach((view) =&gt; {
+          view.hidden = view.dataset.view !== viewSelect.value;
+        });
+        renderDetail(&#x27;domain&#x27;);
+      });
+
+      renderDetail(&#x27;domain&#x27;);
+    })();
+  &lt;/script&gt;
+&lt;/section&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

@@ -1,6 +1,7 @@
 """Pure, in-memory tests for the DB-free kernel context assembler."""
 
 from app.agent.messages import (
+    ImageBlock,
     Message,
     ReasoningBlock,
     TextBlock,
@@ -9,7 +10,7 @@ from app.agent.messages import (
     assistant_text,
     user_text,
 )
-from app.services.agents.context import build_context
+from app.services.agents.context import build_context, estimate_message_tokens
 
 
 def test_build_context_prepends_system() -> None:
@@ -33,6 +34,26 @@ def test_build_context_prepends_system() -> None:
         "first assistant",
         "second user",
     ]
+
+
+def test_image_token_reserve_is_added_to_admission_cost() -> None:
+    image = ImageBlock(
+        file_id="file-1",
+        filename="chart.webp",
+        media_type="image/webp",
+        sha256="a" * 64,
+        width=640,
+        height=480,
+        processor_version="image-v1",
+    )
+    message = Message(role="user", blocks=[image])
+
+    assert estimate_message_tokens(message, count_tokens=lambda _: 0) == 4
+    assert estimate_message_tokens(
+        message,
+        count_tokens=lambda _: 0,
+        image_token_reserve=8_192,
+    ) == 8_196
 
 
 def test_build_context_trims_oldest_whole_turns_over_budget() -> None:

@@ -1,4 +1,4 @@
-import type { ChatModelCapability } from "../api/types";
+import type { ChatModelCapability, ImageContext } from "../api/types";
 
 // User-selected chat model for runs. The selectable list comes from the
 // capabilities endpoint at bootstrap; the persisted choice only wins while it
@@ -31,5 +31,23 @@ export const modelPreferenceStore = {
   // The `model` run option to send; undefined lets the server pick its default.
   requestModel(): string | undefined {
     return this.resolve()?.id;
+  },
+  supportsImages(modelId: string | null | undefined): boolean {
+    return availableModels.find((model) => model.id === modelId)?.supports_image_input === true;
+  },
+  resolveForImageContext(context: ImageContext | null | undefined): ChatModelCapability | null {
+    if (!context || context.state === "none") return this.resolve();
+    const compatible = availableModels.filter((model) =>
+      context.state === "vision_required"
+        ? model.supports_image_input
+        : !model.supports_image_input,
+    );
+    if (compatible.length === 0) return null;
+    if (context.recommended_model) {
+      const recommended = compatible.find((model) => model.id === context.recommended_model);
+      if (recommended) return recommended;
+    }
+    const saved = this.read();
+    return compatible.find((model) => model.id === saved) ?? compatible[0] ?? null;
   },
 };

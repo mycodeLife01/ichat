@@ -12,9 +12,14 @@ from app.agent import ProviderError
 from app.core.config import get_settings
 from app.db.sync_session import create_sync_engine
 from app.models.conversation import Conversation, Message
+from app.models.files import MessageAttachment
 from app.models.run import ConversationTitleJob, Run
 from app.models.user import User
-from app.tasks.llm_tasks import generate_conversation_title, sweep_conversation_title_jobs
+from app.tasks.llm_tasks import (
+    _load_title_inputs,
+    generate_conversation_title,
+    sweep_conversation_title_jobs,
+)
 
 TEST_EMAIL_DOMAIN = "llm-task-test.example.com"
 
@@ -161,9 +166,16 @@ def test_generate_conversation_title_updates_null_title(
         session.commit()
 
     class FakeTitleAgent:
-        def generate(self, *, user_content: str, assistant_content: str) -> str:
+        def generate(
+            self,
+            *,
+            user_content: str,
+            assistant_content: str,
+            attachment_metadata: str | None = None,
+        ) -> str:
             assert user_content == "Plan a backend"
             assert assistant_content == "Start with the state machine"
+            assert attachment_metadata is None
             return "Backend Plan"
 
     monkeypatch.setattr("app.tasks.llm_tasks.get_sync_session_factory", lambda: session_factory)
@@ -193,6 +205,34 @@ def test_generate_conversation_title_skips_manual_title(
     )
 
     assert generate_conversation_title.run(run_id) == "skipped"
+
+
+def test_title_inputs_include_only_attachment_safe_metadata(
+    session_factory: sessionmaker[Session],
+) -> None:
+    run_id = _seed_succeeded_turn(session_factory)
+    with session_factory() as session:
+        run = session.get(Run, run_id)
+        assert run is not None
+        session.add(
+            MessageAttachment(
+                message_id=run.user_message_id,
+                file_id=None,
+                position=0,
+                name="agenda.txt",
+                media_type="text/plain",
+                size_bytes=321,
+            )
+        )
+        session.commit()
+
+        inputs = _load_title_inputs(session, run_id=run_id)
+
+    assert inputs is not None
+    assert inputs.attachment_metadata == (
+        '[{"name":"agenda.txt","media_type":"text/plain","size_bytes":321}]'
+    )
+    assert "document body" not in (inputs.attachment_metadata or "")
 
 
 def test_generate_conversation_title_skips_when_success_is_not_first(
@@ -234,7 +274,14 @@ def test_generate_conversation_title_retries_provider_failure(
     run_id = _seed_succeeded_turn(session_factory)
 
     class FailingTitleAgent:
-        def generate(self, *, user_content: str, assistant_content: str) -> str:
+        def generate(
+            self,
+            *,
+            user_content: str,
+            assistant_content: str,
+            attachment_metadata: str | None = None,
+        ) -> str:
+            del user_content, assistant_content, attachment_metadata
             raise ProviderError(code="summary_failed", message="boom")
 
     retry_call: dict[str, object] = {}

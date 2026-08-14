@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MessageResponse } from "../api/types";
+import type { FileAttachment } from "../files/types";
 import { Message } from "./Message";
 
 const userMessage: MessageResponse = {
@@ -27,6 +28,30 @@ const assistantMessage: MessageResponse = {
   created_at: "2026-06-08T10:00:01Z",
 };
 
+const attachments: FileAttachment[] = [
+  {
+    id: "file-1",
+    name: "report.pdf",
+    media_type: "application/pdf",
+    size_bytes: 1234,
+    category: "pdf",
+    model_input_kind: null,
+    warning: ["Some scanned pages were not read."],
+    preview_available: false,
+  },
+  {
+    id: "file-2",
+    name: "photo.png",
+    media_type: "image/png",
+    size_bytes: 4321,
+    category: "image",
+    model_input_kind: "image",
+    warning: [],
+    preview_available: true,
+    stats: { width: 640, height: 480 },
+  },
+];
+
 // Simulates a touch held past the 450ms long-press window.
 function longPress(el: HTMLElement) {
   vi.useFakeTimers();
@@ -43,6 +68,178 @@ describe("Message", () => {
   it("renders a user bubble", () => {
     render(<Message message={userMessage} />);
     expect(screen.getByText("你好")).toBeInTheDocument();
+  });
+
+  it("renders a signed image thumbnail and reopens its preview without another read-url request", async () => {
+    const user = userEvent.setup();
+    const onReadAttachment = vi.fn(async () => ({ url: "https://signed.example.test/preview" }));
+    render(
+      <Message
+        message={{ ...userMessage, attachments }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Some scanned pages were not read.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/File available for download — the model cannot read its contents/),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(onReadAttachment).toHaveBeenCalledWith("file-2", "preview"));
+    expect(await screen.findByAltText("photo.png")).toHaveAttribute(
+      "src",
+      "https://signed.example.test/preview",
+    );
+
+    const imageButton = screen.getByRole("button", { name: "打开图片：photo.png" });
+    await user.click(imageButton);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(onReadAttachment).toHaveBeenCalledTimes(1);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(imageButton);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(onReadAttachment).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps sent-image frame geometry stable while the signed preview loads", async () => {
+    let resolveReadUrl!: (value: { url: string }) => void;
+    const onReadAttachment = vi.fn(
+      () =>
+        new Promise<{ url: string }>((resolve) => {
+          resolveReadUrl = resolve;
+        }),
+    );
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    const imageButton = screen.getByRole("button", { name: "打开图片：photo.png" });
+    const frameBeforePreview = imageButton.style.cssText;
+    expect(imageButton).toHaveStyle({ width: "341.3333333333333px", height: "256px" });
+
+    resolveReadUrl({ url: "https://signed.example.test/preview" });
+    const image = await screen.findByAltText("photo.png");
+
+    expect(imageButton.style.cssText).toBe(frameBeforePreview);
+    expect(imageButton).toHaveClass("max-h-64", "max-w-96", "rounded-[28px]");
+    expect(image).toHaveClass("block", "object-cover", "max-h-64", "max-w-96");
+  });
+
+  it("matches the wider ChatGPT frame for one landscape image", async () => {
+    const onReadAttachment = vi.fn(async () => ({
+      url: "https://signed.example.test/landscape-preview",
+    }));
+    const landscapeImage = {
+      ...attachments[1],
+      stats: { width: 2048, height: 1152 },
+    };
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [landscapeImage] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    const image = await screen.findByAltText("photo.png");
+    const imageButton = screen.getByRole("button", { name: "打开图片：photo.png" });
+
+    expect(imageButton).toHaveClass("max-h-64", "max-w-96", "rounded-[28px]");
+    expect(imageButton).toHaveStyle({ width: "384px", height: "216px" });
+    expect(image).toHaveClass("block", "object-cover", "max-h-64", "max-w-96");
+  });
+
+  it("places sent files above and outside the user bubble", () => {
+    render(<Message message={{ ...userMessage, attachments }} />);
+
+    const attachmentList = screen.getByLabelText("附件");
+    const fileCard = screen.getByRole("group", { name: "report.pdf" });
+    const messageText = screen.getByText("你好");
+    expect(attachmentList.parentElement).toHaveClass(
+      "flex-col",
+      "items-end",
+      "gap-1",
+      "w-full",
+    );
+    expect(attachmentList).toHaveClass("flex-col", "items-end", "gap-1");
+    expect(attachmentList.querySelector('[data-attachment-group="images"]')).toHaveClass(
+      "max-w-72",
+      "flex-wrap",
+      "gap-1",
+      "justify-end",
+    );
+    expect(attachmentList.querySelector('[data-attachment-group="files"]')).toHaveClass(
+      "max-w-[80%]",
+      "flex-wrap",
+      "gap-2",
+      "justify-end",
+    );
+    expect(fileCard).toHaveClass("w-[320px]", "min-w-[320px]");
+    expect(
+      attachmentList.compareDocumentPosition(messageText) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps one sent image aspect-preserving but switches image collections to 128px tiles", async () => {
+    const onReadAttachment = vi.fn(async (fileId: string) => ({
+      url: `https://signed.example.test/${fileId}`,
+    }));
+    const image = {
+      ...attachments[1],
+      stats: { width: 640, height: 960 },
+    };
+    const secondImage = { ...image, id: "file-3", name: "second.png" };
+    const { rerender } = render(
+      <Message
+        message={{ ...userMessage, attachments: [image] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+
+    await waitFor(() => expect(onReadAttachment).toHaveBeenCalledTimes(1));
+    await screen.findByAltText("photo.png");
+    const singleGroup = screen.getByLabelText("附件").querySelector(
+      '[data-attachment-group="images"]',
+    );
+    expect(singleGroup).toHaveAttribute("data-image-layout", "single");
+    expect(singleGroup).toHaveClass("w-[70%]", "flex-col", "items-end");
+    expect(screen.getByRole("button", { name: "打开图片：photo.png" })).toHaveClass(
+      "max-h-96",
+      "max-w-64",
+      "rounded-[28px]",
+    );
+    expect(screen.getByRole("button", { name: "打开图片：photo.png" })).toHaveStyle({
+      width: "256px",
+      height: "384px",
+    });
+
+    rerender(
+      <Message
+        message={{ ...userMessage, attachments: [image, secondImage] }}
+        onReadAttachment={onReadAttachment}
+      />,
+    );
+    await waitFor(() => expect(onReadAttachment).toHaveBeenCalledTimes(2));
+    const collection = screen.getByLabelText("附件").querySelector(
+      '[data-attachment-group="images"]',
+    );
+    expect(collection).toHaveAttribute("data-image-layout", "collection");
+    expect(collection).toHaveClass("max-w-72", "flex-row", "gap-1");
+    expect(screen.getByRole("button", { name: "打开图片：photo.png" })).toHaveClass(
+      "h-32",
+      "w-32",
+      "rounded-s-2xl",
+    );
+    expect(screen.getByRole("button", { name: "打开图片：second.png" })).toHaveClass(
+      "h-32",
+      "w-32",
+      "rounded-e-2xl",
+    );
   });
 
   it("renders only the formal assistant reply after completion", () => {
@@ -106,9 +303,26 @@ describe("Message", () => {
     expect(textarea).toHaveValue("你好");
     await user.clear(textarea);
     await user.type(textarea, "改写后的问题");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "改写后的问题");
+  });
+
+  it("offers legacy image editing only after the vision model upgrade succeeds", async () => {
+    const user = userEvent.setup();
+    const onEditUpgradeLegacy = vi.fn(() => true);
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        legacyUpgradeAvailable
+        onEditUpgradeLegacy={onEditUpgradeLegacy}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑并升级" }));
+
+    expect(onEditUpgradeLegacy).toHaveBeenCalledWith(userMessage.id);
+    expect(screen.getByRole("textbox")).toHaveValue(userMessage.content);
   });
 
   it("cancels editing without calling back", async () => {
@@ -130,6 +344,32 @@ describe("Message", () => {
     expect(screen.getByText("你好")).toBeInTheDocument();
   });
 
+  it("uses ChatGPT's compact attachment layout and inherits files when editing", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    const message = { ...userMessage, attachments: [attachments[1], attachments[0]] };
+    render(
+      <Message message={message} onEditAndRegenerate={onEditAndRegenerate} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    const editor = screen.getByTestId("message-editor");
+    const attachmentRail = screen.getByLabelText("编辑消息附件");
+    const image = screen.getByRole("group", { name: "photo.png" });
+    const file = screen.getByRole("group", { name: "report.pdf" });
+    expect(editor).toHaveClass("w-full", "rounded-[24px]", "bg-sunken", "px-3", "py-3");
+    expect(attachmentRail).toHaveClass("flex", "flex-wrap", "gap-2");
+    expect(image).toHaveClass("h-[60px]", "w-14", "rounded-xl");
+    expect(file).toHaveClass("w-[320px]", "min-w-[320px]");
+    expect(file.firstElementChild).toHaveClass("h-[60px]");
+    expect(image.compareDocumentPosition(file) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/original attachments|replace the original/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Move attachment|Remove attachment/ })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "你好");
+  });
+
   it("does not submit an empty edit", async () => {
     const user = userEvent.setup();
     const onEditAndRegenerate = vi.fn();
@@ -143,9 +383,30 @@ describe("Message", () => {
 
     await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
     await user.clear(screen.getByRole("textbox"));
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(onEditAndRegenerate).not.toHaveBeenCalled();
+  });
+
+  it("keeps image attachment controls absent on hover while editing text", async () => {
+    const user = userEvent.setup();
+    const onEditAndRegenerate = vi.fn();
+    render(
+      <Message
+        message={{ ...userMessage, attachments: [attachments[1]] }}
+        onEditAndRegenerate={onEditAndRegenerate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /编辑并重发/ }));
+    await user.hover(screen.getByRole("group", { name: "photo.png" }));
+    expect(screen.queryByRole("button", { name: /Move attachment|Remove attachment/ })).toBeNull();
+    const textbox = screen.getByRole("textbox");
+    await user.clear(textbox);
+    await user.type(textbox, "只修改文字");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onEditAndRegenerate).toHaveBeenCalledWith(userMessage.id, "只修改文字");
   });
 
   it("regenerates an assistant message", async () => {

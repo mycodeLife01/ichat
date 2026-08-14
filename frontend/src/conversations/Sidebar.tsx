@@ -18,6 +18,7 @@ import {
   mobileActionItem,
   neutralMenuItem,
   popoverSurface,
+  railIconControl,
   titleSkeleton,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
@@ -76,6 +77,10 @@ const desktopMenuWidth = 156;
 const desktopMenuHeight = 126;
 const desktopMenuOverlap = 44;
 const viewportInset = 8;
+// The collapsed rail lists only the newest conversations; the full history stays
+// behind the expanded sidebar.
+const railRecentLimit = 10;
+const railRecentWidth = 260;
 const rowActionOrder = ["share", "rename", "delete"] as const;
 type RowActionKey = (typeof rowActionOrder)[number];
 
@@ -109,6 +114,10 @@ export function Sidebar({
 }: SidebarProps) {
   const [renameId, setRenameId] = useState<string | null>(null);
   const [menu, setMenu] = useState<ConversationMenu | null>(null);
+  // Collapsed-rail recent-chats flyout: portaled like the row menu so the rail's
+  // overflow boundary cannot clip it.
+  const [recent, setRecent] = useState<{ left: number; top: number } | null>(null);
+  const recentTriggerRef = useRef<HTMLButtonElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const lastAutoLoadItemCountRef = useRef<number | null>(null);
 
@@ -127,6 +136,28 @@ export function Sidebar({
       window.removeEventListener("resize", closeMenu);
     };
   }, []);
+
+  useEffect(() => {
+    if (recent === null) return;
+    const close = () => setRecent(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("click", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", close);
+    };
+  }, [recent]);
+
+  // The rail only exists while the sidebar is expanded away; closing it there
+  // keeps a stale flyout from surviving the expand.
+  useEffect(() => {
+    if (!collapsed || isMobile) setRecent(null);
+  }, [collapsed, isMobile]);
 
   const requestNextPageIfNeeded = useCallback((
     element: HTMLDivElement,
@@ -179,7 +210,7 @@ export function Sidebar({
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
-  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg-sunken"];
+  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg"];
   if (isMobile) {
     sidebarClasses.push(
       "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] max-w-[calc(100vw-44px)] border-r border-border " +
@@ -188,12 +219,35 @@ export function Sidebar({
     );
   } else {
     sidebarClasses.push(
-      "shrink-0 transition-[width,margin-left] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-      collapsed ? "collapsed w-0" : "w-[var(--sidebar-width)] border-r border-border",
+      // The moving right edge is the whole animation: it starts on the first
+      // frame in both directions so the main column reads as sliding over the
+      // still panel, not as the panel sliding out of the viewport.
+      "shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] delay-0 motion-reduce:transition-none",
+      collapsed ? "collapsed w-[var(--sidebar-rail-width)]" : "w-[var(--sidebar-width)]",
     );
   }
 
-  const renderRow = (c: ConversationResponse) => {
+  // Rail-only entry point for the newest conversations. Positioned from the
+  // trigger like the row menu, and portaled for the same reason.
+  const toggleRecent = () => {
+    if (recent !== null) {
+      setRecent(null);
+      return;
+    }
+    const rect = recentTriggerRef.current?.getBoundingClientRect();
+    const left = rect
+      ? Math.min(rect.right + 8, window.innerWidth - railRecentWidth - viewportInset)
+      : viewportInset;
+    const top = rect
+      ? Math.min(Math.max(viewportInset, rect.top - 6), Math.max(viewportInset, window.innerHeight - 360))
+      : viewportInset;
+    setRecent({ left: Math.max(viewportInset, left), top });
+  };
+
+  const renderRow = (
+    c: ConversationResponse,
+    options: { onSelected?: () => void; renderDesktopMenu?: boolean } = {},
+  ) => {
     const isRenaming = renameId === c.id;
     const menuOpen = menu?.conversationId === c.id;
     const active = selectedId === c.id;
@@ -287,6 +341,7 @@ export function Sidebar({
             aria-current={active ? "page" : undefined}
             onClick={() => {
               onSelect(c.id);
+              options.onSelected?.();
               if (isMobile) onCloseMobile();
             }}
           >
@@ -351,7 +406,7 @@ export function Sidebar({
           </button>
         )}
         {/* Desktop escapes the sidebar's overflow boundary; mobile uses a bottom sheet. */}
-        {!isRenaming && menuOpen && !isMobile && (
+        {!isRenaming && menuOpen && !isMobile && options.renderDesktopMenu !== false && (
           createPortal(
             <div
               className={`history-menu fixed z-40 w-[156px] p-1.5 ${popoverSurface}`}
@@ -379,6 +434,26 @@ export function Sidebar({
     );
   };
 
+  const renderUserMenu = (compact: boolean, railPinned = false) => (
+    <UserMenu
+      user={user}
+      isMobile={isMobile}
+      compact={compact}
+      railPinned={railPinned}
+      onLogout={onLogout}
+      onResendVerification={onResendVerification}
+      onUpdateNickname={onUpdateNickname}
+      onUploadAvatar={onUploadAvatar}
+      onChangePassword={onChangePassword}
+      onRequestDeletion={onRequestDeletion}
+      onLoadShares={onLoadShares}
+      onRevokeShare={onRevokeShare}
+      onToast={onToast}
+    />
+  );
+
+  const railCollapsed = collapsed && !isMobile;
+
   return (
     <>
       <aside
@@ -387,71 +462,151 @@ export function Sidebar({
         inert={isMobile && !mobileOpen ? true : undefined}
       >
         <div
-          className={`flex h-full flex-col px-2.5 pt-3 pb-2.5 ${
+          className={`relative h-full ${
             isMobile ? "w-full" : "w-[var(--sidebar-width)]"
           }`}
         >
-          <div className="flex items-center justify-between px-2 pb-3.5">
-            <Wordmark size={isMobile ? 20 : 18} />
-            {!isMobile && (
-              <button
-                className={`${iconControl} h-8 w-8`}
-                aria-label="收起侧栏"
-                onClick={onToggleCollapsed}
-              >
-                <Icons.PanelLeft size={20} />
-              </button>
-            )}
-          </div>
-
-          <button
-            className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
-            onClick={() => {
-              onNew();
-              if (isMobile) onCloseMobile();
-            }}
-          >
-            <Icons.NewChat size={20} />
-            新建对话
-          </button>
-
-          {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
-              against the sidebar's right border; rows keep their position. */}
           <div
-            ref={historyRef}
-            className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
-            data-testid="conversation-history"
-            onScroll={handleHistoryScroll}
+            className={`flex h-full flex-col px-2.5 pb-2.5 ${
+              isMobile
+                ? "w-full pt-3"
+                : "w-[var(--sidebar-width)] pt-2"
+            }`}
           >
-            <div className={sectionLabel}>聊天</div>
-            {items.map(renderRow)}
-            {items.length === 0 && (
-              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                还没有已保存的对话。开始一次对话后会自动出现在这里。
+            {/* The panel never moves. It stays fully opaque while the shell's
+                right edge sweeps in over it, so the crop itself is the motion;
+                the trailing fade only clears the residual strip before the rail
+                board takes over. Expanding mirrors it. */}
+            <div
+              className={`flex min-h-0 flex-1 flex-col overflow-x-clip whitespace-nowrap ${
+                isMobile
+                  ? ""
+                  : "will-change-[opacity] transition-opacity ease-linear motion-reduce:transition-none"
+              } ${
+                railCollapsed
+                  ? "opacity-0 duration-[110ms] delay-[70ms]"
+                  : "opacity-100 duration-[130ms] delay-[90ms]"
+              }`}
+              aria-hidden={railCollapsed ? "true" : undefined}
+              inert={railCollapsed ? true : undefined}
+            >
+              <div
+                className={`flex items-center justify-between px-2 ${
+                  isMobile ? "pb-3.5" : "mb-4 h-9"
+                }`}
+              >
+                <Wordmark size={isMobile ? 20 : 18} />
+                {!isMobile && (
+                  <button
+                    className={`${iconControl} h-9 w-9`}
+                    aria-label="收起侧栏"
+                    onClick={onToggleCollapsed}
+                  >
+                    <Icons.PanelLeft size={20} />
+                  </button>
+                )}
               </div>
-            )}
-            {isLoadingMore && (
-              <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
-                正在加载...
+
+              <button
+                className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
+                onClick={() => {
+                  onNew();
+                  if (isMobile) onCloseMobile();
+                }}
+              >
+                <Icons.NewChat size={20} />
+                新建对话
+              </button>
+
+              {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
+                  against the sidebar's right border; rows keep their position. */}
+              <div
+                ref={historyRef}
+                className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
+                data-testid="conversation-history"
+                onScroll={handleHistoryScroll}
+              >
+                <div className={sectionLabel}>聊天</div>
+                {items.map((c) =>
+                  renderRow(c, { renderDesktopMenu: !railCollapsed }),
+                )}
+                {items.length === 0 && (
+                  <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+                    还没有已保存的对话。开始一次对话后会自动出现在这里。
+                  </div>
+                )}
+                {isLoadingMore && (
+                  <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+                    正在加载...
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {renderUserMenu(railCollapsed, !isMobile)}
           </div>
 
-          <UserMenu
-            user={user}
-            isMobile={isMobile}
-            onLogout={onLogout}
-            onResendVerification={onResendVerification}
-            onUpdateNickname={onUpdateNickname}
-            onUploadAvatar={onUploadAvatar}
-            onChangePassword={onChangePassword}
-            onRequestDeletion={onRequestDeletion}
-            onLoadShares={onLoadShares}
-            onRevokeShare={onRevokeShare}
-            onToast={onToast}
-          />
+          {!isMobile && (
+            <div
+              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-bg px-1.5 pt-2 pb-2.5 transition-opacity ease-linear motion-reduce:transition-none ${
+                railCollapsed
+                  ? "pointer-events-auto opacity-100 duration-[110ms] delay-[110ms]"
+                  : "pointer-events-none opacity-0 duration-[90ms] delay-0"
+              }`}
+              aria-hidden={railCollapsed ? undefined : "true"}
+              inert={railCollapsed ? undefined : true}
+            >
+            <button
+              className={`${railIconControl} h-9 w-9`}
+              aria-label="展开侧栏"
+              onClick={onToggleCollapsed}
+            >
+              <Icons.PanelLeft size={20} />
+            </button>
+            <button
+              className={`${railIconControl} mt-4 h-9 w-9`}
+              aria-label="新建对话"
+              onClick={onNew}
+            >
+              <Icons.NewChat size={20} />
+            </button>
+            <button
+              ref={recentTriggerRef}
+              className={`${railIconControl} h-9 w-9`}
+              aria-label="最近聊天"
+              aria-haspopup="true"
+              aria-expanded={recent !== null}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleRecent();
+              }}
+            >
+              <Icons.Chats size={20} />
+            </button>
+            </div>
+          )}
         </div>
       </aside>
+      {railCollapsed && recent !== null &&
+        createPortal(
+          <nav
+            className={`rail-recent fixed z-40 max-h-[min(70vh,520px)] overflow-y-auto p-1.5 ${popoverSurface}`}
+            style={{ left: recent.left, top: recent.top, width: railRecentWidth }}
+            aria-label="最近聊天"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={`${sectionLabel} pt-1 text-text-muted`}>最近聊天</div>
+            {items
+              .slice(0, railRecentLimit)
+              .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
+            {items.length === 0 && (
+              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
+                还没有已保存的对话。
+              </div>
+            )}
+          </nav>,
+          document.body,
+        )}
       {isMobile && (
         <div
           className={`scrim fixed inset-0 z-[29] bg-overlay ${
