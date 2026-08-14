@@ -39,6 +39,7 @@ type MessageProps = {
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
   localImagePreviews?: ReadonlyMap<string, string>;
   onLocalImagePreviewConsumed?: (fileId: string) => void;
+  pending?: boolean;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
 };
@@ -67,6 +68,7 @@ export function Message({
   onReadAttachment,
   localImagePreviews,
   onLocalImagePreviewConsumed,
+  pending = false,
   onShowSources,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
@@ -242,7 +244,9 @@ export function Message({
   // Mobile: assistant actions stay resident (the desktop bar already is — no
   // hover exists on touch); user actions open via long-press on the bubble.
   const actionBar =
-    isMobile && isUser ? (
+    pending ? (
+      !isMobile && <div className="msg-actions mt-1 h-7" aria-hidden="true" />
+    ) : isMobile && isUser ? (
       <BottomSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
@@ -331,7 +335,11 @@ export function Message({
   if (isUser) {
     const collapsed = overflowing && !expanded;
     return (
-      <div className={`${msgBase} user items-end`}>
+      <div
+        className={`${msgBase} user items-end`}
+        data-state={pending ? "pending" : undefined}
+        aria-busy={pending ? "true" : undefined}
+      >
         <div className="flex w-full flex-col items-end gap-1">
           {legacyUpgradeAvailable && (
             <div
@@ -380,13 +388,15 @@ export function Message({
               className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}${
                 isMobile ? " select-none [-webkit-touch-callout:none]" : ""
               }`}
-              onTouchStart={isMobile ? startLongPress : undefined}
-              onTouchEnd={isMobile ? cancelLongPress : undefined}
-              onTouchMove={isMobile ? cancelLongPress : undefined}
-              onTouchCancel={isMobile ? cancelLongPress : undefined}
+              onTouchStart={isMobile && !pending ? startLongPress : undefined}
+              onTouchEnd={isMobile && !pending ? cancelLongPress : undefined}
+              onTouchMove={isMobile && !pending ? cancelLongPress : undefined}
+              onTouchCancel={isMobile && !pending ? cancelLongPress : undefined}
               // Android fires contextmenu on long-press — keep the sheet, not the
               // system menu. (select-none/touch-callout cover iOS selection.)
-              onContextMenu={isMobile ? (event) => event.preventDefault() : undefined}
+              onContextMenu={
+                isMobile && !pending ? (event) => event.preventDefault() : undefined
+              }
             >
               <div className="relative">
                 <div

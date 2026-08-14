@@ -3,18 +3,28 @@ import { useCallback } from "react";
 import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
 import { currentRunOptions } from "../runs/runOptions";
+import type { FileAttachment } from "../files/types";
 import { selectionStore } from "./selectionStore";
+
+function createSubmissionId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
 
 // `start` is injected by AppShell (which owns the single useRunStream instance),
 // so this hook stays free of streaming wiring and is trivially testable with a spy.
 export function useSendMessage(
   start: (runId: string, conversationId: string, afterSeq: number) => void,
+  onCommitted?: (messageId: string, clientSubmissionId: string) => void,
 ) {
   const { dispatch, services, stateRef } = useAppActions();
   const { conversationApi } = services;
 
   return useCallback(
-    async (content: string, attachmentIds?: string[]): Promise<boolean> => {
+    async (
+      content: string,
+      attachmentIds?: string[],
+      optimisticAttachments: FileAttachment[] = [],
+    ): Promise<boolean> => {
       const trimmed = content.trim();
       if (
         (trimmed === "" && (attachmentIds?.length ?? 0) === 0) ||
@@ -25,10 +35,13 @@ export function useSendMessage(
 
       let targetId = stateRef.current.conversationIndex.selectedId;
       const runOptions = currentRunOptions();
+      const clientSubmissionId = createSubmissionId();
       dispatch({
         type: "submission/started",
+        clientId: clientSubmissionId,
         content: trimmed,
         conversationId: targetId,
+        attachments: optimisticAttachments,
       });
 
       try {
@@ -43,6 +56,7 @@ export function useSendMessage(
                   attachmentIds,
                 );
           targetId = convo.id;
+          onCommitted?.(message.id, clientSubmissionId);
           dispatch({ type: "submission/targeted", conversationId: convo.id });
           dispatch({
             type: "conversations/detailLoaded",
@@ -68,6 +82,7 @@ export function useSendMessage(
           attachmentIds === undefined
             ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
             : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds);
+        onCommitted?.(message.id, clientSubmissionId);
         dispatch({ type: "conversations/messageAppended", message, imageContext });
         dispatch({
           type: "run/started",
@@ -98,6 +113,6 @@ export function useSendMessage(
         return false;
       }
     },
-    [dispatch, conversationApi, start, stateRef],
+    [dispatch, conversationApi, onCommitted, start, stateRef],
   );
 }
