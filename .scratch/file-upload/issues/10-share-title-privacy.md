@@ -2,6 +2,11 @@ Type: feat
 Status: completed
 Blocked by: 03
 
+> 后续修订（2026-08-14）：第 3 条与第 5 条中「匿名分享不得换取签名 URL」的边界已被
+> ADR `0011-grant-attachment-reads-to-public-shares.md` 取代。现在持有分享 token 的匿名访问者
+> 可以换取附件的短时 preview/download URL；其余条目（标题输入不含全文、快照不存对象 key、
+> 创建含附件分享需确认、撤销后立即失效）继续有效。本文保留原始验收记录，不再作为当前边界。
+
 # 分享与自动标题的附件隐私边界
 
 ## 目标

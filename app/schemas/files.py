@@ -122,10 +122,28 @@ class MessageAttachmentResponse(BaseModel):
 
 
 class SharedAttachmentResponse(BaseModel):
-    """Non-sensitive attachment placeholder embedded in a public snapshot."""
+    """Attachment metadata embedded in a public snapshot.
+
+    ``ref`` is an opaque, share-scoped handle the anonymous read route exchanges
+    for a short-lived signed URL. The underlying file id stays in the stored
+    snapshot and is never serialized to a public caller.
+
+    Older snapshots predate ``ref``/``stats``/``preview_available``; their
+    absence must be treated as "no read capability, no known geometry" rather
+    than as a default-allow.
+    """
 
     name: str
     media_type: str
     size_bytes: int
     category: FileCategory
     warnings: list[str] = Field(default_factory=list)
+    ref: str | None = None
+    position: int = 0
+    model_input_kind: FileModelInputKindValue | None = None
+    preview_available: bool = False
+    stats: dict[str, int | str] = Field(default_factory=dict)
+
+
+class ShareAttachmentReadRequest(BaseModel):
+    role: Literal["preview", "download"]

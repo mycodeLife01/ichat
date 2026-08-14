@@ -28,6 +28,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
 | File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
+| Public share pages, share snapshots, anonymous attachment reads | `docs/handover/2026-08-14-share-attachment-parity.md` + ADR `0011-grant-attachment-reads-to-public-shares.md` + `docs/handover/2026-06-18-conversation-sharing.md` |
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
@@ -50,6 +51,7 @@ Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching yo
 - `2026-07-13-account-deletion-soft-deactivation.md` — account deletion = soft deactivation (`is_active=false` + full credential revocation), data retained; physical erasure (cooling-off period + periodic job) deferred to a later iteration.
 - `0002-unify-file-assets-and-avatar-uploads.md` — the later decision that replaces the former avatar-only-files boundary; implementation and the still-deferred legacy-avatar contract are recorded in `handover/2026-08-01-unified-file-upload.md`.
 - `0010-use-adaptive-multipart-and-server-side-promotion.md` — adaptive multipart transport, PG-owned upload lifecycle, R2 server-side original promotion, and PG-only derived document text for new uploads.
+- `0011-grant-attachment-reads-to-public-shares.md` — public shares now exchange an opaque snapshot `ref` for short-lived preview/download URLs (superseding the placeholder-only boundary), with the threat model and the guards that bound it.
 
 ### `docs/handover/`
 

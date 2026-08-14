@@ -34,7 +34,11 @@ export type FileAttachment = {
   unbound_expires_at?: string | null;
 };
 
-/** Public-share metadata deliberately excludes a file id and any read URL. */
+/**
+ * Public-share attachment metadata. It carries no file id: `ref` is an opaque
+ * share-scoped handle the anonymous read route exchanges for a signed URL, and
+ * the server resolves it against the stored snapshot.
+ */
 export type SharedAttachmentPlaceholder = {
   name: string;
   media_type: string;
@@ -46,6 +50,10 @@ export type SharedAttachmentPlaceholder = {
   // never be treated as permission to preview or download.
   model_input_kind?: "document" | "image" | null;
   preview_available?: boolean;
+  /** Absent on snapshots minted before public attachment reads existed. */
+  ref?: string;
+  position?: number;
+  stats?: Record<string, number | string>;
 };
 
 export type FileUploadRecord = {

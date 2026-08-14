@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
+from fakeredis import aioredis
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
@@ -16,6 +17,7 @@ from app.main import create_app
 from app.models.conversation import Conversation, Message, ShareLink
 from app.models.run import Run
 from app.models.user import User
+from app.services.auth import rate_limit
 
 TEST_DATABASE_URL = os.environ.get(
     "CONVERSATION_TEST_DATABASE_URL",
@@ -541,3 +543,34 @@ async def test_create_share_on_missing_conversation_returns_not_found(
         headers=auth_headers(alice),
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_public_attachment_read_route_is_anonymous_and_rate_limited(
+    app: FastAPI,
+    client: AsyncClient,
+) -> None:
+    """The route must answer without auth, 404 unknown tokens, and throttle."""
+    redis = aioredis.FakeRedis(decode_responses=True)
+    throttled = get_settings().model_copy(
+        update={"share_read_ip_limit": 1, "share_read_ip_window_seconds": 60}
+    )
+    app.dependency_overrides[rate_limit.get_redis] = lambda: redis
+    app.dependency_overrides[get_settings] = lambda: throttled
+
+    first = await client.post(
+        f"/api/v1/share/{uuid.uuid4().hex}/attachments/0-0/read-url",
+        json={"role": "preview"},
+    )
+    # No Authorization header, and an unknown token is a plain 404 (not a 401).
+    assert first.status_code == status.HTTP_404_NOT_FOUND
+
+    second = await client.post(
+        f"/api/v1/share/{uuid.uuid4().hex}/attachments/0-0/read-url",
+        json={"role": "preview"},
+    )
+    # The IP budget is consumed even by failed probes, so the second attempt is
+    # throttled despite targeting a different token.
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert second.headers["Retry-After"]
+
+    await redis.aclose()

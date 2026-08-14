@@ -93,6 +93,19 @@ function hasFileId(
   return "id" in attachment;
 }
 
+/**
+ * The handle a read URL is requested with: a file id for owner views, or the
+ * share-scoped `ref` on a public snapshot. Returns null when the attachment
+ * carries neither, which keeps preview/download disabled.
+ */
+function readHandle(
+  attachment: FileAttachment | SharedAttachmentPlaceholder | null,
+): string | null {
+  if (attachment === null) return null;
+  if (hasFileId(attachment)) return attachment.id;
+  return attachment.ref ?? null;
+}
+
 function positiveDimension(value: number | string | undefined): number | null {
   const dimension = typeof value === "number" ? value : Number(value);
   return Number.isFinite(dimension) && dimension > 0 ? dimension : null;
@@ -199,7 +212,7 @@ export function AttachmentCard({
   const staticAttachment = isDraftAttachment(attachment) ? null : attachment;
   const draft = isDraftAttachment(attachment) ? attachment : null;
   const file = draft?.file ?? staticAttachment;
-  const fileId = file && hasFileId(file) ? file.id : null;
+  const fileId = readHandle(file);
   const isImage = (file?.category ?? draft?.category) === "image";
   const warning = file ? attachmentWarnings(file) : [];
   const progress = draft && isUploadInProgress(draft.status);
@@ -275,9 +288,12 @@ export function AttachmentCard({
     }
   };
 
+  // A public snapshot renders with the same geometry as a live message; its
+  // read capability is gated by the presence of a `ref` + resolver, not by mode.
+  const isMessageLike = mode === "message" || mode === "share";
   if (
     (mode === "composer" && draft) ||
-    ((mode === "message" || mode === "editor") && !draft)
+    ((isMessageLike || mode === "editor") && !draft)
   ) {
     const name = file?.name ?? draft?.name ?? "Attachment";
     const compactStatus = failed && draft
@@ -288,12 +304,11 @@ export function AttachmentCard({
     const readRole: FileReadRole = file?.preview_available ? "preview" : "download";
     const canRead = Boolean(fileId && getReadUrl);
     const category = file?.category ?? draft?.category ?? "text";
-    const buttonLabel =
-      mode === "message"
-        ? readRole === "preview"
-          ? "Preview image"
-          : "Download original file"
-        : name;
+    const buttonLabel = isMessageLike
+      ? readRole === "preview"
+        ? "Preview image"
+        : "Download original file"
+      : name;
 
     if (isImage) {
       const immediatePreviewUrl = draft?.local_preview_url ?? localPreviewUrl;
@@ -308,11 +323,11 @@ export function AttachmentCard({
           : imageCollectionPosition === "last"
             ? "rounded-lg rounded-e-2xl"
             : "rounded-lg";
-      const imageStats = file && hasFileId(file) ? file.stats : undefined;
+      const imageStats = file?.stats;
       const imageWidth = positiveDimension(imageStats?.width);
       const imageHeight = positiveDimension(imageStats?.height);
       const isLandscapeMessageImage =
-        mode === "message" &&
+        isMessageLike &&
         !isCollection &&
         imageWidth !== null &&
         imageHeight !== null &&
@@ -323,7 +338,7 @@ export function AttachmentCard({
       // Reserve the final single-image box while its signed preview loads.
       // Landscape images use ChatGPT's wider 384 x 256 bounds, while portrait
       // images retain the established 256 x 384 bounds.
-      const imageFrameStyle = mode === "message" && !isCollection
+      const imageFrameStyle = isMessageLike && !isCollection
         ? fittedImageFrame(
             imageWidth,
             imageHeight,
@@ -399,7 +414,7 @@ export function AttachmentCard({
               </span>
             )}
           </button>
-          {mode === "message" && !file?.preview_available && fileId && getReadUrl && (
+          {isMessageLike && !file?.preview_available && fileId && getReadUrl && (
             <button
               type="button"
               className="absolute right-1 bottom-1 z-[2] inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface/90 text-text-muted shadow-popover hover:bg-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
@@ -544,11 +559,9 @@ export function AttachmentCard({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-text-primary">{file?.name ?? draft?.name}</p>
-          {mode !== "share" && (
-            <p className="mt-0.5 text-[11.5px] text-text-muted">
-              {file?.media_type ?? draft?.media_type} · {formatBytes(file?.size_bytes ?? draft?.size_bytes ?? 0)}
-            </p>
-          )}
+          <p className="mt-0.5 text-[11.5px] text-text-muted">
+            {file?.media_type ?? draft?.media_type} · {formatBytes(file?.size_bytes ?? draft?.size_bytes ?? 0)}
+          </p>
           {draft && (
             <p
               className={`mt-1 flex items-center gap-1 text-[11.5px] ${

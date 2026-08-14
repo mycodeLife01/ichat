@@ -685,54 +685,22 @@ async def attachment_responses(
     return result
 
 
-async def issue_read_url(
+async def _sign_file_read_url(
     session: AsyncSession,
     storage: FileStorage,
     *,
-    user: User,
-    file_public_id: UUID,
+    file: FileAsset,
     role: str,
     settings: Settings,
-    preview_storage: FileStorage | None = None,
-    now: datetime | None = None,
+    preview_storage: FileStorage | None,
+    moment: datetime,
 ) -> FileReadUrlResponse:
-    moment = now or datetime.now(UTC)
-    active_user_id = await session.scalar(
-        select(User.id)
-        .where(User.id == user.id, User.is_active.is_(True))
-        .with_for_update(read=True)
-    )
-    if active_user_id is None:
-        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
-    file = await session.scalar(
-        select(FileAsset).where(
-            FileAsset.public_id == file_public_id,
-            FileAsset.user_id == user.id,
-            FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
-            FileAsset.deletion_started_at.is_(None),
-        )
-    )
-    if file is None:
-        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
-    if file.bound_at is None:
-        if file.unbound_expires_at is None or file.unbound_expires_at <= moment:
-            raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
-    else:
-        visible = await session.scalar(
-            select(MessageAttachment.id)
-            .join(Message, Message.id == MessageAttachment.message_id)
-            .join(Conversation, Conversation.id == Message.conversation_id)
-            .where(
-                MessageAttachment.file_id == file.id,
-                Message.archived_at.is_(None),
-                Conversation.user_id == user.id,
-                Conversation.deleted_at.is_(None),
-            )
-            .limit(1)
-        )
-        if visible is None:
-            raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    """Resolve the stored object for ``role`` and sign a short-lived URL.
 
+    Authorization is the caller's job: owner reads go through
+    ``issue_read_url``, anonymous share reads through
+    ``issue_shared_attachment_read_url``.
+    """
     object_role = FileObjectRole.PREVIEW if role == "preview" else FileObjectRole.ORIGINAL
     object_query = select(FileObject).where(
         FileObject.file_id == file.id,
@@ -786,6 +754,108 @@ async def issue_read_url(
     except Exception:
         raise AppError(status.HTTP_503_SERVICE_UNAVAILABLE, UPLOAD_UNAVAILABLE) from None
     return FileReadUrlResponse(url=signed.url, expires_at=moment + timedelta(seconds=ttl_seconds))
+
+
+async def issue_read_url(
+    session: AsyncSession,
+    storage: FileStorage,
+    *,
+    user: User,
+    file_public_id: UUID,
+    role: str,
+    settings: Settings,
+    preview_storage: FileStorage | None = None,
+    now: datetime | None = None,
+) -> FileReadUrlResponse:
+    moment = now or datetime.now(UTC)
+    active_user_id = await session.scalar(
+        select(User.id)
+        .where(User.id == user.id, User.is_active.is_(True))
+        .with_for_update(read=True)
+    )
+    if active_user_id is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    file = await session.scalar(
+        select(FileAsset).where(
+            FileAsset.public_id == file_public_id,
+            FileAsset.user_id == user.id,
+            FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+            FileAsset.deletion_started_at.is_(None),
+        )
+    )
+    if file is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    if file.bound_at is None:
+        if file.unbound_expires_at is None or file.unbound_expires_at <= moment:
+            raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    else:
+        visible = await session.scalar(
+            select(MessageAttachment.id)
+            .join(Message, Message.id == MessageAttachment.message_id)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                MessageAttachment.file_id == file.id,
+                Message.archived_at.is_(None),
+                Conversation.user_id == user.id,
+                Conversation.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        if visible is None:
+            raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+
+    return await _sign_file_read_url(
+        session,
+        storage,
+        file=file,
+        role=role,
+        settings=settings,
+        preview_storage=preview_storage,
+        moment=moment,
+    )
+
+
+async def issue_shared_attachment_read_url(
+    session: AsyncSession,
+    storage: FileStorage,
+    *,
+    file_public_id: UUID,
+    owner_user_id: int,
+    role: str,
+    settings: Settings,
+    preview_storage: FileStorage | None = None,
+    now: datetime | None = None,
+) -> FileReadUrlResponse:
+    """Sign a read URL for an attachment reached through a public share token.
+
+    The share snapshot is the authorization proof, so there is no live-message
+    visibility check: later edits archive rows but must not break an existing
+    share. Asset deletion and owner deactivation still revoke access, and the
+    asset must belong to ``owner_user_id`` so a snapshot can never reach another
+    user's file.
+    """
+    moment = now or datetime.now(UTC)
+    file = await session.scalar(
+        select(FileAsset).where(
+            FileAsset.public_id == file_public_id,
+            FileAsset.user_id == owner_user_id,
+            FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+            FileAsset.deletion_started_at.is_(None),
+            FileAsset.bound_at.is_not(None),
+        )
+    )
+    if file is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    return await _sign_file_read_url(
+        session,
+        storage,
+        file=file,
+        role=role,
+        settings=settings,
+        preview_storage=preview_storage,
+        moment=moment,
+    )
+
 
 
 async def begin_file_deletion(

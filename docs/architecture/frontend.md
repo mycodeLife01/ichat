@@ -106,8 +106,10 @@
 - 图片输入只在所选模型明确声明 `supports_image_input` 时可用。会话的 `image_context` 是服务端
   派生投影；前端必须遵守 `vision_required` / `legacy_upgrade_required`，不得从模型名称或历史
   附件自行推断。
-- preview/download URL 按需向服务端申请并视为短期能力。公开分享只展示脱敏附件占位，不包含
-  file id、私有原件、派生物或下载能力。
+- preview/download URL 按需向服务端申请并视为短期能力。公开分享页与聊天页共用同一套附件布局
+  组件（`messages/MessageAttachments.tsx`），并可用快照中的不透明 `ref` 换取短时 preview/download
+  URL；快照本身仍不包含 file id、对象 key 或任何内部标识，缺少 `ref` 的历史快照必须保持不可读，
+  详见 ADR `0011-grant-attachment-reads-to-public-shares.md`。
 
 文件、图片或视觉模型任务还必须读取 `docs/README.md` 对应的统一文件上传 handover、视觉
 handover 与 ADR；本文只描述前端如何消费这些契约。

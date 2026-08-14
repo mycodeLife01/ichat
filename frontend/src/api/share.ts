@@ -1,4 +1,5 @@
 import { getDefaultApiClient, type ApiClient } from "./client";
+import type { FileReadRole, FileReadUrl } from "../files/types";
 import type {
   CommandStatusResponse,
   PublicShareResponse,
@@ -49,6 +50,23 @@ export function createShareApi(client?: Pick<ApiClient, "request">) {
         auth: false,
         retryOnUnauthorized: false,
       });
+    },
+    // Exchanges a share-scoped attachment ref for a short-lived signed URL.
+    // Anonymous like getPublic: the share token is the whole capability.
+    readAttachment(
+      token: string,
+      ref: string,
+      role: FileReadRole,
+    ): Promise<FileReadUrl> {
+      return resolveClient().request<FileReadUrl>(
+        `/share/${token}/attachments/${encodeURIComponent(ref)}/read-url`,
+        {
+          method: "POST",
+          body: { role },
+          auth: false,
+          retryOnUnauthorized: false,
+        },
+      );
     },
   };
 }

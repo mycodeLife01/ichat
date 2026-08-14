@@ -187,6 +187,17 @@ class Settings(BaseSettings):
     files_cleanup_safety_seconds: int = 300
     clamav_host: str = "clamav"
     clamav_port: int = 3310
+
+    # --- Public share attachment reads ---
+    # Anonymous callers hold only a share token, so the token itself is the
+    # abuse dimension; the IP window caps a crawler sweeping many leaked tokens.
+    # Download is deliberately tighter than preview: it hands out the original.
+    share_read_token_preview_limit: int = 120
+    share_read_token_preview_window_seconds: int = 300
+    share_read_token_download_limit: int = 30
+    share_read_token_download_window_seconds: int = 3_600
+    share_read_ip_limit: int = 300
+    share_read_ip_window_seconds: int = 3_600
     clamav_timeout_seconds: float = 30.0
     clamav_signature_max_age_seconds: int = 48 * 3_600
 

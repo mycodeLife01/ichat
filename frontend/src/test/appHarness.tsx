@@ -153,6 +153,10 @@ export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi 
       messages: [],
       created_at: conversationResponse.created_at,
     }),
+    readAttachment: async () => ({
+      url: "https://cdn.example.com/shared-preview.png",
+      expires_at: "2026-08-14T10:05:00Z",
+    }),
     ...overrides,
   };
 }
