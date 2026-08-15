@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest"
+    "test": "vitest",
+    "test:visual": "playwright test"
   },
   "dependencies": {
     "katex": "^0.17.0",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.1.0",

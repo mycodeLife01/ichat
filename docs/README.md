@@ -19,7 +19,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
-| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
+| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-assistant-rendering-visual-fixture.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
@@ -104,6 +104,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-06-10-frontend-tailwind-v4-styles.md` — Tailwind CSS v4 migration (CSS-first `@theme`, all hand-written CSS removed, pixel-parity verified)
 - `2026-08-14-sidebar-rail-and-chat-actions.md` — collapsed sidebar becomes a 52px rail (new chat / recent 10 / account), the chat header is removed in favor of floating share + three-dot actions, and chat-page sharing copies a permanent link without a dialog
 - `2026-08-15-chatgpt-ai-response-rendering.md` — observed ChatGPT assistant-response rendering, the current iChat pipeline, a gap matrix, and the handoff into `.scratch/refactor-chat-render/`; the PRD owns the confirmed implementation scope
+- `2026-08-15-assistant-rendering-visual-fixture.md` — ticket 01's isolated visual fixture, the point-in-time ChatGPT reference boundary, diagnostic screenshot semantics, and the constraints carried into ticket 02
 
 ### `docs/goals/`
 

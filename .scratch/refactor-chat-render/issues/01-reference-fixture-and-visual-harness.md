@@ -2,7 +2,7 @@
 
 Type: test
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: None
 
@@ -30,13 +30,13 @@ Blocked by: None
 
 ## Acceptance criteria
 
-- [ ] 记录参考 Chrome 版本、zoom、主题、viewport、实际字体和本 PRD 列出的桌面 computed-style 数值。
-- [ ] 补测参考页移动 viewport，记录正文、标题、代码和表格关键尺寸；无法可靠测量的项目明确标注，不用桌面值猜测。
-- [ ] 独立 fixture 无需登录和 API 即可由 Vite/Playwright 打开，且不会进入 `pnpm run build` 的正式应用入口。
-- [ ] fixture 覆盖 reference matrix 中所有内容与状态，数据不包含真实会话内容或凭证。
-- [ ] Playwright smoke 能检查 fixture 已加载、目标 surface 全部存在，并产出桌面/移动诊断截图 artifact。
-- [ ] `test:visual`、现有 Vitest、typecheck、lint 和 build 全部通过。
-- [ ] `pnpm-lock.yaml` 是唯一新增/更新的包管理器锁文件。
+- [x] 记录参考 Chrome 版本、zoom、主题、viewport、实际字体和本 PRD 列出的桌面 computed-style 数值。
+- [x] 补测参考页移动 viewport，记录正文、标题、代码和表格关键尺寸；无法可靠测量的项目明确标注，不用桌面值猜测。
+- [x] 独立 fixture 无需登录和 API 即可由 Vite/Playwright 打开，且不会进入 `pnpm run build` 的正式应用入口。
+- [x] fixture 覆盖 reference matrix 中所有内容与状态，数据不包含真实会话内容或凭证。
+- [x] Playwright smoke 能检查 fixture 已加载、目标 surface 全部存在，并产出桌面/移动诊断截图 artifact。
+- [x] `test:visual`、现有 Vitest、typecheck、lint 和 build 全部通过。
+- [x] `pnpm-lock.yaml` 是唯一新增/更新的包管理器锁文件。
 
 ## Verification
 
@@ -52,3 +52,4 @@ pnpm run build
 ## Comments
 
 - 2026-08-15：视觉工具先提供可重复场景和诊断资产，批准后的 golden 延后到 ticket 06，避免把改造前画面误设为长期基线。
+- 2026-08-15：完成 Chrome `151.0.7922.138` 点时参考与 `390 × 844` 移动补测，脱敏指标记录在 `frontend/tests/visual/assistant-rendering-reference.md`。新增独立 Vite fixture、`@playwright/test` 配置和 `test:visual`；桌面/移动各 1 个 smoke 通过并生成 gitignored 诊断截图。生产 build 仍仅输出根 `index.html`，未包含 fixture。验证结果：Playwright 2 passed、Vitest 67 files / 531 tests passed、typecheck、lint、build 均通过。

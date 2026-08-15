@@ -224,7 +224,7 @@ pnpm run test:visual
 
 | ID | Ticket | Status | Blocked by |
 |---|---|---|---|
-| 01 | 固定 ChatGPT 参考与建立视觉验收 fixture | `ready-for-agent` | None |
+| 01 | 固定 ChatGPT 参考与建立视觉验收 fixture | `completed` | None |
 | 02 | 深化 Markdown seam 并对齐助手排版 | `ready-for-agent` | 01 |
 | 03 | 实现 ChatGPT 风格代码块 | `ready-for-agent` | 02 |
 | 04 | 实现表格、链接与 GFM rich surface | `ready-for-agent` | 03 |
@@ -233,7 +233,7 @@ pnpm run test:visual
 
 ## Frontier
 
-当前 frontier：ticket 01。
+当前 frontier：ticket 02。
 
 完成或阻塞 ticket 时，同时更新本索引与对应 issue 文件状态。所有 ticket 实现并验证后，将本 PRD 状态改为 `completed`。
 
