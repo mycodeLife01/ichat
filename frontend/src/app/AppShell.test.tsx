@@ -139,12 +139,20 @@ describe("AppShell", () => {
       },
     );
     const user = userEvent.setup();
-    renderWithApp(<AppShell />, services);
+    const { container } = renderWithApp(<AppShell />, services);
 
     await user.click(await screen.findByText(conversationResponse.title as string));
 
     // user message content from the detail fixture
     expect(await screen.findByText("Hello")).toBeInTheDocument();
+    const region = container.querySelector<HTMLDivElement>(".thread-region");
+    const footer = container.querySelector<HTMLDivElement>(".thread-bottom-container");
+    expect(region).toContainElement(screen.getByTestId("composer"));
+    expect(footer).toHaveClass("sticky", "bottom-0", "pointer-events-none");
+    expect(region).toContainElement(footer);
+    expect(
+      footer?.querySelector('.scroll-to-bottom-button[data-visible="false"]'),
+    ).toBeInTheDocument();
   });
 
   it("copies a permanent share link from the chat header actions", async () => {

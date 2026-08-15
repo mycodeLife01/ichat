@@ -138,6 +138,32 @@ Composer 则到 `374px`。
 - `390 × 844`：三者均为 `left = 16px / right = 374px / width = 358px`；
 - 两个视口的 `document.scrollWidth` 均等于 viewport width，没有引入页面水平滚动。
 
+### 2026-08-16 正文延伸、底部渐变与一键到底
+
+用户后续要求正文继续延伸到页面最底部，并在 Composer 上方通过渐变遮罩维持可读性；离开
+最新回复一定距离后，还需按 ChatGPT 的样式、位置和动效显示一键到底按钮。实现把 Composer
+与欢迎区移入 `.thread-region` 内的 sticky `.thread-bottom-container`，消息不再因滚动区外的
+Composer 提前截止。底部层使用 80% iChat canvas 与从透明到实色的 32px mask，正文滚过
+Composer 后方时仍能透出并逐步淡化；空白欢迎页不显示该遮罩。复核 ChatGPT computed style
+确认 footer 与其伪元素的 `backdrop-filter` 均为 `none`，因此底部层不额外模糊；只有返回按钮
+自身保留参考中的 2px blur。
+
+使用用户 Chrome 中已打开的 ChatGPT 对话页逐项测得并复刻：
+
+- 离底 `136px` 时隐藏、`137px` 时显示（ChatGPT 点时边界约 `136–138px`）；
+- 按钮内容盒 `32 × 32px`、1px 15% 黑色边框、65% 白色表面、2px blur、20px 箭头，
+  与 Composer 表面间距 `24px`；箭头直接使用参考 sprite path；
+- 入场从 `opacity: 0 / scale(.5) / translateY(8px)` 过渡到正常态，时长与延迟均为 300ms，
+  曲线为 `cubic-bezier(.4, 0, .2, 1)`；退场为无延迟 100ms；
+- 点击后按钮立即退场，再由原生 smooth scroll 回到底部并恢复自动跟随；用户反向滚动可以中断，
+  `prefers-reduced-motion` 下取消 CSS 动画并改为即时滚动；
+- sticky 外壳保持 `pointer-events-none`，Composer 与按钮分别恢复 pointer events，因此遮罩不会
+  吞掉正文滚轮或手势。
+
+新增真实 AppShell fixture 在 `1440 × 900` 和 `390 × 844` Chromium 中固定以上阈值、几何、
+动效、底部渐变、按钮模糊、正文透出、点击行为与无水平 overflow；两个视口继续满足 Composer
+和正文双边对齐。
+
 ## 主要文件
 
 生产代码：
@@ -146,6 +172,8 @@ Composer 则到 `374px`。
 - `frontend/src/messages/markdown/CodeBlock.tsx`、`TableBlock.tsx`、`MarkdownLink.tsx`；
 - `frontend/src/messages/markdown/codeLanguage.ts`、`codeHighlight.ts`、`copyText.ts`、`tableTsv.ts`；
 - `frontend/src/messages/Message.tsx`、`StreamingMessage.tsx`、`SharePage.tsx`；
+- `frontend/src/messages/useStickToBottom.ts`、`ScrollToBottomButton.tsx`；
+- `frontend/src/app/AppShell.tsx`、`frontend/src/ui/Composer.tsx`；
 - `frontend/src/styles/global.css`、`frontend/src/ui/classes.ts`、`frontend/src/ui/icons.tsx`。
 
 测试与证据：
@@ -154,6 +182,7 @@ Composer 则到 `374px`。
 - `frontend/src/test/streamingMarkdownFixtures.ts`、`longMarkdownFixtures.ts`；
 - `frontend/tests/visual/assistant-rendering.*`；
 - `frontend/tests/visual/assistant-rendering-performance.*`；
+- `frontend/tests/visual/thread-bottom.*`；
 - `frontend/playwright.config.ts`；
 - `frontend/tests/visual/assistant-rendering.visual.ts-snapshots/`。
 
@@ -236,6 +265,7 @@ viewport 为 `2560 × 1249`，移动补测为 `390 × 844`。在线页面只用�
 - ThinkingBlock 折叠/展开；
 - code/table hover、focus-visible、成功/失败复制、Python 工具栏、HTML code/preview 切换、
   sandbox 属性、fullscreen control 和独立横向滚动；
+- live thread sticky Composer、底部 fade/mask、按钮 blur、136px 返回按钮阈值、入退场动效和一键到底；
 - desktop `1440 × 900` 与 mobile `390 × 844` 页面 overflow。
 
 用户于 2026-08-15 批准以下 Windows Chromium 全页 golden：
@@ -285,8 +315,8 @@ pnpm run test:visual
 git diff --check
 ```
 
-最终结果：完整 Vitest `73 files / 628 tests`；Playwright desktop visual、mobile visual 和
-desktop performance `3 passed`，mobile performance 按固定证据环境 `1 skipped`；lint、
+最终结果：完整 Vitest `74 files / 634 tests`；Playwright desktop/mobile assistant visual、
+thread-bottom visual 与 desktop performance `5 passed`，mobile performance 按固定证据环境 `1 skipped`；lint、
 typecheck、production build、无更新参数的 golden 比较与 `git diff --check` 全部通过。
 
 ## 回滚

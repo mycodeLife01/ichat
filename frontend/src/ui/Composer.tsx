@@ -437,7 +437,7 @@ export function Composer({
   const hasMixedAttachmentKinds = hasImageAttachments && hasNonImageAttachments;
 
   return (
-    <div className="composer-wrap border-t border-transparent bg-canvas px-8 pb-[22px] max-[760px]:px-4 max-[760px]:pb-[max(16px,env(safe-area-inset-bottom))]">
+    <div className="composer-wrap pointer-events-auto px-8 pb-[23px] max-[760px]:px-4 max-[760px]:pb-[max(17px,env(safe-area-inset-bottom))]">
       <div
         ref={composerRef}
         data-testid="composer"

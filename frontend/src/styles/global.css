@@ -948,6 +948,85 @@ body {
 
 .thread-region::-webkit-scrollbar { width: 15.6667px; }
 
+/* The Composer lives in the same scrollport as the thread. Its sticky footer
+   therefore lets message content continue behind the controls, while this
+   masked backdrop keeps the final 32px transition readable. */
+.thread-bottom-container {
+  isolation: isolate;
+}
+.thread-bottom-container::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background: rgb(251 251 250 / 80%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 32px, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 32px, black 100%);
+}
+.thread-bottom-container[data-welcome="true"]::after {
+  display: none;
+}
+
+/* ChatGPT's return-to-latest control uses a delayed 300ms rise on entry and
+   an immediate 100ms retreat on exit. The translucent surface also blurs the
+   content passing underneath it. */
+.scroll-to-bottom-button {
+  position: absolute;
+  bottom: calc(100% + 24px);
+  left: 50%;
+  z-index: 20;
+  box-sizing: content-box;
+  display: flex;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: #0d0d0d;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  background: rgb(255 255 255 / 65%);
+  border: 1px solid rgb(0 0 0 / 15%);
+  border-radius: 999px;
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 10%),
+    0 2px 4px -2px rgb(0 0 0 / 10%);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  transform: translateX(-50%) scale(1);
+  transform-origin: center;
+  opacity: 1;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 300ms cubic-bezier(0.4, 0, 0.2, 1) 300ms,
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1) 300ms,
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.scroll-to-bottom-button:hover {
+  background: rgb(244 243 240 / 75%);
+}
+.scroll-to-bottom-button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.scroll-to-bottom-button[data-visible="false"] {
+  pointer-events: none;
+  transform: translate(-50%, 8px) scale(0.5);
+  opacity: 0;
+  transition:
+    opacity 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-to-bottom-button,
+  .scroll-to-bottom-button[data-visible="false"] {
+    transition: none;
+  }
+}
+
 /* Auth screen background overlays — data-URI noise and the masked grid stay
    as handwritten CSS (the URI is unreadable inline in JSX). */
 .auth-grain {

@@ -11,6 +11,7 @@ import { useTitlePolling } from "../conversations/useTitlePolling";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
 import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
+import { ScrollToBottomButton } from "../messages/ScrollToBottomButton";
 import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
 import { useStickToBottom } from "../messages/useStickToBottom";
@@ -198,7 +199,11 @@ export function AppShell() {
   // Reasoning/tool deltas intentionally do not drive bottom-sticking: expanding
   // that status block would move its header on every chunk. Formal answer text
   // still follows the stream, and failures scroll their persistent alert in.
-  const threadRef = useStickToBottom<HTMLDivElement>(
+  const {
+    ref: threadRef,
+    showScrollToBottom,
+    scrollToBottom,
+  } = useStickToBottom<HTMLDivElement>(
     [
       detail.messages.length,
       activeRun?.draftText,
@@ -594,109 +599,125 @@ export function AppShell() {
           {/* Mobile pads the scroll container so the floating actions do not sit
               on top of the first message when the thread is at the top. */}
           <div
-            className="thread-region min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+            className="thread-region relative flex min-h-0 flex-1 flex-col overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8"
+            data-scroll-from-end={showScrollToBottom ? "" : undefined}
             ref={threadRef}
           >
-          {!showWelcome && (
-            <MessageThread
-              messages={messages}
-              pendingMessage={pendingMessage}
-              pendingMessageKey={visiblePendingSubmission?.clientId}
-              messageRenderKeys={messageRenderKeys}
-              isMobile={isMobile}
-              mutateDisabledReason={mutationDisabledReason}
-              onEditAndRegenerate={(id, content, attachmentIds) => {
-                void editAndRegenerate(id, content, attachmentIds);
-              }}
-              onRegenerate={(id) => void regenerate(id)}
-              legacyMessageId={imageContext.legacy_message_id}
-              onUpgradeLegacy={(messageId) => {
-                const visual = models.find((entry) => entry.supports_image_input);
-                if (!visual) {
-                  dispatch({
-                    type: "ui/showToast",
-                    message: "No compatible vision model is currently available.",
-                    tone: "warning",
-                  });
-                  return;
-                }
-                onModelChange(visual.id);
-                void regenerate(messageId);
-              }}
-              onEditUpgradeLegacy={() => {
-                const visual = models.find((entry) => entry.supports_image_input);
-                if (!visual) {
-                  dispatch({
-                    type: "ui/showToast",
-                    message: "No compatible vision model is currently available.",
-                    tone: "warning",
-                  });
-                  return false;
-                }
-                onModelChange(visual.id);
-                return true;
-              }}
-              onStartNewConversation={onNewConversation}
-              onReadAttachment={services.filesApi.readUrl}
-              localImagePreviews={sentImagePreviews}
-              onLocalImagePreviewConsumed={releaseSentImagePreview}
-              onShowSources={showSources}
-            >
-              {visiblePendingSubmission !== null ||
-              (activeRun && activeRun.conversationId === selectedId) ? (
-                <StreamingMessage run={visiblePendingSubmission !== null ? null : activeRun} />
-              ) : null}
-            </MessageThread>
-          )}
-          </div>
-        </div>
+            <div className="thread-stage flex flex-auto flex-col [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]">
+              {!showWelcome && (
+                <MessageThread
+                  messages={messages}
+                  pendingMessage={pendingMessage}
+                  pendingMessageKey={visiblePendingSubmission?.clientId}
+                  messageRenderKeys={messageRenderKeys}
+                  isMobile={isMobile}
+                  mutateDisabledReason={mutationDisabledReason}
+                  onEditAndRegenerate={(id, content, attachmentIds) => {
+                    void editAndRegenerate(id, content, attachmentIds);
+                  }}
+                  onRegenerate={(id) => void regenerate(id)}
+                  legacyMessageId={imageContext.legacy_message_id}
+                  onUpgradeLegacy={(messageId) => {
+                    const visual = models.find((entry) => entry.supports_image_input);
+                    if (!visual) {
+                      dispatch({
+                        type: "ui/showToast",
+                        message: "No compatible vision model is currently available.",
+                        tone: "warning",
+                      });
+                      return;
+                    }
+                    onModelChange(visual.id);
+                    void regenerate(messageId);
+                  }}
+                  onEditUpgradeLegacy={() => {
+                    const visual = models.find((entry) => entry.supports_image_input);
+                    if (!visual) {
+                      dispatch({
+                        type: "ui/showToast",
+                        message: "No compatible vision model is currently available.",
+                        tone: "warning",
+                      });
+                      return false;
+                    }
+                    onModelChange(visual.id);
+                    return true;
+                  }}
+                  onStartNewConversation={onNewConversation}
+                  onReadAttachment={services.filesApi.readUrl}
+                  localImagePreviews={sentImagePreviews}
+                  onLocalImagePreviewConsumed={releaseSentImagePreview}
+                  onShowSources={showSources}
+                >
+                  {visiblePendingSubmission !== null ||
+                  (activeRun && activeRun.conversationId === selectedId) ? (
+                    <StreamingMessage
+                      run={visiblePendingSubmission !== null ? null : activeRun}
+                    />
+                  ) : null}
+                </MessageThread>
+              )}
+            </div>
 
-        <div className="flex shrink-0 flex-col">
-          {/* The collapsed state keeps the node mounted (opacity/max-height, not
-              display:none) so the welcome fade can animate; Tailwind's `hidden`
-              utility would kill the transition. */}
-          <div
-            className={`welcome-section flex flex-col items-center overflow-hidden [.composer-animate_&]:[transition:opacity_320ms_ease,max-height_480ms_cubic-bezier(0.4,0,0.2,1)] ${
-              showWelcome ? "max-h-[120px] opacity-100" : "pointer-events-none max-h-0 opacity-0"
-            }`}
-          >
-            <h1 className="mt-0 mb-[22px] text-center text-2xl font-medium tracking-[-0.01em] text-fg">
-              我们先从哪里开始呢？
-            </h1>
+            <div
+              className="thread-bottom-container pointer-events-none sticky bottom-0 z-10 flex w-full shrink-0 flex-col max-[760px]:w-screen"
+              data-welcome={showWelcome ? "true" : undefined}
+            >
+              <ScrollToBottomButton
+                visible={!showWelcome && showScrollToBottom}
+                onClick={scrollToBottom}
+              />
+              {/* The collapsed state keeps the node mounted (opacity/max-height, not
+                  display:none) so the welcome fade can animate; Tailwind's `hidden`
+                  utility would kill the transition. */}
+              <div
+                className={`welcome-section flex flex-col items-center overflow-hidden [.composer-animate_&]:[transition:opacity_320ms_ease,max-height_480ms_cubic-bezier(0.4,0,0.2,1)] ${
+                  showWelcome
+                    ? "max-h-[120px] opacity-100"
+                    : "pointer-events-none max-h-0 opacity-0"
+                }`}
+              >
+                <h1 className="mt-0 mb-[22px] text-center text-2xl font-medium tracking-[-0.01em] text-fg">
+                  我们先从哪里开始呢？
+                </h1>
+              </div>
+              <Composer
+                value={composerValue}
+                onChange={onComposerValueChange}
+                onSend={onSend}
+                onStop={onStop}
+                state={composerState}
+                thinkingLevel={thinkingLevel}
+                onThinkingLevelChange={onThinkingLevelChange}
+                webSearchEnabled={webSearchEnabled}
+                webSearchAvailable={webSearchAvailable}
+                onWebSearchEnabledChange={onWebSearchEnabledChange}
+                models={models}
+                model={modelId}
+                onModelChange={onModelChange}
+                imageContext={imageContext}
+                onRemoveImages={attachmentUploads.removeImages}
+                fileCapability={fileCapability}
+                fileUploadAllowed={user?.email_verified === true}
+                attachments={pendingSubmission === null ? attachmentUploads.attachments : []}
+                onSelectFiles={attachmentUploads.addFiles}
+                onCancelAttachment={(clientId) =>
+                  void attachmentUploads.cancelAttachment(clientId)
+                }
+                onRetryAttachment={attachmentUploads.retryAttachment}
+                onMoveAttachment={attachmentUploads.moveAttachment}
+                onReadAttachment={services.filesApi.readUrl}
+                canSend={canSend}
+                sendDisabledReason={sendDisabledReason}
+                readOnly={visionMutationBlocked}
+                isMobile={isMobile}
+              />
+            </div>
+            <div
+              className={`min-h-0 shrink basis-0 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)] ${showWelcome ? "grow" : "grow-0"}`}
+            />
           </div>
-          <Composer
-            value={composerValue}
-            onChange={onComposerValueChange}
-            onSend={onSend}
-            onStop={onStop}
-            state={composerState}
-            thinkingLevel={thinkingLevel}
-            onThinkingLevelChange={onThinkingLevelChange}
-            webSearchEnabled={webSearchEnabled}
-            webSearchAvailable={webSearchAvailable}
-            onWebSearchEnabledChange={onWebSearchEnabledChange}
-              models={models}
-              model={modelId}
-              onModelChange={onModelChange}
-              imageContext={imageContext}
-              onRemoveImages={attachmentUploads.removeImages}
-            fileCapability={fileCapability}
-            fileUploadAllowed={user?.email_verified === true}
-            attachments={pendingSubmission === null ? attachmentUploads.attachments : []}
-            onSelectFiles={attachmentUploads.addFiles}
-            onCancelAttachment={(clientId) => void attachmentUploads.cancelAttachment(clientId)}
-            onRetryAttachment={attachmentUploads.retryAttachment}
-            onMoveAttachment={attachmentUploads.moveAttachment}
-            onReadAttachment={services.filesApi.readUrl}
-            canSend={canSend}
-            sendDisabledReason={sendDisabledReason}
-            readOnly={visionMutationBlocked}
-            isMobile={isMobile}
-          />
         </div>
-        <div
-          className={`min-h-0 shrink basis-0 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)] ${showWelcome ? "grow" : "grow-0"}`}
-        />
       </main>
 
       <SourcesPanel

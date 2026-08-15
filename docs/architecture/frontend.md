@@ -148,6 +148,12 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   live `MessageThread` 桌面外壳同样按该 token 加两侧 32px gutter。移动断点下，只有位于
   `.thread-region` 的消息外壳可以用 viewport 宽度补偿传统滚动条占宽，确保正文与 Composer
   都保持 16px 双侧 gutter；share 与独立 fixture 继续服从各自 containing block。
+- live thread 的 Composer 属于 `.thread-region` 内的 sticky 底部层，而不是滚动区外的兄弟节点；
+  消息正文因此可以延伸到控件下方。底部层与 ChatGPT 一样使用 32px 渐变 mask 和 80% canvas，
+  不添加 backdrop blur；离底距离超过 136px 时由 `useStickToBottom` 显示“滚动到底部”控件，
+  该按钮自身保留参考中的 2px backdrop blur。
+  点击后恢复 pinned 状态并平滑返回最新消息。该控件必须支持键盘、`prefers-reduced-motion`
+  和用户反向滚动中断，不得用单纯的“接近底部”判断覆盖用户阅读意图。
 - Tailwind v4 使用 CSS-first 配置。设计 token 和动画放在 `@theme`；共享 utility 组合放在
   `src/ui/classes.ts`；只有 Markdown 产物、伪元素、滚动条、复杂背景等能力保留手写 CSS。
 - 部分语义 class 同时是测试或运行时钩子，样式迁移时先搜索消费者，不能把“无样式”误判为
@@ -179,5 +185,8 @@ pnpm run build
   `--update-snapshots` 更新。其他平台仍运行语义、交互和几何断言，但不假定字体栅格逐像素一致。
   `assistant-rendering-performance.html` 是独立数值证据页，不进入 golden；Playwright 串行执行，
   避免 syntax highlighting 与性能采样互相争用 CPU。
+- live thread 底部布局的浏览器入口为 `tests/visual/thread-bottom.html`，在桌面与移动项目中验证
+  sticky/fade/mask、按钮 blur、Composer 与正文对齐、136px 显示阈值、入退场动效、一键到底、无页面水平
+  overflow 和 reduced-motion；这些行为依赖真实滚动与 CSS 几何，不能只用 jsdom 验证。
 - 文档或代码声称任务完成前，相关测试、lint、类型检查和构建必须通过；无法执行的检查要明确
   记录缺口、风险与待运行命令。

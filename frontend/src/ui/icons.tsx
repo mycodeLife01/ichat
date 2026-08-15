@@ -59,6 +59,24 @@ function codeIcon({ size = 20, ...props }: CustomIconProps) {
   );
 }
 
+// ChatGPT scroll-to-latest mark, using the reference interface's 20px path.
+function scrollToBottomIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      data-icon="scroll-to-bottom"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M10 2.668c.368 0 .665.298.665.665V15.06l4.698-4.698a.666.666 0 0 1 .94.942l-5.538 5.538a1.083 1.083 0 0 1-1.53 0l-5.54-5.538a.667.667 0 0 1 .942-.942l4.698 4.698V3.333c0-.367.298-.665.665-.665" />
+    </svg>
+  );
+}
+
 function copyFilledIcon({ size = 20, ...props }: CustomIconProps) {
   return (
     <svg
@@ -224,6 +242,7 @@ export const Icons = {
   Share: Share2,
   Upload: Upload,
   ArrowUp: sendPromptIcon,
+  ArrowDown: scrollToBottomIcon,
   Mic: Mic,
   Play: playIcon,
   Stop: Square,
