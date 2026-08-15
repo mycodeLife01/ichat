@@ -96,7 +96,7 @@ pnpm exec vitest run
 ## 未知语言与长代码行
 
 ```not-a-language
-unknown_language_falls_back_without_breaking_the_message = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789"
+unknown_language_falls_back_without_breaking_the_message = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789"
 ```
 
 ## 宽表格

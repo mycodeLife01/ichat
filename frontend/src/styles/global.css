@@ -20,6 +20,7 @@
   --radius-popover: 14px;
   --radius-card: 16px;
   --radius-dialog: 20px;
+  --radius-code-block: 24px;
   --radius-composer: 28px;
   --radius-pill: 999px;
 
@@ -42,6 +43,17 @@
   --color-text-primary: #1a1a19;
   --color-text-muted: #6b6a66;
   --color-text-faint: #b8b6b0;
+
+  /* Assistant code surfaces use a restrained light syntax palette. */
+  --color-code-surface: #f3f3f3;
+  --color-code-border: rgba(0, 0, 0, 0.05);
+  --color-code-label: #5d5d5d;
+  --color-code-comment: #6e7781;
+  --color-code-keyword: #cf222e;
+  --color-code-string: #0a3069;
+  --color-code-number: #0550ae;
+  --color-code-function: #8250df;
+  --color-code-property: #953800;
 
   --color-border: rgba(20, 20, 19, 0.08);
   --color-border-strong: rgba(20, 20, 19, 0.14);
@@ -374,19 +386,87 @@ body {
   border: 0;
 }
 
-.assistant-markdown pre {
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  background: var(--color-sunken);
-  color: var(--color-text-primary);
-  padding: 14px 16px;
-  border-radius: var(--radius-detail);
-  border: 1px solid var(--color-border-strong);
-  overflow-x: auto;
-  line-height: 1.55;
+.assistant-markdown .code-block {
+  width: 100%;
+  min-width: 0;
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--color-code-border);
+  border-radius: var(--radius-code-block);
+  background: var(--color-code-surface);
+  color: #0d0d0d;
 }
 
-.assistant-markdown pre code {
+.assistant-markdown .code-block-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 4px 14px;
+  background: var(--color-code-surface);
+}
+
+.assistant-markdown .code-block-language {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-code-label);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-markdown .code-block-header button {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.assistant-markdown .code-block-viewport {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.assistant-markdown .code-block-viewport:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.assistant-markdown .code-block pre {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: pre;
+  overflow: visible;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 2;
+  background: transparent;
+  color: inherit;
+  padding: 0 14px 12px;
+  border: 0;
+  border-radius: 0;
+}
+
+.assistant-markdown .code-block pre code {
+  display: block;
+  min-width: max-content;
   background: none;
   border: none;
   padding: 0;
@@ -394,7 +474,38 @@ body {
   font-size: inherit;
   font-weight: inherit;
   line-height: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
 }
+
+.assistant-markdown .token.comment,
+.assistant-markdown .token.prolog,
+.assistant-markdown .token.doctype,
+.assistant-markdown .token.cdata { color: var(--color-code-comment); }
+
+.assistant-markdown .token.keyword,
+.assistant-markdown .token.atrule,
+.assistant-markdown .token.important { color: var(--color-code-keyword); }
+
+.assistant-markdown .token.string,
+.assistant-markdown .token.char,
+.assistant-markdown .token.attr-value,
+.assistant-markdown .token.regex { color: var(--color-code-string); }
+
+.assistant-markdown .token.boolean,
+.assistant-markdown .token.number,
+.assistant-markdown .token.constant,
+.assistant-markdown .token.symbol { color: var(--color-code-number); }
+
+.assistant-markdown .token.function,
+.assistant-markdown .token.class-name,
+.assistant-markdown .token.builtin { color: var(--color-code-function); }
+
+.assistant-markdown .token.tag,
+.assistant-markdown .token.property,
+.assistant-markdown .token.selector,
+.assistant-markdown .token.attr-name { color: var(--color-code-property); }
 
 .assistant-markdown table {
   border-collapse: collapse;
@@ -463,13 +574,9 @@ body {
   .thinking-label.is-streaming { animation: none; }
 }
 
-/* Syntax highlighting (very light). Whitelisted non-business colors: these
-   token hues live only here, never in component JSX. */
-.tok-kw { color: #c678dd; }
-.tok-str { color: #98c379; }
-.tok-num { color: #d19a66; }
-.tok-com { color: #7f7f7f; font-style: italic; }
-.tok-fn { color: #61afef; }
+@media (max-width: 760px) {
+  .assistant-markdown .code-block pre { padding-inline: 10px; }
+}
 
 /* Auth screen background overlays — data-URI noise and the masked grid stay
    as handwritten CSS (the URI is unreadable inline in JSX). */

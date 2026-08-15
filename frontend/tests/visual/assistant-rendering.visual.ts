@@ -43,12 +43,64 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
 
   const successfulCopy = page.locator('[data-copy-scenario="success"]');
   await successfulCopy.getByRole("button", { name: "复制代码" }).click();
-  await expect(successfulCopy.locator('[role="status"]')).toHaveAttribute("data-state", "success");
+  await expect(successfulCopy.locator(".fixture-status")).toHaveAttribute("data-state", "success");
   await expect(successfulCopy.getByRole("button", { name: "已复制" })).toBeVisible();
 
   const failedCopy = page.locator('[data-copy-scenario="failure"]');
   await failedCopy.getByRole("button", { name: "复制代码" }).click();
-  await expect(failedCopy.locator('[role="status"]')).toHaveAttribute("data-state", "failure");
+  await expect(failedCopy.locator(".fixture-status")).toHaveAttribute("data-state", "failure");
+  await expect(failedCopy.getByRole("button", { name: "复制代码" })).toBeVisible();
+  await expect(failedCopy.getByRole("status").filter({ hasText: "Copy failed" })).toBeAttached();
+
+  const codeBlocks = finalMessage.locator("[data-code-block]");
+  await expect(codeBlocks).toHaveCount(6);
+  const plainCode = codeBlocks.filter({ has: page.locator(".code-block-language", { hasText: "代码" }) });
+  await expect(plainCode).toHaveCount(1);
+  const typeScriptCode = codeBlocks.filter({
+    has: page.locator(".code-block-language", { hasText: "TypeScript" }),
+  });
+  await expect(typeScriptCode.locator(".token.keyword").filter({ hasText: "type" })).toHaveText(
+    "type",
+  );
+  const unknownCode = codeBlocks.filter({
+    has: page.locator(".code-block-language", { hasText: "not-a-language" }),
+  });
+  await expect(unknownCode.locator(".token.keyword")).toHaveCount(0);
+
+  const unfinishedFence = page.locator('[data-streaming-prefix="fence"]');
+  await expect(unfinishedFence.locator("[data-code-block]")).toBeVisible();
+  await expect(unfinishedFence.locator(".code-block-language")).toHaveText("TypeScript");
+  await expect(unfinishedFence.locator(".token.keyword")).toContainText("const");
+
+  const longCodeViewport = unknownCode.locator("[data-code-viewport]");
+  const longCodeOverflow = await longCodeViewport.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(longCodeOverflow.scrollWidth).toBeGreaterThan(longCodeOverflow.clientWidth);
+
+  const copyButtonX = (await unknownCode.getByRole("button", { name: "复制代码" }).boundingBox())?.x;
+  await longCodeViewport.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  expect((await unknownCode.getByRole("button", { name: "复制代码" }).boundingBox())?.x).toBe(
+    copyButtonX,
+  );
+  await longCodeViewport.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+
+  const selectedSource = await typeScriptCode.locator("pre").evaluate((element) => {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const text = selection?.toString() ?? "";
+    selection?.removeAllRanges();
+    return text;
+  });
+  expect(selectedSource).toContain('role: "assistant"');
 
   const geometry = await page.evaluate(() => {
     const rectOf = (selector: string) => {
@@ -79,6 +131,9 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
         paddingLeft: style.paddingLeft,
         overflowX: style.overflowX,
         overflowWrap: style.overflowWrap,
+        position: style.position,
+        whiteSpace: style.whiteSpace,
+        wordBreak: style.wordBreak,
       };
     };
 
@@ -118,7 +173,13 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
         '[data-testid="final-message"] .assistant-markdown ul:not(.contains-task-list)',
       ),
       rule: rectOf('[data-testid="final-message"] .assistant-markdown hr'),
-      code: rectOf('[data-testid="final-message"] pre'),
+      codeSurface: rectOf('[data-testid="final-message"] [data-code-block]'),
+      codeHeader: rectOf('[data-testid="final-message"] .code-block-header'),
+      codeViewport: rectOf('[data-testid="final-message"] [data-code-viewport]'),
+      code: rectOf('[data-testid="final-message"] [data-code-block] pre'),
+      codeKeyword: rectOf(
+        '[data-testid="final-message"] [data-language="typescript"] .token.keyword',
+      ),
       table: rectOf('[data-testid="final-message"] table'),
     };
   });
@@ -190,6 +251,20 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.list?.paddingLeft, 26);
   expectPx(geometry.rule?.marginTop, 28);
   expectPx(geometry.rule?.marginBottom, 28);
+
+  expect(geometry.codeSurface?.backgroundColor).toBe("rgb(243, 243, 243)");
+  expectPx(geometry.codeSurface?.borderRadius, 24);
+  expectPx(geometry.codeSurface?.borderTopWidth, 1);
+  expect(geometry.codeHeader?.position).toBe("sticky");
+  expect(geometry.codeViewport?.overflowX).toBe("auto");
+  expectPx(geometry.code?.fontSize, 14);
+  expectPx(geometry.code?.lineHeight, 20);
+  expectPx(geometry.code?.paddingTop, 0);
+  expectPx(geometry.code?.paddingBottom, 12);
+  expectPx(geometry.code?.paddingRight, geometry.viewport.width > 760 ? 14 : 10);
+  expect(geometry.code?.whiteSpace).toBe("pre");
+  expect(geometry.code?.wordBreak).toBe("normal");
+  expect(geometry.codeKeyword?.color).not.toBe(geometry.code?.color);
 
   if (geometry.viewport.width > 760) {
     expectPx(geometry.assistantContent?.width, 768);
