@@ -105,6 +105,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-14-sidebar-rail-and-chat-actions.md` — collapsed sidebar becomes a 52px rail (new chat / recent 10 / account), the chat header is removed in favor of floating share + three-dot actions, and chat-page sharing copies a permanent link without a dialog
 - `2026-08-15-chatgpt-ai-response-rendering.md` — observed ChatGPT assistant-response rendering, the current iChat pipeline, a gap matrix, and the handoff into `.scratch/refactor-chat-render/`; the PRD owns the confirmed implementation scope
 - `2026-08-15-assistant-rendering-visual-fixture.md` — ticket 01's isolated visual fixture, the point-in-time ChatGPT reference boundary, diagnostic screenshot semantics, and the constraints carried into ticket 02
+- `2026-08-15-assistant-typography-and-markdown-seam.md` — ticket 02's shared 768px assistant column, scoped Markdown typography, browser metric checks, reasoning freeze, and the handoff into ticket 03
 
 ### `docs/goals/`
 

@@ -1,4 +1,5 @@
 import type { ActiveRunState } from "../runs/state";
+import { assistantContentColumn } from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { reasoningPreview } from "./reasoningPreview";
@@ -37,7 +38,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
 
   return (
     <div className="msg assistant group flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
-      <div className="min-w-0 flex-1">
+      <div className={assistantContentColumn}>
         {showThinking && (
           <ThinkingBlock
             content={run?.draftReasoning ?? ""}

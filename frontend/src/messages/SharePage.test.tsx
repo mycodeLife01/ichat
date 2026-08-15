@@ -27,11 +27,12 @@ describe("SharePage", () => {
       }),
     });
 
-    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
 
     expect(await screen.findByText("ask something")).toBeInTheDocument();
     expect(screen.getByText("the answer")).toBeInTheDocument();
     expect(screen.queryByText("let me think")).toBeNull();
+    expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
   });

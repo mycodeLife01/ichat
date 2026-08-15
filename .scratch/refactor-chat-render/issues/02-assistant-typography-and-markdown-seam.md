@@ -2,7 +2,7 @@
 
 Type: refactor
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: 01
 
@@ -31,14 +31,14 @@ Blocked by: 01
 
 ## Acceptance criteria
 
-- [ ] 三个助手入口共享一个 768px 桌面内容列，Composer 和非助手页面仍保持原宽度。
-- [ ] 正文、H1/H2/H3、段落间距、列表嵌套、blockquote、hr 和 inline code 与 reference metrics 一致。
-- [ ] H4–H6 仍有明确层级，GFM task list 不被 Tailwind preflight 去样式。
-- [ ] 390px 下正文列使用可用宽度且无页面水平 overflow，长 URL 能换行。
-- [ ] KaTeX、citation、raw HTML 拒绝和货币 `$5` 行为保持不变。
-- [ ] 最终、流式和分享页的相同基础 Markdown 产生一致语义 DOM。
-- [ ] reasoning 折叠、展开、preview、DeepSeek 自动展开和正文 handoff 的既有断言全部原样通过。
-- [ ] ticket 01 的诊断截图已更新为本 ticket 结果，但尚不固化为最终 golden。
+- [x] 三个助手入口共享一个 768px 桌面内容列，Composer 和非助手页面仍保持原宽度。
+- [x] 正文、H1/H2/H3、段落间距、列表嵌套、blockquote、hr 和 inline code 与 reference metrics 一致。
+- [x] H4–H6 仍有明确层级，GFM task list 不被 Tailwind preflight 去样式。
+- [x] 390px 下正文列使用可用宽度且无页面水平 overflow，长 URL 能换行。
+- [x] KaTeX、citation、raw HTML 拒绝和货币 `$5` 行为保持不变。
+- [x] 最终、流式和分享页的相同基础 Markdown 产生一致语义 DOM。
+- [x] reasoning 折叠、展开、preview、DeepSeek 自动展开和正文 handoff 的既有断言全部原样通过。
+- [x] ticket 01 的诊断截图已更新为本 ticket 结果，但尚不固化为最终 golden。
 
 ## Verification
 
@@ -60,3 +60,4 @@ pnpm run build
 ## Comments
 
 - 2026-08-15：采用现有 Markdown 作为唯一外部 seam；不实施参考报告中的 `AssistantRenderModel` 和三个 Adapter。
+- 2026-08-15：完成 `--assistant-content-width: 768px`、final/streaming/share 共用的 `assistant-content` 列，以及 `.assistant-markdown.body.md` scoped typography。桌面与 390px Playwright 均校验正文、H1–H6、段落、列表、blockquote、hr、inline code 和页面 overflow，并更新 gitignored 诊断截图；未固化 golden。验证结果：定向 Vitest 6 files / 87 tests、完整 Vitest 67 files / 534 tests、Playwright 2 passed、typecheck、lint、build 均通过。reasoning freeze 文件未修改。

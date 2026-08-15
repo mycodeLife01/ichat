@@ -33,6 +33,14 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".body.md")).toBeTruthy();
   });
 
+  it("keeps the streaming body in the shared assistant content column", () => {
+    const { container } = render(
+      <StreamingMessage run={run({ draftText: "Hello world" })} />,
+    );
+
+    expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
+  });
+
   it("rolls streamed reasoning into the header before the formal answer starts", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByRole("button", { name: /在想/ })).toBeInTheDocument();

@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { Markdown } from "./Markdown";
 
 describe("Markdown", () => {
+  it("keeps the legacy hooks inside the assistant typography scope", () => {
+    const { container } = render(<Markdown content="正文" />);
+
+    expect(container.querySelector(".assistant-markdown.body.md")).not.toBeNull();
+  });
+
   it("renders GFM content", () => {
     const { container } = render(<Markdown content={"# 标题\n\n- 一\n- 二"} />);
     expect(screen.getByRole("heading", { name: "标题" })).toBeInTheDocument();

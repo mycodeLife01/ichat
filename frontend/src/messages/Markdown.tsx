@@ -147,7 +147,7 @@ export function Markdown({ content, sources, isMobile, streaming }: MarkdownProp
   }, [content, sources, isMobile, streaming]);
 
   return (
-    <div className="body md text-[16px] leading-[1.75] text-text-primary max-[760px]:text-[17px]">
+    <div className="assistant-markdown body md">
       {rendered}
     </div>
   );

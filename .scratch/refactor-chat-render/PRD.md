@@ -225,7 +225,7 @@ pnpm run test:visual
 | ID | Ticket | Status | Blocked by |
 |---|---|---|---|
 | 01 | 固定 ChatGPT 参考与建立视觉验收 fixture | `completed` | None |
-| 02 | 深化 Markdown seam 并对齐助手排版 | `ready-for-agent` | 01 |
+| 02 | 深化 Markdown seam 并对齐助手排版 | `completed` | 01 |
 | 03 | 实现 ChatGPT 风格代码块 | `ready-for-agent` | 02 |
 | 04 | 实现表格、链接与 GFM rich surface | `ready-for-agent` | 03 |
 | 05 | 验证流式 prefix 与长回复性能 | `ready-for-agent` | 03, 04 |
@@ -233,10 +233,11 @@ pnpm run test:visual
 
 ## Frontier
 
-当前 frontier：ticket 02。
+当前 frontier：ticket 03。
 
 完成或阻塞 ticket 时，同时更新本索引与对应 issue 文件状态。所有 ticket 实现并验证后，将本 PRD 状态改为 `completed`。
 
 ## Comments
 
 - 2026-08-15：用户确认核心目标为 AI 正式回复样式 1:1 复刻；reasoning 折叠与展示逻辑保持不变，因此从本 feature 中移除 reasoning/后端展示模型重构。
+- 2026-08-15：ticket 02 完成，助手 final、streaming、share 入口统一使用 768px 内容列和 scoped Markdown 排版；390px 无页面水平 overflow，reasoning freeze 与解析安全链路保持不变。frontier 推进到 ticket 03。

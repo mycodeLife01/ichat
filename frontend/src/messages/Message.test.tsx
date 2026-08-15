@@ -249,6 +249,15 @@ describe("Message", () => {
     expect(screen.queryByText("已思考")).toBeNull();
   });
 
+  it("keeps assistant body and actions in the shared content column", () => {
+    const { container } = render(<Message message={assistantMessage} />);
+    const column = container.querySelector(".assistant-content");
+
+    expect(column).not.toBeNull();
+    expect(column?.querySelector(".assistant-markdown")).not.toBeNull();
+    expect(column?.querySelector(".msg-actions")).not.toBeNull();
+  });
+
   it("shows a sources trigger that opens the sources panel", async () => {
     const user = userEvent.setup();
     const onShowSources = vi.fn();
