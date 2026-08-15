@@ -43,6 +43,102 @@ function sendPromptIcon({ size = 20, ...props }: CustomIconProps) {
   );
 }
 
+function codeIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4.47 6.273a.665.665 0 1 1 1.07.789l-2.212 3.002 2.21 2.95a.665.665 0 0 1-1.065.796l-2.431-3.246a.83.83 0 0 1-.004-.991zM14.606 6.131a.665.665 0 0 1 .93.142l2.43 3.3a.83.83 0 0 1-.003.99l-2.43 3.247a.665.665 0 0 1-1.065-.797l2.209-2.95-2.212-3.001a.666.666 0 0 1 .14-.93M11.059 6.373a.666.666 0 0 1 1.193.586l-3.31 6.734a.665.665 0 1 1-1.194-.587z" />
+    </svg>
+  );
+}
+
+function copyFilledIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      fillRule="evenodd"
+      clipRule="evenodd"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M15.1 1.785a3.065 3.065 0 0 1 3.065 3.066v6.033a3.065 3.065 0 0 1-3.064 3.064h-1.103v1.103a3.065 3.065 0 0 1-3.064 3.064H4.9a3.066 3.066 0 0 1-3.065-3.064V9.018A3.066 3.066 0 0 1 4.9 5.952h1.102V4.851a3.066 3.066 0 0 1 3.065-3.066zM4.9 7.282c-.958 0-1.735.777-1.735 1.736v6.033c0 .958.777 1.734 1.735 1.734h6.034c.957 0 1.734-.776 1.734-1.734V9.018c0-.959-.776-1.736-1.734-1.736zm4.167-4.167c-.958 0-1.735.777-1.735 1.736v1.101h3.602a3.065 3.065 0 0 1 3.064 3.066v3.6h1.103c.957 0 1.734-.776 1.734-1.734V4.85c0-.958-.777-1.735-1.734-1.736z" />
+    </svg>
+  );
+}
+
+function playIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      fillRule="evenodd"
+      clipRule="evenodd"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4.96 5.226c0-1.521 1.69-2.435 2.963-1.602l7.299 4.772a1.915 1.915 0 0 1 0 3.206l-7.3 4.773c-1.273.832-2.962-.082-2.962-1.604zm1.33 9.545c0 .465.516.745.905.49l7.3-4.772a.585.585 0 0 0 0-.98l-7.3-4.772a.585.585 0 0 0-.905.49z" />
+    </svg>
+  );
+}
+
+function htmlPreviewIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <path
+        d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
+function fullscreenIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4.335 11a.665.665 0 0 1 1.33 0v3.335H9l.134.014a.665.665 0 0 1 0 1.302L9 15.665H5A.665.665 0 0 1 4.335 15zm10-2V5.665H11a.665.665 0 0 1 0-1.33h4l.134.014c.303.062.531.33.531.651v4a.665.665 0 1 1-1.33 0" />
+    </svg>
+  );
+}
+
 // ChatGPT compose mark, using the reference interface's 20px path.
 function newChatIcon({ size = 20, ...props }: CustomIconProps) {
   return (
@@ -115,7 +211,11 @@ export const Icons = {
   Chats: recentChatsIcon,
   Chevron: ChevronDown,
   Copy: Copy,
+  CopyFilled: copyFilledIcon,
+  Code: codeIcon,
+  Fullscreen: fullscreenIcon,
   Globe: Globe,
+  HtmlPreview: htmlPreviewIcon,
   Paperclip: Paperclip,
   Plus: Plus,
   Loading: LoaderCircle,
@@ -125,6 +225,7 @@ export const Icons = {
   Upload: Upload,
   ArrowUp: sendPromptIcon,
   Mic: Mic,
+  Play: playIcon,
   Stop: Square,
   Close: X,
 };

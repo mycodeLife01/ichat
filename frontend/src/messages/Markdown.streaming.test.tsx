@@ -64,7 +64,7 @@ describe("Markdown closed streaming blocks", () => {
     const codeBlock = container.querySelector<HTMLElement>("[data-code-block]")!;
     const codeViewport = codeBlock.querySelector<HTMLElement>("[data-code-viewport]")!;
     const tableBlock = container.querySelector<HTMLElement>("[data-table-block]")!;
-    const tableViewport = tableBlock.querySelector<HTMLElement>("[data-table-viewport]")!;
+    const tableViewport = tableBlock;
 
     codeViewport.scrollLeft = 37;
     tableViewport.scrollLeft = 29;

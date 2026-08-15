@@ -39,29 +39,30 @@ export function TableBlock({ children }: ComponentPropsWithoutRef<"table">) {
   const copied = copyState === "success";
 
   return (
-    <div className="table-block" data-table-block>
-      <div className="table-block-header">
-        <button
-          className={`${iconControl} h-7 w-7 p-1`}
-          type="button"
-          aria-label={copied ? "已复制表格" : "复制表格"}
-          onClick={handleCopy}
-        >
-          {copied ? <Icons.Check size={14} /> : <Icons.Copy size={14} />}
-        </button>
-        {copyState === "failure" ? (
-          <span className="sr-only" role="status">
-            Copy failed. Try again.
-          </span>
-        ) : null}
-      </div>
-      <div
-        className="table-block-viewport"
-        data-table-viewport
-        role="region"
-        aria-label="表格（可横向滚动）"
-        tabIndex={0}
-      >
+    <div
+      className="table-block table-block-viewport"
+      data-table-block
+      data-table-viewport
+      role="region"
+      aria-label="表格（可横向滚动）"
+      tabIndex={0}
+    >
+      <div className="table-block-inner">
+        <div className="table-block-header">
+          <button
+            className={`${iconControl} h-7 w-7 p-1`}
+            type="button"
+            aria-label={copied ? "已复制表格" : "复制表格"}
+            onClick={handleCopy}
+          >
+            {copied ? <Icons.Check size={20} /> : <Icons.CopyFilled size={20} />}
+          </button>
+          {copyState === "failure" ? (
+            <span className="sr-only" role="status">
+              Copy failed. Try again.
+            </span>
+          ) : null}
+        </div>
         <table ref={tableRef}>{children}</table>
       </div>
     </div>

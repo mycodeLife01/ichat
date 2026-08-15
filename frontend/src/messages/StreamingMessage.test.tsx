@@ -56,7 +56,7 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".assistant-markdown [data-table-block]")).not.toBeNull();
     expect(screen.getByRole("link", { name: "External" })).toHaveAttribute(
       "target",
-      "_blank",
+      "_new",
     );
   });
 

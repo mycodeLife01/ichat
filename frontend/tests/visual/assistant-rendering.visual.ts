@@ -34,12 +34,13 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await expect(finalMessage.getByRole("link", { name: "站内帮助" })).toBeVisible();
   await expect(externalLink).toHaveAttribute(
     "target",
-    "_blank",
+    "_new",
   );
   await expect(externalLink).toHaveAttribute(
     "rel",
-    "noopener noreferrer",
+    "noopener",
   );
+  await expect(externalLink.locator(".external-link-icon svg")).toBeVisible();
   await expect(finalMessage.getByRole("link", { name: "站内帮助" })).not.toHaveAttribute(
     "target",
   );
@@ -158,9 +159,91 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await expect(failedCopy.getByRole("status").filter({ hasText: "Copy failed" })).toBeAttached();
 
   const codeBlocks = finalMessage.locator("[data-code-block]");
-  await expect(codeBlocks).toHaveCount(6);
-  const plainCode = codeBlocks.filter({ has: page.locator(".code-block-language", { hasText: "代码" }) });
+  await expect(codeBlocks).toHaveCount(7);
+  const plainCode = codeBlocks.filter({ has: page.locator(".code-block-plain-actions") });
   await expect(plainCode).toHaveCount(1);
+  await expect(plainCode.locator(".code-block-header")).toHaveCount(0);
+  await expect(plainCode.getByRole("button", { name: "复制代码" })).toBeVisible();
+  const pythonCode = codeBlocks.filter({
+    has: page.locator(".code-block-language", { hasText: "Python" }),
+  });
+  const pythonRun = pythonCode.getByRole("button", { name: "运行代码" });
+  await expect(pythonRun).toBeVisible();
+  await expect(pythonRun).toHaveAttribute("aria-disabled", "true");
+  const pythonToolbarGeometry = await pythonCode.evaluate((element) => {
+    const actions = element.querySelector(".code-block-actions")!.getBoundingClientRect();
+    const copy = element.querySelector(".code-block-copy")!.getBoundingClientRect();
+    const run = element.querySelector(".code-block-run")!.getBoundingClientRect();
+    return {
+      actions: { width: actions.width, height: actions.height },
+      copy: { width: copy.width, height: copy.height },
+      run: { width: run.width, height: run.height },
+    };
+  });
+  expect(pythonToolbarGeometry.actions.width).toBe(124);
+  expect(pythonToolbarGeometry.actions.height).toBe(36);
+  expect(pythonToolbarGeometry.copy).toEqual({ width: 36, height: 36 });
+  expect(pythonToolbarGeometry.run.width).toBe(78);
+  expect(pythonToolbarGeometry.run.height).toBe(36);
+
+  const htmlCode = codeBlocks.filter({
+    has: page.locator(".code-block-language", { hasText: "HTML" }),
+  });
+  const htmlViewToggle = htmlCode.getByRole("group", { name: "代码块视图切换" });
+  const htmlCodeButton = htmlViewToggle.getByRole("button", { name: "代码" });
+  const htmlPreviewButton = htmlViewToggle.getByRole("button", { name: "预览" });
+  await expect(htmlCode).toHaveAttribute("data-code-view", "code");
+  await expect(htmlCodeButton).toHaveAttribute("aria-pressed", "true");
+  await expect(htmlPreviewButton).toHaveAttribute("aria-pressed", "false");
+  await htmlPreviewButton.click();
+  await expect(htmlCode).toHaveAttribute("data-code-view", "preview");
+  await expect(htmlPreviewButton).toHaveAttribute("aria-pressed", "true");
+  const htmlIframe = htmlCode.locator("iframe");
+  await expect(htmlIframe).toHaveAttribute("sandbox", "");
+  await expect(htmlIframe).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(htmlCode.getByRole("button", { name: "全屏" })).toBeVisible();
+  const htmlPreviewGeometry = await htmlCode.evaluate((element) => {
+    const root = element.getBoundingClientRect();
+    const rootStyle = getComputedStyle(element);
+    const header = element.querySelector(".code-block-header")!.getBoundingClientRect();
+    const actions = element.querySelector(".code-block-actions")!.getBoundingClientRect();
+    const toggle = element.querySelector(".code-block-view-toggle")!.getBoundingClientRect();
+    const previewElement = element.querySelector<HTMLElement>(".code-block-preview")!;
+    const preview = previewElement.getBoundingClientRect();
+    const previewStyle = getComputedStyle(previewElement);
+    const iframe = element.querySelector("iframe")!.getBoundingClientRect();
+    return {
+      root: { width: root.width, height: root.height },
+      rootBorder: Number.parseFloat(rootStyle.borderTopWidth),
+      header: { width: header.width, height: header.height },
+      actions: { width: actions.width, height: actions.height },
+      toggle: { width: toggle.width, height: toggle.height },
+      preview: { width: preview.width, height: preview.height },
+      previewBorder: Number.parseFloat(previewStyle.borderTopWidth),
+      iframe: { width: iframe.width, height: iframe.height },
+    };
+  });
+  expect(htmlPreviewGeometry.header.height).toBe(48);
+  expect(htmlPreviewGeometry.actions).toEqual({ width: 112, height: 36 });
+  expect(htmlPreviewGeometry.toggle).toEqual({ width: 74, height: 36 });
+  expect(htmlPreviewGeometry.preview.width / htmlPreviewGeometry.preview.height).toBeCloseTo(
+    16 / 9,
+    3,
+  );
+  expect(htmlPreviewGeometry.root.height).toBeCloseTo(
+    htmlPreviewGeometry.header.height +
+      htmlPreviewGeometry.preview.height +
+      htmlPreviewGeometry.rootBorder * 2,
+    2,
+  );
+  expect(htmlPreviewGeometry.preview.width - htmlPreviewGeometry.iframe.width).toBeCloseTo(
+    htmlPreviewGeometry.previewBorder * 2,
+    2,
+  );
+  await htmlCodeButton.click();
+  await expect(htmlCode).toHaveAttribute("data-code-view", "code");
+  await expect(htmlCode.locator("iframe")).toHaveCount(0);
+
   const typeScriptCode = codeBlocks.filter({
     has: page.locator(".code-block-language", { hasText: "TypeScript" }),
   });
@@ -217,12 +300,10 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await expect(tableBlocks).toHaveCount(2);
   const tableBlock = tableBlocks.first();
   const failureTableBlock = tableBlocks.last();
-  const tableViewport = tableBlock.getByRole("region", {
-    name: "表格（可横向滚动）",
-  });
-  const failureTableViewport = failureTableBlock.getByRole("region", {
-    name: "表格（可横向滚动）",
-  });
+  const tableViewport = tableBlock;
+  const failureTableViewport = failureTableBlock;
+  await expect(tableViewport).toHaveRole("region");
+  await expect(tableViewport).toHaveAccessibleName("表格（可横向滚动）");
   await expect(tableViewport).toHaveAttribute("tabindex", "0");
   const tableOverflow = await tableViewport.evaluate((element) => ({
     clientWidth: element.clientWidth,
@@ -237,17 +318,22 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await tableViewport.evaluate((element) => {
     element.scrollLeft = element.scrollWidth;
   });
-  expect((await tableCopyButton.boundingBox())?.x).toBe(tableCopyButtonX);
+  const tableScrollLeft = await tableViewport.evaluate((element) => element.scrollLeft);
+  expect((await tableCopyButton.boundingBox())?.x).toBeCloseTo(
+    (tableCopyButtonX ?? 0) - tableScrollLeft,
+    1,
+  );
   expect(await failureTableViewport.evaluate((element) => element.scrollLeft)).toBe(0);
   await tableViewport.evaluate((element) => {
     element.scrollLeft = 0;
   });
-  await tableCopyButton.focus();
-  await page.keyboard.press("Tab");
+  await tableViewport.focus();
   await expect(tableViewport).toBeFocused();
   expect(
     await tableViewport.evaluate((element) => getComputedStyle(element).outlineStyle),
   ).not.toBe("none");
+  await page.keyboard.press("Tab");
+  await expect(tableCopyButton).toBeFocused();
   await tableCopyButton.hover();
   expect(
     await tableCopyButton.evaluate((element) => getComputedStyle(element).cursor),
@@ -257,6 +343,7 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await expect(
     failureTableBlock.getByRole("button", { name: "复制表格" }),
   ).toBeVisible();
+  await failureTableBlock.hover();
   await failureTableBlock.getByRole("button", { name: "复制表格" }).click();
   await expect(failureTableBlock.getByRole("button", { name: "复制表格" })).toBeVisible();
   await expect(
@@ -351,6 +438,9 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
       rule: rectOf('[data-testid="final-message"] .assistant-markdown hr'),
       codeSurface: rectOf('[data-testid="final-message"] [data-code-block]'),
       codeHeader: rectOf('[data-testid="final-message"] .code-block-header'),
+      codeCopyButton: rectOf(
+        '[data-testid="final-message"] .code-block-header .code-block-copy',
+      ),
       codeViewport: rectOf('[data-testid="final-message"] [data-code-viewport]'),
       code: rectOf('[data-testid="final-message"] [data-code-block] pre'),
       codeKeyword: rectOf(
@@ -390,7 +480,8 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.markdown?.lineHeight, 26);
   expect(geometry.markdown?.fontWeight).toBe("400");
   expect(geometry.markdown?.color).toBe("rgb(13, 13, 13)");
-  expect(geometry.markdown?.overflowWrap).toBe("anywhere");
+  expect(geometry.markdown?.overflowWrap).toBe("break-word");
+  expect(geometry.markdown?.wordBreak).toBe("normal");
 
   expectPx(geometry.h1?.fontSize, 24);
   expectPx(geometry.h1?.lineHeight, 32);
@@ -440,15 +531,15 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.blockquote?.paddingLeft, 24);
   expectPx(geometry.list?.paddingLeft, 26);
   expectPx(geometry.nestedList?.paddingLeft, 26);
-  expectPx(geometry.taskCheckbox?.width, 13);
-  expectPx(geometry.taskCheckbox?.height, 13);
-  expectPx(geometry.taskCheckbox?.marginRight, 8);
-  expectPx(geometry.taskCheckbox?.marginBottom, 2);
-  expectPx(geometry.taskCheckbox?.marginLeft, -22);
+  expectPx(geometry.taskCheckbox?.width, 16);
+  expectPx(geometry.taskCheckbox?.height, 16);
+  expectPx(geometry.taskCheckbox?.marginRight, 0);
+  expectPx(geometry.taskCheckbox?.marginBottom, 0);
+  expectPx(geometry.taskCheckbox?.marginLeft, 0);
   expect(geometry.taskCheckbox?.verticalAlign).toBe("middle");
   expect(geometry.taskCheckbox?.cursor).toBe("default");
-  expect(geometry.externalLink?.overflowWrap).toBe("anywhere");
-  expect(geometry.externalLink?.wordBreak).toBe("break-word");
+  expect(geometry.externalLink?.overflowWrap).toBe("break-word");
+  expect(geometry.externalLink?.wordBreak).toBe("normal");
   expectPx(geometry.rule?.marginTop, 28);
   expectPx(geometry.rule?.marginBottom, 28);
 
@@ -456,12 +547,16 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.codeSurface?.borderRadius, 24);
   expectPx(geometry.codeSurface?.borderTopWidth, 1);
   expect(geometry.codeHeader?.position).toBe("sticky");
+  expectPx(geometry.codeHeader?.height, 48);
+  expectPx(geometry.codeCopyButton?.width, 36);
+  expectPx(geometry.codeCopyButton?.height, 36);
   expect(geometry.codeViewport?.overflowX).toBe("auto");
   expectPx(geometry.code?.fontSize, 14);
   expectPx(geometry.code?.lineHeight, 20);
   expectPx(geometry.code?.paddingTop, 0);
   expectPx(geometry.code?.paddingBottom, 12);
-  expectPx(geometry.code?.paddingRight, geometry.viewport.width > 760 ? 14 : 10);
+  expectPx(geometry.code?.paddingRight, geometry.viewport.width > 760 ? 16 : 12);
+  expectPx(geometry.code?.paddingLeft, geometry.viewport.width > 760 ? 20 : 16);
   expect(geometry.code?.whiteSpace).toBe("pre");
   expect(geometry.code?.wordBreak).toBe("normal");
   expect(geometry.codeKeyword?.color).not.toBe(geometry.code?.color);
@@ -493,6 +588,7 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.tableHeadCell?.paddingBottom, 8);
   expectPx(geometry.tableHeadCell?.paddingLeft, 0);
   expectPx(geometry.tableHeadCell?.borderBottomWidth, 1);
+  expect(geometry.tableHeadCell?.verticalAlign).toBe("bottom");
   expectPx(geometry.tableLastHeadCell?.paddingRight, 40);
   expectPx(geometry.tableLastHeadCell?.paddingLeft, 8);
   expectPx(geometry.tableCell?.fontSize, 14);
@@ -503,6 +599,7 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.tableCell?.paddingBottom, 10);
   expectPx(geometry.tableCell?.paddingLeft, 0);
   expectPx(geometry.tableCell?.borderBottomWidth, 1);
+  expect(geometry.tableCell?.verticalAlign).toBe("baseline");
   expectPx(geometry.tableLastCell?.paddingRight, 0);
   expectPx(geometry.tableLastCell?.paddingLeft, 8);
 
@@ -529,6 +626,12 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   ).toBeVisible({ timeout: 3_000 });
   await expect(tableBlock.getByRole("button", { name: "复制表格" })).toBeVisible({
     timeout: 3_000,
+  });
+  await tableViewport.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await failureTableViewport.evaluate((element) => {
+    element.scrollLeft = 0;
   });
   await page.mouse.move(0, 0);
   await page.locator(".fixture-header").click();

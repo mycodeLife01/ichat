@@ -77,6 +77,11 @@
   padding: 24px;
 }
 
+/* Keep the table-state probe scrollable even when the generated columns wrap. */
+.performance-viewport .table-block-inner {
+  min-width: 900px;
+}
+
 .performance-result {
   max-height: 320px;
   margin: 16px 0 0;

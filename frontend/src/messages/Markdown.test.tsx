@@ -17,6 +17,14 @@ describe("Markdown", () => {
     expect(container.querySelectorAll("li")).toHaveLength(2);
   });
 
+  it("renders source line breaks inside a paragraph as visible breaks", () => {
+    const { container } = render(<Markdown content={"第一行\n第二行"} />);
+
+    const paragraph = container.querySelector("p");
+    expect(paragraph?.querySelector("br")).not.toBeNull();
+    expect(paragraph?.textContent).toBe("第一行\n第二行");
+  });
+
   it("does not render raw/dangerous html", () => {
     // react-markdown ignores raw HTML by default (no rehype-raw), and
     // rehype-sanitize is a second guard; the dangerous <img> must not appear.
@@ -47,7 +55,8 @@ describe("Markdown", () => {
     const source = "  first\tline\n\n  third  ";
     const { container } = render(<Markdown content={`\`\`\`\n${source}\n\`\`\``} />);
 
-    expect(screen.getByText("代码")).toBeInTheDocument();
+    expect(container.querySelector(".code-block-plain")).not.toBeNull();
+    expect(container.querySelector(".code-block-header")).toBeNull();
     expect(container.querySelector("[data-code-viewport]")?.textContent).toBe(source);
   });
 
@@ -70,11 +79,8 @@ describe("Markdown", () => {
     );
 
     expect(screen.getByText("not-a-language")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(container.querySelector("[data-code-viewport] .token.plain")).toHaveTextContent(
-        "unknown_call(42)",
-      ),
-    );
+    expect(container.querySelector("[data-code-viewport]")).toHaveTextContent("unknown_call(42)");
+    await waitFor(() => expect(container.querySelector("[data-code-viewport] .token")).toBeNull());
     expect(container.querySelector("[data-code-viewport] .token.keyword")).toBeNull();
   });
 
@@ -98,6 +104,54 @@ describe("Markdown", () => {
     expect(container.querySelector(".katex")).toBeNull();
     expect(screen.queryByRole("button", { name: /引用来源/ })).toBeNull();
     expect(container.querySelector("[data-code-viewport]")?.textContent).toBe(source);
+  });
+
+  it("shows the ChatGPT-style Python run affordance without claiming local execution", () => {
+    const { container } = render(<Markdown content={"```python\nprint('hello')\n```"} />);
+
+    const surface = container.querySelector<HTMLElement>("[data-code-block]");
+    const runButton = within(surface!).getByRole("button", { name: "运行代码" });
+
+    expect(surface).toHaveAttribute("data-language", "python");
+    expect(runButton).toHaveTextContent("运行");
+    expect(runButton).toHaveAttribute("aria-disabled", "true");
+    expect(within(surface!).getByRole("button", { name: "复制代码" })).toBeInTheDocument();
+  });
+
+  it("switches an HTML fence between code and a sandboxed preview", async () => {
+    const user = userEvent.setup();
+    const source = "<!doctype html><h1>Safe preview</h1><script>alert('blocked')</script>";
+    const { container } = render(
+      <Markdown content={`\`\`\`html\n${source}\n\`\`\``} />,
+    );
+
+    const surface = container.querySelector<HTMLElement>("[data-code-block]")!;
+    const codeButton = within(surface).getByRole("button", { name: "代码" });
+    const previewButton = within(surface).getByRole("button", { name: "预览" });
+
+    expect(surface).toHaveAttribute("data-code-view", "code");
+    expect(codeButton).toHaveAttribute("aria-pressed", "true");
+    expect(previewButton).toHaveAttribute("aria-pressed", "false");
+    expect(surface.querySelector("iframe")).toBeNull();
+    expect(surface.querySelector("[data-code-viewport]")).toHaveTextContent(source);
+
+    await user.click(previewButton);
+
+    const iframe = within(surface).getByTitle<HTMLIFrameElement>("预览");
+    expect(surface).toHaveAttribute("data-code-view", "preview");
+    expect(codeButton).toHaveAttribute("aria-pressed", "false");
+    expect(previewButton).toHaveAttribute("aria-pressed", "true");
+    expect(surface.querySelector("[data-code-viewport]")).toBeNull();
+    expect(iframe).toHaveAttribute("sandbox", "");
+    expect(iframe).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(iframe).toHaveAttribute("srcdoc", source);
+    expect(within(surface).getByRole("button", { name: "全屏" })).toBeInTheDocument();
+    expect(within(surface).queryByRole("button", { name: "复制代码" })).toBeNull();
+
+    await user.click(codeButton);
+    expect(surface).toHaveAttribute("data-code-view", "code");
+    expect(surface.querySelector("iframe")).toBeNull();
+    expect(surface.querySelector("[data-code-viewport]")).toHaveTextContent(source);
   });
 
   it("keeps an unfinished fence visible and updates the same code surface when it closes", async () => {
@@ -305,8 +359,9 @@ describe("Markdown", () => {
 
     for (const name of ["HTTPS", "HTTP"]) {
       const link = screen.getByRole("link", { name });
-      expect(link).toHaveAttribute("target", "_blank");
-      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link).toHaveAttribute("target", "_new");
+      expect(link).toHaveAttribute("rel", "noopener");
+      expect(link.querySelector(".external-link-icon")).not.toBeNull();
     }
   });
 

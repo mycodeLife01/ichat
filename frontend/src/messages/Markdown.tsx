@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
@@ -36,7 +37,11 @@ type PluggableList = NonNullable<ComponentProps<typeof ReactMarkdown>["remarkPlu
 // `\(…\)` / `\[…\]` are normalized to `$$…$$` before parsing; single `$…$` is
 // disabled (singleDollarTextMath: false) so prose like "$5 到 $10" is not
 // misread as a formula.
-const remarkPlugins: PluggableList = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const remarkPlugins: PluggableList = [
+  remarkGfm,
+  remarkBreaks,
+  [remarkMath, { singleDollarTextMath: false }],
+];
 
 type MarkdownProps = {
   content: string;

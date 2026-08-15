@@ -117,7 +117,7 @@ test("profiles long Markdown and preserves closed rich-block interaction state",
   const codeBlock = markdown.locator("[data-code-block]").first();
   const tableBlock = markdown.locator("[data-table-block]").first();
   const codeViewport = codeBlock.locator("[data-code-viewport]");
-  const tableViewport = tableBlock.locator("[data-table-viewport]");
+  const tableViewport = tableBlock;
   await expect(codeBlock).toBeVisible();
   await expect(tableBlock).toBeVisible();
   await codeBlock.evaluate((element) => {
@@ -140,6 +140,9 @@ test("profiles long Markdown and preserves closed rich-block interaction state",
   await tableBlock.getByRole("button", { name: "复制表格" }).click();
   await expect(codeBlock.getByRole("button", { name: "已复制" })).toBeVisible();
   await expect(tableBlock.getByRole("button", { name: "已复制表格" })).toBeVisible();
+  await tableViewport.evaluate((element) => {
+    element.scrollLeft = Math.min(64, element.scrollWidth - element.clientWidth);
+  });
 
   const viewport = page.getByTestId("performance-viewport");
   const verticalScrollTop = await viewport.evaluate((element) => {

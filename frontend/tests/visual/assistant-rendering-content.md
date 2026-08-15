@@ -93,6 +93,20 @@ pnpm exec vitest run
 }
 ```
 
+## HTML
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <main style="font-family: system-ui; padding: 24px">
+      <h1>HTML preview</h1>
+      <p>静态内容在隔离的 iframe 中渲染。</p>
+    </main>
+  </body>
+</html>
+```
+
 ## 未知语言与长代码行
 
 ```not-a-language

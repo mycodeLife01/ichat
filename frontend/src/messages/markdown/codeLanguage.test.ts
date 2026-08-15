@@ -7,37 +7,41 @@ describe("resolveCodeLanguage", () => {
     expect(resolveCodeLanguage("language-js")).toEqual({
       label: "JavaScript",
       highlighterLanguage: "javascript",
+      showHeader: true,
     });
     expect(resolveCodeLanguage("language-javascript")).toEqual({
       label: "JavaScript",
       highlighterLanguage: "javascript",
+      showHeader: true,
     });
   });
 
   it.each([
-    ["language-text", "Plaintext", "plain"],
-    ["language-html", "HTML", "markup"],
-    ["language-xml", "XML", "markup"],
-    ["language-css", "CSS", "css"],
-    ["language-jsx", "JSX", "jsx"],
-    ["language-ts", "TypeScript", "typescript"],
-    ["language-tsx", "TSX", "tsx"],
-    ["language-json", "JSON", "json"],
-    ["language-shell", "Bash", "bash"],
-    ["language-py", "Python", "python"],
-    ["language-java", "Java", "java"],
-    ["language-c", "C", "c"],
-    ["language-c++", "C++", "cpp"],
-    ["language-cs", "C#", "csharp"],
-    ["language-golang", "Go", "go"],
-    ["language-rs", "Rust", "rust"],
-    ["language-sql", "SQL", "sql"],
-    ["language-yml", "YAML", "yaml"],
-    ["language-md", "Markdown", "markdown"],
-  ])("normalizes %s to %s", (className, label, highlighterLanguage) => {
+    ["language-text", "Plaintext", "plain", false],
+    ["language-diff", "Diff", "plain", true],
+    ["language-html", "HTML", "markup", true],
+    ["language-xml", "XML", "markup", true],
+    ["language-css", "CSS", "css", true],
+    ["language-jsx", "JSX", "jsx", true],
+    ["language-ts", "TypeScript", "typescript", true],
+    ["language-tsx", "TSX", "tsx", true],
+    ["language-json", "JSON", "json", true],
+    ["language-shell", "Bash", "bash", true],
+    ["language-py", "Python", "python", true],
+    ["language-java", "Java", "java", true],
+    ["language-c", "C", "c", true],
+    ["language-c++", "C++", "cpp", true],
+    ["language-cs", "C#", "csharp", true],
+    ["language-golang", "Go", "go", true],
+    ["language-rs", "Rust", "rust", true],
+    ["language-sql", "SQL", "sql", true],
+    ["language-yml", "YAML", "yaml", true],
+    ["language-md", "Markdown", "markdown", true],
+  ])("normalizes %s to %s", (className, label, highlighterLanguage, showHeader) => {
     expect(resolveCodeLanguage(`extra ${className}`)).toEqual({
       label,
       highlighterLanguage,
+      showHeader,
     });
   });
 
@@ -45,6 +49,7 @@ describe("resolveCodeLanguage", () => {
     expect(resolveCodeLanguage("language-not-a-language")).toEqual({
       label: "not-a-language",
       highlighterLanguage: "plain",
+      showHeader: true,
     });
   });
 
@@ -52,6 +57,7 @@ describe("resolveCodeLanguage", () => {
     expect(resolveCodeLanguage()).toEqual({
       label: "代码",
       highlighterLanguage: "plain",
+      showHeader: false,
     });
   });
 });

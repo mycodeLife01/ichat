@@ -1,8 +1,9 @@
 import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { Fragment, isValidElement, useEffect, useRef, useState } from "react";
 
-import { iconControl } from "../../ui/classes";
+import { focusRing } from "../../ui/classes";
 import { Icons } from "../../ui/icons";
+import type { HighlightedCodeChunk } from "./codeHighlight";
 import { resolveCodeLanguage } from "./codeLanguage";
 import { copyText } from "./copyText";
 
@@ -11,12 +12,12 @@ type CodeElementProps = {
   children?: ReactNode;
 };
 
-type SyntaxHighlighter = typeof import("prism-react-renderer");
+type SyntaxHighlighter = typeof import("./codeHighlight");
 
 let syntaxHighlighterPromise: Promise<SyntaxHighlighter> | null = null;
 
 function loadSyntaxHighlighter() {
-  syntaxHighlighterPromise ??= import("prism-react-renderer");
+  syntaxHighlighterPromise ??= import("./codeHighlight");
   return syntaxHighlighterPromise;
 }
 
@@ -32,28 +33,20 @@ function codeClassName(child: ReactNode) {
 
 function highlightedSource(
   source: string,
-  language: string,
-  highlighter: SyntaxHighlighter | null,
+  chunks: HighlightedCodeChunk[] | null,
 ) {
-  const grammar = highlighter?.Prism.languages[language];
-  const tokens =
-    highlighter && grammar
-      ? highlighter.normalizeTokens(highlighter.Prism.tokenize(source, grammar))
-      : null;
-
   return (
     <code>
-      {tokens
-        ? tokens.map((line, lineIndex) => (
-            <Fragment key={lineIndex}>
-              {line.map((token, tokenIndex) => (
-                <span className={`token ${token.types.join(" ")}`} key={tokenIndex}>
-                  {token.empty ? "" : token.content}
-                </span>
-              ))}
-              {lineIndex < tokens.length - 1 ? "\n" : null}
-            </Fragment>
-          ))
+      {chunks
+        ? chunks.map((chunk, index) =>
+            chunk.type ? (
+              <span className={`token ${chunk.type}`} key={index}>
+                {chunk.content}
+              </span>
+            ) : (
+              <Fragment key={index}>{chunk.content}</Fragment>
+            ),
+          )
         : source}
     </code>
   );
@@ -63,25 +56,35 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
   const child = children as ReactElement<CodeElementProps> | undefined;
   const source = sourceFromChild(child);
   const language = resolveCodeLanguage(codeClassName(child));
-  const [highlighter, setHighlighter] = useState<SyntaxHighlighter | null>(null);
+  const highlightKey = `${language.highlighterLanguage}\0${source}`;
+  const [highlightResult, setHighlightResult] = useState<{
+    chunks: HighlightedCodeChunk[] | null;
+    key: string;
+  } | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "success" | "failure">("idle");
+  const [view, setView] = useState<"code" | "preview">("code");
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyAttempt = useRef(0);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const htmlPreview = language.label === "HTML" && language.highlighterLanguage === "markup";
+  const pythonRunnable = language.highlighterLanguage === "python";
 
   useEffect(() => {
     let active = true;
-    void loadSyntaxHighlighter().then(
-      (loaded) => {
-        if (active) setHighlighter(loaded);
-      },
-      () => {
-        // Plain source remains usable if the optional highlighting chunk fails.
-      },
-    );
+    void loadSyntaxHighlighter()
+      .then((loaded) => loaded.highlightSource(source, language.highlighterLanguage))
+      .then(
+        (chunks) => {
+          if (active) setHighlightResult({ chunks, key: highlightKey });
+        },
+        () => {
+          // Plain source remains usable if an optional language chunk fails.
+        },
+      );
     return () => {
       active = false;
     };
-  }, []);
+  }, [highlightKey, language.highlighterLanguage, source]);
 
   useEffect(
     () => () => {
@@ -107,31 +110,128 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
   };
 
   const copied = copyState === "success";
+  const highlightedChunks =
+    highlightResult?.key === highlightKey ? highlightResult.chunks : null;
+  const copyButton = (
+    <button
+      className={`code-block-copy ${focusRing}`}
+      type="button"
+      aria-label={copied ? "已复制" : "复制代码"}
+      onClick={handleCopy}
+    >
+      {copied ? <Icons.Check size={20} /> : <Icons.CopyFilled size={20} />}
+    </button>
+  );
+  const headerIcon = htmlPreview ? (
+    <Icons.HtmlPreview className="code-block-language-icon" size={16} />
+  ) : (
+    <Icons.Code className="code-block-language-icon" size={16} />
+  );
+
+  const handleFullscreen = () => {
+    const request = previewRef.current?.requestFullscreen();
+    if (request) void request.catch(() => undefined);
+  };
+
+  const headerActions = htmlPreview ? (
+    <div className="code-block-actions">
+      <div className="code-block-view-toggle" role="group" aria-label="代码块视图切换">
+        <span
+          className={`code-block-view-indicator${view === "preview" ? " is-preview" : ""}`}
+          aria-hidden="true"
+        />
+        <button
+          className={`code-block-view-button ${focusRing}`}
+          type="button"
+          aria-label="代码"
+          aria-pressed={view === "code"}
+          onClick={() => setView("code")}
+        >
+          <Icons.Code size={20} />
+        </button>
+        <button
+          className={`code-block-view-button ${focusRing}`}
+          type="button"
+          aria-label="预览"
+          aria-pressed={view === "preview"}
+          onClick={() => setView("preview")}
+        >
+          <Icons.Play size={20} />
+        </button>
+      </div>
+      {view === "code" ? (
+        copyButton
+      ) : (
+        <button
+          className={`code-block-copy ${focusRing}`}
+          type="button"
+          aria-label="全屏"
+          onClick={handleFullscreen}
+        >
+          <Icons.Fullscreen size={20} />
+        </button>
+      )}
+    </div>
+  ) : (
+    <div className="code-block-actions">
+      {copyButton}
+      {pythonRunnable ? (
+        <button
+          className={`code-block-run ${focusRing}`}
+          type="button"
+          aria-label="运行代码"
+          aria-disabled="true"
+        >
+          <span>
+            <Icons.Play size={20} />
+            运行
+          </span>
+        </button>
+      ) : null}
+    </div>
+  );
 
   return (
-    <div className="code-block" data-code-block data-language={language.highlighterLanguage}>
-      <div className="code-block-header">
-        <span className="code-block-language">{language.label}</span>
-        <button
-          className={`${iconControl} h-7 gap-1.5 px-2 text-xs`}
-          type="button"
-          aria-label={copied ? "已复制" : "复制代码"}
-          onClick={handleCopy}
-        >
-          {copied ? <Icons.Check size={14} /> : <Icons.Copy size={14} />}
-          <span>{copied ? "已复制" : "复制"}</span>
-        </button>
-        {copyState === "failure" ? (
-          <span className="sr-only" role="status">
-            Copy failed. Try again.
+    <div
+      className={`code-block${language.showHeader ? "" : " code-block-plain"}${
+        htmlPreview && view === "preview" ? " code-block-previewing" : ""
+      }`}
+      data-code-block
+      data-language={language.highlighterLanguage}
+      data-code-view={htmlPreview ? view : undefined}
+    >
+      {language.showHeader ? (
+        <div className="code-block-header">
+          <span className="code-block-language">
+            {headerIcon}
+            <span>{language.label}</span>
           </span>
-        ) : null}
-      </div>
-      <div className="code-block-viewport" data-code-viewport tabIndex={0}>
-        <pre aria-label={`${language.label} 代码`}>
-          {highlightedSource(source, language.highlighterLanguage, highlighter)}
-        </pre>
-      </div>
+          {headerActions}
+        </div>
+      ) : (
+        <div className="code-block-plain-actions">{copyButton}</div>
+      )}
+      {htmlPreview && view === "preview" ? (
+        <div className="code-block-preview" ref={previewRef}>
+          <iframe
+            title="预览"
+            sandbox=""
+            referrerPolicy="no-referrer"
+            srcDoc={source}
+          />
+        </div>
+      ) : (
+        <div className="code-block-viewport" data-code-viewport tabIndex={0}>
+          <pre aria-label={`${language.label} 代码`}>
+            {highlightedSource(source, highlightedChunks)}
+          </pre>
+        </div>
+      )}
+      {copyState === "failure" ? (
+        <span className="sr-only" role="status">
+          Copy failed. Try again.
+        </span>
+      ) : null}
     </div>
   );
 }
