@@ -27,13 +27,43 @@ describe("SharePage", () => {
       }),
     });
 
-    renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
 
     expect(await screen.findByText("ask something")).toBeInTheDocument();
     expect(screen.getByText("the answer")).toBeInTheDocument();
     expect(screen.queryByText("let me think")).toBeNull();
+    expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
+    expect(container.querySelector(".thread-inner")).toHaveClass(
+      "max-w-[calc(var(--assistant-content-width)+64px)]",
+    );
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("renders shared tables and external links through the shared Markdown surface", async () => {
+    const content = [
+      "| Surface | State |",
+      "| --- | --- |",
+      "| Table | shared |",
+      "",
+      "[External](https://example.com/shared)",
+    ].join("\n");
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Shared rich content",
+        messages: [{ role: "assistant", content, sources: [] }],
+        created_at: "2026-08-15T10:05:00Z",
+      }),
+    });
+
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    expect(await screen.findByRole("region", { name: "表格（可横向滚动）" })).toBeVisible();
+    expect(container.querySelector(".assistant-markdown [data-table-block]")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "External" })).toHaveAttribute(
+      "target",
+      "_new",
+    );
   });
 
   it("shows an icon-based loading status while the snapshot is pending", () => {

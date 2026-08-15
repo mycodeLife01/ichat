@@ -5,7 +5,12 @@ import { CircleAlert } from "lucide-react";
 import { ApiError } from "../api/errors";
 import type { MessageSource, PublicShareResponse, SharedMessage } from "../api/types";
 import { useAppActions } from "../app/context";
-import { buttonControl, messageBubble, primaryButton } from "../ui/classes";
+import {
+  assistantContentColumn,
+  buttonControl,
+  messageBubble,
+  primaryButton,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
@@ -182,7 +187,7 @@ function SharedThread({
         </h1>
       )}
       {/* Same reading column as the live MessageThread. */}
-      <div className="thread-inner mx-auto flex w-full max-w-[var(--reading-width)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-16 max-[760px]:px-[18px] max-[760px]:pt-6">
+      <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+64px)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-16 max-[760px]:px-4 max-[760px]:pt-6">
         {share.messages.map((message, index) => (
           <SharedMessageView
             key={index}
@@ -237,7 +242,7 @@ function SharedMessageView({
   const sources = message.sources ?? [];
   return (
     <div className="msg assistant flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
-      <div className="min-w-0 flex-1">
+      <div className={assistantContentColumn}>
         <Markdown
           content={message.content}
           sources={sources.length > 0 ? sources : undefined}

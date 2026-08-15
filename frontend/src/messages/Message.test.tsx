@@ -249,6 +249,34 @@ describe("Message", () => {
     expect(screen.queryByText("已思考")).toBeNull();
   });
 
+  it("keeps assistant body and actions in the shared content column", () => {
+    const { container } = render(<Message message={assistantMessage} />);
+    const column = container.querySelector(".assistant-content");
+
+    expect(column).not.toBeNull();
+    expect(column?.querySelector(".assistant-markdown")).not.toBeNull();
+    expect(column?.querySelector(".msg-actions")).not.toBeNull();
+  });
+
+  it("renders final tables and external links through the shared Markdown surface", () => {
+    const content = [
+      "| Surface | State |",
+      "| --- | --- |",
+      "| Table | complete |",
+      "",
+      "[External](https://example.com/final)",
+    ].join("\n");
+    const { container } = render(
+      <Message message={{ ...assistantMessage, content }} />,
+    );
+
+    expect(container.querySelector(".assistant-markdown [data-table-block]")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "External" })).toHaveAttribute(
+      "target",
+      "_new",
+    );
+  });
+
   it("shows a sources trigger that opens the sources panel", async () => {
     const user = userEvent.setup();
     const onShowSources = vi.fn();

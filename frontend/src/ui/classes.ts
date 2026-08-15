@@ -67,6 +67,11 @@ export const composerSurface =
 export const messageBubble =
   "min-w-0 overflow-hidden rounded-[22px] bg-sunken px-4 py-2.5 text-[16px] leading-6 text-text-primary";
 
+// One semantic width/alignment seam for final, streaming, and shared
+// assistant turns. The Markdown body and its adjacent surfaces stay together.
+export const assistantContentColumn =
+  "assistant-content mx-auto w-full min-w-0 max-w-[var(--assistant-content-width)]";
+
 const menuItemBase =
   `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +
   "text-left text-[14px] font-normal leading-none";

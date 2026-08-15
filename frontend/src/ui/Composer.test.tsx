@@ -109,6 +109,17 @@ const READY_IMAGE = {
 } satisfies DraftAttachment;
 
 describe("Composer", () => {
+  it("uses the assistant content width for horizontal alignment", () => {
+    renderComposer();
+
+    const composer = screen.getByTestId("composer");
+    expect(composer).toHaveClass(
+      "max-w-[var(--assistant-content-width)]",
+    );
+    expect(composer.parentElement).toHaveClass("composer-wrap", "pointer-events-auto");
+    expect(composer.parentElement).not.toHaveClass("bg-canvas");
+  });
+
   it("disables send when empty (idle)", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();

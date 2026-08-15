@@ -6,6 +6,7 @@ import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
   buttonControl,
+  assistantContentColumn,
   focusRing,
   messageBubble,
   mobileActionItem,
@@ -436,7 +437,7 @@ export function Message({
   const sources = message.metadata?.sources ?? [];
   return (
     <div className={`${msgBase} assistant items-stretch`}>
-      <div className="min-w-0 flex-1">
+      <div className={assistantContentColumn}>
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}

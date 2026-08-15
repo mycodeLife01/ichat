@@ -32,7 +32,7 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("still converts \\[ … \\] display math", () => {
-    expect(normalizeMathDelimiters("块级 \\[x\\] 完")).toContain("$$x$$");
+    expect(normalizeMathDelimiters("块级 \\[x\\] 完")).toContain("$$\nx\n$$");
   });
 });
 

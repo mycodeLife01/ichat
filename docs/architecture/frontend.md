@@ -132,7 +132,28 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
 
 ## 展示与样式
 
-- Markdown 使用 `react-markdown` + GFM/数学插件，并经过 sanitize；不启用原始 HTML。
+- 助手 final（`Message`）、streaming（`StreamingMessage`）和 public share（`SharePage`）
+  共同调用 `messages/Markdown.tsx`；这是外部 Interface。代码、表格和链接分别由私有的
+  `messages/markdown/CodeBlock.tsx`、`TableBlock.tsx`、`MarkdownLink.tsx` 渲染，不在三个
+  入口复制 parser 或 rich-surface 实现。
+- Markdown pipeline 固定为 math delimiter normalize → streaming clamp → remark GFM/math →
+  rehype sanitize → KaTeX → citation → React element renderer。不启用原始 HTML；renderer 只
+  消费 sanitize 后的 parsed node，不恢复被移除的危险 href，也不使用
+  `dangerouslySetInnerHTML`。代码和表格复制只读取各自 parsed surface。
+- 助手内容列使用独立 token `--assistant-content-width: 768px`，不改页面级
+  `--reading-width`。final、streaming 和 share 的正文、来源、附件与动作共享该列；share
+  外壳需要 `calc(var(--assistant-content-width) + 64px)` 为两侧 `px-8` 留出准确 gutter。
+  项目根字号是 15px，不能用 `4rem` 代替这里的 64px。
+- Composer 外框复用 `--assistant-content-width`，与 live assistant 正文保持相同左右边界；
+  live `MessageThread` 桌面外壳同样按该 token 加两侧 32px gutter。移动断点下，只有位于
+  `.thread-region` 的消息外壳可以用 viewport 宽度补偿传统滚动条占宽，确保正文与 Composer
+  都保持 16px 双侧 gutter；share 与独立 fixture 继续服从各自 containing block。
+- live thread 的 Composer 属于 `.thread-region` 内的 sticky 底部层，而不是滚动区外的兄弟节点；
+  消息正文因此可以延伸到控件下方。底部层与 ChatGPT 一样使用 32px 渐变 mask 和 80% canvas，
+  不添加 backdrop blur；离底距离超过 136px 时由 `useStickToBottom` 显示“滚动到底部”控件，
+  该按钮自身保留参考中的 2px backdrop blur。
+  点击后恢复 pinned 状态并平滑返回最新消息。该控件必须支持键盘、`prefers-reduced-motion`
+  和用户反向滚动中断，不得用单纯的“接近底部”判断覆盖用户阅读意图。
 - Tailwind v4 使用 CSS-first 配置。设计 token 和动画放在 `@theme`；共享 utility 组合放在
   `src/ui/classes.ts`；只有 Markdown 产物、伪元素、滚动条、复杂背景等能力保留手写 CSS。
 - 部分语义 class 同时是测试或运行时钩子，样式迁移时先搜索消费者，不能把“无样式”误判为
@@ -159,5 +180,13 @@ pnpm run build
   覆盖跨层流程，不复制一套测试专用状态机。
 - 路由恢复、SSE 重连/取消、文件直传、跨域、响应式或视觉变更需要与风险相称的浏览器 smoke；
   仅有 jsdom 测试不能证明这些浏览器边界成立。
+- 助手渲染视觉入口为 `tests/visual/assistant-rendering.html`。Windows Chromium、浅色、DPR 1
+  下固定 `1440 × 900` 与 `390 × 844` 两张全页 golden；只有人工批准明确视觉变化后才可用
+  `--update-snapshots` 更新。其他平台仍运行语义、交互和几何断言，但不假定字体栅格逐像素一致。
+  `assistant-rendering-performance.html` 是独立数值证据页，不进入 golden；Playwright 串行执行，
+  避免 syntax highlighting 与性能采样互相争用 CPU。
+- live thread 底部布局的浏览器入口为 `tests/visual/thread-bottom.html`，在桌面与移动项目中验证
+  sticky/fade/mask、按钮 blur、Composer 与正文对齐、136px 显示阈值、入退场动效、一键到底、无页面水平
+  overflow 和 reduced-motion；这些行为依赖真实滚动与 CSS 几何，不能只用 jsdom 验证。
 - 文档或代码声称任务完成前，相关测试、lint、类型检查和构建必须通过；无法执行的检查要明确
   记录缺口、风险与待运行命令。
