@@ -2,7 +2,7 @@
 
 Type: test
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: 05
 
@@ -35,15 +35,15 @@ Blocked by: 05
 
 ## Acceptance criteria
 
-- [ ] 当前支持的助手正文 surface 已在固定参考环境中逐项验收，所有未消除偏差都有明确、经用户接受的记录。
-- [ ] 内容列和主要 surface 的几何差异不超过 1px，computed style 与固定参考一致。
-- [ ] 最终、流式和公开分享的同一正文在入口特有动作之外视觉一致。
-- [ ] 390px 页面无水平 overflow，代码和表格只在自身滚动。
-- [ ] reasoning 折叠、展开、preview、DeepSeek 自动展开、正文 handoff、恢复和最终隐藏逻辑与改造前一致。
-- [ ] Playwright desktop/mobile golden screenshots 已获批准并在无 update 参数下稳定通过。
-- [ ] 全量 Vitest、typecheck、lint、build、visual test 和 `git diff --check` 通过。
-- [ ] 报告、前端架构、handover 与 docs index 已同步，且没有声称实现范围外的 Mermaid/chart/code execution。
-- [ ] PRD 与全部 issue 状态更新为 `completed`，PRD frontier 更新为全部完成。
+- [x] 当前支持的助手正文 surface 已在固定参考环境中逐项验收，所有未消除偏差都有明确、经用户接受的记录。
+- [x] 内容列和主要 surface 的几何差异不超过 1px，computed style 与固定参考一致。
+- [x] 最终、流式和公开分享的同一正文在入口特有动作之外视觉一致。
+- [x] 390px 页面无水平 overflow，代码和表格只在自身滚动。
+- [x] reasoning 折叠、展开、preview、DeepSeek 自动展开、正文 handoff、恢复和最终隐藏逻辑与改造前一致。
+- [x] Playwright desktop/mobile golden screenshots 已获批准并在无 update 参数下稳定通过。
+- [x] 全量 Vitest、typecheck、lint、build、visual test 和 `git diff --check` 通过。
+- [x] 报告、前端架构、handover 与 docs index 已同步，且没有声称实现范围外的 Mermaid/chart/code execution。
+- [x] PRD 与全部 issue 状态更新为 `completed`，PRD frontier 更新为全部完成。
 
 ## Verification
 
@@ -62,3 +62,7 @@ git diff --check
 ## Comments
 
 - 2026-08-15：golden baseline 只在最终人工核对后固化；在线 ChatGPT 页面不是 CI 依赖。
+- 2026-08-15：真实 Windows Chrome 核对覆盖 final、streaming、share、failed/cancelled/recovered partial、ThinkingBlock、复制、focus-visible 和局部 overflow。发现 share 的 `4rem` 在 15px 根字号下只有 60px，导致正文比另外两个入口窄 4px；已改为明确的 64px gutter，三个入口误差收敛到 1px 内。
+- 2026-08-15：用户批准 desktop/mobile 全页候选；已固化 `assistant-rendering-golden-desktop-chrome-win32.png`（507,343 bytes）和 `assistant-rendering-golden-mobile-chrome-win32.png`（451,285 bytes），无更新参数复验通过。性能压力页未进入 golden。
+- 2026-08-15：接受两项明确偏差：保留 iChat `#fbfbfa` host canvas（助手 surface 透明），以及在线接口未稳定提取的 390px toolbar 精确坐标改由已批准的本地 mobile golden 固定；未用宽泛 mask 隐藏差异。
+- 2026-08-15：最终验证通过：Vitest `72 files / 613 tests`，lint、typecheck、production build、Playwright `3 passed / 1 skipped` 和 `git diff --check`。最终 handover 为 `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md`。

@@ -68,7 +68,8 @@
 }
 
 .fixture-section-heading h2,
-.fixture-card h3 {
+.fixture-card h3,
+.fixture-entry-heading h3 {
   margin: 0;
   color: var(--color-text-primary);
   font-weight: 600;
@@ -88,6 +89,65 @@
 
 .fixture-grid-two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fixture-entry-list {
+  display: flex;
+  width: min(100%, 960px);
+  margin: 26px auto 0;
+  flex-direction: column;
+  gap: 18px;
+  padding-inline: 32px;
+}
+
+.fixture-entry {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+
+.fixture-entry-heading {
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 18px;
+}
+
+.fixture-entry-heading h3 {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.fixture-entry-heading p,
+.fixture-card-description {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.fixture-live-shell > .thread-inner {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.fixture-live-shell,
+.fixture-share-shell {
+  height: 620px;
+  background: var(--color-bg);
+}
+
+.fixture-live-shell {
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.fixture-run-state .assistant-content {
+  max-width: none;
+}
+
+.fixture-run-state .assistant-markdown h2:first-child {
+  margin-top: 0;
 }
 
 .fixture-card {
@@ -145,5 +205,19 @@
   .fixture-grid-two {
     grid-template-columns: minmax(0, 1fr);
     padding: 20px 16px 0;
+  }
+
+  .fixture-entry-list {
+    margin-top: 20px;
+    padding-inline: 16px;
+  }
+
+  .fixture-entry-heading {
+    padding-inline: 14px;
+  }
+
+  .fixture-live-shell,
+  .fixture-share-shell {
+    height: 700px;
   }
 }

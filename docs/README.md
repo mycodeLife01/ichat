@@ -19,7 +19,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
-| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-assistant-rendering-visual-fixture.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
+| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
@@ -109,6 +109,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-chatgpt-code-blocks.md` — ticket 03's private code renderer, lazy syntax highlighting, source-faithful copy behavior, isolated overflow, bundle delta, and the handoff into ticket 04
 - `2026-08-15-chatgpt-tables-links-and-gfm.md` — ticket 04's private table/link renderers, DOM-to-TSV copy contract, isolated table overflow, safe external navigation, GFM semantics, and the handoff into ticket 05
 - `2026-08-15-chatgpt-streaming-prefix-and-performance.md` — ticket 05's cumulative prefix matrix, real-browser 10k/20k/50k and streaming profiles, interaction-state stability, no-batching decision, and the handoff into ticket 06
+- `2026-08-15-chatgpt-response-rendering.md` — final tickets 01–06 handoff: shipped Markdown surfaces, frozen reasoning/backend scope, bundle and performance evidence, approved desktop/mobile golden baselines, accepted deviations, verification, and rollback
 
 ### `docs/goals/`
 

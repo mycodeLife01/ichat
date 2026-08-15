@@ -53,15 +53,19 @@
 - 代码内容为 `14px / 20px`；水平 scroller 宽约 `341.333px`，移动 padding 改为 `0 10px 12px`。
 - 表格样本 intrinsic 宽约 `440.198px`，其独立容器宽 `390px` 且 `overflow-x: auto`；页面本身仍为 390px。
 
-移动端代码块完整 header 的按钮间距、hover 状态，以及表格复制按钮相对移动 viewport 的精确位置没有通过当前只读测量接口稳定提取；本轮只记录可重复的正文、代码内容、表格和 overflow 几何，并仅采用桌面端可重复测得的 28px overlay 按钮样式。后续 ticket 06 在 iChat fixture 获批后固化本地 golden，不用桌面值补猜其余缺口。
+移动端代码块完整 header 的按钮间距、hover 状态，以及表格复制按钮相对移动 viewport 的精确位置没有通过当前只读测量接口稳定提取；本轮只记录可重复的正文、代码内容、表格和 overflow 几何，并仅采用桌面端可重复测得的 28px overlay 按钮样式。该证据缺口已在 ticket 06 最终验收中明确记录；用户批准 iChat 的 390px 实际结果成为本地 golden，没有把未测值伪装成在线参考值。
 
 ## 本地 harness
 
 - 入口：`tests/visual/assistant-rendering.html`
 - Playwright：`playwright.config.ts`
-- 场景：完整正文、六类未闭合流式 prefix、Clipboard promise 成功/失败、ThinkingBlock 折叠/展开。
+- 场景：完整正文、14 组未闭合流式 prefix、final/streaming/share 生产入口、失败/取消/刷新恢复 partial、Clipboard promise 成功/失败、代码/表格滚动与 focus-visible、ThinkingBlock 折叠/展开。
 - 自动 viewport：`1440 × 900` 与 `390 × 844`，浅色、reduced motion、`deviceScaleFactor = 1`。
-- 诊断产物：`output/playwright/results/`（已 gitignore）；本 ticket 不提交 golden screenshot。
+- 诊断产物：`output/playwright/results/`（已 gitignore）。
+- 已批准 Windows Chromium golden：
+  `assistant-rendering.visual.ts-snapshots/assistant-rendering-golden-desktop-chrome-win32.png`
+  与 `assistant-rendering-golden-mobile-chrome-win32.png`。截图前会等待复制反馈复位、清除
+  hover/focus 并回到页面顶部；性能压力页不进入 golden。
 
 运行：
 

@@ -2,7 +2,7 @@
 
 Type: refactor
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: None
 
@@ -229,11 +229,11 @@ pnpm run test:visual
 | 03 | 实现 ChatGPT 风格代码块 | `completed` | 02 |
 | 04 | 实现表格、链接与 GFM rich surface | `completed` | 03 |
 | 05 | 验证流式 prefix 与长回复性能 | `completed` | 03, 04 |
-| 06 | 完成三入口视觉验收与文档交接 | `ready-for-agent` | 05 |
+| 06 | 完成三入口视觉验收与文档交接 | `completed` | 05 |
 
 ## Frontier
 
-当前 frontier：ticket 06。
+当前 frontier：无；tickets 01–06 全部完成。
 
 完成或阻塞 ticket 时，同时更新本索引与对应 issue 文件状态。所有 ticket 实现并验证后，将本 PRD 状态改为 `completed`。
 
@@ -244,3 +244,4 @@ pnpm run test:visual
 - 2026-08-15：ticket 03 完成，Markdown 私有代码块 renderer 已具备语言 header、按需语法着色、可靠复制和源码 viewport 独立横向滚动；完整测试与 desktop/390px 浏览器验收通过。主 bundle 仅增加 JS gzip 1.38 kB、CSS gzip 0.51 kB，86.07 kB / gzip 26.78 kB 的 highlighter 独立按需加载。frontier 推进到 ticket 04。
 - 2026-08-15：ticket 04 完成，Markdown 私有表格 renderer 已具备独立横向滚动、TSV 复制和逐表状态，跨源 HTTP(S) 链接使用独立 browsing context，任务列表、嵌套列表与 blockquote 的语义和视觉回归已固定；final、streaming、share 继续复用同一 Markdown Interface。frontier 推进到 ticket 05。
 - 2026-08-15：ticket 05 完成，14 组累计 streaming prefix、10k/20k/50k 静态 rich Markdown、脱敏真实 128-delta trace、20k 未闭合 fence 与 20k 多闭合 rich block 均已获得真实 Chromium 证据；典型 trace renderer/Composer 明显低于门槛，因此未增加 batching。另修复未闭合 fence 内 `$$` 被数学 clamp 截断及 `\[...\]` 未落成 display surface 两个边界。frontier 推进到 ticket 06。
+- 2026-08-15：ticket 06 完成，final、streaming、share 与 failed/cancelled/recovered partial 已通过 Windows Chrome 桌面/390px 实测；修复 share 外壳因 `4rem = 60px` 产生的 4px 列宽偏差。用户批准的 desktop/mobile golden 已固化并在无更新参数下通过；架构、参考调查、最终 handover 与 docs index 已同步。完整 Vitest、lint、typecheck、build、Playwright 和 `git diff --check` 通过，tickets 01–06 全部完成。

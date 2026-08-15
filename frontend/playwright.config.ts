@@ -6,6 +6,11 @@ export default defineConfig({
   testDir: "./tests/visual",
   testMatch: "**/*.visual.ts",
   outputDir: "./output/playwright/results",
+  // The performance fixture and the screenshot fixture are intentionally
+  // evidence environments, not independent app shards. Run them serially so
+  // syntax highlighting in one browser cannot distort another browser's
+  // long-task and commit measurements.
+  workers: 1,
   fullyParallel: false,
   timeout: 30_000,
   expect: {

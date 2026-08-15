@@ -187,7 +187,7 @@ function SharedThread({
         </h1>
       )}
       {/* Same reading column as the live MessageThread. */}
-      <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+4rem)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-16 max-[760px]:px-4 max-[760px]:pt-6">
+      <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+64px)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-16 max-[760px]:px-4 max-[760px]:pt-6">
         {share.messages.map((message, index) => (
           <SharedMessageView
             key={index}

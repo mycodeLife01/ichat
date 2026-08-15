@@ -33,6 +33,9 @@ describe("SharePage", () => {
     expect(screen.getByText("the answer")).toBeInTheDocument();
     expect(screen.queryByText("let me think")).toBeNull();
     expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
+    expect(container.querySelector(".thread-inner")).toHaveClass(
+      "max-w-[calc(var(--assistant-content-width)+64px)]",
+    );
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
   });

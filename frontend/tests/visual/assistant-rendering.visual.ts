@@ -44,6 +44,72 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     "target",
   );
 
+  const entryParity = page.getByTestId("entry-parity");
+  const entryMarkdown = entryParity.locator("[data-render-entry] .assistant-markdown");
+  await expect(entryMarkdown).toHaveCount(3);
+  await expect(
+    entryParity.locator('[data-render-entry="share"] .assistant-markdown'),
+  ).toBeVisible();
+
+  const entrySignatures = await entryMarkdown.evaluateAll((elements) =>
+    elements.map((root) => ({
+      semanticNodes: Array.from(
+        root.querySelectorAll(
+          "h1,h2,h3,h4,h5,h6,p,blockquote,pre,table,thead,tbody,tr,th,td",
+        ),
+      ).map((element) => ({
+        tag: element.tagName,
+        text: element.textContent,
+      })),
+      codeLanguage: root.querySelector("[data-code-block]")?.getAttribute("data-language"),
+      tableRows: root.querySelectorAll("table tr").length,
+    })),
+  );
+  expect(entrySignatures[1]).toEqual(entrySignatures[0]);
+  expect(entrySignatures[2]).toEqual(entrySignatures[0]);
+
+  const entryGeometry = await entryMarkdown.evaluateAll((elements) =>
+    elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        width: rect.width,
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        lineHeight: style.lineHeight,
+        color: style.color,
+        overflowWrap: style.overflowWrap,
+      };
+    }),
+  );
+  await testInfo.attach("assistant-rendering-entry-geometry", {
+    body: JSON.stringify(entryGeometry, null, 2),
+    contentType: "application/json",
+  });
+  for (const geometry of entryGeometry.slice(1)) {
+    expect(
+      Math.abs(geometry.width - entryGeometry[0].width),
+      `Entry widths: ${entryGeometry.map((entry) => entry.width).join(", ")}`,
+    ).toBeLessThanOrEqual(1);
+    expect(geometry).toMatchObject({
+      fontFamily: entryGeometry[0].fontFamily,
+      fontSize: entryGeometry[0].fontSize,
+      lineHeight: entryGeometry[0].lineHeight,
+      color: entryGeometry[0].color,
+      overflowWrap: entryGeometry[0].overflowWrap,
+    });
+  }
+
+  const failedPartial = page.getByTestId("run-state-failed");
+  const cancelledPartial = page.getByTestId("run-state-cancelled");
+  const recoveredPartial = page.getByTestId("run-state-recovered");
+  await expect(failedPartial.locator(".assistant-markdown")).toContainText("可恢复 partial");
+  await expect(failedPartial.getByRole("alert")).toContainText("生成失败");
+  await expect(cancelledPartial.locator(".assistant-markdown")).toContainText("可恢复 partial");
+  await expect(cancelledPartial.getByRole("alert")).toHaveCount(0);
+  await expect(recoveredPartial.locator(".assistant-markdown")).toContainText("可恢复 partial");
+  await expect(recoveredPartial.getByRole("alert")).toHaveCount(0);
+
   await page.context().route("https://openai.com/", async (route) => {
     await route.fulfill({
       contentType: "text/html",
@@ -65,12 +131,20 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     await expect(prefix.locator(".md")).toBeVisible();
   }
 
-  await expect(
-    page.locator('[data-thinking-state="collapsed"] [role="button"]'),
-  ).toHaveAttribute("aria-expanded", "false");
+  const collapsedThinking = page.locator(
+    '[data-thinking-state="collapsed"] [role="button"]',
+  );
+  await expect(collapsedThinking).toHaveAttribute("aria-expanded", "false");
   await expect(
     page.locator('[data-thinking-state="expanded"] [role="button"]'),
   ).toHaveAttribute("aria-expanded", "true");
+  await collapsedThinking.click();
+  await expect(collapsedThinking).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.locator('[data-thinking-state="collapsed"]').getByText(/reasoning fixture/),
+  ).toBeVisible();
+  await collapsedThinking.click();
+  await expect(collapsedThinking).toHaveAttribute("aria-expanded", "false");
 
   const successfulCopy = page.locator('[data-copy-scenario="success"]');
   await successfulCopy.getByRole("button", { name: "复制代码" }).click();
@@ -120,6 +194,12 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await longCodeViewport.evaluate((element) => {
     element.scrollLeft = 0;
   });
+  await unknownCode.getByRole("button", { name: "复制代码" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(longCodeViewport).toBeFocused();
+  expect(
+    await longCodeViewport.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).not.toBe("none");
 
   const selectedSource = await typeScriptCode.locator("pre").evaluate((element) => {
     const selection = window.getSelection();
@@ -162,6 +242,16 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await tableViewport.evaluate((element) => {
     element.scrollLeft = 0;
   });
+  await tableCopyButton.focus();
+  await page.keyboard.press("Tab");
+  await expect(tableViewport).toBeFocused();
+  expect(
+    await tableViewport.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).not.toBe("none");
+  await tableCopyButton.hover();
+  expect(
+    await tableCopyButton.evaluate((element) => getComputedStyle(element).cursor),
+  ).toBe("pointer");
   await tableCopyButton.click();
   await expect(tableBlock.getByRole("button", { name: "已复制表格" })).toBeVisible();
   await expect(
@@ -432,6 +522,29 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     contentType: "application/json",
   });
 
+  // Freeze the approved baseline in the steady state. Copy feedback is tested
+  // above, but its timeout must not become part of the screenshot contract.
+  await expect(
+    successfulCopy.getByRole("button", { name: "复制代码" }),
+  ).toBeVisible({ timeout: 3_000 });
+  await expect(tableBlock.getByRole("button", { name: "复制表格" })).toBeVisible({
+    timeout: 3_000,
+  });
+  await page.mouse.move(0, 0);
+  await page.locator(".fixture-header").click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  // The approved reference environment is Windows Chromium at 100% scaling.
+  // Other platforms still exercise every semantic, interaction, and geometry
+  // assertion without pretending their font rasterization is pixel-identical.
+  if (process.platform === "win32") {
+    await expect(page).toHaveScreenshot("assistant-rendering-golden.png", {
+      fullPage: true,
+      animations: "disabled",
+      caret: "hide",
+    });
+  }
+
   const screenshotPath = testInfo.outputPath("assistant-rendering.png");
   await page.screenshot({
     path: screenshotPath,
@@ -443,4 +556,20 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     path: screenshotPath,
     contentType: "image/png",
   });
+
+  for (const [name, locator] of [
+    ["assistant-rendering-entry-parity", entryParity],
+    ["assistant-rendering-run-states", page.getByTestId("run-states")],
+  ] as const) {
+    const path = testInfo.outputPath(`${name}.png`);
+    await locator.screenshot({
+      path,
+      animations: "disabled",
+      caret: "hide",
+    });
+    await testInfo.attach(name, {
+      path,
+      contentType: "image/png",
+    });
+  }
 });

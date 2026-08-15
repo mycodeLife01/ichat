@@ -4,11 +4,13 @@
 审查基线：`refactor/ai-chat-render` / `6ca9815`
 范围：AI 助手回复正文、思考摘要、工具状态、引用、代码块、表格、富内容与流式展示；不讨论 Composer、侧栏和认证页面。
 
-> 状态说明：本文记录 ChatGPT 参考样本的观察结果、iChat 现状分析和方案备选，
-> 不表示渲染重构已经实现。用户随后确认本期核心目标是正式回复样式 1:1 复刻，
-> reasoning 折叠与展示逻辑保持不变，也不引入 `AssistantRenderModel`、Display Part
-> 或后端消息契约迁移。当前可执行范围、验收标准和 ticket 依赖以
-> `.scratch/refactor-chat-render/PRD.md` 为准；本文中超出该范围的建议仅保留为后续参考。
+> 最终状态（2026-08-15）：本文是点时参考调查和历史方案记录，不再代表实际实现范围。
+> `.scratch/refactor-chat-render/` 的 tickets 01–06 已完成；最终实现继续以现有
+> `Markdown` Interface 作为 final、streaming、share 的共同 seam，reasoning 折叠与展示
+> 逻辑保持不变，未引入 `AssistantRenderModel`、Display Part 或后端消息契约迁移。
+> 已落地文件、依赖、性能、golden、已接受偏差和回滚方法见
+> `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md`。本文中相冲突或超出
+> 已确认范围的建议仅保留为后续参考。
 
 ## 一、执行摘要
 
