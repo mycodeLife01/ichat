@@ -60,7 +60,7 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await externalPage.close();
 
   const prefixes = page.locator("[data-streaming-prefix]");
-  await expect(prefixes).toHaveCount(6);
+  await expect(prefixes).toHaveCount(14);
   for (const prefix of await prefixes.all()) {
     await expect(prefix.locator(".md")).toBeVisible();
   }
@@ -100,8 +100,8 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
 
   const unfinishedFence = page.locator('[data-streaming-prefix="fence"]');
   await expect(unfinishedFence.locator("[data-code-block]")).toBeVisible();
-  await expect(unfinishedFence.locator(".code-block-language")).toHaveText("TypeScript");
-  await expect(unfinishedFence.locator(".token.keyword")).toContainText("const");
+  await expect(unfinishedFence.locator(".code-block-language")).toHaveText("Bash");
+  await expect(unfinishedFence.locator("[data-code-viewport]")).toContainText("echo $$");
 
   const longCodeViewport = unknownCode.locator("[data-code-viewport]");
   const longCodeOverflow = await longCodeViewport.evaluate((element) => ({

@@ -119,6 +119,17 @@ describe("Markdown", () => {
     );
   });
 
+  it("keeps math delimiters inside an unfinished code fence as source text", () => {
+    const prefix = "已完成正文。\n\n```bash\necho $$\nstill code";
+    const { container } = render(<Markdown content={prefix} streaming />);
+
+    expect(screen.getByText("已完成正文。")).toBeInTheDocument();
+    expect(container.querySelector("[data-code-viewport]")?.textContent).toBe(
+      "echo $$\nstill code",
+    );
+    expect(container.querySelector(".katex-error")).toBeNull();
+  });
+
   it("renders a resident copy button on code blocks and copies their text", async () => {
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);

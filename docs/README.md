@@ -108,6 +108,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-assistant-typography-and-markdown-seam.md` — ticket 02's shared 768px assistant column, scoped Markdown typography, browser metric checks, reasoning freeze, and the handoff into ticket 03
 - `2026-08-15-chatgpt-code-blocks.md` — ticket 03's private code renderer, lazy syntax highlighting, source-faithful copy behavior, isolated overflow, bundle delta, and the handoff into ticket 04
 - `2026-08-15-chatgpt-tables-links-and-gfm.md` — ticket 04's private table/link renderers, DOM-to-TSV copy contract, isolated table overflow, safe external navigation, GFM semantics, and the handoff into ticket 05
+- `2026-08-15-chatgpt-streaming-prefix-and-performance.md` — ticket 05's cumulative prefix matrix, real-browser 10k/20k/50k and streaming profiles, interaction-state stability, no-batching decision, and the handoff into ticket 06
 
 ### `docs/goals/`
 

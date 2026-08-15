@@ -14,6 +14,9 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4176",
     colorScheme: "light",
+    launchOptions: {
+      args: ["--enable-precise-memory-info"],
+    },
     contextOptions: {
       reducedMotion: "reduce",
     },

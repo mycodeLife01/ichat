@@ -5,6 +5,7 @@ import type { MessageResponse, MessageSource } from "../../src/api/types";
 import { Markdown } from "../../src/messages/Markdown";
 import { MessageThread } from "../../src/messages/MessageThread";
 import { ThinkingBlock } from "../../src/messages/ThinkingBlock";
+import { streamingMarkdownFixtures } from "../../src/test/streamingMarkdownFixtures";
 import "../../src/styles/global.css";
 import completeMarkdown from "./assistant-rendering-content.md?raw";
 import "./assistant-rendering.css";
@@ -38,39 +39,6 @@ const completeMessage: MessageResponse = {
   position: 1,
   created_at: "2026-08-15T00:00:00Z",
 };
-
-const streamingPrefixes = [
-  {
-    id: "emphasis",
-    label: "未闭合 emphasis",
-    content: "已完成正文。\n\n**仍在生成的重点",
-  },
-  {
-    id: "link",
-    label: "未闭合 link",
-    content: "已完成正文。\n\n[仍在生成的链接](https://example.com/path",
-  },
-  {
-    id: "fence",
-    label: "未闭合 fence",
-    content: "已完成正文。\n\n```typescript\nconst answer: number = 42;",
-  },
-  {
-    id: "list",
-    label: "未闭合 list",
-    content: "- 已完成列表项\n  - 正在生成的嵌套项\n    -",
-  },
-  {
-    id: "table",
-    label: "未闭合 table",
-    content: "| Surface | State |\n| --- | --- |\n| Markdown | streaming",
-  },
-  {
-    id: "math",
-    label: "未闭合 display math",
-    content: "公式前正文保持可见。\n\n\\[\n\\frac{1}{",
-  },
-] as const;
 
 function installClipboardFixture() {
   const writeText = async (text: string) => {
@@ -180,14 +148,14 @@ export function AssistantRenderingFixture() {
             </div>
           </div>
           <div className="fixture-grid">
-            {streamingPrefixes.map((prefix) => (
+            {streamingMarkdownFixtures.map((prefix) => (
               <article
                 className="fixture-card"
                 data-streaming-prefix={prefix.id}
                 key={prefix.id}
               >
                 <h3>{prefix.label}</h3>
-                <Markdown content={prefix.content} streaming />
+                <Markdown content={prefix.prefixes.at(-2) ?? ""} streaming />
               </article>
             ))}
           </div>

@@ -13,14 +13,18 @@
 // surrounding context, so inline `\(…\)` stays inline and `\[…\]` is pushed onto
 // its own line with blank lines.
 
-// A fenced code block (``` or ~~~) or an inline code span. Used to split the
-// source so math rewriting skips code — a sample that literally shows `\(x\)`
-// must survive verbatim.
-const CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`+[^`\n]*?`+)/g;
+// A closed or still-streaming fenced code block (``` or ~~~), or an inline code
+// span. Used to split the source so math rewriting skips code — a sample that
+// literally shows `\(x\)` or `$$` must survive verbatim before its closing fence
+// arrives.
+const CODE_REGION = /(```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`+[^`\n]*?`+)/g;
 
 function rewrite(text: string): string {
   return text
-    .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body: string) => `\n\n$$${body.trim()}$$\n\n`)
+    .replace(
+      /\\\[([\s\S]+?)\\\]/g,
+      (_m, body: string) => `\n\n$$\n${body.trim()}\n$$\n\n`,
+    )
     .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body: string) => `$$${body.trim()}$$`);
 }
 
