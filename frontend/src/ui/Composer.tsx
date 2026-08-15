@@ -443,7 +443,7 @@ export function Composer({
         data-testid="composer"
         data-drag-active={dragActive ? "true" : "false"}
         data-expanded={promptExpanded ? "true" : "false"}
-        className={`composer relative mx-auto grid w-full max-w-[var(--reading-width)] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1 px-2 py-[5px] ${composerSurface}`}
+        className={`composer relative mx-auto grid w-full max-w-[var(--assistant-content-width)] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1 px-2 py-[5px] ${composerSurface}`}
       >
         {attachments.length > 0 && (
           <div

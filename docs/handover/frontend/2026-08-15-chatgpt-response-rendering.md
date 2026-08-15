@@ -58,7 +58,8 @@ href 被移除后不会由 renderer 重建，也没有使用 `dangerouslySetInne
 
 ### 几何与排版
 
-- 助手桌面内容列使用独立的 `--assistant-content-width: 768px`，正文为 `16px / 26px`；
+- 助手桌面内容列与 Composer 共同使用 `--assistant-content-width: 768px`，正文为
+  `16px / 26px`；
 - H1/H2/H3 分别为 `24/32`、`20/28`、`18/28`，字重 600；H4–H6、段落、列表、
   blockquote、分隔线和 inline code 均按固定 computed-style 记录验收；
 - 普通段落按上下文使用 ChatGPT 的 `16px`、`8px` 和末尾 `4px` 节奏；单个源码换行通过
@@ -67,6 +68,8 @@ href 被移除后不会由 renderer 重建，也没有使用 `dangerouslySetInne
   状态使用同色填充与固定 check path；blockquote 使用 `4px`、15% 黑色、2px 圆角的伪元素竖线；
 - final、streaming、share 的正文、来源、附件和动作使用同一内容列；
 - 390px 页面本身没有水平 overflow；长代码和宽表格只在自己的 viewport 横向滚动；
+- live thread 在 390px 下按 viewport 宽度补偿滚动区占用的传统滚动条空间，使 Composer 与
+  正文共同保持 `left = 16px / right = 374px / width = 358px`；
 - ticket 06 的真实浏览器对比发现 share 外壳曾比另外两个入口窄 4px。原因是项目根字号为
   15px，`4rem` 只等于 60px，无法覆盖两侧 `px-8` 的 64px gutter。现已改为
   `calc(var(--assistant-content-width) + 64px)`，三入口桌面正文均为 768px。
@@ -96,6 +99,44 @@ href 被移除后不会由 renderer 重建，也没有使用 `dangerouslySetInne
   中英文段落与危险 raw HTML；
 - 未闭合 fenced code 内的 `$$` 不再被 math clamp 截断，`\[...\]` 稳定生成 block math；
 - 已闭合 code/table 接收后续 delta 时保持组件节点、复制态和自身滚动位置。
+- 流式 code fence 追加源码时保留最近一次已高亮前缀及其 token DOM，只把尚待异步高亮的新增
+  尾部按纯文本立即显示；不会再在每个 delta 上让整段代码于纯文本和高亮 token 间切换。
+
+### 2026-08-16 流式代码文本闪烁修复
+
+用户在本地 iChat 最新回复的长 Python 代码块中发现流式文本闪烁。使用同一生产 `Markdown`
+组件的 20k 未闭合 code fence 累计回放复现后，确认代码块外壳没有 remount，也不是 CSS 动画或
+SSE 抖动；根因位于 `CodeBlock` 的异步高亮交接：高亮结果原先只在
+`language + 完整 source` 精确匹配时生效，每个新 delta 都会先让旧结果失效、整段回退纯文本，
+随后 `useEffect` 中的按需 parser 完成后再换回 token spans，因而产生反复闪烁。
+
+修复后，高亮状态同时记录对应的语言和源码。当前源码若是同语言旧源码的累计前缀扩展，就复用
+已高亮 chunks 并原样追加尚待处理的 suffix；异步结果到达后再吸收该 suffix。若源码不是前缀
+扩展或语言改变，仍回退到当前完整纯文本，避免显示陈旧或错误内容。复制继续读取当前原始源码，
+lazy parser、安全 pipeline、代码块布局和 final/share 行为均未改变。
+
+回归测试固定了“等待新高亮期间旧 keyword token 节点不消失、当前源码尾部已可见”的行为。
+真实 Chrome 在 20k 回放的早期 `135–291` 字符与较长 `3260–3416` 字符阶段各采样 80 次，
+已有 token 数分别保持在 `6–14` 与 `159–166`，非空代码的 token 清零次数均为 `0`。
+
+### 2026-08-16 Composer 与正文列对齐
+
+用户要求桌面与移动端的 Composer 外框和助手正文左右边界一致。修复前，桌面 Composer 仍消费
+`--reading-width: 820px`，正文为 `768px`，两侧各多 `26px`；390px 下两者左边均为 `16px`，
+但 live thread 的传统滚动条会吃掉约 `15.33px` 内容宽度，使正文右边停在约 `358.67px`，
+Composer 则到 `374px`。
+
+修复后，Composer 直接消费助手内容宽度 token；`MessageThread` 桌面外壳使用
+`calc(var(--assistant-content-width) + 64px)` 准确吸收两侧 `32px` gutter。仅当
+`MessageThread` 位于生产 `.thread-region` 且进入移动断点时，外壳使用 viewport 宽度补偿内部
+滚动条占宽；share 与独立视觉 fixture 仍遵守各自 containing block，不被强制拉宽。
+
+本地 Chrome 几何结果：
+
+- `1440 × 900`：Composer、最新助手正文和 Markdown 均为
+  `left = 476px / right = 1244px / width = 768px`；
+- `390 × 844`：三者均为 `left = 16px / right = 374px / width = 358px`；
+- 两个视口的 `document.scrollWidth` 均等于 viewport width，没有引入页面水平滚动。
 
 ## 主要文件
 
@@ -133,10 +174,10 @@ href 被移除后不会由 renderer 重建，也没有使用 `dangerouslySetInne
 
 | 产物 | 体积 | gzip |
 |---|---:|---:|
-| 主 JS | 880.91 kB | 269.60 kB |
+| 主 JS | 881.14 kB | 269.64 kB |
 | 高亮协调 chunk | 39.97 kB | 14.17 kB |
 | 单语言/fallback chunks | 1.73–83.47 kB | 1.10–30.70 kB |
-| CSS | 99.71 kB | 22.98 kB |
+| CSS | 99.73 kB | 22.99 kB |
 
 高亮协调器和每个 parser 都是独立动态 chunk；一个普通代码块不会下载所有语言。未知语言和
 任一 chunk 加载失败时仍保留可读、可复制的 plaintext。
@@ -167,6 +208,9 @@ viewport 为 `2560 × 1249`，移动补测为 `390 × 844`。在线页面只用�
 不保存 URL、Cookie、登录态或真实对话截图。
 
 2026-08-16 使用用户已打开、AI 回复相同的 iChat 与 ChatGPT 页签做了第二轮逐段测量：
+
+以下移动几何是 Composer 对齐修复前的点时参考；同日后续修复只调整生产 live thread 的移动
+宽度，当前结果见“Composer 与正文列对齐”小节。桌面和独立 rich surface 的参考仍有效。
 
 - 桌面两边正文根节点均为 `768px`；排除公式、Mermaid、Chart、Reasoning 后，前 111 个子元素
   的相对 `y`/高度最大差为 `0.334px`，后续已进入 viewport 的 section 差为 `0px`；
@@ -219,6 +263,9 @@ viewport 为 `2560 × 1249`，移动补测为 `390 × 844`。在线页面只用�
    对话样本中，仍只承诺可读、可复制，不声称未测 grammar 的 token role 完全一致。
 5. 数学公式、Mermaid、Chart 与 Reasoning 按本轮用户指定不计入 1:1 正文排版差值；KaTeX 与
    ThinkingBlock 仍保留既有回归测试，没有在本轮修改。
+6. 生产 live thread 的 390px 传统滚动条环境现在优先满足 Composer 与正文双边对齐，正文宽度
+   为 `358px`，不再保持点时 ChatGPT 参考的 `342.667px`；使用 overlay scrollbar 的真实移动
+   浏览器不产生这项宽度差异。该变更来自用户后续明确要求，并被限制在 `.thread-region` 内。
 
 ## 最终验证
 
@@ -238,7 +285,7 @@ pnpm run test:visual
 git diff --check
 ```
 
-最终结果：完整 Vitest `73 files / 625 tests`；Playwright desktop visual、mobile visual 和
+最终结果：完整 Vitest `73 files / 628 tests`；Playwright desktop visual、mobile visual 和
 desktop performance `3 passed`，mobile performance 按固定证据环境 `1 skipped`；lint、
 typecheck、production build、无更新参数的 golden 比较与 `git diff --check` 全部通过。
 

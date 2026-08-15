@@ -27,6 +27,14 @@ const pendingMessage: MessageResponse = {
 };
 
 describe("MessageThread", () => {
+  it("uses viewport width inside the mobile thread scrollport", () => {
+    const { container } = render(<MessageThread messages={messages} />);
+
+    expect(container.querySelector(".thread-inner")).toHaveClass(
+      "max-[760px]:[.thread-region_&]:w-screen",
+    );
+  });
+
   it("renders all messages", () => {
     render(<MessageThread messages={messages} />);
     expect(screen.getByText("问题")).toBeInTheDocument();

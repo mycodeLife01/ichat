@@ -109,6 +109,14 @@ const READY_IMAGE = {
 } satisfies DraftAttachment;
 
 describe("Composer", () => {
+  it("uses the assistant content width for horizontal alignment", () => {
+    renderComposer();
+
+    expect(screen.getByTestId("composer")).toHaveClass(
+      "max-w-[var(--assistant-content-width)]",
+    );
+  });
+
   it("disables send when empty (idle)", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();

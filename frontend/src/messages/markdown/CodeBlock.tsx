@@ -14,6 +14,12 @@ type CodeElementProps = {
 
 type SyntaxHighlighter = typeof import("./codeHighlight");
 
+type HighlightResult = {
+  chunks: HighlightedCodeChunk[] | null;
+  language: string;
+  source: string;
+};
+
 let syntaxHighlighterPromise: Promise<SyntaxHighlighter> | null = null;
 
 function loadSyntaxHighlighter() {
@@ -33,19 +39,30 @@ function codeClassName(child: ReactNode) {
 
 function highlightedSource(
   source: string,
-  chunks: HighlightedCodeChunk[] | null,
+  language: string,
+  result: HighlightResult | null,
 ) {
+  const keepsHighlightedPrefix =
+    result?.chunks && result.language === language && source.startsWith(result.source);
+  const chunks = keepsHighlightedPrefix ? result.chunks : null;
+  const pendingSuffix = keepsHighlightedPrefix ? source.slice(result.source.length) : "";
+
   return (
     <code>
       {chunks
-        ? chunks.map((chunk, index) =>
-            chunk.type ? (
-              <span className={`token ${chunk.type}`} key={index}>
-                {chunk.content}
-              </span>
-            ) : (
-              <Fragment key={index}>{chunk.content}</Fragment>
-            ),
+        ? (
+            <>
+              {chunks.map((chunk, index) =>
+                chunk.type ? (
+                  <span className={`token ${chunk.type}`} key={index}>
+                    {chunk.content}
+                  </span>
+                ) : (
+                  <Fragment key={index}>{chunk.content}</Fragment>
+                ),
+              )}
+              {pendingSuffix}
+            </>
           )
         : source}
     </code>
@@ -57,10 +74,7 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
   const source = sourceFromChild(child);
   const language = resolveCodeLanguage(codeClassName(child));
   const highlightKey = `${language.highlighterLanguage}\0${source}`;
-  const [highlightResult, setHighlightResult] = useState<{
-    chunks: HighlightedCodeChunk[] | null;
-    key: string;
-  } | null>(null);
+  const [highlightResult, setHighlightResult] = useState<HighlightResult | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "success" | "failure">("idle");
   const [view, setView] = useState<"code" | "preview">("code");
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,7 +89,13 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
       .then((loaded) => loaded.highlightSource(source, language.highlighterLanguage))
       .then(
         (chunks) => {
-          if (active) setHighlightResult({ chunks, key: highlightKey });
+          if (active) {
+            setHighlightResult({
+              chunks,
+              language: language.highlighterLanguage,
+              source,
+            });
+          }
         },
         () => {
           // Plain source remains usable if an optional language chunk fails.
@@ -110,8 +130,6 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
   };
 
   const copied = copyState === "success";
-  const highlightedChunks =
-    highlightResult?.key === highlightKey ? highlightResult.chunks : null;
   const copyButton = (
     <button
       className={`code-block-copy ${focusRing}`}
@@ -223,7 +241,7 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
       ) : (
         <div className="code-block-viewport" data-code-viewport tabIndex={0}>
           <pre aria-label={`${language.label} 代码`}>
-            {highlightedSource(source, highlightedChunks)}
+            {highlightedSource(source, language.highlighterLanguage, highlightResult)}
           </pre>
         </div>
       )}

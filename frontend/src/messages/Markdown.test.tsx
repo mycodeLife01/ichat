@@ -73,6 +73,27 @@ describe("Markdown", () => {
     });
   });
 
+  it("keeps the highlighted prefix visible while appended streaming code is re-highlighted", async () => {
+    const prefix = "```typescript\nconst answer: number = 42;";
+    const { container, rerender } = render(<Markdown content={prefix} streaming />);
+
+    await waitFor(() =>
+      expect(container.querySelector(".code-block .token.keyword")).toHaveTextContent(
+        "const",
+      ),
+    );
+    const keyword = container.querySelector(".code-block .token.keyword");
+
+    rerender(
+      <Markdown content={`${prefix}\nconsole.log(answer);`} streaming />,
+    );
+
+    expect(container.querySelector("[data-code-viewport]")?.textContent).toBe(
+      "const answer: number = 42;\nconsole.log(answer);",
+    );
+    expect(container.querySelector(".code-block .token.keyword")).toBe(keyword);
+  });
+
   it("preserves an unknown language label and renders its source as plaintext", async () => {
     const { container } = render(
       <Markdown content={"```not-a-language\nunknown_call(42)\n```"} />,

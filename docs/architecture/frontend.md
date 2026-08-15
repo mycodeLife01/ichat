@@ -144,6 +144,10 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   `--reading-width`。final、streaming 和 share 的正文、来源、附件与动作共享该列；share
   外壳需要 `calc(var(--assistant-content-width) + 64px)` 为两侧 `px-8` 留出准确 gutter。
   项目根字号是 15px，不能用 `4rem` 代替这里的 64px。
+- Composer 外框复用 `--assistant-content-width`，与 live assistant 正文保持相同左右边界；
+  live `MessageThread` 桌面外壳同样按该 token 加两侧 32px gutter。移动断点下，只有位于
+  `.thread-region` 的消息外壳可以用 viewport 宽度补偿传统滚动条占宽，确保正文与 Composer
+  都保持 16px 双侧 gutter；share 与独立 fixture 继续服从各自 containing block。
 - Tailwind v4 使用 CSS-first 配置。设计 token 和动画放在 `@theme`；共享 utility 组合放在
   `src/ui/classes.ts`；只有 Markdown 产物、伪元素、滚动条、复杂背景等能力保留手写 CSS。
 - 部分语义 class 同时是测试或运行时钩子，样式迁移时先搜索消费者，不能把“无样式”误判为

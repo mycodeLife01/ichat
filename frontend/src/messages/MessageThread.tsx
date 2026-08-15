@@ -63,11 +63,13 @@ export function MessageThread({
     });
   }
 
-  // Horizontal geometry mirrors the composer (px-8 gutter outside a
-  // --reading-width box, px-4 on mobile): the max-width absorbs the gutter so
-  // the content edges line up with the composer surface.
+  // Desktop absorbs the fixed px-8 gutters around the shared 768px assistant
+  // column. In the live mobile scrollport, viewport width compensates for a
+  // classic scrollbar consuming inline space, keeping both content edges on
+  // the same 16px gutters as the Composer. Other MessageThread hosts retain
+  // their own containing-block width.
   return (
-    <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--reading-width)+4rem)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:px-4 max-[760px]:pt-6 max-[760px]:pb-[18px]">
+    <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+64px)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:[.thread-region_&]:w-screen max-[760px]:px-4 max-[760px]:pt-6 max-[760px]:pb-[18px]">
       {displayMessages.map(({ message, renderKey, pending }) => (
         <Message
           key={renderKey}
