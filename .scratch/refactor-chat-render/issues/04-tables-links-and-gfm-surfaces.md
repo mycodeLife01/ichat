@@ -2,7 +2,7 @@
 
 Type: feature
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: 03
 
@@ -35,14 +35,14 @@ Blocked by: 03
 
 ## Acceptance criteria
 
-- [ ] 宽表格只在自身 viewport 横向滚动，桌面和 390px 页面都无横向 overflow。
-- [ ] 表格复制成功/失败均有反馈和测试，TSV 对表头、空单元格、中英文和多行文本有确定行为。
-- [ ] 多张表各自拥有独立 toolbar、copy state 和 scroll position。
-- [ ] 外链、相对链接、hash、缺失 href 和危险协议的行为均有测试；外链不会接管当前 iChat 页面。
-- [ ] task list、嵌套列表和 blockquote 的视觉与 reference fixture 一致，并保持正确 HTML 语义。
-- [ ] citation chip、普通 `[n]`、code/math 内 `[n]` 的既有行为不变。
-- [ ] final、streaming 和 share 均复用相同 TableBlock/MarkdownLink，没有复制实现。
-- [ ] ticket 01 的桌面/移动诊断场景全部通过。
+- [x] 宽表格只在自身 viewport 横向滚动，桌面和 390px 页面都无横向 overflow。
+- [x] 表格复制成功/失败均有反馈和测试，TSV 对表头、空单元格、中英文和多行文本有确定行为。
+- [x] 多张表各自拥有独立 toolbar、copy state 和 scroll position。
+- [x] 外链、相对链接、hash、缺失 href 和危险协议的行为均有测试；外链不会接管当前 iChat 页面。
+- [x] task list、嵌套列表和 blockquote 的视觉与 reference fixture 一致，并保持正确 HTML 语义。
+- [x] citation chip、普通 `[n]`、code/math 内 `[n]` 的既有行为不变。
+- [x] final、streaming 和 share 均复用相同 TableBlock/MarkdownLink，没有复制实现。
+- [x] ticket 01 的桌面/移动诊断场景全部通过。
 
 ## Verification
 
@@ -62,3 +62,4 @@ pnpm run build
 ## Comments
 
 - 2026-08-15：表格和链接仍是 Markdown 的私有 element renderer，不扩展消息/后端数据模型。
+- 2026-08-15：实现并验证完成。`TableBlock` 使用真实 table DOM 生成 TSV，含换行、制表符或引号的单元格按 TSV 引号规则编码；`MarkdownLink` 只对跨源 HTTP(S) 增加 `_blank` 与 `noopener noreferrer`。targeted 6 files / 86 tests、完整 70 files / 579 tests、桌面与 390px Playwright、typecheck、lint、build 均通过。

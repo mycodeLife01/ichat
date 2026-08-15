@@ -107,6 +107,12 @@ unknown_language_falls_back_without_breaking_the_message = "abcdefghijklmnopqrst
 | Code block | language aware | own scroller | code surface | yes | very_long_unbroken_identifier_abcdefghijklmnopqrstuvwxyz0123456789 |
 | Table | intrinsic columns | own scroller | table surface | yes | 宽列不能撑破页面 |
 
+### 独立表格复制状态
+
+| Scenario | Fixture value |
+| --- | --- |
+| Clipboard rejection | copy-failure-fixture |
+
 ## 数学与引用
 
 行内公式：\(E = mc^2\)，块级公式：

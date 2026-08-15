@@ -258,6 +258,25 @@ describe("Message", () => {
     expect(column?.querySelector(".msg-actions")).not.toBeNull();
   });
 
+  it("renders final tables and external links through the shared Markdown surface", () => {
+    const content = [
+      "| Surface | State |",
+      "| --- | --- |",
+      "| Table | complete |",
+      "",
+      "[External](https://example.com/final)",
+    ].join("\n");
+    const { container } = render(
+      <Message message={{ ...assistantMessage, content }} />,
+    );
+
+    expect(container.querySelector(".assistant-markdown [data-table-block]")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "External" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+  });
+
   it("shows a sources trigger that opens the sources panel", async () => {
     const user = userEvent.setup();
     const onShowSources = vi.fn();

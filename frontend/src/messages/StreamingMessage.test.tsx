@@ -41,6 +41,25 @@ describe("StreamingMessage", () => {
     expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
   });
 
+  it("renders streaming tables and external links through the shared Markdown surface", () => {
+    const draftText = [
+      "| Surface | State |",
+      "| --- | --- |",
+      "| Table | streaming |",
+      "",
+      "[External](https://example.com/streaming)",
+    ].join("\n");
+    const { container } = render(
+      <StreamingMessage run={run({ draftText, status: "streaming" })} />,
+    );
+
+    expect(container.querySelector(".assistant-markdown [data-table-block]")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "External" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+  });
+
   it("rolls streamed reasoning into the header before the formal answer starts", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
     expect(screen.getByRole("button", { name: /在想/ })).toBeInTheDocument();

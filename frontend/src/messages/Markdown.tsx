@@ -12,6 +12,8 @@ import type { MessageSource } from "../api/types";
 import { Citation } from "./Citation";
 import { rehypeCitations } from "./citations";
 import { CodeBlock } from "./markdown/CodeBlock";
+import { MarkdownLink } from "./markdown/MarkdownLink";
+import { TableBlock } from "./markdown/TableBlock";
 import { normalizeMathDelimiters, clampStreamingMath } from "./mathDelimiters";
 
 // remark-math emits math wrapped in `<code class="language-math math-inline">`
@@ -71,7 +73,9 @@ export function Markdown({ content, sources, isMobile, streaming }: MarkdownProp
     // `citation` is a custom tag injected by the plugin; react-markdown's
     // Components type only knows standard tags, so widen via the typed object.
     const components: Components = {
+      a: MarkdownLink,
       pre: CodeBlock,
+      table: TableBlock,
       ...(hasCitations
         ? {
             citation: (props: { node?: { properties?: Record<string, unknown> } }) => (

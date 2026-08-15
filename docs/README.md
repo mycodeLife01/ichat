@@ -107,6 +107,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-assistant-rendering-visual-fixture.md` — ticket 01's isolated visual fixture, the point-in-time ChatGPT reference boundary, diagnostic screenshot semantics, and the constraints carried into ticket 02
 - `2026-08-15-assistant-typography-and-markdown-seam.md` — ticket 02's shared 768px assistant column, scoped Markdown typography, browser metric checks, reasoning freeze, and the handoff into ticket 03
 - `2026-08-15-chatgpt-code-blocks.md` — ticket 03's private code renderer, lazy syntax highlighting, source-faithful copy behavior, isolated overflow, bundle delta, and the handoff into ticket 04
+- `2026-08-15-chatgpt-tables-links-and-gfm.md` — ticket 04's private table/link renderers, DOM-to-TSV copy contract, isolated table overflow, safe external navigation, GFM semantics, and the handoff into ticket 05
 
 ### `docs/goals/`
 

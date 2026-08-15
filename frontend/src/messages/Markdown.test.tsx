@@ -207,6 +207,169 @@ describe("Markdown", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("copies a rendered table as row-ordered TSV", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    const content = [
+      "| 名称 | Value | 备注 |",
+      "| --- | --- | --- |",
+      "| 中文 | English | |",
+      "| 第二行 | 42 | 完成 |",
+    ].join("\n");
+
+    render(<Markdown content={content} />);
+
+    const viewport = screen.getByRole("region", { name: "表格（可横向滚动）" });
+    expect(within(viewport).getByRole("table")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "复制表格" }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      "名称\tValue\t备注\n中文\tEnglish\t\n第二行\t42\t完成",
+    );
+    expect(screen.getByRole("button", { name: "已复制表格" })).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
+
+  it("keeps table copying retryable and announces a Clipboard failure", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
+      new DOMException("Clipboard denied", "NotAllowedError"),
+    );
+
+    render(<Markdown content={"| A | B |\n| --- | --- |\n| 1 | 2 |"} />);
+
+    await user.click(screen.getByRole("button", { name: "复制表格" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Copy failed. Try again.");
+    expect(screen.getByRole("button", { name: "复制表格" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "已复制表格" })).toBeNull();
+
+    vi.restoreAllMocks();
+  });
+
+  it("keeps copy state and scroll position independent across tables", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    const content = [
+      "| First | Value |",
+      "| --- | --- |",
+      "| A | 1 |",
+      "",
+      "| Second | Value |",
+      "| --- | --- |",
+      "| B | 2 |",
+    ].join("\n");
+
+    const { container } = render(<Markdown content={content} />);
+    const surfaces = Array.from(container.querySelectorAll<HTMLElement>("[data-table-block]"));
+    const viewports = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-table-viewport]"),
+    );
+
+    expect(surfaces).toHaveLength(2);
+    viewports[0].scrollLeft = 24;
+    expect(viewports[0].scrollLeft).toBe(24);
+    expect(viewports[1].scrollLeft).toBe(0);
+
+    await user.click(within(surfaces[0]).getByRole("button", { name: "复制表格" }));
+
+    expect(
+      within(surfaces[0]).getByRole("button", { name: "已复制表格" }),
+    ).toBeInTheDocument();
+    expect(
+      within(surfaces[1]).getByRole("button", { name: "复制表格" }),
+    ).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
+
+  it("opens HTTP links outside the current iChat browsing context", () => {
+    render(
+      <Markdown
+        content={"[HTTPS](https://example.com/path) [HTTP](http://example.org/path)"}
+      />,
+    );
+
+    for (const name of ["HTTPS", "HTTP"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+
+  it("keeps relative, hash, and same-origin links in the current context", () => {
+    const sameOrigin = `${window.location.origin}/c/conversation-id`;
+    render(
+      <Markdown
+        content={`[Root](/help) [Relative](docs/help) [Hash](#section) [Same origin](${sameOrigin}) [Empty]()`}
+      />,
+    );
+
+    for (const name of ["Root", "Relative", "Hash", "Same origin"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link).not.toHaveAttribute("target");
+      expect(link).not.toHaveAttribute("rel");
+    }
+
+    const emptyDestination = screen.getByText("Empty").closest("a");
+    expect(emptyDestination).toHaveAttribute("href", "");
+    expect(emptyDestination).not.toHaveAttribute("target");
+    expect(emptyDestination).not.toHaveAttribute("rel");
+  });
+
+  it("does not restore a dangerous href removed by the Markdown security pipeline", () => {
+    const { container } = render(
+      <Markdown content={"[Dangerous](javascript:alert('unsafe'))"} />,
+    );
+
+    const anchor = container.querySelector("a");
+    expect(anchor).not.toBeNull();
+    expect(anchor).not.toHaveAttribute("href");
+    expect(anchor).not.toHaveAttribute("target");
+    expect(anchor).not.toHaveAttribute("rel");
+  });
+
+  it("preserves task, nested-list, loose-list, and blockquote GFM semantics", () => {
+    const content = [
+      "- [x] Completed",
+      "- [ ] Pending",
+      "",
+      "## Nested",
+      "- Parent",
+      "  1. Ordered child",
+      "     - Deep child",
+      "",
+      "## Loose",
+      "- First paragraph",
+      "",
+      "  Second paragraph",
+      "",
+      "> Quote with ***bold italic*** and ~~removed~~.",
+      ">",
+      "> Second quoted paragraph.",
+    ].join("\n");
+
+    const { container } = render(<Markdown content={content} />);
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0]).toBeDisabled();
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).toBeDisabled();
+    expect(checkboxes[1]).not.toBeChecked();
+
+    const parentItem = screen.getByText("Parent").closest("li");
+    expect(parentItem?.querySelector("ol ul")).toHaveTextContent("Deep child");
+    expect(screen.getByText("First paragraph").tagName).toBe("P");
+    expect(screen.getByText("Second paragraph").tagName).toBe("P");
+
+    const quote = container.querySelector("blockquote");
+    expect(quote?.querySelectorAll(":scope > p")).toHaveLength(2);
+    expect(quote?.querySelector("strong em, em strong")).toHaveTextContent("bold italic");
+    expect(quote?.querySelector("del")).toHaveTextContent("removed");
+  });
+
   it("renders citation chips only when sources are provided", () => {
     const sources = [
       {

@@ -39,7 +39,7 @@
 
 代码块样本的外壳宽 `768px`、圆角 24、背景 `rgb(243, 243, 243)`，外边框约 `0.667px solid rgba(0, 0, 0, 0.05)`。代码内容为 `14px / 20px`，桌面 padding `0 14px 12px`，`white-space: pre`；`.cm-scroller` 持有 `overflow-x: auto`。示例块总高会随内容变化，不作为长期固定值。
 
-表格为 `14px`；header 为 600 / 16px line-height、padding `8px 24px 8px 0`，cell 为 400 / 24px line-height、padding `10px 24px 10px 0`。外层容器持有 `overflow-x: auto`。普通外链当时为 `target="_new"`、`rel="noopener"`。
+表格为 `14px`，使用透明背景、0 圆角、`border-collapse: separate` 和 0 `border-spacing`，没有可见外壳边框。header 为 600 / 16px line-height、padding `8px 24px 8px 0`，cell 为 400 / 24px line-height、padding `10px 24px 10px 0`；最后一个 header cell 为 `8px 40px 8px 8px`，最后一个 body cell 为 `10px 0 10px 8px`。外层 viewport 持有 `overflow-x: auto`；复制按钮为覆盖在表格右上角的 `28 × 28px` 图标按钮，圆角 4，不占用表格纵向布局。普通外链当时为 `target="_new"`、`rel="noopener"`。
 
 ## 390px 移动 computed style
 
@@ -53,7 +53,7 @@
 - 代码内容为 `14px / 20px`；水平 scroller 宽约 `341.333px`，移动 padding 改为 `0 10px 12px`。
 - 表格样本 intrinsic 宽约 `440.198px`，其独立容器宽 `390px` 且 `overflow-x: auto`；页面本身仍为 390px。
 
-移动端代码块完整 header 的按钮间距、hover 状态，以及表格复制按钮的精确位置没有通过当前只读测量接口稳定提取；本轮只记录可重复的正文、代码内容、表格和 overflow 几何。后续 ticket 06 在 iChat fixture 获批后固化本地 golden，不用桌面值补猜这些缺口。
+移动端代码块完整 header 的按钮间距、hover 状态，以及表格复制按钮相对移动 viewport 的精确位置没有通过当前只读测量接口稳定提取；本轮只记录可重复的正文、代码内容、表格和 overflow 几何，并仅采用桌面端可重复测得的 28px overlay 按钮样式。后续 ticket 06 在 iChat fixture 获批后固化本地 golden，不用桌面值补猜其余缺口。
 
 ## 本地 harness
 

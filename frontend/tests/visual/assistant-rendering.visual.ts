@@ -18,15 +18,46 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await expect(finalMessage.getByRole("heading", { level: 6, name: /六级标题/ })).toBeVisible();
   await expect(finalMessage.locator("blockquote").first()).toBeVisible();
   await expect(finalMessage.locator("del")).toBeVisible();
-  await expect(finalMessage.locator('input[type="checkbox"]')).toHaveCount(3);
-  await expect(finalMessage.locator("table")).toBeVisible();
+  const taskCheckboxes = finalMessage.locator('input[type="checkbox"]');
+  await expect(taskCheckboxes).toHaveCount(3);
+  await expect(taskCheckboxes.first()).toBeDisabled();
+  await expect(taskCheckboxes.first()).toBeChecked();
+  await expect(finalMessage.locator("table")).toHaveCount(2);
+  await expect(finalMessage.locator("table").first()).toBeVisible();
   await expect(finalMessage.locator(".katex")).not.toHaveCount(0);
   const citations = finalMessage.getByRole("button", { name: "查看 1 个引用来源" });
   await expect(citations).toHaveCount(2);
   await expect(citations.first()).toBeVisible();
   await expect(finalMessage.locator("pre")).not.toHaveCount(0);
-  await expect(finalMessage.getByRole("link", { name: "OpenAI" })).toBeVisible();
+  const externalLink = finalMessage.getByRole("link", { name: "OpenAI" });
+  await expect(externalLink).toBeVisible();
   await expect(finalMessage.getByRole("link", { name: "站内帮助" })).toBeVisible();
+  await expect(externalLink).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await expect(externalLink).toHaveAttribute(
+    "rel",
+    "noopener noreferrer",
+  );
+  await expect(finalMessage.getByRole("link", { name: "站内帮助" })).not.toHaveAttribute(
+    "target",
+  );
+
+  await page.context().route("https://openai.com/", async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>External fixture</title>",
+    });
+  });
+  const fixtureUrl = page.url();
+  const popupPromise = page.waitForEvent("popup");
+  await externalLink.click();
+  const externalPage = await popupPromise;
+  await externalPage.waitForLoadState();
+  expect(page.url()).toBe(fixtureUrl);
+  expect(externalPage.url()).toBe("https://openai.com/");
+  await externalPage.close();
 
   const prefixes = page.locator("[data-streaming-prefix]");
   await expect(prefixes).toHaveCount(6);
@@ -102,6 +133,46 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   });
   expect(selectedSource).toContain('role: "assistant"');
 
+  const tableBlocks = finalMessage.locator("[data-table-block]");
+  await expect(tableBlocks).toHaveCount(2);
+  const tableBlock = tableBlocks.first();
+  const failureTableBlock = tableBlocks.last();
+  const tableViewport = tableBlock.getByRole("region", {
+    name: "表格（可横向滚动）",
+  });
+  const failureTableViewport = failureTableBlock.getByRole("region", {
+    name: "表格（可横向滚动）",
+  });
+  await expect(tableViewport).toHaveAttribute("tabindex", "0");
+  const tableOverflow = await tableViewport.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    overflowX: getComputedStyle(element).overflowX,
+  }));
+  expect(tableOverflow.overflowX).toBe("auto");
+  expect(tableOverflow.scrollWidth).toBeGreaterThan(tableOverflow.clientWidth);
+
+  const tableCopyButton = tableBlock.getByRole("button", { name: "复制表格" });
+  const tableCopyButtonX = (await tableCopyButton.boundingBox())?.x;
+  await tableViewport.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  expect((await tableCopyButton.boundingBox())?.x).toBe(tableCopyButtonX);
+  expect(await failureTableViewport.evaluate((element) => element.scrollLeft)).toBe(0);
+  await tableViewport.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await tableCopyButton.click();
+  await expect(tableBlock.getByRole("button", { name: "已复制表格" })).toBeVisible();
+  await expect(
+    failureTableBlock.getByRole("button", { name: "复制表格" }),
+  ).toBeVisible();
+  await failureTableBlock.getByRole("button", { name: "复制表格" }).click();
+  await expect(failureTableBlock.getByRole("button", { name: "复制表格" })).toBeVisible();
+  await expect(
+    failureTableBlock.getByRole("status").filter({ hasText: "Copy failed" }),
+  ).toBeAttached();
+
   const geometry = await page.evaluate(() => {
     const rectOf = (selector: string) => {
       const element = document.querySelector(selector);
@@ -112,6 +183,7 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
         x: rect.x,
         width: rect.width,
         height: rect.height,
+        minWidth: style.minWidth,
         fontFamily: style.fontFamily,
         fontSize: style.fontSize,
         lineHeight: style.lineHeight,
@@ -120,7 +192,10 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
         backgroundColor: style.backgroundColor,
         borderLeftWidth: style.borderLeftWidth,
         borderTopWidth: style.borderTopWidth,
+        borderBottomWidth: style.borderBottomWidth,
         borderRadius: style.borderRadius,
+        borderCollapse: style.borderCollapse,
+        borderSpacing: style.borderSpacing,
         marginTop: style.marginTop,
         marginRight: style.marginRight,
         marginBottom: style.marginBottom,
@@ -132,6 +207,8 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
         overflowX: style.overflowX,
         overflowWrap: style.overflowWrap,
         position: style.position,
+        verticalAlign: style.verticalAlign,
+        cursor: style.cursor,
         whiteSpace: style.whiteSpace,
         wordBreak: style.wordBreak,
       };
@@ -172,6 +249,15 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
       list: rectOf(
         '[data-testid="final-message"] .assistant-markdown ul:not(.contains-task-list)',
       ),
+      nestedList: rectOf(
+        '[data-testid="final-message"] .assistant-markdown li > ul',
+      ),
+      taskCheckbox: rectOf(
+        '[data-testid="final-message"] .assistant-markdown input[type="checkbox"]',
+      ),
+      externalLink: rectOf(
+        '[data-testid="final-message"] .assistant-markdown a[href="https://openai.com/"]',
+      ),
       rule: rectOf('[data-testid="final-message"] .assistant-markdown hr'),
       codeSurface: rectOf('[data-testid="final-message"] [data-code-block]'),
       codeHeader: rectOf('[data-testid="final-message"] .code-block-header'),
@@ -180,7 +266,21 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
       codeKeyword: rectOf(
         '[data-testid="final-message"] [data-language="typescript"] .token.keyword',
       ),
-      table: rectOf('[data-testid="final-message"] table'),
+      tableSurface: rectOf('[data-testid="final-message"] [data-table-block]'),
+      tableHeader: rectOf('[data-testid="final-message"] .table-block-header'),
+      tableCopyButton: rectOf(
+        '[data-testid="final-message"] .table-block-header button',
+      ),
+      tableViewport: rectOf('[data-testid="final-message"] [data-table-viewport]'),
+      table: rectOf('[data-testid="final-message"] [data-table-block] table'),
+      tableHeadCell: rectOf('[data-testid="final-message"] [data-table-block] th'),
+      tableLastHeadCell: rectOf(
+        '[data-testid="final-message"] [data-table-block] th:last-child',
+      ),
+      tableCell: rectOf('[data-testid="final-message"] [data-table-block] td'),
+      tableLastCell: rectOf(
+        '[data-testid="final-message"] [data-table-block] td:last-child',
+      ),
     };
   });
 
@@ -249,6 +349,16 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expectPx(geometry.blockquote?.paddingBottom, 8);
   expectPx(geometry.blockquote?.paddingLeft, 24);
   expectPx(geometry.list?.paddingLeft, 26);
+  expectPx(geometry.nestedList?.paddingLeft, 26);
+  expectPx(geometry.taskCheckbox?.width, 13);
+  expectPx(geometry.taskCheckbox?.height, 13);
+  expectPx(geometry.taskCheckbox?.marginRight, 8);
+  expectPx(geometry.taskCheckbox?.marginBottom, 2);
+  expectPx(geometry.taskCheckbox?.marginLeft, -22);
+  expect(geometry.taskCheckbox?.verticalAlign).toBe("middle");
+  expect(geometry.taskCheckbox?.cursor).toBe("default");
+  expect(geometry.externalLink?.overflowWrap).toBe("anywhere");
+  expect(geometry.externalLink?.wordBreak).toBe("break-word");
   expectPx(geometry.rule?.marginTop, 28);
   expectPx(geometry.rule?.marginBottom, 28);
 
@@ -265,6 +375,46 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   expect(geometry.code?.whiteSpace).toBe("pre");
   expect(geometry.code?.wordBreak).toBe("normal");
   expect(geometry.codeKeyword?.color).not.toBe(geometry.code?.color);
+
+  expect(geometry.tableSurface?.minWidth).toBe("0px");
+  expect(geometry.tableSurface?.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expectPx(geometry.tableSurface?.borderRadius, 0);
+  expectPx(geometry.tableSurface?.marginTop, 0);
+  expectPx(geometry.tableSurface?.marginBottom, 0);
+  expect(geometry.tableHeader?.position).toBe("absolute");
+  expectPx(geometry.tableHeader?.width, 28);
+  expectPx(geometry.tableHeader?.height, 32);
+  expectPx(geometry.tableCopyButton?.width, 28);
+  expectPx(geometry.tableCopyButton?.height, 28);
+  expectPx(geometry.tableCopyButton?.borderRadius, 4);
+  expect(geometry.tableViewport?.overflowX).toBe("auto");
+  expect((geometry.table?.width ?? 0)).toBeGreaterThan(geometry.tableViewport?.width ?? 0);
+  expect(geometry.table?.borderCollapse).toBe("separate");
+  expect(geometry.table?.borderSpacing).toBe("0px");
+  expect(geometry.table?.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expectPx(geometry.table?.borderRadius, 0);
+  expectPx(geometry.table?.fontSize, 14);
+  expectPx(geometry.table?.lineHeight, 24);
+  expectPx(geometry.tableHeadCell?.fontSize, 14);
+  expectPx(geometry.tableHeadCell?.lineHeight, 16);
+  expect(geometry.tableHeadCell?.fontWeight).toBe("600");
+  expectPx(geometry.tableHeadCell?.paddingTop, 8);
+  expectPx(geometry.tableHeadCell?.paddingRight, 24);
+  expectPx(geometry.tableHeadCell?.paddingBottom, 8);
+  expectPx(geometry.tableHeadCell?.paddingLeft, 0);
+  expectPx(geometry.tableHeadCell?.borderBottomWidth, 1);
+  expectPx(geometry.tableLastHeadCell?.paddingRight, 40);
+  expectPx(geometry.tableLastHeadCell?.paddingLeft, 8);
+  expectPx(geometry.tableCell?.fontSize, 14);
+  expectPx(geometry.tableCell?.lineHeight, 24);
+  expect(geometry.tableCell?.fontWeight).toBe("400");
+  expectPx(geometry.tableCell?.paddingTop, 10);
+  expectPx(geometry.tableCell?.paddingRight, 24);
+  expectPx(geometry.tableCell?.paddingBottom, 10);
+  expectPx(geometry.tableCell?.paddingLeft, 0);
+  expectPx(geometry.tableCell?.borderBottomWidth, 1);
+  expectPx(geometry.tableLastCell?.paddingRight, 0);
+  expectPx(geometry.tableLastCell?.paddingLeft, 8);
 
   if (geometry.viewport.width > 760) {
     expectPx(geometry.assistantContent?.width, 768);

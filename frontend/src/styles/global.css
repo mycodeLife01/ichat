@@ -347,13 +347,18 @@ body {
 .assistant-markdown .contains-task-list { list-style: none; }
 .assistant-markdown .task-list-item { list-style: none; }
 .assistant-markdown .task-list-item input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
   margin: 0 8px 2px -22px;
   accent-color: var(--color-accent);
+  cursor: default;
   vertical-align: middle;
 }
 
 .assistant-markdown a {
   color: var(--color-accent);
+  overflow-wrap: anywhere;
+  word-break: break-word;
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
@@ -507,20 +512,93 @@ body {
 .assistant-markdown .token.selector,
 .assistant-markdown .token.attr-name { color: var(--color-code-property); }
 
-.assistant-markdown table {
-  border-collapse: collapse;
-  font-size: 14px;
+.assistant-markdown .table-block {
+  position: relative;
   width: 100%;
+  min-width: 0;
+  margin: 0;
 }
-.assistant-markdown th,
-.assistant-markdown td {
-  border: 1px solid var(--color-border);
-  padding: 7px 10px;
+
+.assistant-markdown .table-block-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  width: 28px;
+  height: 32px;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.assistant-markdown .table-block-header button {
+  color: var(--color-text-muted);
+  font-family: inherit;
+  border-radius: var(--radius-detail);
+}
+
+.assistant-markdown .table-block-viewport {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.assistant-markdown .table-block-viewport:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.assistant-markdown .table-block table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: transparent;
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.assistant-markdown .table-block th,
+.assistant-markdown .table-block td {
+  border: 0;
+  padding-right: 24px;
   text-align: left;
+  vertical-align: top;
 }
-.assistant-markdown th {
-  background: var(--color-sunken);
+
+.assistant-markdown .table-block thead th {
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.assistant-markdown .table-block tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.assistant-markdown .table-block th:last-child {
+  padding-right: 40px;
+  padding-left: 8px;
+}
+
+.assistant-markdown .table-block td:last-child {
+  padding-right: 0;
+  padding-left: 8px;
+}
+
+.assistant-markdown .table-block th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: transparent;
   font-weight: 600;
+  line-height: 16px;
+}
+
+.assistant-markdown .table-block td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-weight: 400;
+  line-height: 24px;
 }
 
 .assistant-markdown hr {
