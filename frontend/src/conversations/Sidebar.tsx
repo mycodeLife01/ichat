@@ -478,7 +478,7 @@ export function Sidebar({
                 the trailing fade only clears the residual strip before the rail
                 board takes over. Expanding mirrors it. */}
             <div
-              className={`flex min-h-0 flex-1 flex-col overflow-x-clip whitespace-nowrap ${
+              className={`flex min-h-0 flex-1 flex-col whitespace-nowrap ${
                 isMobile
                   ? ""
                   : "will-change-[opacity] transition-opacity ease-linear motion-reduce:transition-none"
