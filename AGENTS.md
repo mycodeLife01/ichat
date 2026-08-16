@@ -8,6 +8,7 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 
 - Use Chinese for Codex interactions unless the user or task requires another language.
 - Write project documentation under `docs/` in Chinese. Keep `AGENTS.md` and `docs/README.md` in English.
+- Write every handover document under `docs/handover/`.
 - Use English for code comments, docstrings, user-facing error messages, and application-level hints.
 
 ### Workspace

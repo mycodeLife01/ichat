@@ -110,6 +110,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-chatgpt-tables-links-and-gfm.md` — ticket 04's private table/link renderers, DOM-to-TSV copy contract, isolated table overflow, safe external navigation, GFM semantics, and the handoff into ticket 05
 - `2026-08-15-chatgpt-streaming-prefix-and-performance.md` — ticket 05's cumulative prefix matrix, real-browser 10k/20k/50k and streaming profiles, interaction-state stability, no-batching decision, and the handoff into ticket 06
 - `2026-08-15-chatgpt-response-rendering.md` — final tickets 01–06 handoff: shipped Markdown surfaces, frozen reasoning/backend scope, bundle and performance evidence, approved desktop/mobile golden baselines, accepted deviations, verification, and rollback
+- `2026-08-16-chatgpt-sidebar-ui-alignment.md` — desktop ChatGPT sidebar geometry, sticky scroll structure, native scrollbar parity, shared chat-shell background, Chrome measurements, and verification
 
 ### `docs/goals/`
 
