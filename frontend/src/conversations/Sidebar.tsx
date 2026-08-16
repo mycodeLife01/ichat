@@ -66,6 +66,8 @@ type SidebarProps = {
 
 const sectionLabel =
   "px-2.5 pb-1.5 text-[14px] font-semibold leading-5 text-fg";
+const desktopSectionLabel =
+  "flex h-8 items-center px-4 py-1.5 text-[14px] font-medium leading-5 text-text-muted";
 
 type ConversationMenu = {
   conversationId: string;
@@ -213,7 +215,7 @@ export function Sidebar({
   const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg"];
   if (isMobile) {
     sidebarClasses.push(
-      "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] max-w-[calc(100vw-44px)] border-r border-border " +
+      "sidebar-mobile fixed inset-y-0 left-0 z-30 w-[var(--sidebar-mobile-width)] max-w-[calc(100vw-44px)] border-r border-border " +
         "shadow-popover transition-transform duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
       mobileOpen ? "open translate-x-0" : "-translate-x-full",
     );
@@ -222,7 +224,7 @@ export function Sidebar({
       // The moving right edge is the whole animation: it starts on the first
       // frame in both directions so the main column reads as sliding over the
       // still panel, not as the panel sliding out of the viewport.
-      "shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] delay-0 motion-reduce:transition-none",
+      "sidebar-desktop shrink-0 border-r border-border transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] delay-0 motion-reduce:transition-none",
       collapsed ? "collapsed w-[var(--sidebar-rail-width)]" : "w-[var(--sidebar-width)]",
     );
   }
@@ -246,7 +248,11 @@ export function Sidebar({
 
   const renderRow = (
     c: ConversationResponse,
-    options: { onSelected?: () => void; renderDesktopMenu?: boolean } = {},
+    options: {
+      onSelected?: () => void;
+      renderDesktopMenu?: boolean;
+      desktopInset?: boolean;
+    } = {},
   ) => {
     const isRenaming = renameId === c.id;
     const menuOpen = menu?.conversationId === c.id;
@@ -315,7 +321,9 @@ export function Sidebar({
         key={c.id}
         // A fixed minimum height keeps revealing the desktop action button from
         // shifting adjacent rows; mobile raises the whole target to 44px.
-        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem}`}
+        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
+          options.desktopInset ? "mx-1.5 w-[calc(100%-12px)]" : ""
+        } ${interactiveItem}`}
         data-selected={active || menuOpen}
       >
         {isRenaming ? (
@@ -454,6 +462,72 @@ export function Sidebar({
 
   const railCollapsed = collapsed && !isMobile;
 
+  const renderPanelHeader = (mobile: boolean) => (
+    <div
+      className={
+        mobile
+          ? "flex items-center justify-between px-2 pb-3.5"
+          : "sticky top-0 z-30 flex h-13 shrink-0 items-center justify-between bg-bg pl-[18px] pr-2"
+      }
+    >
+      {mobile ? (
+        <Wordmark size={20} />
+      ) : (
+        <span className="inline-flex translate-y-0.5">
+          <Wordmark size={18} />
+        </span>
+      )}
+      {!mobile && (
+        <button
+          className={`${iconControl} h-9 w-9`}
+          aria-label="收起侧栏"
+          onClick={onToggleCollapsed}
+        >
+          <Icons.PanelLeft size={20} />
+        </button>
+      )}
+    </div>
+  );
+
+  const renderNewConversationButton = (mobile: boolean) => (
+    <button
+      className={
+        mobile
+          ? `flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[15px] font-medium text-text-primary ${interactiveItem}`
+          : `mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[14px] font-normal leading-5 text-text-primary ${interactiveItem}`
+      }
+      onClick={() => {
+        onNew();
+        if (mobile) onCloseMobile();
+      }}
+    >
+      <Icons.NewChat size={20} />
+      新建对话
+    </button>
+  );
+
+  const renderHistoryContents = (desktop: boolean) => (
+    <>
+      <div className={desktop ? desktopSectionLabel : sectionLabel}>聊天</div>
+      {items.map((c) =>
+        renderRow(c, {
+          renderDesktopMenu: !railCollapsed,
+          desktopInset: desktop,
+        }),
+      )}
+      {items.length === 0 && (
+        <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+          还没有已保存的对话。开始一次对话后会自动出现在这里。
+        </div>
+      )}
+      {isLoadingMore && (
+        <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+          正在加载...
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <aside
@@ -467,10 +541,10 @@ export function Sidebar({
           }`}
         >
           <div
-            className={`flex h-full flex-col px-2.5 pb-2.5 ${
+            className={`flex h-full flex-col ${
               isMobile
-                ? "w-full pt-3"
-                : "w-[var(--sidebar-width)] pt-2"
+                ? "w-full px-2.5 pt-3 pb-2.5"
+                : "w-[var(--sidebar-width)]"
             }`}
           >
             {/* The panel never moves. It stays fully opaque while the shell's
@@ -490,57 +564,35 @@ export function Sidebar({
               aria-hidden={railCollapsed ? "true" : undefined}
               inert={railCollapsed ? true : undefined}
             >
-              <div
-                className={`flex items-center justify-between px-2 ${
-                  isMobile ? "pb-3.5" : "mb-4 h-9"
-                }`}
-              >
-                <Wordmark size={isMobile ? 20 : 18} />
-                {!isMobile && (
-                  <button
-                    className={`${iconControl} h-9 w-9`}
-                    aria-label="收起侧栏"
-                    onClick={onToggleCollapsed}
+              {isMobile ? (
+                <>
+                  {renderPanelHeader(true)}
+                  {renderNewConversationButton(true)}
+                  <div
+                    ref={historyRef}
+                    className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
+                    data-testid="conversation-history"
+                    onScroll={handleHistoryScroll}
                   >
-                    <Icons.PanelLeft size={20} />
-                  </button>
-                )}
-              </div>
-
-              <button
-                className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
-                onClick={() => {
-                  onNew();
-                  if (isMobile) onCloseMobile();
-                }}
-              >
-                <Icons.NewChat size={20} />
-                新建对话
-              </button>
-
-              {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
-                  against the sidebar's right border; rows keep their position. */}
-              <div
-                ref={historyRef}
-                className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
-                data-testid="conversation-history"
-                onScroll={handleHistoryScroll}
-              >
-                <div className={sectionLabel}>聊天</div>
-                {items.map((c) =>
-                  renderRow(c, { renderDesktopMenu: !railCollapsed }),
-                )}
-                {items.length === 0 && (
-                  <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                    还没有已保存的对话。开始一次对话后会自动出现在这里。
+                    {renderHistoryContents(false)}
                   </div>
-                )}
-                {isLoadingMore && (
-                  <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
-                    正在加载...
+                </>
+              ) : (
+                <div
+                  ref={historyRef}
+                  className="sidebar-scrollport native-scrollbar relative flex min-h-0 w-full flex-1 flex-col overflow-y-auto"
+                  data-testid="conversation-history"
+                  onScroll={handleHistoryScroll}
+                >
+                  {renderPanelHeader(false)}
+                  <div className="sticky top-[52px] z-20 shrink-0 bg-bg pt-2">
+                    {renderNewConversationButton(false)}
                   </div>
-                )}
-              </div>
+                  <div className="mt-5 shrink-0">
+                    {renderHistoryContents(true)}
+                  </div>
+                </div>
+              )}
             </div>
 
             {renderUserMenu(railCollapsed, !isMobile)}

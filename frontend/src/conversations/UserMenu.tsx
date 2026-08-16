@@ -39,12 +39,26 @@ type UserMenuProps = {
   onToast: ToastHandler;
 };
 
-function UserAvatar({ name, url, size = "md" }: { name: string; url?: string | null; size?: "sm" | "md" }) {
+function UserAvatar({
+  name,
+  url,
+  size = "md",
+}: {
+  name: string;
+  url?: string | null;
+  size?: "xs" | "sm" | "md";
+}) {
+  const sizeClass =
+    size === "xs"
+      ? "h-6 w-6 text-[10px]"
+      : size === "sm"
+        ? "h-8 w-8 text-xs"
+        : "h-10 w-10 text-sm";
   return (
     <Avatar
       name={name}
       url={url}
-      className={size === "sm" ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm"}
+      className={sizeClass}
     />
   );
 }
@@ -140,7 +154,10 @@ export function UserMenu({
       const rect = triggerRef.current.getBoundingClientRect();
       // A rail avatar is far narrower than the menu needs, so compact mode asks
       // for a fixed panel width instead of mirroring the trigger.
-      const width = Math.min(compact ? 260 : rect.width, window.innerWidth - 16);
+      const width = Math.min(
+        pinnedToDesktopRail || compact ? 260 : rect.width,
+        window.innerWidth - 16,
+      );
       setMenuPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
         bottom: Math.max(8, window.innerHeight - rect.top + 8),
@@ -219,9 +236,7 @@ export function UserMenu({
       ref={rootRef}
       className={
         pinnedToDesktopRail
-          ? `relative z-20 -mx-2.5 mt-2 w-[var(--sidebar-width)] border-t pt-2 pb-1 ${
-              compact ? "border-transparent" : "border-border"
-            }`
+          ? "relative z-20 w-[var(--sidebar-width)] shrink-0 pt-2 pb-1.5"
           : compact
             ? "relative"
             : "relative mt-2 border-t border-border pt-2 pb-1"
@@ -231,7 +246,7 @@ export function UserMenu({
         ref={triggerRef}
         className={
           pinnedToDesktopRail
-            ? `flex h-13 w-full items-center gap-2.5 px-2 text-left aria-expanded:bg-selected ${interactiveItem}`
+            ? `mx-1.5 flex h-13 w-[calc(100%-12px)] items-center gap-2 py-1.5 pr-2.5 pl-2 text-left aria-expanded:bg-selected ${interactiveItem}`
             : compact
             ? `flex h-9 w-9 items-center justify-center rounded-full aria-expanded:bg-selected ${interactiveItem}`
             : `flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`
@@ -241,13 +256,29 @@ export function UserMenu({
         aria-label="打开个人中心"
         onClick={toggleMenu}
       >
-        <UserAvatar name={name} url={user?.avatarUrl} size="sm" />
+        <UserAvatar
+          name={name}
+          url={user?.avatarUrl}
+          size={pinnedToDesktopRail ? "xs" : "sm"}
+        />
         {!compact && (
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] font-medium leading-[1.35] text-fg">
+            <span
+              className={
+                pinnedToDesktopRail
+                  ? "block truncate text-[14px] font-normal leading-5 text-text-primary"
+                  : "block truncate text-[14px] font-medium leading-[1.35] text-fg"
+              }
+            >
               {name}
             </span>
-            <span className="block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle">
+            <span
+              className={
+                pinnedToDesktopRail
+                  ? "block truncate text-[12px] font-normal leading-4 text-text-muted"
+                  : "block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle"
+              }
+            >
               Pro
             </span>
           </span>

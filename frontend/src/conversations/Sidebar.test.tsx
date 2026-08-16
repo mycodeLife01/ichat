@@ -90,16 +90,40 @@ describe("Sidebar", () => {
     render(<Sidebar {...baseProps()} />);
 
     expect(screen.getByText("聊天")).toHaveClass(
+      "h-8",
+      "px-4",
       "text-[14px]",
-      "font-semibold",
+      "font-medium",
       "leading-5",
+      "text-text-muted",
     );
     expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
       "text-[14px]",
       "font-normal",
       "leading-5",
     );
-    expect(screen.getByTestId("conversation-history")).not.toHaveClass("gap-px");
+    const history = screen.getByTestId("conversation-history");
+    expect(history).not.toHaveClass("gap-px", "mt-5");
+    expect(history).toHaveClass(
+      "sidebar-scrollport",
+      "native-scrollbar",
+      "flex-1",
+      "overflow-y-auto",
+    );
+    expect(screen.getByRole("button", { name: "收起侧栏" }).parentElement).toHaveClass(
+      "sticky",
+      "top-0",
+      "h-13",
+    );
+    expect(screen.getByRole("button", { name: "新建对话" }).parentElement).toHaveClass(
+      "sticky",
+      "top-[52px]",
+      "pt-2",
+    );
+    expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
+      "mx-1.5",
+      "w-[calc(100%-12px)]",
+    );
   });
 
   it("renders a title skeleton for a title-pending row", () => {
@@ -185,7 +209,13 @@ describe("Sidebar", () => {
     rerender(<Sidebar {...props} collapsed />);
 
     expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
-    expect(accountTrigger).toHaveClass("h-13", "px-2");
+    expect(accountTrigger).toHaveClass(
+      "h-13",
+      "mx-1.5",
+      "gap-2",
+      "pl-2",
+      "pr-2.5",
+    );
     expect(historyPanel).toHaveClass("opacity-0");
     // The cropping edge starts on the first frame in both directions.
     expect(document.querySelector("aside.sidebar")).toHaveClass(

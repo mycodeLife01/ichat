@@ -562,7 +562,7 @@ export function AppShell() {
           [.composer-animate_&]: variants on the children below — intentional
           ONLY when a brand-new conversation sends its first message. */}
       <main
-        className={`main relative flex min-w-0 flex-1 flex-col${animateComposer ? " composer-animate" : ""}`}
+        className={`main relative flex min-w-0 flex-1 flex-col bg-[var(--chat-shell-bg)]${animateComposer ? " composer-animate" : ""}`}
         onTransitionEnd={(event) => {
           if (event.propertyName === "flex-grow") {
             setAnimateComposer(false);
@@ -599,7 +599,7 @@ export function AppShell() {
           {/* Mobile pads the scroll container so the floating actions do not sit
               on top of the first message when the thread is at the top. */}
           <div
-            className="thread-region relative flex min-h-0 flex-1 flex-col overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8"
+            className="thread-region native-scrollbar relative flex min-h-0 flex-1 flex-col overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8"
             data-scroll-from-end={showScrollToBottom ? "" : undefined}
             ref={threadRef}
           >

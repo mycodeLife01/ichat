@@ -145,8 +145,11 @@ describe("AppShell", () => {
 
     // user message content from the detail fixture
     expect(await screen.findByText("Hello")).toBeInTheDocument();
+    const main = container.querySelector<HTMLElement>("main.main");
     const region = container.querySelector<HTMLDivElement>(".thread-region");
     const footer = container.querySelector<HTMLDivElement>(".thread-bottom-container");
+    expect(main).toHaveClass("bg-[var(--chat-shell-bg)]");
+    expect(region).toHaveClass("native-scrollbar", "[scrollbar-gutter:stable_both-edges]");
     expect(region).toContainElement(screen.getByTestId("composer"));
     expect(footer).toHaveClass("sticky", "bottom-0", "pointer-events-none");
     expect(region).toContainElement(footer);
