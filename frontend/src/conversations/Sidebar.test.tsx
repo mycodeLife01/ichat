@@ -143,9 +143,10 @@ describe("Sidebar", () => {
       "duration-[110ms]",
       "delay-[70ms]",
       "ease-linear",
-      "overflow-x-clip",
       "whitespace-nowrap",
     );
+    expect(history.parentElement).not.toHaveClass("overflow-x-clip");
+    expect(history.closest("aside")).toHaveClass("overflow-hidden");
     // The panel is cropped in place, never shifted, so the crop edge reads as
     // the main column covering it.
     expect(history.parentElement).not.toHaveClass("-translate-x-2");
