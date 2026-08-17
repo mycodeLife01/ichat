@@ -7,6 +7,7 @@ import type { DraftAttachment } from "../files/types";
 import { Composer } from "./Composer";
 
 const noop = () => {};
+const MODEL_PICKER_NAME = /^模型与思考强度/;
 
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props: ComponentProps<typeof Composer> = {
@@ -149,7 +150,7 @@ describe("Composer", () => {
 
     rerender(<Composer {...props} value="a much longer prompt" />);
 
-    expect(textbox).toHaveStyle({ height: "500px", maxHeight: "max(30svh, 5rem)" });
+    expect(textbox).toHaveStyle({ height: "500px", maxHeight: "max(30svh, 75px)" });
     expect(screen.getByTestId("composer")).toHaveAttribute("data-expanded", "true");
     expect(textbox.parentElement).toHaveClass(
       "col-span-3",
@@ -316,7 +317,7 @@ describe("Composer", () => {
     const tile = screen.getByRole("group", { name: "report.xlsx" });
     const textbox = screen.getByRole("textbox");
     expect(tile).toHaveClass("w-[320px]", "min-w-[320px]");
-    expect(tile.firstElementChild).toHaveClass("h-[60px]");
+    expect(tile.firstElementChild).toHaveClass("min-h-[60px]");
     expect(tile).toHaveTextContent("电子表格");
     expect(tile.querySelector("svg")).toHaveClass("text-[#16a34a]");
     expect(
@@ -611,7 +612,7 @@ describe("Composer", () => {
       onRemoveImages,
     });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     await user.click(screen.getByRole("menuitem", { name: /^模型/ }));
     await user.click(screen.getByRole("menuitemradio", { name: FLASH.label }));
     await user.click(screen.getByRole("button", { name: "Remove all images and switch" }));
@@ -679,7 +680,8 @@ describe("Composer", () => {
     expect(uploadItem).toHaveClass(
       "mx-1.5",
       "!w-[calc(100%-12px)]",
-      "!leading-5",
+      "font-ui",
+      "text-ui",
       "bg-transparent",
       "hover:bg-hover",
     );
@@ -695,7 +697,9 @@ describe("Composer", () => {
   it("shows the model label and thinking level on the picker trigger", () => {
     renderComposer({ models: MODELS, model: FLASH.id, thinkingLevel: "max" });
     expect(
-      screen.getByRole("button", { name: "模型与思考强度" }),
+      screen.getByRole("button", {
+        name: "模型与思考强度：deepseek-v4-flash 极致",
+      }),
     ).toHaveTextContent("deepseek-v4-flash 极致");
     expect(screen.queryByRole("menu")).toBeNull();
   });
@@ -707,7 +711,7 @@ describe("Composer", () => {
       thinkingLevel: "max",
       isMobile: true,
     });
-    expect(screen.getByRole("button", { name: "模型与思考强度" })).toHaveTextContent(
+    expect(screen.getByRole("button", { name: MODEL_PICKER_NAME })).toHaveTextContent(
       "极致",
     );
     expect(screen.queryByText("deepseek-v4-flash")).toBeNull();
@@ -715,14 +719,14 @@ describe("Composer", () => {
 
   it("shows only the thinking level before capabilities load", () => {
     renderComposer({ thinkingLevel: "high" });
-    expect(screen.getByRole("button", { name: "模型与思考强度" })).toHaveTextContent("高");
+    expect(screen.getByRole("button", { name: MODEL_PICKER_NAME })).toHaveTextContent("高");
   });
 
   it("opens a root menu with model and thinking rows showing current values", async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: LUNA.id, thinkingLevel: "xhigh" });
 
-    const trigger = screen.getByRole("button", { name: "模型与思考强度" });
+    const trigger = screen.getByRole("button", { name: MODEL_PICKER_NAME });
     await user.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
@@ -737,7 +741,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: FLASH.id, onModelChange });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     await user.click(screen.getByRole("menuitem", { name: /^模型/ }));
 
     const luna = screen.getByRole("menuitemradio", { name: "gpt-5.6-luna" });
@@ -759,7 +763,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: PRO.id, thinkingLevel: "high" });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
 
     const options = screen.getAllByRole("menuitemradio");
@@ -776,7 +780,7 @@ describe("Composer", () => {
       onThinkingLevelChange,
     });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     await user.click(screen.getByRole("menuitem", { name: /^思考强度/ }));
 
     const options = screen.getAllByRole("menuitemradio");
@@ -800,7 +804,7 @@ describe("Composer", () => {
   it("clamps an out-of-range level onto the model's tiers for display", () => {
     renderComposer({ models: MODELS, model: PRO.id, thinkingLevel: "low" });
     expect(
-      screen.getByRole("button", { name: "模型与思考强度" }),
+      screen.getByRole("button", { name: MODEL_PICKER_NAME }),
     ).toHaveTextContent("deepseek-v4-pro 高");
   });
 
@@ -808,7 +812,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: NO_THINKING.id });
 
-    const trigger = screen.getByRole("button", { name: "模型与思考强度" });
+    const trigger = screen.getByRole("button", { name: MODEL_PICKER_NAME });
     expect(trigger).toHaveTextContent("gpt-4.1-mini");
     await user.click(trigger);
 
@@ -820,7 +824,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: FLASH.id });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     const modelRow = screen.getByRole("menuitem", { name: /^模型/ });
     await user.click(modelRow);
 
@@ -842,7 +846,7 @@ describe("Composer", () => {
     // jsdom reports documentElement.clientWidth 0 → the mobile branch.
     renderComposer({ models: MODELS, model: LUNA.id });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     const levelRow = screen.getByRole("menuitem", { name: /^思考强度/ });
     await user.click(levelRow);
 
@@ -864,7 +868,7 @@ describe("Composer", () => {
     try {
       renderComposer({ models: MODELS, model: LUNA.id });
 
-      await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+      await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
       const levelRow = screen.getByRole("menuitem", { name: /^思考强度/ });
       await user.click(levelRow);
 
@@ -884,7 +888,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, model: FLASH.id });
 
-    await user.click(screen.getByRole("button", { name: "模型与思考强度" }));
+    await user.click(screen.getByRole("button", { name: MODEL_PICKER_NAME }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.click(screen.getByPlaceholderText("有问题，尽管问"));

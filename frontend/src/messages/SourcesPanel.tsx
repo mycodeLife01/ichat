@@ -1,7 +1,12 @@
 import { useState } from "react";
 
 import type { MessageSource } from "../api/types";
-import { iconControl, interactiveItem } from "../ui/classes";
+import {
+  iconControl,
+  interactiveItem,
+  sourceMeta,
+  sourceTitle,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { domainOf } from "./sourceUtils";
 
@@ -47,8 +52,8 @@ export function SourcesPanel({
   const panel = (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center justify-between px-4 pt-3.5 pb-2.5">
-        <div className="text-[14px] font-semibold text-text-primary">
-          来源 <span className="font-normal text-text-faint">· {sources.length}</span>
+        <div className={sourceTitle}>
+          来源 <span className={sourceMeta}>· {sources.length}</span>
         </div>
         <button
           className={`${iconControl} h-7 w-7 max-[760px]:min-h-11 max-[760px]:min-w-11`}
@@ -68,15 +73,15 @@ export function SourcesPanel({
             target="_blank"
             rel="noreferrer"
           >
-            <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
+            <div className={`flex items-center gap-1.5 ${sourceMeta}`}>
               <SourceFavicon url={source.url} size={16} />
               <span className="truncate">{domainOf(source.url)}</span>
             </div>
-            <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-text-primary">
+            <div className={`mt-1 ${sourceTitle}`}>
               {source.title}
             </div>
             {source.snippet && (
-              <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-[1.5] text-text-muted">
+              <div className={`mt-0.5 line-clamp-2 ${sourceMeta}`}>
                 {source.snippet}
               </div>
             )}

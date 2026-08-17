@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState } from "react";
 
-import { focusRing } from "../ui/classes";
+import { focusRing, reasoningCollapsed, reasoningText } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { reasoningPreview } from "./reasoningPreview";
 
@@ -37,10 +37,10 @@ export function ThinkingBlock({
 
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"}${hasContent ? " mb-3.5 py-0.5" : " h-7"} text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
+      className={`thinking${open ? "" : " collapsed"}${hasContent ? " mb-3.5 py-0.5" : " min-h-7"}`}
     >
       <div
-        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail select-none${hasContent ? " py-0.5" : " h-full"}`}
+        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail select-none${hasContent ? " py-0.5" : " min-h-7"}`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -56,7 +56,7 @@ export function ThinkingBlock({
             text left→right (.is-streaming); hovering forces solid black in any
             state — both handled in global.css (.thinking-label). */}
         <span
-          className={`thinking-label min-w-0 truncate text-[16px] leading-[1.6] max-[760px]:text-[17px]${streaming ? " is-streaming" : ""}`}
+          className={`thinking-label min-w-0${streaming ? " is-streaming" : ""} ${reasoningCollapsed}`}
         >
           {headerText}
         </span>
@@ -67,7 +67,7 @@ export function ThinkingBlock({
       </div>
       {hasContent && (
         <div
-          className={`thinking-body mt-1.5 text-[14px] whitespace-pre-wrap text-text-muted max-[760px]:text-[15px]${open ? "" : " hidden"}`}
+          className={`thinking-body mt-1.5${open ? "" : " hidden"} ${reasoningText}`}
         >
           {content}
         </div>

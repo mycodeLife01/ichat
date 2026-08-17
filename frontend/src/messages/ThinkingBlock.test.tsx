@@ -59,7 +59,7 @@ describe("ThinkingBlock", () => {
 
     const body = container.querySelector(".thinking-body");
     expect(body).toBeNull();
-    expect(container.querySelector(".thinking")?.className).toContain("h-7");
+    expect(container.querySelector(".thinking")).toHaveClass("min-h-7");
   });
 
   it("auto-collapses raw reasoning when the formal answer starts", () => {

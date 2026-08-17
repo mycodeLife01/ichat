@@ -389,7 +389,7 @@ describe("Message", () => {
     expect(attachmentRail).toHaveClass("flex", "flex-wrap", "gap-2");
     expect(image).toHaveClass("h-[60px]", "w-14", "rounded-xl");
     expect(file).toHaveClass("w-[320px]", "min-w-[320px]");
-    expect(file.firstElementChild).toHaveClass("h-[60px]");
+    expect(file.firstElementChild).toHaveClass("min-h-[60px]");
     expect(image.compareDocumentPosition(file) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText(/original attachments|replace the original/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /Move attachment|Remove attachment/ })).toBeNull();

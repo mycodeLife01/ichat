@@ -3,7 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { MessageSource } from "../api/types";
-import { focusRing, iconControl, popoverSurface } from "../ui/classes";
+import {
+  focusRing,
+  iconControl,
+  popoverSurface,
+  sourceMeta,
+  sourceTitle,
+} from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { domainOf, siteName } from "./sourceUtils";
 import { SourceFavicon } from "./SourcesPanel";
@@ -76,7 +82,11 @@ export function Citation({ node, sources, isMobile = false }: CitationProps) {
   const place = () => {
     const r = chipRef.current?.getBoundingClientRect();
     if (!r) return;
-    const left = Math.min(Math.max(r.left, MARGIN), window.innerWidth - CARD_WIDTH - MARGIN);
+    const cardWidth = Math.min(CARD_WIDTH, window.innerWidth - MARGIN * 2);
+    const left = Math.min(
+      Math.max(r.left, MARGIN),
+      window.innerWidth - cardWidth - MARGIN,
+    );
     const above = r.bottom + EST_HEIGHT > window.innerHeight && r.top > EST_HEIGHT;
     setCoords(
       above
@@ -105,9 +115,8 @@ export function Citation({ node, sources, isMobile = false }: CitationProps) {
       <button
         ref={chipRef}
         type="button"
-        className={`citation-chip ${focusRing} mx-0.5 inline-flex max-w-[160px] cursor-pointer items-center gap-0.5 rounded-pill border border-border bg-sunken px-1.5 py-px align-middle text-[11px] leading-[1.4] text-text-muted transition-colors duration-[120ms] hover:bg-accent hover:text-accent-foreground ${
-          open ? "bg-accent text-accent-foreground" : ""
-        }`}
+        className={`citation-chip ${focusRing} mx-0.5 inline-flex max-w-[160px] cursor-pointer items-center gap-0.5 rounded-pill border border-border bg-sunken px-1.5 py-px align-middle !whitespace-nowrap transition-colors duration-[120ms] hover:bg-accent hover:text-accent-foreground data-[open=true]:bg-accent data-[open=true]:text-accent-foreground ${sourceMeta}`}
+        data-open={open ? "true" : "false"}
         aria-label={`查看 ${cited.length} 个引用来源`}
         onMouseEnter={
           isMobile
@@ -171,13 +180,13 @@ function CitationCard({
   return createPortal(
     <div
       ref={ref}
-      className={`citation-card ${popoverSurface} fixed z-50 w-[320px] p-3`}
+      className={`citation-card ${popoverSurface} fixed z-50 w-[calc(100vw-16px)] max-w-[320px] p-3`}
       style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
       {total > 1 && (
-        <div className="mb-2 flex items-center justify-between text-[12px] text-text-faint">
+        <div className={`mb-2 flex items-center justify-between ${sourceMeta}`}>
           <span>
             {page + 1}/{total}
           </span>
@@ -209,16 +218,16 @@ function CitationCard({
         target="_blank"
         rel="noreferrer"
       >
-        <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
+        <div className={`flex items-center gap-1.5 ${sourceMeta}`}>
           <SourceFavicon url={current.url} size={16} />
           <span className="truncate">{domainOf(current.url)}</span>
-          {date && <span className="ml-auto shrink-0 text-text-faint">{date}</span>}
+          {date && <span className="ml-auto shrink-0">{date}</span>}
         </div>
-        <div className="mt-1 text-[13.5px] leading-[1.45] font-medium text-text-primary">
+        <div className={`mt-1 ${sourceTitle}`}>
           {current.title}
         </div>
         {current.snippet && (
-          <div className="mt-1 line-clamp-4 text-[12.5px] leading-[1.5] text-text-muted">
+          <div className={`mt-1 line-clamp-4 ${sourceMeta}`}>
             {current.snippet}
           </div>
         )}

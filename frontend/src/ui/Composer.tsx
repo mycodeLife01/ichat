@@ -19,11 +19,20 @@ import {
   type ThinkingLevel,
 } from "../runs/thinkingLevel";
 import {
+  chatControlLabel,
+  composerMenuItem,
+  composerMenuValue,
+  composerMode,
   composerSurface,
+  composerText,
+  controlText,
   focusRing,
+  metaText,
   neutralMenuItem,
   popoverSurface,
   primaryButton,
+  surfaceTitle,
+  uiLabel,
 } from "./classes";
 import { Icons } from "./icons";
 
@@ -62,7 +71,7 @@ type ComposerProps = {
 // ChatGPT lets the prompt occupy up to 30% of the viewport before scrolling.
 // Once it reaches that ceiling, the prompt takes a full-width row and the
 // controls move into a footer row instead of floating beside the text.
-const PROMPT_MAX_HEIGHT = "max(30svh, 5rem)";
+const PROMPT_MAX_HEIGHT = "max(30svh, 75px)";
 const PROMPT_MAX_VIEWPORT_RATIO = 0.3;
 const PROMPT_MIN_MAX_HEIGHT = 80;
 
@@ -80,11 +89,13 @@ const composerToolTarget =
 // feedback is background/color only.
 const composerPill =
   `${composerToolTarget} inline-flex items-center gap-1.5 rounded-pill border px-2.5 ` +
-  `text-[13px] font-medium ${focusRing} ` +
+  `${composerMode} ${focusRing} ` +
   "transition-[background,color,border-color] duration-[120ms] " +
   "disabled:cursor-not-allowed disabled:opacity-50";
-const composerPillIdle =
+const composerToolIdle =
   "border-transparent bg-transparent text-text-muted hover:bg-hover hover:text-text-primary";
+const composerModeIdle =
+  "border-transparent bg-transparent hover:bg-hover hover:text-type-primary";
 // Send and stop share ChatGPT's primary composer action. State is expressed
 // through the icon plus the accessible name; disabled swaps to the reference
 // neutral palette while preserving native behavior and a not-allowed cursor.
@@ -102,9 +113,14 @@ const composerPrimaryAction =
 // through the outline without leaving a filled row behind.
 const toolsMenuItem =
   `mx-1.5 flex min-h-9 !w-[calc(100%-12px)] items-center gap-2.5 whitespace-nowrap ` +
-  `rounded-[10px] bg-transparent !px-2.5 text-left text-[14px] font-normal !leading-5 ` +
-  `text-text-primary ${focusRing} transition-[background,color] duration-[120ms] ` +
-  "hover:bg-hover disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent";
+  `group rounded-[10px] bg-transparent !px-2.5 text-left ${composerMenuItem} ` +
+  `${focusRing} transition-[background,color] duration-[120ms] ` +
+  "hover:bg-hover disabled:cursor-not-allowed disabled:text-type-disabled disabled:hover:bg-transparent";
+
+// The shared menu primitive still carries the pre-migration line-height used
+// by ticket 04 surfaces. Composer opts only its own picker rows into 14 / 20.
+const composerPickerItem =
+  `${neutralMenuItem} ${composerMenuItem} !leading-5 disabled:text-type-disabled`;
 
 // The picker popover is a fixed-width panel, so its footprint never shifts
 // with the length of a model name. The model row unfolds its options as an
@@ -419,7 +435,7 @@ export function Composer({
       key={option.value}
       role="menuitemradio"
       aria-checked={option.value === effectiveLevel}
-      className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
+      className={`${composerPickerItem} justify-between gap-4 max-[760px]:min-h-11`}
       type="button"
       onClick={() => {
         onThinkingLevelChange(option.value);
@@ -427,7 +443,9 @@ export function Composer({
       }}
     >
       <span>{option.label}</span>
-      {option.value === effectiveLevel && <Icons.Check size={14} />}
+      {option.value === effectiveLevel && (
+        <Icons.Check size={14} className="text-text-primary" />
+      )}
     </button>
   ));
 
@@ -435,6 +453,15 @@ export function Composer({
     (attachment) => (attachment.file?.category ?? attachment.category) !== "image",
   );
   const hasMixedAttachmentKinds = hasImageAttachments && hasNonImageAttachments;
+  const pickerAccessibleValue = [
+    selectedModel?.label,
+    levelOptions.length > 0 ? levelLabel : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const pickerAccessibleLabel = pickerAccessibleValue
+    ? `模型与思考强度：${pickerAccessibleValue}`
+    : "模型与思考强度";
 
   return (
     <div className="composer-wrap pointer-events-auto px-8 pb-[23px] max-[760px]:px-4 max-[760px]:pb-[max(17px,env(safe-area-inset-bottom))]">
@@ -491,7 +518,7 @@ export function Composer({
         >
           <textarea
             ref={ref}
-            className={`m-0 block min-h-[25px] min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent p-0 text-[16px] leading-[1.55] text-text-primary outline-none placeholder:text-text-faint [scrollbar-width:thin] max-[760px]:text-[17px] ${
+            className={`m-0 block min-h-[25px] min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent p-0 outline-none [scrollbar-width:thin] ${composerText} ${
               promptExpanded ? "py-4" : ""
             }`}
             value={value}
@@ -541,7 +568,7 @@ export function Composer({
                 className={`${composerToolTarget} inline-flex w-9 items-center justify-center rounded-pill border ${focusRing} transition-[background,color,border-color] duration-[120ms] ${
                   toolsOpen
                     ? "border-transparent bg-hover text-text-primary"
-                    : composerPillIdle
+                    : composerToolIdle
                 }`}
                 type="button"
                 aria-label="添加文件等"
@@ -574,12 +601,15 @@ export function Composer({
                         fileInputRef.current?.click();
                       }}
                     >
-                      <Icons.Paperclip size={20} className="shrink-0" />
+                      <Icons.Paperclip
+                        size={20}
+                        className="shrink-0 text-text-primary group-disabled:text-text-faint"
+                      />
                       <span className="flex min-w-0 items-baseline gap-3 text-left">
-                        <span className="shrink-0 text-[14px] text-text-primary">
+                        <span className="shrink-0">
                           添加照片和文件
                         </span>
-                        <span className="truncate text-[14px] font-normal text-text-muted">
+                        <span className={composerMenuValue}>
                           从电脑上传
                         </span>
                       </span>
@@ -601,15 +631,15 @@ export function Composer({
                       className="shrink-0 text-search-foreground"
                     />
                     <span className="flex min-w-0 flex-1 items-baseline gap-3 text-left">
-                      <span className="shrink-0 text-[14px] text-text-primary">网页搜索</span>
-                      <span className="truncate text-[14px] font-normal text-text-muted">
+                      <span className="shrink-0">网页搜索</span>
+                      <span className={composerMenuValue}>
                         查找实时新闻和信息
                       </span>
                     </span>
                     {webSearchEnabled ? (
                       <Icons.Check size={16} className="shrink-0 text-text-primary" />
                     ) : (
-                      <span className="shrink-0 text-[13px] leading-5 text-text-muted">已关闭</span>
+                      <span className={`${composerMenuValue} shrink-0`}>已关闭</span>
                     )}
                   </button>
                 </div>
@@ -624,21 +654,24 @@ export function Composer({
             {pickerLabel !== "" && (
               <div className="relative" ref={pickerRef}>
                 <button
-                  className={`${composerPill} ${composerPillIdle}`}
+                  className={`${composerPill} ${composerModeIdle} group max-w-[min(50vw,320px)]`}
                   type="button"
-                  aria-label="模型与思考强度"
+                  aria-label={pickerAccessibleLabel}
                   aria-haspopup="menu"
                   aria-expanded={pickerOpen}
                   onClick={togglePicker}
                 >
-                  <span>{pickerLabel}</span>
-                  <Icons.Chevron size={14} />
+                  <span className="min-w-0 truncate">{pickerLabel}</span>
+                  <Icons.Chevron
+                    size={14}
+                    className="shrink-0 text-text-muted group-hover:text-text-primary"
+                  />
                 </button>
                 {pickerOpen && (
                   <div
                     role="menu"
                     aria-label="模型与思考强度"
-                    className={`absolute right-0 bottom-[calc(100%+6px)] z-10 w-[248px] p-1.5 ${popoverSurface}`}
+                    className={`absolute right-0 bottom-[calc(100%+6px)] z-10 w-[248px] p-1.5 max-[760px]:-right-10 ${popoverSurface}`}
                   >
                     {models.length > 0 && (
                       <div className="relative">
@@ -646,21 +679,18 @@ export function Composer({
                           role="menuitem"
                           aria-haspopup="menu"
                           aria-expanded={openSubmenu === "model"}
-                          className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
+                          className={`${composerPickerItem} justify-between gap-4 max-[760px]:min-h-11`}
                           type="button"
                           onClick={() => toggleSubmenu("model")}
                         >
                           <span>模型</span>
-                          <span className="inline-flex min-w-0 items-center gap-1 text-text-muted">
-                            {/* leading-normal: the menu item's leading-none
-                                paints descenders outside the line box, and
-                                truncate's overflow-hidden would clip them. */}
-                            <span className="truncate leading-normal">
+                          <span className={`inline-flex items-center gap-1 ${composerMenuValue}`}>
+                            <span className="truncate">
                               {selectedModel?.label ?? ""}
                             </span>
                             <Icons.Chevron
                               size={14}
-                              className={`shrink-0 transition-transform duration-[160ms]${
+                              className={`shrink-0 text-text-muted transition-transform duration-[160ms]${
                                 openSubmenu === "model" ? "" : " -rotate-90"
                               }`}
                             />
@@ -673,7 +703,7 @@ export function Composer({
                                 key={entry.id}
                                 role="menuitemradio"
                                 aria-checked={entry.id === selectedModel?.id}
-                                className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
+                                className={`${composerPickerItem} justify-between gap-4 max-[760px]:min-h-11`}
                                 type="button"
                                 disabled={
                                   (imageContext?.state === "vision_required" &&
@@ -702,11 +732,11 @@ export function Composer({
                                   setOpenSubmenu(null);
                                 }}
                               >
-                                <span className="min-w-0 truncate leading-normal">
+                                <span className="min-w-0 truncate">
                                   {entry.label}
                                 </span>
                                 {entry.id === selectedModel?.id && (
-                                  <Icons.Check size={14} className="shrink-0" />
+                                  <Icons.Check size={14} className="shrink-0 text-text-primary" />
                                 )}
                               </button>
                             ))}
@@ -728,16 +758,16 @@ export function Composer({
                           role="menuitem"
                           aria-haspopup="menu"
                           aria-expanded={openSubmenu === "level"}
-                          className={`${neutralMenuItem} justify-between gap-4 max-[760px]:min-h-11`}
+                          className={`${composerPickerItem} justify-between gap-4 max-[760px]:min-h-11`}
                           type="button"
                           onClick={() => toggleSubmenu("level")}
                         >
                           <span>思考强度</span>
-                          <span className="inline-flex items-center gap-1 text-text-muted">
+                          <span className={`inline-flex items-center gap-1 ${composerMenuValue}`}>
                             <span>{levelLabel}</span>
                             <Icons.Chevron
                               size={14}
-                              className={`shrink-0 transition-transform duration-[160ms]${
+                              className={`shrink-0 text-text-muted transition-transform duration-[160ms]${
                                 openSubmenu === "level" && levelInline
                                   ? " rotate-180"
                                   : " -rotate-90"
@@ -804,10 +834,10 @@ export function Composer({
           aria-label={pendingModelId ? "Image draft options" : "当前模型不支持图片上传"}
         >
           <div className="w-full max-w-[420px] rounded-2xl border border-border bg-surface p-5 shadow-popover">
-            <h2 className="text-[16px] font-semibold text-text-primary">
+            <h2 className={surfaceTitle}>
               {pendingModelId ? "Remove images before switching models?" : "当前模型不支持图片上传"}
             </h2>
-            <p className="mt-2 text-[13px] leading-5 text-text-muted">
+            <p className={`mt-2 ${metaText}`}>
               {pendingModelId
                 ? "Your image draft will stay available until you choose how to continue."
                 : "请切换至GPT模型以继续"}
@@ -817,14 +847,14 @@ export function Composer({
                 <>
                   <button
                     type="button"
-                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-primary hover:bg-hover"
+                    className={`rounded-control border border-border px-3 py-2 hover:bg-hover ${controlText}`}
                     onClick={() => setPendingModelId(null)}
                   >
                     Continue with GPT
                   </button>
                   <button
                     type="button"
-                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-primary hover:bg-hover"
+                    className={`rounded-control border border-border px-3 py-2 hover:bg-hover ${controlText}`}
                     disabled={removingImages || !onRemoveImages}
                     onClick={() => {
                       const target = pendingModelId;
@@ -847,7 +877,7 @@ export function Composer({
                   </button>
                   <button
                     type="button"
-                    className="rounded-control border border-border px-3 py-2 text-[13px] text-text-muted hover:bg-hover"
+                    className={`rounded-control border border-border px-3 py-2 hover:bg-hover ${composerMenuValue}`}
                     onClick={() => setPendingModelId(null)}
                   >
                     Cancel
@@ -856,7 +886,7 @@ export function Composer({
               ) : (
                 <button
                   type="button"
-                  className={`${primaryButton} h-9 px-3.5 text-[13px] font-medium`}
+                  className={`${primaryButton} h-9 px-3.5 ${chatControlLabel}`}
                   onClick={() => setBlockedFiles(null)}
                 >
                   确认
@@ -879,8 +909,8 @@ export function Composer({
                   <Icons.Upload size={24} />
                 </span>
                 <div>
-                  <p className="text-[16px] font-semibold leading-6">松开即可上传</p>
-                  <p className="mt-0.5 text-[13px] leading-5 text-text-muted">添加照片和文件</p>
+                  <p className={uiLabel}>松开即可上传</p>
+                  <p className={`mt-0.5 ${metaText}`}>添加照片和文件</p>
                 </div>
               </div>
             </div>

@@ -17,6 +17,11 @@ import {
   X,
 } from "lucide-react";
 
+import {
+  attachmentMeta,
+  attachmentTitle,
+  semanticStatusMeta,
+} from "../ui/classes";
 import type { FileReadRole } from "./types";
 import {
   attachmentWarnings,
@@ -409,7 +414,9 @@ export function AttachmentCard({
               </span>
             )}
             {failed && (
-              <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-[11px] text-white">
+              <span
+                className={`absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-white ${semanticStatusMeta}`}
+              >
                 上传失败
               </span>
             )}
@@ -483,7 +490,7 @@ export function AttachmentCard({
         className="group/attachment relative w-[320px] min-w-[320px] text-left max-[760px]:w-[240px] max-[760px]:min-w-[240px]"
         data-attachment-status={draft?.status ?? "bound"}
       >
-        <div className="relative h-[60px]">
+        <div className="relative min-h-[60px]">
           <button
             type="button"
             className="absolute inset-0 grid rounded-[18px] border border-border bg-surface text-left transition-colors duration-[120ms] enabled:hover:bg-hover disabled:cursor-default"
@@ -491,7 +498,7 @@ export function AttachmentCard({
             disabled={!canRead}
             onClick={() => void read(readRole)}
           />
-          <div className="pointer-events-none relative z-[1] flex h-full min-w-0 items-center gap-2 p-2.5">
+          <div className="pointer-events-none relative z-[1] flex min-h-[60px] min-w-0 items-center gap-2 p-2.5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" aria-hidden="true">
               <AttachmentTypeIcon
                 name={name}
@@ -500,16 +507,18 @@ export function AttachmentCard({
               />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-semibold leading-5 text-text-primary">
+              <span className={`block ${attachmentTitle}`}>
                 {name}
               </span>
               <span
-                className={`flex min-w-0 items-center gap-1 truncate text-[14px] leading-5 ${
-                  failed ? "text-error-foreground" : "text-text-muted"
+                className={`flex min-w-0 items-start gap-1 ${
+                  failed
+                    ? `${semanticStatusMeta} text-error-foreground`
+                    : attachmentMeta
                 }`}
               >
-                {failed && <AlertCircle className="shrink-0" size={13} />}
-                <span className="truncate">{readError ?? compactStatus}</span>
+                {failed && <AlertCircle className="mt-px shrink-0" size={13} />}
+                <span className="min-w-0">{readError ?? compactStatus}</span>
               </span>
             </span>
           </div>
@@ -558,14 +567,16 @@ export function AttachmentCard({
           {isImage ? <ImageIcon size={18} /> : <FileText size={18} />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium text-text-primary">{file?.name ?? draft?.name}</p>
-          <p className="mt-0.5 text-[11.5px] text-text-muted">
+          <p className={attachmentTitle}>{file?.name ?? draft?.name}</p>
+          <p className={`mt-0.5 ${attachmentMeta}`}>
             {file?.media_type ?? draft?.media_type} · {formatBytes(file?.size_bytes ?? draft?.size_bytes ?? 0)}
           </p>
           {draft && (
             <p
-              className={`mt-1 flex items-center gap-1 text-[11.5px] ${
-                failed ? "text-error-foreground" : "text-text-muted"
+              className={`mt-1 flex items-center gap-1 ${
+                failed
+                  ? `${semanticStatusMeta} text-error-foreground`
+                  : attachmentMeta
               }`}
             >
               {progress && <LoaderCircle className="animate-spin" size={12} aria-hidden="true" />}
@@ -574,21 +585,25 @@ export function AttachmentCard({
             </p>
           )}
           {failed && (
-            <p className="mt-1 text-[11.5px] text-error-foreground">
+            <p className={`mt-1 text-error-foreground ${semanticStatusMeta}`}>
               {draft.error_message ?? errorLabel(draft.error_code)}
             </p>
           )}
           {file && file.model_input_kind === null && (
-            <p className="mt-1 text-[11.5px] text-text-muted">
+            <p className={`mt-1 ${attachmentMeta}`}>
               File available for download — the model cannot read its contents.
             </p>
           )}
           {warning.map((item) => (
-            <p key={item} className="mt-1 text-[11.5px] text-warning-foreground">
+            <p key={item} className={`mt-1 text-warning-foreground ${semanticStatusMeta}`}>
               {warningLabel(item)}
             </p>
           ))}
-          {readError && <p className="mt-1 text-[11.5px] text-error-foreground">{readError}</p>}
+          {readError && (
+            <p className={`mt-1 text-error-foreground ${semanticStatusMeta}`}>
+              {readError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -729,7 +744,7 @@ function CardTextButton({
   return (
     <button
       type="button"
-      className="inline-flex h-7 items-center gap-1 rounded-control border border-border px-2 text-[11.5px] text-text-muted hover:bg-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+      className={`inline-flex h-7 items-center gap-1 rounded-control border border-border px-2 hover:bg-hover hover:text-type-primary disabled:cursor-wait disabled:opacity-60 ${attachmentMeta}`}
       aria-label={label}
       disabled={loading}
       onClick={onClick}

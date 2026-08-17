@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { iconControl } from "../ui/classes";
+import { iconControl, messageActionHint } from "../ui/classes";
 
 type MessageActionProps = {
   // Accessible name of the action and the text shown in the hover dropdown.
@@ -56,7 +56,9 @@ export function MessageAction({
         {icon}
       </button>
       {showTip && (
-        <span className="pointer-events-none absolute top-[calc(100%+4px)] left-1/2 z-20 [transform:translateX(-50%)] rounded-detail bg-accent px-2 py-[3px] text-[11.5px] leading-[1.4] whitespace-nowrap text-accent-foreground">
+        <span
+          className={`pointer-events-none absolute top-[calc(100%+4px)] left-1/2 z-20 [transform:translateX(-50%)] rounded-detail bg-accent px-2 py-[3px] whitespace-nowrap text-accent-foreground ${messageActionHint}`}
+        >
           {tip}
         </span>
       )}

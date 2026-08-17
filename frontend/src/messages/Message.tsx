@@ -5,13 +5,19 @@ import { AttachmentCard } from "../files/AttachmentCard";
 import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
 import {
-  buttonControl,
   assistantContentColumn,
+  buttonControl,
+  chatControlLabel,
   focusRing,
+  messageActionSecondary,
+  messageActionText,
   messageBubble,
-  mobileActionItem,
+  metaText,
   neutralMenuItem,
   primaryButton,
+  semanticStatus,
+  sourceMeta,
+  userMessageText,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
@@ -165,7 +171,7 @@ export function Message({
   const sheetActions = (afterAction: () => void) => (
     <>
       <button
-        className={`${neutralMenuItem} ${mobileActionItem}`}
+        className={`${neutralMenuItem} min-h-11 gap-3 px-5 ${messageActionText} !leading-5`}
         data-variant="neutral"
         onClick={() => {
           copy(message.content);
@@ -176,7 +182,7 @@ export function Message({
         复制
       </button>
       <button
-        className={`${neutralMenuItem} ${mobileActionItem}`}
+        className={`${neutralMenuItem} min-h-11 gap-3 px-5 ${messageActionText} !leading-5`}
         data-variant="neutral"
         disabled={disabled}
         title={mutateDisabledReason ?? undefined}
@@ -192,7 +198,7 @@ export function Message({
       {mutateDisabledReason && (
         <p
           id={disabledReasonId}
-          className="px-5 pt-1 pb-2 text-[13px] leading-5 text-text-muted"
+          className={`px-5 pt-1 pb-2 ${metaText}`}
         >
           {mutateDisabledReason}
         </p>
@@ -301,7 +307,7 @@ export function Message({
             <textarea
               autoFocus
               ref={editRef}
-              className="block min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[16px] leading-6 text-text-primary outline-none"
+              className={`block min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none ${userMessageText}`}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -315,13 +321,13 @@ export function Message({
           </div>
           <div className="flex flex-wrap justify-end gap-2 px-2 pt-2">
             <button
-              className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 text-[14px] font-medium leading-5 hover:bg-hover`}
+              className={`${buttonControl} h-9 rounded-full border border-border-strong bg-surface px-3 hover:bg-hover ${messageActionText}`}
               onClick={cancel}
             >
               取消
             </button>
             <button
-              className={`${primaryButton} h-9 rounded-full px-[13px] text-[14px] font-medium leading-5`}
+              className={`${primaryButton} h-9 rounded-full px-[13px] ${chatControlLabel}`}
               onClick={save}
               disabled={draft.trim() === "" && !hasMessageModelInput}
             >
@@ -344,21 +350,21 @@ export function Message({
         <div className="flex w-full flex-col items-end gap-1">
           {legacyUpgradeAvailable && (
             <div
-              className="w-full max-w-[70%] rounded-xl border border-warning-border bg-warning-soft px-3 py-2 text-left text-[13px] text-warning-foreground"
+              className={`w-full max-w-[70%] rounded-xl border border-warning-border bg-warning-soft px-3 py-2 text-left text-warning-foreground ${semanticStatus}`}
               data-testid="legacy-image-upgrade"
             >
               <p>Upgrade this image message with a vision model to ask questions about it.</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  className={`rounded-control border border-warning-border px-2.5 py-1 hover:bg-warning-soft ${semanticStatus}`}
                   onClick={() => onUpgradeLegacy?.(message.id)}
                 >
                   Upgrade with GPT
                 </button>
                 <button
                   type="button"
-                  className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                  className={`rounded-control border border-warning-border px-2.5 py-1 hover:bg-warning-soft ${semanticStatus}`}
                   onClick={editAndUpgradeLegacy}
                 >
                   编辑并升级
@@ -366,7 +372,7 @@ export function Message({
                 {onStartNewConversation && (
                   <button
                     type="button"
-                    className="rounded-control border border-warning-border px-2.5 py-1 text-[12px] font-medium hover:bg-warning-soft"
+                    className={`rounded-control border border-warning-border px-2.5 py-1 hover:bg-warning-soft ${semanticStatus}`}
                     onClick={onStartNewConversation}
                   >
                     Start new conversation
@@ -402,7 +408,7 @@ export function Message({
               <div className="relative">
                 <div
                   ref={contentRef}
-                  className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
+                  className="min-w-0 max-w-full"
                   style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
                 >
                   {message.content}
@@ -414,7 +420,7 @@ export function Message({
               </div>
               {overflowing && (
                 <button
-                  className="mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[13px] font-medium text-text-muted transition-colors duration-[120ms] hover:text-text-primary"
+                  className={`mt-1.5 inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 transition-colors duration-[120ms] hover:text-type-primary ${messageActionSecondary}`}
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => setExpanded(!expanded)}
@@ -468,7 +474,7 @@ export function SourcesTrigger({
 }) {
   return (
     <button
-      className={`${focusRing} mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-pill border border-border bg-sunken py-1 pr-3 pl-1.5 text-[12.5px] text-text-muted transition-colors duration-[120ms] hover:bg-hover hover:text-text-primary max-[760px]:min-h-11`}
+      className={`${focusRing} mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-pill border border-border bg-sunken py-1 pr-3 pl-1.5 !whitespace-nowrap transition-colors duration-[120ms] hover:bg-hover hover:text-type-primary max-[760px]:min-h-11 ${sourceMeta}`}
       type="button"
       aria-label={`查看 ${sources.length} 个来源`}
       onClick={onClick}

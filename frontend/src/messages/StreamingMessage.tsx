@@ -1,5 +1,5 @@
 import type { ActiveRunState } from "../runs/state";
-import { assistantContentColumn } from "../ui/classes";
+import { assistantContentColumn, runStatusText } from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { reasoningPreview } from "./reasoningPreview";
@@ -52,7 +52,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
         {/* Failures remain in message context as a persistent alert. Cancelled
             runs keep any partial formal answer without an extra status block. */}
         {run?.status === "failed" && (
-          <InlineStatus tone="error" className="mt-2 w-fit">
+          <InlineStatus tone="error" className={`mt-2 w-fit ${runStatusText}`}>
             生成失败 · 请稍后重试
           </InlineStatus>
         )}
