@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Design tokens — warm-neutral light theme, ported from chatapp_demo. */
+/* Design tokens — ChatGPT light surfaces sampled in Chrome on 2026-08-17. */
 @theme {
   /* The app's base font-size is 15px (html), which would shrink every
      rem-derived utility by 15/16. Pin the scales to the px values the
@@ -33,13 +33,13 @@
   --default-transition-timing-function: ease;
 
   /* Neutral surfaces and text. Hover and active are transient; selected is persistent. */
-  --color-canvas: #fbfbfa;
-  --color-sidebar: #f4f3f0;
+  --color-canvas: #fcfcfc;
+  --color-sidebar: #fcfcfc;
   --color-surface: #ffffff;
-  --color-sunken: #f4f3f0;
-  --color-hover: rgba(20, 20, 19, 0.04);
-  --color-active: rgba(20, 20, 19, 0.1);
-  --color-selected: rgba(20, 20, 19, 0.07);
+  --color-sunken: #f9f9f9;
+  --color-hover: #00000012;
+  --color-active: #0000001a;
+  --color-selected: #0000000d;
   --color-text-primary: #1a1a19;
   --color-text-muted: #6b6a66;
   --color-text-faint: #b8b6b0;
@@ -73,7 +73,7 @@
 
   /* Tone families expose foreground, soft surface, and border roles. */
   --color-neutral-foreground: #6b6a66;
-  --color-neutral-soft: #f4f3f0;
+  --color-neutral-soft: var(--color-sunken);
   --color-neutral-border: rgba(20, 20, 19, 0.12);
 
   --color-success-foreground: #39734a;
@@ -211,11 +211,11 @@
 :root {
   --reading-width: 820px;
   --assistant-content-width: 768px;
-  --sidebar-width: 280px;
+  --sidebar-width: 260px;
   /* Collapsed sidebar rail: new chat / recent chats / account only. */
   --sidebar-rail-width: 52px;
-  --scrollbar-thumb: rgba(20, 20, 19, 0.18);
-  --scrollbar-thumb-hover: rgba(20, 20, 19, 0.32);
+  --scrollbar-thumb: #0000001a;
+  --scrollbar-thumb-hover: #0003;
 }
 
 .app {
@@ -654,8 +654,6 @@ body {
   overscroll-behavior-inline: contain;
 }
 
-.assistant-markdown .code-block-viewport::-webkit-scrollbar { height: 15.6667px; }
-
 .assistant-markdown .code-block-plain .code-block-viewport {
   box-sizing: border-box;
   width: calc(100% - 44px);
@@ -946,8 +944,6 @@ body {
   overflow-x: hidden;
 }
 
-.thread-region::-webkit-scrollbar { width: 15.6667px; }
-
 /* The Composer lives in the same scrollport as the thread. Its sticky footer
    therefore lets message content continue behind the controls, while this
    masked backdrop keeps the final 32px transition readable. */
@@ -960,7 +956,7 @@ body {
   z-index: -1;
   pointer-events: none;
   content: "";
-  background: rgb(251 251 250 / 80%);
+  background: rgb(252 252 252 / 80%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 32px, black 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black 32px, black 100%);
 }
@@ -1004,7 +1000,7 @@ body {
     background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .scroll-to-bottom-button:hover {
-  background: rgb(244 243 240 / 75%);
+  background: rgb(249 249 249 / 75%);
 }
 .scroll-to-bottom-button:focus-visible {
   outline: 2px solid var(--color-focus-ring);
@@ -1064,39 +1060,14 @@ body {
   background: linear-gradient(to bottom, transparent, var(--color-surface));
 }
 
-/* Global scrollbar styling (pseudo-elements stay as handwritten CSS).
-   The standard properties are scoped to Firefox only: in Chromium, setting
-   scrollbar-width/scrollbar-color disables ALL ::-webkit-scrollbar-* styling,
-   which would bring back the native scrollbar (arrow buttons included). */
-@supports not selector(::-webkit-scrollbar) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
-  }
+/* ChatGPT leaves visible scrollbars at the browser's native width and colors
+   the transparent track through the standard property. Chromium then renders
+   the same 15px Windows lane without custom WebKit arrows or geometry. */
+* {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-/* Remove the up/down arrow buttons (visible on Windows). */
-::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 99px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-  border: 2px solid transparent;
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover) transparent;
 }
 
 /* Horizontal attachment rails remain touch/trackpad scrollable without

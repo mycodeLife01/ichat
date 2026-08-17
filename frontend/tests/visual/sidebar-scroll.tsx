@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { ConversationResponse } from "../../src/api/types";
 import { Sidebar } from "../../src/conversations/Sidebar";
 import "../../src/styles/global.css";
+import { cardSurface } from "../../src/ui/classes";
 
 const items: ConversationResponse[] = Array.from({ length: 30 }, (_, index) => {
   const timestamp = new Date(Date.UTC(2026, 7, 16, 12, 0, 0) - index * 60_000).toISOString();
@@ -51,6 +52,8 @@ createRoot(root).render(
       onToggleCollapsed={() => undefined}
       onCloseMobile={() => undefined}
     />
-    <main className="min-w-0 flex-1 bg-canvas" aria-label="滚动条视觉验收画布" />
+    <main className="min-w-0 flex-1 bg-canvas" aria-label="滚动条视觉验收画布">
+      <section className={`m-8 h-24 w-64 ${cardSurface}`} data-testid="card-surface" />
+    </main>
   </div>,
 );

@@ -370,7 +370,7 @@ export function AccountCard({
                 )}
               </section>
 
-              <div className="divide-y divide-border border-y border-border">
+              <div>
                 <div className="flex items-center gap-3 px-1 py-3.5">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-sunken text-text-muted">
                     <UserRound size={14} />

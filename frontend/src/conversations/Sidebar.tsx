@@ -210,7 +210,7 @@ export function Sidebar({
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
-  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg"];
+  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-sidebar"];
   if (isMobile) {
     sidebarClasses.push(
       "fixed inset-y-0 left-0 z-30 w-[var(--sidebar-width)] max-w-[calc(100vw-44px)] border-r border-border " +
@@ -467,10 +467,8 @@ export function Sidebar({
           }`}
         >
           <div
-            className={`flex h-full flex-col px-2.5 pb-2.5 ${
-              isMobile
-                ? "w-full pt-3"
-                : "w-[var(--sidebar-width)] pt-2"
+            className={`flex h-full flex-col px-2.5 ${
+              isMobile ? "w-full pb-2.5" : "w-[var(--sidebar-width)]"
             }`}
           >
             {/* The panel never moves. It stays fully opaque while the shell's
@@ -490,56 +488,66 @@ export function Sidebar({
               aria-hidden={railCollapsed ? "true" : undefined}
               inert={railCollapsed ? true : undefined}
             >
-              <div
-                className={`flex items-center justify-between px-2 ${
-                  isMobile ? "pb-3.5" : "mb-4 h-9"
-                }`}
-              >
-                <Wordmark size={isMobile ? 20 : 18} />
-                {!isMobile && (
-                  <button
-                    className={`${iconControl} h-9 w-9`}
-                    aria-label="收起侧栏"
-                    onClick={onToggleCollapsed}
-                  >
-                    <Icons.PanelLeft size={20} />
-                  </button>
-                )}
-              </div>
-
-              <button
-                className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
-                onClick={() => {
-                  onNew();
-                  if (isMobile) onCloseMobile();
-                }}
-              >
-                <Icons.NewChat size={20} />
-                新建对话
-              </button>
-
-              {/* -mr-2.5/pr-2.5 cancel the parent's horizontal padding so the scrollbar sits flush
-                  against the sidebar's right border; rows keep their position. */}
+              {/* ChatGPT keeps the whole navigation column in one scrollport.
+                  The sticky controls remain fixed while its scrollbar starts at
+                  the very top of the sidebar. The negative end margin keeps the
+                  native scrollbar lane flush with the sidebar edge. */}
               <div
                 ref={historyRef}
-                className="mt-5 -mr-2.5 flex flex-1 flex-col overflow-y-auto pr-2.5"
+                className="-mr-2.5 flex min-h-0 flex-1 flex-col overflow-y-auto pr-2.5"
                 data-testid="conversation-history"
                 onScroll={handleHistoryScroll}
               >
-                <div className={sectionLabel}>聊天</div>
-                {items.map((c) =>
-                  renderRow(c, { renderDesktopMenu: !railCollapsed }),
-                )}
-                {items.length === 0 && (
-                  <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                    还没有已保存的对话。开始一次对话后会自动出现在这里。
-                  </div>
-                )}
-                {isLoadingMore && (
-                  <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
-                    正在加载...
-                  </div>
-                )}
+                <div
+                  className={`sticky top-0 z-20 flex shrink-0 items-center justify-between bg-sidebar px-2 ${
+                    isMobile ? "pt-3 pb-3.5" : "h-13"
+                  }`}
+                >
+                  <Wordmark size={isMobile ? 20 : 18} />
+                  {!isMobile && (
+                    <button
+                      className={`${iconControl} h-9 w-9`}
+                      aria-label="收起侧栏"
+                      onClick={onToggleCollapsed}
+                    >
+                      <Icons.PanelLeft size={20} />
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  className={`sticky z-20 shrink-0 bg-sidebar ${
+                    isMobile ? "top-[46px]" : "top-13 pt-2"
+                  }`}
+                >
+                  <button
+                    className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`}
+                    onClick={() => {
+                      onNew();
+                      if (isMobile) onCloseMobile();
+                    }}
+                  >
+                    <Icons.NewChat size={20} />
+                    新建对话
+                  </button>
+                </div>
+
+                <div className="mt-5 flex flex-col">
+                  <div className={sectionLabel}>聊天</div>
+                  {items.map((c) =>
+                    renderRow(c, { renderDesktopMenu: !railCollapsed }),
+                  )}
+                  {items.length === 0 && (
+                    <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+                      还没有已保存的对话。开始一次对话后会自动出现在这里。
+                    </div>
+                  )}
+                  {isLoadingMore && (
+                    <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+                      正在加载...
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -548,7 +556,7 @@ export function Sidebar({
 
           {!isMobile && (
             <div
-              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-bg px-1.5 pt-2 pb-2.5 transition-opacity ease-linear motion-reduce:transition-none ${
+              className={`absolute inset-y-0 left-0 z-10 flex w-[var(--sidebar-rail-width)] flex-col items-center bg-sidebar px-1.5 pt-2 pb-2.5 transition-opacity ease-linear motion-reduce:transition-none ${
                 railCollapsed
                   ? "pointer-events-auto opacity-100 duration-[110ms] delay-[110ms]"
                   : "pointer-events-none opacity-0 duration-[90ms] delay-0"

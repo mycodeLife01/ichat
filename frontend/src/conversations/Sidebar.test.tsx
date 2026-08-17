@@ -173,9 +173,32 @@ describe("Sidebar", () => {
     const props = baseProps();
     const { rerender } = render(<Sidebar {...props} />);
     const accountTrigger = screen.getByRole("button", { name: "打开个人中心" });
+    const accountRegion = accountTrigger.parentElement;
+    const desktopPanel = accountRegion?.parentElement;
     const historyPanel = screen.getByTestId("conversation-history").parentElement;
+    const history = screen.getByTestId("conversation-history");
 
+    expect(accountRegion).toHaveClass(
+      "-mx-2.5",
+      "border-t",
+      "border-border",
+      "px-1.5",
+      "pt-2",
+      "pb-1.5",
+    );
+    expect(accountRegion).not.toHaveClass("mt-2");
+    expect(accountTrigger).toHaveClass(
+      "h-13",
+      "w-full",
+      "gap-2",
+      "pl-2",
+      "pr-2.5",
+    );
+    expect(desktopPanel).not.toHaveClass("pb-2.5");
     expect(historyPanel).toHaveClass("opacity-100");
+    expect(history).toHaveClass("overflow-y-auto");
+    expect(history).toContainElement(screen.getByRole("button", { name: "收起侧栏" }));
+    expect(history).toContainElement(screen.getByRole("button", { name: "新建对话" }));
     expect(historyPanel).not.toHaveClass("blur-[1px]");
     expect(document.querySelector('button[aria-label="展开侧栏"]')?.parentElement).toHaveClass(
       "ease-linear",
@@ -185,7 +208,7 @@ describe("Sidebar", () => {
     rerender(<Sidebar {...props} collapsed />);
 
     expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
-    expect(accountTrigger).toHaveClass("h-13", "px-2");
+    expect(accountTrigger).toHaveClass("h-13", "w-full", "pl-2", "pr-2.5");
     expect(historyPanel).toHaveClass("opacity-0");
     // The cropping edge starts on the first frame in both directions.
     expect(document.querySelector("aside.sidebar")).toHaveClass(
