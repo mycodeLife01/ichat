@@ -3,7 +3,12 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { toApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
-import { primaryButton } from "../ui/classes";
+import {
+  controlText,
+  formHelp,
+  primaryButton,
+  surfaceTitle,
+} from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { Wordmark } from "../ui/Wordmark";
@@ -62,7 +67,7 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <main className="flex h-full flex-col bg-bg">
+    <main className="flex h-full flex-col bg-bg font-ui text-type-primary">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
         <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
           <Wordmark size={18} />
@@ -72,7 +77,7 @@ export function ResetPasswordPage() {
       <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center px-6">
         {!token ? (
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-fg">重置链接无效</h1>
+            <h1 className={surfaceTitle}>重置链接无效</h1>
             <InlineStatus tone="warning" className="mt-4 text-left">
               链接缺少必要的参数，可能已损坏。请重新申请重置密码。
             </InlineStatus>
@@ -82,7 +87,7 @@ export function ResetPasswordPage() {
           </div>
         ) : status === "success" ? (
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-fg">密码已重置</h1>
+            <h1 className={surfaceTitle}>密码已重置</h1>
             <InlineStatus tone="success" className="mt-4 text-left">
               你的密码已更新，所有设备上的登录状态已失效。请使用新密码重新登录。
             </InlineStatus>
@@ -93,8 +98,8 @@ export function ResetPasswordPage() {
         ) : (
           <>
             <div className="mb-[26px]">
-              <h1 className="text-xl font-semibold tracking-[-0.01em] text-fg">设置新密码</h1>
-              <p className="mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
+              <h1 className={surfaceTitle}>设置新密码</h1>
+              <p className={`mt-2.5 mb-0 ${formHelp}`}>
                 请输入并确认你的新密码。
               </p>
             </div>
@@ -145,7 +150,7 @@ export function ResetPasswordPage() {
 
               <button
                 type="submit"
-                className={`${primaryButton} mt-2 h-11 w-full text-sm font-medium`}
+                className={`${primaryButton} mt-2 h-11 w-full ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`}
                 disabled={submitting}
                 aria-busy={submitting}
                 aria-label={submitting ? "正在重置密码" : "重置密码"}

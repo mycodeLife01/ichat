@@ -57,7 +57,9 @@ export function InlineStatus({ tone, children, className = "", id }: InlineStatu
           aria-hidden="true"
         />
       </span>
-      <span>{children}</span>
+      <span className="min-w-0 whitespace-normal [overflow-wrap:break-word] [word-break:normal]">
+        {children}
+      </span>
     </div>
   );
 }

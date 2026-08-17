@@ -2,7 +2,18 @@ import { useEffect, useState } from "react";
 
 import type { ShareLinkResponse } from "../api/types";
 import { useAppActions } from "../app/context";
-import { dangerIconControl, focusRing, iconControl, primaryButton } from "./classes";
+import {
+  controlText,
+  dangerIconControl,
+  focusRing,
+  formHelp,
+  formValue,
+  iconControl,
+  metaText,
+  primaryButton,
+  semanticStatusMeta,
+  surfaceTitle,
+} from "./classes";
 import { Icons } from "./icons";
 import { ModalDialog } from "./ModalDialog";
 
@@ -110,7 +121,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
       className="w-full max-w-[480px] p-6"
     >
       <div className="mb-1 flex items-center justify-between">
-        <h3 id="share-dialog-title" className="text-[15px] font-semibold">
+        <h3 id="share-dialog-title" className={surfaceTitle}>
           分享对话
         </h3>
         <button
@@ -123,7 +134,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
           <Icons.Close size={15} />
         </button>
       </div>
-      <p id="share-dialog-description" className="mb-4 text-[13px] leading-[1.6] text-text-muted">
+      <p id="share-dialog-description" className={`mb-4 ${formHelp}`}>
         创建一个只读链接，任何人都可查看此刻的会话快照。之后的新消息不会出现在链接中。
       </p>
 
@@ -146,10 +157,10 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
           // issue a different one, revoke this first.
           <div className="flex items-center gap-2 rounded-item border border-border bg-canvas px-3 py-2">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12.5px] text-text-primary">
+              <div className={`truncate ${formValue}`}>
                 {shareUrl(activeLink.token)}
               </div>
-              <div className="mt-0.5 text-[11.5px] text-text-muted">
+              <div className={`mt-0.5 ${metaText}`}>
                 生效中
                 {activeLink.expires_at && (
                   <> · 到期 {new Date(activeLink.expires_at).toLocaleDateString()}</>
@@ -182,7 +193,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
         ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-4">
             {hasAttachments && (
-              <p className="w-full rounded-control border border-warning-border bg-warning-soft px-3 py-2.5 text-[12.5px] leading-[1.6] text-warning-foreground">
+              <p className={`w-full rounded-control border border-warning-border bg-warning-soft px-3 py-2.5 text-warning-foreground ${semanticStatusMeta}`}>
                 本对话中的附件将对访问者可见
               </p>
             )}
@@ -193,10 +204,10 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
                   type="button"
                   role="radio"
                   aria-checked={index === expiryIndex}
-                  className={`rounded-control border px-3 py-1.5 text-[13px] ${focusRing} transition-colors duration-[120ms] ${
+                  className={`rounded-control border px-3 py-1.5 ${controlText} ${focusRing} transition-colors duration-[120ms] ${
                     index === expiryIndex
-                      ? "border-accent bg-accent text-accent-foreground"
-                      : "border-border text-text-muted hover:bg-hover hover:text-text-primary"
+                      ? "border-accent bg-accent !text-accent-foreground"
+                      : "border-border !text-type-tertiary hover:bg-hover hover:!text-type-primary"
                   }`}
                   onClick={() => setExpiryIndex(index)}
                 >
@@ -206,7 +217,7 @@ export function ShareDialog({ conversationId, hasAttachments = false, onClose }:
             </div>
             <button
               type="button"
-              className={`${primaryButton} ml-auto h-9 px-3.5 text-[13.5px] font-medium`}
+              className={`${primaryButton} ml-auto h-9 px-3.5 ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`}
               disabled={creating}
               aria-busy={creating}
               aria-label={creating ? "正在创建链接" : "创建链接"}

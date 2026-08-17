@@ -3,7 +3,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import { LoaderCircle } from "lucide-react";
 
 import { useAppActions } from "../app/context";
-import { buttonControl } from "../ui/classes";
+import {
+  buttonControl,
+  controlText,
+  semanticStatus,
+  surfaceTitle,
+} from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { authCtaLink } from "./authFields";
 import { tokenStore } from "./tokenStore";
@@ -40,7 +45,7 @@ export function ConfirmAccountDeletionPage() {
   }, [dispatch, services, streamAbort, token]);
 
   return (
-    <main className="flex h-full flex-col bg-bg">
+    <main className="flex h-full flex-col bg-bg font-ui text-type-primary">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
         <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
           <Wordmark size={18} />
@@ -49,7 +54,7 @@ export function ConfirmAccountDeletionPage() {
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center px-6 text-center">
         {status === "loading" && (
           <p
-            className="inline-flex items-center gap-2 text-[14px] text-fg-muted"
+            className={`inline-flex items-center gap-2 text-type-secondary ${semanticStatus}`}
             role="status"
             aria-live="polite"
           >
@@ -58,7 +63,7 @@ export function ConfirmAccountDeletionPage() {
           </p>
         )}
         {status === "success" && <>
-          <h1 className="text-xl font-semibold text-fg">账号已停用</h1>
+          <h1 className={surfaceTitle}>账号已停用</h1>
           <InlineStatus tone="success" className="mt-4 text-left">
             你的登录凭证已失效，账号数据目前按注销策略保留。
           </InlineStatus>
@@ -67,13 +72,13 @@ export function ConfirmAccountDeletionPage() {
           </Link>
         </>}
         {status === "error" && <>
-          <h1 className="text-xl font-semibold text-fg">注销链接不可用</h1>
+          <h1 className={surfaceTitle}>注销链接不可用</h1>
           <InlineStatus tone="warning" className="mt-4 text-left">
             链接可能已过期、已使用或无效，账号状态未发生变化。
           </InlineStatus>
           <Link
             to="/"
-            className={`${buttonControl} mt-6 h-11 border border-border-strong px-5 text-[13px] font-medium`}
+            className={`${buttonControl} mt-6 h-11 border border-border-strong px-5 ${controlText} !font-medium`}
           >
             返回 iChat
           </Link>

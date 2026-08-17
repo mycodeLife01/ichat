@@ -1,6 +1,13 @@
 import { useId } from "react";
 
-import { buttonControl, primaryButton, solidDangerButton } from "./classes";
+import {
+  buttonControl,
+  controlText,
+  formHelp,
+  primaryButton,
+  solidDangerButton,
+  surfaceTitle,
+} from "./classes";
 import { ModalDialog } from "./ModalDialog";
 
 type ConfirmDialogProps = {
@@ -31,12 +38,12 @@ export function ConfirmDialog({
       onClose={onCancel}
       className="w-full max-w-[360px] p-[22px]"
     >
-      <h3 id={titleId} className="mb-2 text-[15px] font-semibold">{title}</h3>
-      <p id={bodyId} className="mb-5 text-[13.5px] leading-[1.6] text-text-muted">{body}</p>
+      <h3 id={titleId} className={`mb-2 ${surfaceTitle}`}>{title}</h3>
+      <p id={bodyId} className={`mb-5 ${formHelp}`}>{body}</p>
       <div className="flex justify-end gap-2">
         <button
           type="button"
-          className={`${buttonControl} h-9 px-3.5 text-[13px]`}
+          className={`${buttonControl} h-9 px-3.5 ${controlText}`}
           data-dialog-initial-focus={destructive ? "" : undefined}
           onClick={onCancel}
         >
@@ -44,7 +51,9 @@ export function ConfirmDialog({
         </button>
         <button
           type="button"
-          className={`${destructive ? solidDangerButton : primaryButton} h-9 px-3.5 text-[13px] font-medium`}
+          className={`${destructive ? solidDangerButton : primaryButton} h-9 px-3.5 ${controlText} !font-medium ${
+            destructive ? "!text-danger-solid-foreground" : "!text-accent-foreground"
+          }`}
           onClick={onConfirm}
         >
           {confirmLabel}

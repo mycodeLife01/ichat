@@ -4,7 +4,12 @@ import { LoaderCircle } from "lucide-react";
 
 import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
-import { primaryButton } from "../ui/classes";
+import {
+  controlText,
+  primaryButton,
+  semanticStatus,
+  surfaceTitle,
+} from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { Wordmark } from "../ui/Wordmark";
@@ -85,7 +90,7 @@ export function VerifyEmailPage() {
   const showResend = isAuthenticated && user != null && !user.email_verified;
 
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div className="flex h-full flex-col bg-bg font-ui text-type-primary">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border bg-bg">
         <div className="mx-auto flex w-full max-w-[var(--reading-width)] items-center px-8 max-[760px]:px-[18px]">
           <Link to="/" className="flex min-h-11 items-center" aria-label="iChat home">
@@ -97,7 +102,7 @@ export function VerifyEmailPage() {
       <div className="mx-auto w-full max-w-[var(--reading-width)] px-8 pt-16 text-center max-[760px]:px-[18px]">
         {status === "loading" && (
           <p
-            className="inline-flex items-center gap-2 text-[14px] text-fg-subtle"
+            className={`inline-flex items-center gap-2 text-type-tertiary ${semanticStatus}`}
             role="status"
             aria-live="polite"
           >
@@ -108,7 +113,7 @@ export function VerifyEmailPage() {
 
         {status === "success" && (
           <>
-            <h1 className="mb-2 text-lg font-medium text-fg">Email verified</h1>
+            <h1 className={`mb-2 ${surfaceTitle}`}>Email verified</h1>
             <InlineStatus tone="success" className="mx-auto inline-flex text-left">
               Your email is verified and your account is more secure.
             </InlineStatus>
@@ -122,7 +127,7 @@ export function VerifyEmailPage() {
 
         {status === "error" && (
           <>
-            <h1 className="mb-2 text-lg font-medium text-fg">Verification link unavailable</h1>
+            <h1 className={`mb-2 ${surfaceTitle}`}>Verification link unavailable</h1>
             <InlineStatus tone="warning" className="mx-auto inline-flex text-left">
               This verification link may be expired, already used, or invalid.
             </InlineStatus>
@@ -138,7 +143,7 @@ export function VerifyEmailPage() {
                       ? "Sending verification email"
                       : "Resend verification email"
                   }
-                  className={`${primaryButton} h-11 px-4 text-[13.5px] font-medium`}
+                  className={`${primaryButton} h-11 px-4 ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`}
                 >
                   <LoadingButtonContent
                     loading={resend === "sending"}

@@ -2,7 +2,13 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 
 import { toApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
-import { dialogSurface, primaryButton } from "../ui/classes";
+import {
+  controlText,
+  dialogSurface,
+  formHelp,
+  metaText,
+  primaryButton,
+} from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { AuthBackground } from "./AuthBackground";
@@ -17,15 +23,16 @@ type ScreenMode = AuthMode | "forgot";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const authTab =
-  "relative mr-6 min-h-11 cursor-pointer border-none bg-transparent py-2.5 text-sm font-medium";
+  `relative mr-6 min-h-11 cursor-pointer border-none bg-transparent py-2.5 !font-medium ${controlText}`;
 const authTabActive =
-  " text-fg after:absolute after:right-0 after:-bottom-px after:left-0 after:h-[1.5px] after:bg-fg after:content-['']";
+  " !text-type-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-[1.5px] after:bg-fg after:content-['']";
 
-const submitButton = `${primaryButton} mt-2 h-11 w-full text-sm font-medium`;
+const submitButton =
+  `${primaryButton} mt-2 h-11 w-full ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`;
 
 const authFootBtn =
   "ml-1 inline-flex min-h-11 cursor-pointer items-center border-none bg-transparent p-0 " +
-  "font-[inherit] text-fg underline decoration-border-strong underline-offset-2 hover:decoration-fg";
+  "text-type-primary underline decoration-border-strong underline-offset-2 hover:decoration-fg";
 
 export function AuthScreen() {
   const { login, register, isSubmitting } = useAuthSession();
@@ -162,7 +169,7 @@ export function AuthScreen() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-sans text-fg">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-8 font-ui text-type-primary">
       <AuthBackground />
 
       <section
@@ -170,10 +177,10 @@ export function AuthScreen() {
         className={`${dialogSurface} relative z-[1] w-full max-w-[420px] overflow-hidden px-9 pt-9 pb-7 max-[480px]:px-6 max-[480px]:pt-7 max-[480px]:pb-[22px]`}
       >
         <div className="mb-[26px] flex flex-col items-start">
-          <span className="font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
+          <span className="auth-brand-title">
             iChat
           </span>
-          <p className="mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
+          <p className={`mt-2.5 mb-0 ${formHelp}`}>
             {mode === "login"
               ? "欢迎回来。"
               : mode === "register"
@@ -188,7 +195,7 @@ export function AuthScreen() {
               type="button"
               role="tab"
               aria-selected={mode === "login"}
-              className={`${authTab}${mode === "login" ? authTabActive : " text-fg-subtle"}`}
+              className={`${authTab}${mode === "login" ? authTabActive : " !text-type-tertiary"}`}
               onClick={() => switchMode("login")}
             >
               登录
@@ -197,7 +204,7 @@ export function AuthScreen() {
               type="button"
               role="tab"
               aria-selected={mode === "register"}
-              className={`${authTab}${mode === "register" ? authTabActive : " text-fg-subtle"}`}
+              className={`${authTab}${mode === "register" ? authTabActive : " !text-type-tertiary"}`}
               onClick={() => switchMode("register")}
             >
               注册
@@ -374,11 +381,11 @@ export function AuthScreen() {
           </form>
         )}
 
-        <div className="mt-[18px] mb-4 flex items-center gap-2.5 font-mono text-[11px] tracking-[0.12em] text-fg-subtle uppercase before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">
+        <div className={`mt-[18px] mb-4 flex items-center gap-2.5 uppercase before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-[''] ${metaText}`}>
           或
         </div>
 
-        <div className="mt-4 text-center text-[12.5px] text-fg-subtle">
+        <div className={`mt-4 text-center ${metaText}`}>
           {mode === "login" ? (
             <>
               还没有账号？
@@ -413,7 +420,7 @@ export function AuthScreen() {
         </div>
       </section>
 
-      <p className="absolute right-0 bottom-6 left-0 z-[1] m-0 text-center font-mono text-[11px] tracking-[0.04em] text-fg-subtle">
+      <p className={`absolute right-0 bottom-6 left-0 z-[1] m-0 text-center ${metaText}`}>
         登录即代表你同意服务条款与隐私政策
       </p>
     </main>

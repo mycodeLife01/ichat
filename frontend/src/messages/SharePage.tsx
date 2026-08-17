@@ -8,8 +8,12 @@ import { useAppActions } from "../app/context";
 import {
   assistantContentColumn,
   buttonControl,
+  controlText,
+  formHelp,
   messageBubble,
+  metaText,
   primaryButton,
+  surfaceTitle,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { Wordmark } from "../ui/Wordmark";
@@ -87,7 +91,7 @@ export function SharePage() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div className="flex h-full flex-col bg-bg font-ui text-type-primary">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border bg-bg">
         {/* Inner row matches the message column below (centered reading width)
             so the wordmark and login button line up with the conversation, not
@@ -96,10 +100,10 @@ export function SharePage() {
           <Link to="/" className="flex items-center" aria-label="iChat 首页">
             <Wordmark size={isMobile ? 20 : 18} />
           </Link>
-          <span className="text-[13px] text-fg-subtle">只读分享</span>
+          <span className={metaText}>只读分享</span>
           <Link
             to="/"
-            className={`${buttonControl} ml-auto h-8 border border-border bg-surface px-3 text-[13px] font-medium hover:border-border-strong`}
+            className={`${buttonControl} ml-auto h-8 border border-border bg-surface px-3 ${controlText} !font-medium hover:border-border-strong`}
           >
             登录 iChat
           </Link>
@@ -133,13 +137,13 @@ export function SharePage() {
                 strokeWidth={1.8}
                 aria-hidden="true"
               />
-              <h1 className="mt-3 mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
-              <p className="text-[14px] leading-[1.6] text-fg-muted">
+              <h1 className={`mt-3 mb-2 ${surfaceTitle}`}>分享不存在或已失效</h1>
+              <p className={formHelp}>
                 该分享链接可能已被撤销、已过期，或从未存在。
               </p>
               <Link
                 to="/"
-                className={`${primaryButton} mt-5 h-9 px-3.5 text-[13.5px] font-medium`}
+                className={`${primaryButton} mt-5 h-9 px-3.5 ${controlText} !font-medium !text-accent-foreground`}
               >
                 前往 iChat
               </Link>
@@ -182,7 +186,7 @@ function SharedThread({
   return (
     <>
       {share.title && (
-        <h1 className="mx-auto mt-8 max-w-[var(--reading-width)] px-8 text-xl font-medium text-fg max-[760px]:px-[18px]">
+        <h1 className={`mx-auto mt-8 max-w-[var(--reading-width)] px-8 max-[760px]:px-[18px] ${surfaceTitle}`}>
           {share.title}
         </h1>
       )}

@@ -13,7 +13,7 @@ export function Avatar({ name, url, className, imageAlt = "用户头像" }: Avat
   const showImage = Boolean(url && failedUrl !== url);
   return (
     <span
-      className={`${className} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-semibold text-accent-fg`}
+      className={`${className} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-ui font-semibold text-accent-fg`}
     >
       {showImage ? (
         <img

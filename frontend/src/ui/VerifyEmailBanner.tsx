@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
 import { useAuthSession } from "../auth/useAuthSession";
+import { controlText, semanticStatus } from "./classes";
 
 // Mirrors auth_email_verification_cooldown_seconds on the backend so the UI
 // disables the button instead of letting the user run into a 429.
@@ -64,23 +65,23 @@ export function VerifyEmailBanner() {
         : "Send verification email";
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-raised px-4 py-2 text-[13px] text-fg-muted">
+    <div className={`flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-raised px-4 py-2 text-type-secondary ${semanticStatus}`}>
       {sent ? (
-        <span>
+        <span className="min-w-0 [overflow-wrap:anywhere]">
           We sent a verification email to{" "}
-          <span className="text-fg-subtle">{user.email}</span>. Check your inbox.
+          <span className="text-type-tertiary">{user.email}</span>. Check your inbox.
         </span>
       ) : (
         <>
-          <span>Verify your email to keep your account secure.</span>
-          <span className="text-fg-subtle">{user.email}</span>
+          <span className="min-w-0 [overflow-wrap:break-word]">Verify your email to keep your account secure.</span>
+          <span className="min-w-0 text-type-tertiary [overflow-wrap:anywhere]">{user.email}</span>
         </>
       )}
       <button
         type="button"
         onClick={() => void onSend()}
         disabled={disabled}
-        className="ml-auto rounded-md border border-border bg-bg px-2.5 py-1 text-[12.5px] font-medium text-fg transition-[background,border-color] duration-[120ms] hover:border-border-strong disabled:opacity-60"
+        className={`ml-auto rounded-md border border-border bg-bg px-2.5 py-1 !font-medium transition-[background,border-color] duration-[120ms] hover:border-border-strong disabled:text-type-disabled disabled:opacity-60 ${controlText}`}
       >
         {label}
       </button>

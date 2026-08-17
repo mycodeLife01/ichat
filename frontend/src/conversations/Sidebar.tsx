@@ -20,6 +20,9 @@ import {
   popoverSurface,
   railIconControl,
   titleSkeleton,
+  uiLabel,
+  uiText,
+  metaText,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import type { ToastHandler } from "../ui/state";
@@ -65,9 +68,9 @@ type SidebarProps = {
 };
 
 const sectionLabel =
-  "px-2.5 pb-1.5 text-[14px] font-semibold leading-5 text-fg";
+  `px-2.5 pb-1.5 whitespace-nowrap ${uiLabel} !text-type-tertiary`;
 const desktopSectionLabel =
-  "flex h-8 items-center px-4 py-1.5 text-[14px] font-medium leading-5 text-text-muted";
+  `flex h-8 items-center whitespace-nowrap px-4 py-1.5 ${uiLabel} !text-type-tertiary`;
 
 type ConversationMenu = {
   conversationId: string;
@@ -212,7 +215,9 @@ export function Sidebar({
 
   // "sidebar" / "collapsed" / "open" are state hooks for tests; the visual
   // states branch on isMobile (drawer) vs desktop (collapsible column).
-  const sidebarClasses = ["sidebar flex flex-col overflow-hidden bg-bg"];
+  const sidebarClasses = [
+    "sidebar flex flex-col overflow-hidden bg-bg font-ui text-type-primary",
+  ];
   if (isMobile) {
     sidebarClasses.push(
       "sidebar-mobile fixed inset-y-0 left-0 z-30 w-[var(--sidebar-mobile-width)] max-w-[calc(100vw-44px)] border-r border-border " +
@@ -321,7 +326,7 @@ export function Sidebar({
         key={c.id}
         // A fixed minimum height keeps revealing the desktop action button from
         // shifting adjacent rows; mobile raises the whole target to 44px.
-        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${
+        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 max-[760px]:min-h-11 ${uiText} ${
           options.desktopInset ? "mx-1.5 w-[calc(100%-12px)]" : ""
         } ${interactiveItem}`}
         data-selected={active || menuOpen}
@@ -332,7 +337,7 @@ export function Sidebar({
             ref={(el) => el?.select()}
             defaultValue={c.title ?? ""}
             // Inline rename input — looks identical to the title text.
-            className="m-0 min-w-0 flex-1 border-none bg-transparent px-2.5 py-1.5 font-[inherit] text-inherit outline-none selection:bg-[rgba(120,170,240,0.45)] selection:text-inherit focus:shadow-none focus:outline-none"
+            className="m-0 min-w-0 flex-1 border-none bg-transparent px-2.5 py-1.5 text-inherit outline-none selection:bg-[rgba(120,170,240,0.45)] selection:text-inherit focus:shadow-none focus:outline-none"
             onClick={(event) => event.stopPropagation()}
             onBlur={(event) => {
               onRename(c.id, event.target.value);
@@ -345,7 +350,7 @@ export function Sidebar({
           />
         ) : (
           <button
-            className="min-w-0 flex-1 self-stretch rounded-item px-2.5 py-1.5 text-left font-[inherit] text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring max-[760px]:py-2"
+            className="min-w-0 flex-1 self-stretch rounded-item px-2.5 py-1.5 text-left text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring max-[760px]:py-2"
             aria-current={active ? "page" : undefined}
             onClick={() => {
               onSelect(c.id);
@@ -493,8 +498,8 @@ export function Sidebar({
     <button
       className={
         mobile
-          ? `flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[15px] font-medium text-text-primary ${interactiveItem}`
-          : `mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left text-[14px] font-normal leading-5 text-text-primary ${interactiveItem}`
+          ? `flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left ${uiText} ${interactiveItem}`
+          : `mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-left ${uiText} ${interactiveItem}`
       }
       onClick={() => {
         onNew();
@@ -516,12 +521,12 @@ export function Sidebar({
         }),
       )}
       {items.length === 0 && (
-        <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+        <div className={`px-2.5 py-3 whitespace-normal ${metaText}`}>
           还没有已保存的对话。开始一次对话后会自动出现在这里。
         </div>
       )}
       {isLoadingMore && (
-        <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
+        <div className={`px-2.5 py-3 whitespace-normal ${metaText}`}>
           正在加载...
         </div>
       )}
@@ -647,12 +652,12 @@ export function Sidebar({
             aria-label="最近聊天"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={`${sectionLabel} pt-1 text-text-muted`}>最近聊天</div>
+            <div className={`${sectionLabel} pt-1`}>最近聊天</div>
             {items
               .slice(0, railRecentLimit)
               .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
             {items.length === 0 && (
-              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
+              <div className={`px-2.5 py-3 whitespace-normal ${metaText}`}>
                 还没有已保存的对话。
               </div>
             )}

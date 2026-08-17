@@ -8,11 +8,17 @@ import { Avatar } from "../ui/Avatar";
 import { BottomSheet } from "../ui/BottomSheet";
 import type { ToastHandler } from "../ui/state";
 import {
+  controlText,
   dangerMenuItem,
   interactiveItem,
+  metaText,
   mobileActionItem,
   neutralMenuItem,
   popoverSurface,
+  semanticStatusMeta,
+  surfaceTitle,
+  uiLabel,
+  uiText,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { AccountCard } from "./AccountCard";
@@ -50,10 +56,10 @@ function UserAvatar({
 }) {
   const sizeClass =
     size === "xs"
-      ? "h-6 w-6 text-[10px]"
+      ? "h-6 w-6 text-meta"
       : size === "sm"
-        ? "h-8 w-8 text-xs"
-        : "h-10 w-10 text-sm";
+        ? "h-8 w-8 text-meta"
+        : "h-10 w-10 text-ui";
   return (
     <Avatar
       name={name}
@@ -192,10 +198,10 @@ export function UserMenu({
         <div className="mb-1 flex min-w-0 items-center gap-2.5 rounded-item px-2.5 py-2.5">
           <UserAvatar name={name} url={user?.avatarUrl} size="sm" />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] font-medium text-text-primary">
+            <span className={`block truncate ${uiLabel}`}>
               {name}
             </span>
-            <span className="block truncate text-[10.5px] text-text-muted">{email}</span>
+            <span className={`block truncate ${metaText}`}>{email}</span>
           </span>
         </div>
         <div className="my-1 border-t border-border" />
@@ -264,20 +270,12 @@ export function UserMenu({
         {!compact && (
           <span className="min-w-0 flex-1">
             <span
-              className={
-                pinnedToDesktopRail
-                  ? "block truncate text-[14px] font-normal leading-5 text-text-primary"
-                  : "block truncate text-[14px] font-medium leading-[1.35] text-fg"
-              }
+              className={`block truncate ${uiText}`}
             >
               {name}
             </span>
             <span
-              className={
-                pinnedToDesktopRail
-                  ? "block truncate text-[12px] font-normal leading-4 text-text-muted"
-                  : "block font-medium truncate text-[12.5px] leading-[1.4] text-fg-subtle"
-              }
+              className={`block truncate ${metaText}`}
             >
               Pro
             </span>
@@ -354,38 +352,38 @@ export function UserMenu({
             }}
           >
             <div
-              className="w-full max-w-[420px] rounded-xl border border-border-strong bg-bg-raised px-10 py-9 text-center shadow-[0_18px_60px_rgba(20,20,19,0.18)] max-[760px]:px-6 max-[760px]:py-7"
+              className="w-full max-w-[420px] rounded-xl border border-border-strong bg-bg-raised px-10 py-9 text-center font-ui text-type-primary shadow-[0_18px_60px_rgba(20,20,19,0.18)] max-[760px]:px-6 max-[760px]:py-7"
               role="dialog"
               aria-modal="true"
               aria-labelledby="logout-dialog-title"
             >
               <h2
                 id="logout-dialog-title"
-                className="text-xl font-semibold tracking-[-0.02em] text-fg"
+                className={surfaceTitle}
               >
                 你确定要退出登录吗？
               </h2>
               <div className="mt-6 flex items-center gap-3 rounded-xl border border-border-strong px-4 py-3.5 text-left">
                 <UserAvatar name={name} url={user?.avatarUrl} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-medium text-fg">{name}</div>
-                  <div className="mt-0.5 truncate text-[11.5px] text-fg-muted">{email}</div>
+                  <div className={`truncate ${uiLabel}`}>{name}</div>
+                  <div className={`mt-0.5 truncate ${metaText}`}>{email}</div>
                 </div>
               </div>
-              <div className="mt-5 inline-flex items-center gap-2 rounded-lg bg-bg-sunken px-3.5 py-2 text-[11.5px] text-fg-muted">
+              <div className={`mt-5 inline-flex items-center gap-2 rounded-lg bg-bg-sunken px-3.5 py-2 text-type-tertiary ${semanticStatusMeta}`}>
                 <Info size={13} aria-hidden="true" />
                 这将使你退出 iChat。
               </div>
               <div className="mt-5 flex flex-col gap-2">
                 <button
-                  className="inline-flex h-10 w-full items-center justify-center rounded-full bg-accent px-4 text-[13px] font-medium text-accent-fg transition-opacity hover:opacity-85"
+                  className={`inline-flex h-10 w-full items-center justify-center rounded-full bg-accent px-4 !font-medium !text-accent-foreground transition-opacity hover:opacity-85 ${controlText}`}
                   onClick={onLogout}
                 >
                   退出登录
                 </button>
                 <button
                   ref={cancelButtonRef}
-                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-border-strong bg-bg-raised px-4 text-[13px] font-medium text-fg transition-colors hover:bg-bg-hover"
+                  className={`inline-flex h-10 w-full items-center justify-center rounded-full border border-border-strong bg-bg-raised px-4 !font-medium !text-type-primary transition-colors hover:bg-bg-hover ${controlText}`}
                   onClick={closeLogout}
                 >
                   取消

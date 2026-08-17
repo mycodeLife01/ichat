@@ -84,7 +84,7 @@ export function ModalDialog({
     >
       <div
         ref={dialogRef}
-        className={`dialog ${dialogSurface} ${className}`.trim()}
+        className={`dialog font-ui text-type-primary ${dialogSurface} ${className}`.trim()}
         role={role}
         aria-modal="true"
         aria-labelledby={titleId}

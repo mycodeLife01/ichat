@@ -14,11 +14,16 @@ import { ApiError } from "../api/errors";
 import { Avatar } from "../ui/Avatar";
 import {
   buttonControl,
+  controlText,
   dangerInteractiveItem,
+  formHelp,
+  formValue,
   iconControl,
   inputControl,
   interactiveItem,
   primaryButton,
+  surfaceTitle,
+  uiLabel,
 } from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { LoadingButtonContent } from "../ui/LoadingButtonContent";
@@ -45,9 +50,9 @@ type PasswordErrors = {
 };
 
 const fieldClass =
-  `${inputControl} h-10 w-full px-3 text-[13px] outline-none`;
+  `${inputControl} h-10 w-full px-3 outline-none`;
 const primaryClass =
-  `${primaryButton} h-9 shrink-0 px-4 text-[12.5px] font-medium`;
+  `${primaryButton} h-9 shrink-0 px-4 ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`;
 function AccountActionRow({
   icon,
   title,
@@ -76,8 +81,8 @@ function AccountActionRow({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[12.5px] font-medium">{title}</span>
-        <span className={`mt-0.5 block text-[10.5px] ${danger ? "text-danger" : "text-fg-subtle"}`}>{description}</span>
+        <span className={`block ${uiLabel} ${danger ? "!text-danger" : ""}`}>{title}</span>
+        <span className={`mt-0.5 block ${formHelp} ${danger ? "!text-danger" : ""}`}>{description}</span>
       </span>
       <ChevronRight size={14} className="text-fg-faint" />
     </button>
@@ -259,10 +264,10 @@ export function AccountCard({
     >
         <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
           <div>
-            <h2 id="account-card-title" className="text-[16px] font-semibold text-fg">
+            <h2 id="account-card-title" className={surfaceTitle}>
               账号
             </h2>
-            <p className="mt-1 text-[11px] text-fg-subtle">管理公开资料、邮箱与账号安全。</p>
+            <p className={`mt-1 ${formHelp}`}>管理公开资料、邮箱与账号安全。</p>
           </div>
           <button
             type="button"
@@ -303,8 +308,8 @@ export function AccountCard({
                     </span>
                   </button>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-medium text-fg">个人头像</div>
-                    <div className="mt-0.5 text-[10.5px] text-fg-subtle">
+                    <div className={uiLabel}>个人头像</div>
+                    <div className={`mt-0.5 ${formHelp}`}>
                       {avatarStatus ?? (user.emailVerified ? "支持 JPEG、PNG 和 WebP" : "完成邮箱认证后可上传")}
                     </div>
                   </div>
@@ -376,8 +381,8 @@ export function AccountCard({
                     <UserRound size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] font-medium text-fg">{user.username}</div>
-                    <div className="text-[10.5px] text-fg-subtle">用户名 · 不可修改</div>
+                    <div className={`truncate ${formValue}`}>{user.username}</div>
+                    <div className={formHelp}>用户名 · 不可修改</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 px-1 py-3.5">
@@ -385,19 +390,19 @@ export function AccountCard({
                     <Mail size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] font-medium text-fg">{user.email}</div>
-                    <div className="text-[10.5px] text-fg-subtle">账号邮箱</div>
+                    <div className={`truncate ${formValue}`}>{user.email}</div>
+                    <div className={formHelp}>账号邮箱</div>
                   </div>
                   <InlineStatus
                     tone={user.emailVerified ? "success" : "warning"}
-                    className="shrink-0 border-0 bg-transparent p-0 text-[11.5px]"
+                    className="shrink-0 border-0 bg-transparent p-0"
                   >
                     {user.emailVerified ? "已认证" : "未认证"}
                   </InlineStatus>
                   {!user.emailVerified && (
                     <button
                       type="button"
-                      className={`${primaryButton} h-8 shrink-0 px-3 text-[12px] font-medium`}
+                      className={`${primaryButton} h-8 shrink-0 px-3 ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`}
                       disabled={sending}
                       aria-busy={sending}
                       aria-label={sending ? "正在发送认证邮件" : "认证邮箱"}
@@ -439,11 +444,11 @@ export function AccountCard({
                 void changePassword();
               }}
             >
-              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 text-[11.5px]`} onClick={back}>
+              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 ${controlText}`} onClick={back}>
                 <ArrowLeft size={13} />账号
               </button>
-              <h3 className="text-[15px] font-semibold text-fg">修改密码</h3>
-              <p className="mt-1 text-[10.5px] text-fg-subtle">更新后所有设备会退出登录。</p>
+              <h3 className={surfaceTitle}>修改密码</h3>
+              <p className={`mt-1 ${formHelp}`}>更新后所有设备会退出登录。</p>
               <div className="mt-5 grid grid-cols-2 gap-2 max-[760px]:grid-cols-1">
                 <div>
                   <label className="sr-only" htmlFor="account-current-password">当前密码</label>
@@ -523,11 +528,11 @@ export function AccountCard({
                 void requestDeletion();
               }}
             >
-              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 text-[11.5px]`} onClick={back}>
+              <button type="button" className={`${buttonControl} mb-4 h-8 gap-1.5 px-2 ${controlText}`} onClick={back}>
                 <ArrowLeft size={13} />账号
               </button>
-              <h3 className="text-[15px] font-semibold text-danger">注销账号</h3>
-              <p className="mt-1 text-[10.5px] text-fg-muted">确认链接将发送至 {user.email}。点击邮件链接前，账号不会停用。</p>
+              <h3 className={`${surfaceTitle} !text-danger`}>注销账号</h3>
+              <p className={`mt-1 ${formHelp}`}>确认链接将发送至 {user.email}。点击邮件链接前，账号不会停用。</p>
               <label className="sr-only" htmlFor="account-deletion-password">当前密码</label>
               <input
                 id="account-deletion-password"

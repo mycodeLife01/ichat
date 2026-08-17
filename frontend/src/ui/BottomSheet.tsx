@@ -110,7 +110,7 @@ export function BottomSheet({
       />
       <div
         ref={panelRef}
-        className="sheet relative z-10 max-h-[calc(100dvh-8px)] w-full max-w-[480px] animate-sheet-in overflow-x-hidden overflow-y-auto rounded-t-card border border-b-0 border-border-strong bg-surface px-2 pt-2 shadow-dialog outline-none pb-[max(16px,env(safe-area-inset-bottom))]"
+        className="sheet relative z-10 max-h-[calc(100dvh-8px)] w-full max-w-[480px] animate-sheet-in overflow-x-hidden overflow-y-auto rounded-t-card border border-b-0 border-border-strong bg-surface px-2 pt-2 font-ui text-type-primary shadow-dialog outline-none pb-[max(16px,env(safe-area-inset-bottom))]"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
-import { buttonControl, iconControl, primaryButton } from "../ui/classes";
+import {
+  buttonControl,
+  controlText,
+  formHelp,
+  formLabel,
+  iconControl,
+  primaryButton,
+  surfaceTitle,
+} from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { LoadingButtonContent } from "../ui/LoadingButtonContent";
 import { ModalDialog } from "../ui/ModalDialog";
@@ -129,8 +137,8 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
     >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="avatar-crop-title" className="text-[16px] font-semibold text-fg">裁剪头像</h2>
-            <p className="mt-1 text-[11px] text-fg-subtle">
+            <h2 id="avatar-crop-title" className={surfaceTitle}>裁剪头像</h2>
+            <p className={`mt-1 ${formHelp}`}>
               拖动图片调整位置，<span className="pointer-coarse:hidden">使用滑块缩放</span>
               <span className="hidden pointer-coarse:inline">双指开合缩放</span>
             </p>
@@ -206,7 +214,7 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
           </div>
         </div>
 
-        <label className="mt-5 block text-[12px] font-medium text-fg pointer-coarse:hidden" htmlFor="avatar-zoom">缩放</label>
+        <label className={`mt-5 block pointer-coarse:hidden ${formLabel}`} htmlFor="avatar-zoom">缩放</label>
         <input
           id="avatar-zoom"
           className="mt-2 w-full accent-[var(--color-accent)] pointer-coarse:hidden"
@@ -227,10 +235,10 @@ export function AvatarCropper({ file, onCancel, onConfirm, onError }: AvatarCrop
           </InlineStatus>
         )}
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className={`${buttonControl} h-9 px-4 text-[12.5px]`} onClick={onCancel}>取消</button>
+          <button type="button" className={`${buttonControl} h-9 px-4 ${controlText}`} onClick={onCancel}>取消</button>
           <button
             type="button"
-            className={`${primaryButton} h-9 px-4 text-[12.5px] font-medium`}
+            className={`${primaryButton} h-9 px-4 ${controlText} !font-medium !text-accent-foreground disabled:!text-type-disabled`}
             disabled={submitting}
             aria-busy={submitting}
             aria-label={submitting ? "正在确认并上传" : "确认并上传"}

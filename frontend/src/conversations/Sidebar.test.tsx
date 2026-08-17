@@ -92,15 +92,16 @@ describe("Sidebar", () => {
     expect(screen.getByText("聊天")).toHaveClass(
       "h-8",
       "px-4",
-      "text-[14px]",
+      "font-ui",
+      "text-ui",
       "font-medium",
-      "leading-5",
-      "text-text-muted",
+      "!text-type-tertiary",
     );
     expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
-      "text-[14px]",
+      "font-ui",
+      "text-ui",
       "font-normal",
-      "leading-5",
+      "text-type-primary",
     );
     const history = screen.getByTestId("conversation-history");
     expect(history).not.toHaveClass("gap-px", "mt-5");

@@ -30,6 +30,7 @@ import { Composer } from "../ui/Composer";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ShareDialog } from "../ui/ShareDialog";
 import { VerifyEmailBanner } from "../ui/VerifyEmailBanner";
+import { surfaceTitle } from "../ui/classes";
 import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import type { ToastHandler } from "../ui/state";
@@ -677,7 +678,7 @@ export function AppShell() {
                     : "pointer-events-none max-h-0 opacity-0"
                 }`}
               >
-                <h1 className="mt-0 mb-[22px] text-center text-2xl font-medium tracking-[-0.01em] text-fg">
+                <h1 className={`mt-0 mb-[22px] text-center ${surfaceTitle}`}>
                   我们先从哪里开始呢？
                 </h1>
               </div>

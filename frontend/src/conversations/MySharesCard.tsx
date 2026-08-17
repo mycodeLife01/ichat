@@ -5,8 +5,14 @@ import type { UserShareResponse } from "../api/types";
 import {
   buttonControl,
   cardSurface,
+  controlText,
   dangerIconControl,
+  formHelp,
   iconControl,
+  metaText,
+  semanticStatus,
+  surfaceTitle,
+  uiLabel,
 } from "../ui/classes";
 import { Icons } from "../ui/icons";
 import { ModalDialog } from "../ui/ModalDialog";
@@ -93,10 +99,10 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
     >
       <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4 max-[760px]:px-4">
         <div>
-          <h2 id="my-shares-card-title" className="text-[16px] font-semibold text-fg">
+          <h2 id="my-shares-card-title" className={surfaceTitle}>
             我的分享
           </h2>
-          <p className="mt-1 text-[11px] text-fg-subtle">查看和管理你创建的全部会话分享。</p>
+          <p className={`mt-1 ${formHelp}`}>查看和管理你创建的全部会话分享。</p>
         </div>
         <button
           type="button"
@@ -122,10 +128,10 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
             aria-atomic="true"
           >
             <CircleAlert size={20} strokeWidth={1.8} aria-hidden="true" />
-            <p className="mt-3 text-[13px]">分享列表加载失败</p>
+            <p className={`mt-3 ${semanticStatus}`}>分享列表加载失败</p>
             <button
               type="button"
-              className={`${buttonControl} mt-3 h-8 border border-border-strong px-3 text-[12px]`}
+              className={`${buttonControl} mt-3 h-8 border border-border-strong px-3 ${controlText}`}
               onClick={retry}
             >
               重试
@@ -139,7 +145,7 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
             aria-atomic="true"
           >
             <Share2 size={22} aria-hidden="true" />
-            <p className="mt-3 text-[13px]">还没有有效的会话分享</p>
+            <p className={`mt-3 ${semanticStatus}`}>还没有有效的会话分享</p>
           </div>
         )}
         {status === "ready" && shares.length > 0 && (
@@ -155,10 +161,10 @@ export function MySharesCard({ onClose, onLoad, onRevoke, onToast }: MySharesCar
                     <Share2 size={15} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[12.5px] font-medium text-fg">
+                    <h3 className={`truncate ${uiLabel}`}>
                       {share.conversation_title || "未命名会话"}
                     </h3>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-fg-subtle">
+                    <p className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${metaText}`}>
                       <span>{new Date(share.created_at).toLocaleDateString()}</span>
                       <span>
                         {share.expires_at

@@ -60,7 +60,9 @@ export function Toast({ toast, onDismiss, duration = 2600 }: ToastProps) {
         strokeWidth={1.9}
         aria-hidden="true"
       />
-      <span>{toast.message}</span>
+      <span className="min-w-0 whitespace-normal [overflow-wrap:break-word] [word-break:normal]">
+        {toast.message}
+      </span>
     </div>
   );
 }
