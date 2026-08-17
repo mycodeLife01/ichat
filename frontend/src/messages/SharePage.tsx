@@ -93,7 +93,7 @@ export function SharePage() {
             so the wordmark and login button line up with the conversation, not
             the viewport edges. */}
         <div className="mx-auto flex w-full max-w-[var(--reading-width)] items-center gap-3 px-8 max-[760px]:px-[18px]">
-          <Link to="/" className="flex items-center" aria-label="iChat 首页">
+          <Link to="/" className="flex items-center" aria-label="Piko 首页">
             <Wordmark size={isMobile ? 20 : 18} />
           </Link>
           <span className="text-[13px] text-fg-subtle">只读分享</span>
@@ -101,7 +101,7 @@ export function SharePage() {
             to="/"
             className={`${buttonControl} ml-auto h-8 border border-border bg-surface px-3 text-[13px] font-medium hover:border-border-strong`}
           >
-            登录 iChat
+            登录 Piko
           </Link>
         </div>
       </header>
@@ -141,7 +141,7 @@ export function SharePage() {
                 to="/"
                 className={`${primaryButton} mt-5 h-9 px-3.5 text-[13.5px] font-medium`}
               >
-                前往 iChat
+                前往 Piko
               </Link>
             </div>
           )}

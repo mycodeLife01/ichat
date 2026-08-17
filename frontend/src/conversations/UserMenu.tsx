@@ -219,9 +219,7 @@ export function UserMenu({
       ref={rootRef}
       className={
         pinnedToDesktopRail
-          ? `relative z-20 -mx-2.5 mt-2 w-[var(--sidebar-width)] border-t pt-2 pb-1 ${
-              compact ? "border-transparent" : "border-border"
-            }`
+          ? "relative z-20 -mx-2.5 w-[var(--sidebar-width)] border-t border-border px-1.5 pt-2 pb-1.5"
           : compact
             ? "relative"
             : "relative mt-2 border-t border-border pt-2 pb-1"
@@ -231,7 +229,7 @@ export function UserMenu({
         ref={triggerRef}
         className={
           pinnedToDesktopRail
-            ? `flex h-13 w-full items-center gap-2.5 px-2 text-left aria-expanded:bg-selected ${interactiveItem}`
+            ? `flex h-13 w-full items-center gap-2 pl-2 pr-2.5 text-left aria-expanded:bg-selected ${interactiveItem}`
             : compact
             ? `flex h-9 w-9 items-center justify-center rounded-full aria-expanded:bg-selected ${interactiveItem}`
             : `flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`
@@ -343,7 +341,7 @@ export function UserMenu({
               </div>
               <div className="mt-5 inline-flex items-center gap-2 rounded-lg bg-bg-sunken px-3.5 py-2 text-[11.5px] text-fg-muted">
                 <Info size={13} aria-hidden="true" />
-                这将使你退出 iChat。
+                这将使你退出 Piko。
               </div>
               <div className="mt-5 flex flex-col gap-2">
                 <button

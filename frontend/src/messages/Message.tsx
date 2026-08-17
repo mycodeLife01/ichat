@@ -277,7 +277,7 @@ export function Message({
         {/* Editing uses a full-width panel rather than stretching the compact
             message bubble, matching the visual hierarchy of the reference. */}
         <div
-          className="w-full animate-edit-in rounded-[24px] bg-sunken px-3 py-3"
+          className="w-full animate-edit-in rounded-[24px] bg-message-editor px-3 py-3 text-message-editor-foreground"
           data-testid="message-editor"
         >
           {messageAttachments.length > 0 && (
@@ -301,7 +301,7 @@ export function Message({
             <textarea
               autoFocus
               ref={editRef}
-              className="block min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[16px] leading-6 text-text-primary outline-none"
+              className="block min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[16px] leading-6 text-message-editor-foreground outline-none"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -409,7 +409,7 @@ export function Message({
                 </div>
                 {/* Fade the clipped last line into the bubble background. */}
                 {collapsed && (
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sunken to-transparent" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-user-message to-transparent" />
                 )}
               </div>
               {overflowing && (

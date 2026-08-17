@@ -491,7 +491,7 @@ export function Composer({
         >
           <textarea
             ref={ref}
-            className={`m-0 block min-h-[25px] min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent p-0 text-[16px] leading-[1.55] text-text-primary outline-none placeholder:text-text-faint [scrollbar-width:thin] max-[760px]:text-[17px] ${
+            className={`m-0 block min-h-[25px] min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent p-0 text-[16px] leading-[1.55] text-text-primary outline-none placeholder:text-text-faint max-[760px]:text-[17px] ${
               promptExpanded ? "py-4" : ""
             }`}
             value={value}
@@ -869,7 +869,7 @@ export function Composer({
       {dragActive &&
         createPortal(
           <div
-            className="pointer-events-none fixed inset-0 z-[70] flex p-3 bg-white/80 backdrop-blur-[2px]"
+            className="pointer-events-none fixed inset-0 z-[70] flex bg-canvas/80 p-3 backdrop-blur-[2px]"
             data-testid="page-file-drop-overlay"
             aria-hidden="true"
           >

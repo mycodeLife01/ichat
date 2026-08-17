@@ -88,7 +88,7 @@ export function VerifyEmailPage() {
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border bg-bg">
         <div className="mx-auto flex w-full max-w-[var(--reading-width)] items-center px-8 max-[760px]:px-[18px]">
-          <Link to="/" className="flex min-h-11 items-center" aria-label="iChat home">
+          <Link to="/" className="flex min-h-11 items-center" aria-label="Piko home">
             <Wordmark size={18} />
           </Link>
         </div>
@@ -114,7 +114,7 @@ export function VerifyEmailPage() {
             </InlineStatus>
             <div>
               <Link to="/" className={`${authCtaLink} mt-5`}>
-                Return to iChat
+                Return to Piko
               </Link>
             </div>
           </>
@@ -159,7 +159,7 @@ export function VerifyEmailPage() {
             ) : (
               <div>
                 <Link to="/" className={`${authCtaLink} mt-5`}>
-                  Go to iChat
+                  Go to Piko
                 </Link>
               </div>
             )}

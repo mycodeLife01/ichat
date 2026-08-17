@@ -52,7 +52,7 @@ Python header 的 actions 为 `123.333 × 36px`：copy `36 × 36px`，间隔 2px
 run 左间距和 `77.333 × 36px` 的“运行”按钮。HTML header 使用专属 16px glyph，右侧
 code/preview toggle 为 `74 × 36px`、完整 actions 为 `112 × 36px`。preview header 背景改为
 `rgb(252, 252, 252)`；`16:9` preview 在 768px 外壳内为 `766.667 × 431.25px`，内部 iframe
-为 `765.333 × 429.917px`。iChat 的 iframe 使用空权限 `sandbox`；此处记录的是静态 preview
+为 `765.333 × 429.917px`。Piko 的 iframe 使用空权限 `sandbox`；此处记录的是静态 preview
 布局，不把 ChatGPT 的远端执行 sandbox 当作正文排版要求。
 
 表格为 `14px`，使用透明背景、0 圆角、`border-collapse: separate` 和 0 `border-spacing`，没有
@@ -79,7 +79,7 @@ filled copy glyph、圆角 4 的覆盖按钮，只在 table hover/focus-within �
   HTML preview 外壳为 `342.667 × 241.333px`，preview/iframe 分别为
   `341.333 × 192px` 与 `340 × 190.667px`。
 - 长 plain code 的 surface 宽约 `342.667px`，无 header，内部水平 viewport 宽约
-  `297.333px`；iChat 与 ChatGPT 的源码起点均为 `x ≈ 32.667px`。
+  `297.333px`；Piko 与 ChatGPT 的源码起点均为 `x ≈ 32.667px`。
 - 首个宽表格的 outer 两边均为 `x = 0 / width = 390px`，table 均为
   `x = 16 / width ≈ 440.198px`，outer `scrollWidth = 472px`；三列表格 table 宽 `358px`，
   不产生水平 overflow。
@@ -88,7 +88,7 @@ filled copy glyph、圆角 4 的覆盖按钮，只在 table hover/focus-within �
 
 ## 2026-08-16 双页签差值
 
-用户 Chrome 中 iChat 与 ChatGPT 使用相同 AI 回复，且两边都固定为相同 viewport 后：
+用户 Chrome 中 Piko 与 ChatGPT 使用相同 AI 回复，且两边都固定为相同 viewport 后：
 
 - desktop 正文根节点均为 768px；排除 math、Mermaid、Chart、Reasoning 后，前 111 个对应节点
   的相对 y/height 最大差 `0.334px`，后续已实际进入 viewport 的 section 差为 `0px`；
@@ -99,7 +99,7 @@ filled copy glyph、圆角 4 的覆盖按钮，只在 table hover/focus-within �
 - Python 与 HTML 工具栏在桌面/移动端的 width、height、relative x/y 均相同；HTML preview
   的外壳、header、16:9 容器和 iframe 尺寸均相同；
 - Python、JavaScript、TypeScript、JSON、Bash、SQL、YAML、HTML、CSS 与 diff/plain 的
-  token run 和 palette 已逐项相同。iChat 对这些语言使用按需 Lezer parser 或轻量词法分类；
+  token run 和 palette 已逐项相同。Piko 对这些语言使用按需 Lezer parser 或轻量词法分类；
   其他 Prism fallback 语言不写入未测的 1:1 结论。
 
 ## 本地 harness

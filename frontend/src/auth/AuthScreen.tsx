@@ -171,7 +171,7 @@ export function AuthScreen() {
       >
         <div className="mb-[26px] flex flex-col items-start">
           <span className="font-sans text-[22px] font-semibold tracking-[-0.02em] text-fg">
-            iChat
+            Piko
           </span>
           <p className="mt-2.5 mb-0 text-[13px] leading-[1.55] text-fg-muted">
             {mode === "login"

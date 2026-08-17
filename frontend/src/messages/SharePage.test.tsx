@@ -91,7 +91,7 @@ describe("SharePage", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("分享不存在或已失效");
     expect(alert.querySelector("svg")).not.toBeNull();
-    expect(screen.getByRole("link", { name: "前往 iChat" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往 Piko" })).toBeInTheDocument();
   });
 
   it("keeps legacy snapshots without a ref unreadable", async () => {

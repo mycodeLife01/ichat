@@ -65,7 +65,7 @@ export const composerSurface =
 // User message bubble — a static content container in the reading column,
 // shared by the live thread and the public share page.
 export const messageBubble =
-  "min-w-0 overflow-hidden rounded-[22px] bg-sunken px-4 py-2.5 text-[16px] leading-6 text-text-primary";
+  "min-w-0 overflow-hidden rounded-[22px] bg-user-message px-4 py-2.5 text-[16px] leading-6 text-user-message-foreground";
 
 // One semantic width/alignment seam for final, streaming, and shared
 // assistant turns. The Markdown body and its adjacent surfaces stay together.

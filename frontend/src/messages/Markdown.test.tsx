@@ -371,7 +371,7 @@ describe("Markdown", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens HTTP links outside the current iChat browsing context", () => {
+  it("opens HTTP links outside the current Piko browsing context", () => {
     render(
       <Markdown
         content={"[HTTPS](https://example.com/path) [HTTP](http://example.org/path)"}
