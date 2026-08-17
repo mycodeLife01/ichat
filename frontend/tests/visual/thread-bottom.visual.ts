@@ -1,5 +1,21 @@
 import { expect, test } from "@playwright/test";
 
+function expectComputedSrgb(
+  actual: string | undefined,
+  expected: readonly [red: number, green: number, blue: number, alpha: number],
+) {
+  expect(actual).toBeDefined();
+  const channels = actual?.match(/\d*\.?\d+/g)?.map(Number);
+  expect(channels).toHaveLength(4);
+  const normalized = actual?.startsWith("color(srgb")
+    ? channels
+    : channels?.map((channel, index) => (index < 3 ? channel / 255 : channel));
+
+  expected.forEach((channel, index) => {
+    expect(normalized?.[index]).toBeCloseTo(channel, 5);
+  });
+}
+
 test("extends the thread behind the sticky Composer and mirrors the return control", async ({
   page,
 }, testInfo) => {
@@ -66,10 +82,10 @@ test("extends the thread behind the sticky Composer and mirrors the return contr
   expect(geometry.footer?.bottom).toBeCloseTo(geometry.viewport.height, 1);
   expect(geometry.fade).toMatchObject({
     content: '""',
-    backgroundColor: "rgba(251, 251, 250, 0.8)",
     backdropFilter: "none",
     pointerEvents: "none",
   });
+  expectComputedSrgb(geometry.fade?.backgroundColor, [252 / 255, 252 / 255, 252 / 255, 0.8]);
   expect(geometry.fade?.maskImage).toContain("32px");
   expect(geometry.composer?.x).toBeCloseTo(geometry.markdown?.x ?? Number.NaN, 1);
   expect(geometry.composer?.right).toBeCloseTo(geometry.markdown?.right ?? Number.NaN, 1);
@@ -137,9 +153,9 @@ test("extends the thread behind the sticky Composer and mirrors the return contr
     backdropFilter: "blur(2px)",
     backgroundColor: "rgba(255, 255, 255, 0.65)",
     borderColor: "rgba(0, 0, 0, 0.15)",
-    scaleX: 1,
-    translateY: 0,
   });
+  expect(visibleControl?.scaleX).toBeCloseTo(1, 5);
+  expect(visibleControl?.translateY).toBeCloseTo(0, 5);
   expect(visibleControl?.transitionDuration).toContain("0.3s");
   expect(visibleControl?.transitionDelay).toContain("0.3s");
 

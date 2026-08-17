@@ -1,0 +1,342 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+.typography-system-fixture {
+  min-height: 100%;
+  background: var(--color-bg);
+}
+
+.typography-fixture-header,
+.typography-fixture-heading,
+.typography-brand-grid,
+.typography-aligned-grid,
+.typography-role-grid,
+.typography-chat-grid,
+.typography-character-samples {
+  width: min(100%, 1040px);
+  margin-inline: auto;
+}
+
+.typography-fixture-header {
+  padding: 44px 32px 32px;
+}
+
+.typography-fixture-kicker {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.typography-fixture-header h1 {
+  margin: 6px 0 8px;
+  color: var(--color-text-primary);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+}
+
+.typography-fixture-header > p:last-child,
+.typography-fixture-heading p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.typography-fixture-section {
+  border-top: 1px solid var(--color-border);
+  padding: 28px 0 44px;
+}
+
+.typography-fixture-heading {
+  padding-inline: 32px;
+}
+
+.typography-fixture-heading h2 {
+  margin: 0 0 4px;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.typography-brand-grid,
+.typography-aligned-grid,
+.typography-role-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 24px 32px 0;
+}
+
+.typography-brand-card,
+.typography-baseline-card,
+.typography-character-samples {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.typography-brand-card {
+  overflow: hidden;
+}
+
+.typography-brand-card h3 {
+  margin: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: 10px 14px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.typography-brand-preview {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  padding: 16px;
+  color: var(--color-fg);
+  white-space: nowrap;
+}
+
+.typography-brand-preview.sidebar-desktop {
+  background: var(--chat-shell-bg);
+}
+
+.typography-collapsed-rail {
+  gap: 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.typography-collapsed-rail > span:first-child {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  color: #0d0d0d;
+  font-size: 18px;
+}
+
+.typography-aligned-grid {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.typography-baseline-card {
+  padding: 18px;
+}
+
+.typography-sidebar-label {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typography-sidebar-row {
+  margin-top: 10px;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typography-baseline-card .assistant-content {
+  max-width: var(--assistant-content-width);
+}
+
+.typography-baseline-card .assistant-markdown h1 {
+  margin-top: 0;
+}
+
+.typography-role-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.typography-chat-grid {
+  display: grid;
+  gap: 16px;
+  padding: 24px 32px 0;
+}
+
+.typography-chat-card,
+.typography-source-shell {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.typography-chat-card {
+  padding: 18px;
+}
+
+.typography-chat-composer {
+  overflow: visible;
+  padding: 22px 0 0;
+}
+
+.typography-status-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.typography-source-shell {
+  display: flex;
+  height: 320px;
+  overflow: hidden;
+}
+
+.typography-source-shell-placeholder {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.typography-role-card {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  padding: 14px;
+}
+
+.typography-role-card > code {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.typography-role-card > p {
+  margin: 0;
+}
+
+.typography-character-samples {
+  box-sizing: border-box;
+  margin-top: 24px;
+  padding: 18px;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.typography-character-samples p {
+  margin: 0;
+}
+
+.typography-character-samples p + p {
+  margin-top: 8px;
+}
+
+.typography-secondary-stage {
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.typography-secondary-placeholder {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--color-type-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
+  text-align: center;
+}
+
+.typography-secondary-states {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  padding: 72px 24px 32px;
+  font-family: var(--font-ui);
+}
+
+.typography-secondary-state-card {
+  display: flex;
+  width: min(100%, 640px);
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 12px;
+  margin-inline: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-dialog);
+  background: var(--color-surface);
+  padding: 24px;
+  box-shadow: var(--shadow-dialog);
+}
+
+.typography-secondary-state-card h1,
+.typography-secondary-state-card p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .typography-fixture-header {
+    padding: 30px 16px 24px;
+  }
+
+  .typography-fixture-heading {
+    padding-inline: 16px;
+  }
+
+  .typography-brand-grid,
+  .typography-aligned-grid,
+  .typography-role-grid,
+  .typography-chat-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px 16px 0;
+  }
+
+  .typography-chat-card {
+    padding: 16px;
+  }
+
+  .typography-chat-composer {
+    padding: 20px 0 0;
+  }
+
+  .typography-character-samples {
+    width: calc(100% - 32px);
+  }
+
+  .typography-secondary-states {
+    padding: 96px 12px 24px;
+  }
+
+  .typography-secondary-state-card {
+    padding: 18px;
+  }
+}
