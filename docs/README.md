@@ -33,6 +33,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Sidebar rail / collapsed navigation, chat-page floating actions, one-click share copy | `docs/handover/frontend/2026-08-14-sidebar-rail-and-chat-actions.md` + `docs/architecture/frontend.md` |
+| Migrating or extending the ChatGPT-aligned typography system | Latest `docs/handover/frontend/2026-08-16-chatgpt-typography-ticket-*.md` + `.scratch/chatgpt-typography/PRD.md` + `docs/architecture/frontend.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 
 ## Directory guide
@@ -111,6 +112,12 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-chatgpt-streaming-prefix-and-performance.md` — ticket 05's cumulative prefix matrix, real-browser 10k/20k/50k and streaming profiles, interaction-state stability, no-batching decision, and the handoff into ticket 06
 - `2026-08-15-chatgpt-response-rendering.md` — final tickets 01–06 handoff: shipped Markdown surfaces, frozen reasoning/backend scope, bundle and performance evidence, approved desktop/mobile golden baselines, accepted deviations, verification, and rollback
 - `2026-08-16-chatgpt-sidebar-ui-alignment.md` — desktop ChatGPT sidebar geometry, sticky scroll structure, native scrollbar parity, shared chat-shell background, Chrome measurements, and verification
+- `2026-08-16-chatgpt-typography-ticket-01.md` — ticket 01's frozen ChatGPT typography reference matrix, iChat wordmark/assistant/Sidebar visual baselines, sampled discrepancies, verification, and ticket 02 token-layer boundary
+- `2026-08-16-chatgpt-typography-ticket-02.md` — ticket 02's ChatGPT-aligned typography tokens and shared roles, no-visual-change Markdown/Sidebar adoption, frozen brand/root boundaries, verification, and the ticket 03/04 frontier
+- `2026-08-16-chatgpt-typography-ticket-03.md` — ticket 03's chat-core role migration across Composer, messages, reasoning, sources, attachments, and Run/tool states; six-width reflow evidence, protected surfaces, and the ticket 04-only frontier
+- `2026-08-16-chatgpt-typography-ticket-04.md` — ticket 04's secondary-surface typography migration across navigation, dialogs, account/share/auth flows, and semantic states; six-width reflow evidence, protected chat/brand/root baselines, and the ticket 05 frontier
+- `2026-08-16-chatgpt-typography-ticket-05.md` — ticket 05's 16px/24px UI root switch, centralized brand/code/math font exceptions, legacy override and rem audit, preserved visual baselines, verification, and the ticket 06-only frontier
+- `2026-08-16-chatgpt-typography-ticket-06.md` — final tickets 01–06 acceptance: all reference-matrix roles, six-width/mobile screenshots, 200% zoom, contrast and non-color status evidence, mechanical audit, architecture rules, verification, protected exceptions, and no remaining frontier
 
 ### `docs/goals/`
 

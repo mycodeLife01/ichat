@@ -143,7 +143,8 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
 - 助手内容列使用独立 token `--assistant-content-width: 768px`，不改页面级
   `--reading-width`。final、streaming 和 share 的正文、来源、附件与动作共享该列；share
   外壳需要 `calc(var(--assistant-content-width) + 64px)` 为两侧 `px-8` 留出准确 gutter。
-  项目根字号是 15px，不能用 `4rem` 代替这里的 64px。
+  当前项目根字号是 16px，但这里仍使用固定 64px 表达布局契约，不能重新引入对根字号的
+  `rem` 耦合。
 - Composer 外框复用 `--assistant-content-width`，与 live assistant 正文保持相同左右边界；
   live `MessageThread` 桌面外壳同样按该 token 加两侧 32px gutter。移动断点下，只有位于
   `.thread-region` 的消息外壳可以用 viewport 宽度补偿传统滚动条占宽，确保正文与 Composer
@@ -154,6 +155,43 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   该按钮自身保留参考中的 2px backdrop blur。
   点击后恢复 pinned 状态并平滑返回最新消息。该控件必须支持键盘、`prefers-reduced-motion`
   和用户反向滚动中断，不得用单纯的“接近底部”判断覆盖用户阅读意图。
+
+### 文字系统
+
+- `.scratch/chatgpt-typography/reference-matrix.md` 记录 2026-08-16 ChatGPT 点时参考及角色来源；
+  它解释目标从何而来，不随外部产品更新而自动漂移。运行时事实源是
+  `src/styles/global.css` 的 `--font-ui`、`--text-*`、`--font-weight-*`、`--color-type-*`
+  令牌，以及 `src/ui/classes.ts` 导出的语义角色。业务组件选择角色，不重新拼字号、行高、
+  字重或文字前景。
+- `html/body` 使用 `--font-ui`、16px / 24px 和 primary 前景。普通导航、菜单和按钮使用
+  `uiText` / `controlText`（14/20、400）；分组或字段强调使用 `uiLabel`（14/20、500）；
+  时间、帮助和弱说明使用 `metaText`（12/16、400）；页面与 Dialog 标题使用
+  `surfaceTitle`（18/28、400）。表单按 `formLabel`、`formValue`、`formHelp` 选择，不因页面
+  不同复制一套尺度。
+- Composer、用户消息、助手正文和思考分别使用 `composer*`（16/26）、
+  `userMessageText`（16/24）、`assistantText`（16/26）和 `reasoning*`（16/24）。附件、来源与
+  状态使用 `attachment*`、`source*`、`semanticStatus*`；状态 tone 只决定语义前景和表面，
+  不能改变排印角色。助手 H1–H6、段落、列表、引用、链接、表格、行内代码与代码块继续由
+  `.assistant-markdown` 窄作用域消费同一底层令牌，不在 JSX 复制 Markdown 尺度。
+- 品牌冻结边界包括 `Wordmark` 的 18px/20px 变体、AuthScreen 22px 独立标题，以及
+  Sidebar desktop 已有的系统字体 scoped 例外。`--font-sans` 只保留给这些 iChat 品牌节点；
+  Wordmark 的动态 `fontSize` prop 是唯一允许的 inline font metric。未经新的产品决定和全变体
+  family、size、line-height、weight、spacing、transform、color、bounding-box 复验，不得修改
+  品牌规则或让全局继承间接改变它们。
+- 字体 family 例外集中在 `global.css`：品牌节点使用 `--font-sans`，助手行内代码和源码使用
+  `--font-code`，KaTeX 后代使用第三方数学字体；`--font-serif` 只允许明确的内容语义，不是普通
+  UI fallback。普通 UI 不使用组件级 `font-sans`、`font-family` 或 `fontFamily`。
+- 新增可见文字先按语义映射现有角色；只有冻结矩阵确实没有对应语义时，才先补参考、令牌和
+  浏览器契约。业务 JSX 不得新增 `text-[…px]`、`leading-[…]`、半像素功能字号或未经参考支持的
+  响应式字号切换。触摸目标通过 padding/min-size 保证，不通过放大或缩小字号凑尺寸。
+- 换行策略同样属于角色契约：阅读文字正常换行并 `break-word`，用户消息允许 `anywhere`，
+  单行导航、文件名和短控件值使用 ellipsis，源码和宽表格只在自己的 viewport 横向滚动。
+  不得用缩小字号解决长中文、长单词、长 URL 或混排溢出。
+- 新增或修改文字表面时，评审必须检查 primary 对实际背景的 WCAG 对比度至少 4.5:1；
+  error/warning/success 等状态还必须有图标、`role` 或明确文案等非颜色通道。按风险扩展
+  `tests/visual/typography-system.*` 的真实浏览器 `getComputedStyle`、截图、键盘焦点和
+  200% zoom 证据，并继续运行助手 Markdown golden；不能用 jsdom 字体值代替浏览器验收。
+
 - Tailwind v4 使用 CSS-first 配置。设计 token 和动画放在 `@theme`；共享 utility 组合放在
   `src/ui/classes.ts`；只有 Markdown 产物、伪元素、滚动条、复杂背景等能力保留手写 CSS。
 - 部分语义 class 同时是测试或运行时钩子，样式迁移时先搜索消费者，不能把“无样式”误判为
@@ -188,5 +226,9 @@ pnpm run build
 - live thread 底部布局的浏览器入口为 `tests/visual/thread-bottom.html`，在桌面与移动项目中验证
   sticky/fade/mask、按钮 blur、Composer 与正文对齐、136px 显示阈值、入退场动效、一键到底、无页面水平
   overflow 和 reduced-motion；这些行为依赖真实滚动与 CSS 几何，不能只用 jsdom 验证。
+- 文字系统浏览器入口为 `tests/visual/typography-system.html`。它对冻结矩阵每个角色、所有品牌
+  变体和字体例外执行 `getComputedStyle`，并覆盖 1280×800、768、320、375、390、414、现有
+  mobile 项目和 200% zoom；同时检查长文本边界、主文字对比度、状态非颜色通道、键盘焦点与
+  错误信息。测试附件写入 gitignored 的 `output/playwright/results/`，不进入生产路由或构建入口。
 - 文档或代码声称任务完成前，相关测试、lint、类型检查和构建必须通过；无法执行的检查要明确
   记录缺口、风险与待运行命令。

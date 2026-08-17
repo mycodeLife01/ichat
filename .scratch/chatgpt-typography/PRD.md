@@ -2,7 +2,7 @@
 
 Type: refactor
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: None
 
@@ -73,13 +73,13 @@ iChat 当前没有单一、可追溯的文字系统。根节点使用 Inter 栈�
 以下内容视为同一个“iChat 品牌字标”范围，全部冻结：
 
 - frontend/src/ui/Wordmark.tsx；
-- Sidebar 展开态 20px 和收起态 18px 的 Wordmark；
+- Sidebar 桌面展开态 18px Wordmark、收起 rail 无可见 Wordmark，以及移动抽屉 20px Wordmark；
 - SharePage 桌面 18px、移动 20px 的 Wordmark；
 - VerifyEmailPage、ResetPasswordPage、ConfirmAccountDeletionPage 的 18px Wordmark；
 - AuthScreen 顶部独立实现的 22px “iChat”品牌标题；
 - frontend/src/styles/global.css 中只服务于品牌字标的字体、字距与 transform 规则。
 
-冻结不仅表示“不编辑组件”，还表示迁移前后 computed style 和截图边界不变。全局字体切换不得通过继承间接改变字标。现有 --font-sans 保留给品牌使用；新的非品牌 UI 使用独立的 --font-ui。
+冻结不仅表示“不编辑组件”，还表示迁移前后 computed style 和截图边界不变。全局字体切换不得通过继承间接改变字标。现有 --font-sans 保留给品牌使用；新的非品牌 UI 使用独立的 --font-ui。当前 `.sidebar-desktop .wordmark` 继承 Sidebar 系统字体栈，是必须保持 computed value 的已有 scoped 例外，不得在迁移中顺手改成 Inter。
 
 ## 当前锁定的 ChatGPT 参考
 
@@ -89,6 +89,7 @@ iChat 当前没有单一、可追溯的文字系统。根节点使用 Inter 栈�
 
 - UI 字体栈：-apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"
 - 主文字：#0d0d0d
+- 次级交互文字：#5d5d5d
 - 第三级文字与占位符：#8f8f8f
 - 禁用文字：#b4b4b4
 - 用户消息文字：#0c274a
@@ -100,10 +101,10 @@ iChat 当前没有单一、可追溯的文字系统。根节点使用 Inter 栈�
 | 角色 | 字号 / 行高 | 字重 | 颜色 | 迁移规则 |
 |---|---:|---:|---|---|
 | 普通 UI、Sidebar、菜单、按钮标签 | 14 / 20px | 400 | primary 或 tertiary | 跨桌面与移动一致，不再移动端放大 |
-| 分组标题、强调标签 | 14 / 20px | 500 | primary | 不使用 600 代替普通分组强调 |
+| 分组标题、强调标签 | 14 / 20px | 500 | primary 或 tertiary | 不使用 600 代替普通分组强调；Sidebar 分组使用 tertiary |
 | Meta、帮助、时间与弱说明 | 12 / 16px | 400 | tertiary | 功能文本下限为 12px |
 | Composer 输入正文 | 16 / 26px | 400 | primary | placeholder 使用 tertiary |
-| Composer 当前模式/思考等级 | 16 / 26px | 400 | primary | 完整名称保留在菜单或可访问名称中 |
+| Composer 当前模式/思考等级 | 16 / 26px | 400 | tertiary | 完整名称保留在菜单或可访问名称中 |
 | 用户消息正文 | 16 / 24px | 400 | #0c274a | 编辑态与只读态一致 |
 | 助手正文 | 16 / 26px | 400 | #0d0d0d | 当前已对齐，先令牌化再锁定 |
 | 思考折叠标签 | 16 / 24px | 400 | #8f8f8f | streaming 不改变字号 |
@@ -114,6 +115,7 @@ iChat 当前没有单一、可追溯的文字系统。根节点使用 Inter 栈�
 | Markdown H4 | 16 / 24px | 600 | #0d0d0d | 语义降级不缩成 UI 标签 |
 | Markdown H5 | 16 / 26px | 600 | #0d0d0d | 保留正文行盒 |
 | Markdown H6 | 16 / 26px | 400 | #0d0d0d | 通过语义而非极小字号降级 |
+| 页面/Dialog 标题 | 18 / 28px | 400 | #0d0d0d | 采用 ChatGPT 设置 Dialog 当前 section 标题角色 |
 | 表格正文 | 14 / 24px | 400 | #0d0d0d | 保留现有表格阅读密度 |
 | 表头 | 14 / 16px | 600 | #0d0d0d | 保留现有表头层级 |
 | 行内代码 | 14 / 24px | 500 | 当前代码前景色 | 使用等宽字体 |
@@ -127,7 +129,7 @@ Dialog、Popover 说明、账户/分享表单、认证生命周期页和附件�
 
 在 frontend/src/styles/global.css 中新增 --font-ui，并把 ChatGPT 系统栈作为唯一非品牌 UI 字体。保留：
 
-- --font-sans：只服务于 Wordmark 和 AuthScreen 品牌标题；
+- --font-sans：只服务于 Wordmark 和 AuthScreen 品牌标题；Sidebar desktop Wordmark 保留当前继承系统栈的 scoped 例外；
 - --font-mono：代码内容；
 - --font-serif：确有内容语义的衬线文本；
 - KaTeX 自带的数学字体。
@@ -285,15 +287,25 @@ Dialog、Popover 说明、账户/分享表单、认证生命周期页和附件�
 
 | ID | Ticket | Status | Blocked by |
 |---|---|---|---|
-| 01 | 锁定 ChatGPT 参考矩阵与 iChat 品牌字标基线 | ready-for-agent | None |
-| 02 | 建立 ChatGPT 文字令牌与共享角色 | ready-for-agent | 01 |
-| 03 | 迁移聊天核心文字系统 | ready-for-agent | 02 |
-| 04 | 迁移次级页面与状态文字系统 | ready-for-agent | 02 |
-| 05 | 切换全局文字基线并清除遗留覆盖 | ready-for-agent | 03, 04 |
-| 06 | 完成视觉验收、可访问性检查与文档收口 | ready-for-agent | 05 |
+| 01 | 锁定 ChatGPT 参考矩阵与 iChat 品牌字标基线 | completed | None |
+| 02 | 建立 ChatGPT 文字令牌与共享角色 | completed | 01 |
+| 03 | 迁移聊天核心文字系统 | completed | 02 |
+| 04 | 迁移次级页面与状态文字系统 | completed | 02 |
+| 05 | 切换全局文字基线并清除遗留覆盖 | completed | 03, 04 |
+| 06 | 完成视觉验收、可访问性检查与文档收口 | completed | 05 |
 
 ## Frontier
 
-当前 frontier：01。
+当前 frontier：无。Tickets 01–06 已全部完成并通过最终视觉、可访问性、构建与机械审计；
+本 PRD 没有后续 frontier。
 
 完成或阻塞 ticket 时，同时更新本索引和对应 issue 文件的状态；讨论和实测差异追加到 ticket 的 Comments，不覆盖历史。
+
+## Final Acceptance
+
+- 2026-08-16：最终真实 Chromium 验收覆盖冻结矩阵全部 34 个角色、全部品牌变体、助手
+  Markdown golden、1280×800 / 768 / 320 / 375 / 390 / 414 与 mobile 项目，以及 200% zoom、
+  键盘焦点、错误关联、对比度和状态非颜色通道。
+- 2026-08-16：Vitest 74 files / 634 tests、Playwright 30 passed / 22 expected skips、lint、
+  typecheck、production build、机械字体审计和 `git diff --check` 全部通过。实现没有修改文案、API、
+  业务行为或生产视觉；tickets 01–06 的全部未提交改动继续保留在当前 workspace。

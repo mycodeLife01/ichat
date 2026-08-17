@@ -2,7 +2,7 @@
 
 Type: test
 
-Status: ready-for-agent
+Status: completed
 
 Blocked by: None
 
@@ -37,15 +37,19 @@ Blocked by: None
 
 ## Acceptance criteria
 
-- [ ] reference-matrix.md 中每个目标文字角色都有 ChatGPT 对应、精确 computed value 和采样上下文，不存在 TBD。
-- [ ] PRD 中的已确认值与重新采样一致；若不一致，以同一日期/环境的证据更新 PRD，并在 Comments 记录原因。
-- [ ] 品牌基线覆盖 font-family、size、line-height、weight、letter-spacing、transform、color 和 bounding box。
-- [ ] Playwright fixture 同时包含中文、英文、数字、标点、emoji、长单词和长 URL。
-- [ ] 助手 Markdown 与桌面 Sidebar 的当前已对齐状态有截图或 computed-style 基线。
-- [ ] 参考截图与数据只用于内部验收，不接入生产路由或用户页面。
-- [ ] 未修改 frontend/src 中的生产样式或组件行为。
-- [ ] pnpm run test:visual 和 git diff --check 通过。
+- [x] reference-matrix.md 中每个目标文字角色都有 ChatGPT 对应、精确 computed value 和采样上下文，不存在 TBD。
+- [x] PRD 中的已确认值与重新采样一致；若不一致，以同一日期/环境的证据更新 PRD，并在 Comments 记录原因。
+- [x] 品牌基线覆盖 font-family、size、line-height、weight、letter-spacing、transform、color 和 bounding box。
+- [x] Playwright fixture 同时包含中文、英文、数字、标点、emoji、长单词和长 URL。
+- [x] 助手 Markdown 与桌面 Sidebar 的当前已对齐状态有截图或 computed-style 基线。
+- [x] 参考截图与数据只用于内部验收，不接入生产路由或用户页面。
+- [x] 未修改 frontend/src 中的生产样式或组件行为。
+- [x] pnpm run test:visual 和 git diff --check 通过。
 
 ## Comments
 
 - 2026-08-16：创建 ticket。此前实测已确认 PRD 主角色表；本 ticket 负责把剩余页面状态和品牌变体固化为可复现证据。
+- 2026-08-16：在已登录 ChatGPT 普通会话、Markdown、Composer/模式菜单、思考区、Sidebar、Popover/Dialog 与本地 iChat 对应表面完成同日采样；精确环境、computed values、状态和最近角色映射见 `../reference-matrix.md`。
+- 2026-08-16：重新采样修正三处原始假设：Composer 当前模式使用 tertiary 而非 primary；页面/Dialog section 标题补充为 18/28、400；桌面 Sidebar 展开字标实际为 18px、收起 rail 无可见字标，移动抽屉为 20px。PRD 已同步，原因是以同日真实 Chrome computed style 取代规划期近似值。
+- 2026-08-16：新增仅由 Playwright 加载的 `typography-system` fixture 与品牌/助手/Sidebar computed-style 断言；未修改 `frontend/src`。同时让两条既有视觉断言兼容 macOS overlay scrollbar、Chromium `color(srgb …)` 序列化和浮点矩阵误差，不改变生产行为。
+- 2026-08-16：验证通过：Vitest 74 files / 634 tests、ESLint、TypeScript typecheck、production build、Playwright 8 passed / 2 configured skips，以及 `git diff --check`。
