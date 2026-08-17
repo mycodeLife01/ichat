@@ -2,16 +2,69 @@
 
 /* Design tokens — warm-neutral light theme, ported from chatapp_demo. */
 @theme {
-  /* The app's base font-size is 15px (html), which would shrink every
-     rem-derived utility by 15/16. Pin the scales to the px values the
-     pre-Tailwind stylesheets used. */
+  /* Keep application spacing and retained Tailwind type utilities in fixed px
+     so the ticket-05 16px root does not move their pre-switch geometry. */
   --spacing: 4px;
   --text-xs: 12px;
   --text-xs--line-height: 1.6;
   --text-sm: 14px;
   --text-sm--line-height: 1.6;
+  --text-lg: 16.875px;
+  --text-lg--line-height: 26.25px;
   --text-2xl: 24px;
   --text-2xl--line-height: 1.6;
+
+  /* ChatGPT-aligned typography roles. Size and line-height travel together so
+     business surfaces never reconstruct fractional type scales in JSX. */
+  --text-ui: 14px;
+  --text-ui--line-height: 20px;
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-surface-title: 18px;
+  --text-surface-title--line-height: 28px;
+  --text-composer: 16px;
+  --text-composer--line-height: 26px;
+  --text-user-message: 16px;
+  --text-user-message--line-height: 24px;
+  --text-assistant: 16px;
+  --text-assistant--line-height: 26px;
+  --text-reasoning: 16px;
+  --text-reasoning--line-height: 24px;
+  --text-sidebar-root: 16px;
+  --text-sidebar-root--line-height: 24px;
+  --text-markdown-h1: 24px;
+  --text-markdown-h1--line-height: 32px;
+  --text-markdown-h2: 20px;
+  --text-markdown-h2--line-height: 28px;
+  --text-markdown-h3: 18px;
+  --text-markdown-h3--line-height: 28px;
+  --text-markdown-h4: 16px;
+  --text-markdown-h4--line-height: 24px;
+  --text-markdown-h5: 16px;
+  --text-markdown-h5--line-height: 26px;
+  --text-markdown-h6: 16px;
+  --text-markdown-h6--line-height: 26px;
+  --text-markdown-list: 16px;
+  --text-markdown-list--line-height: 26px;
+  --text-markdown-quote: 16px;
+  --text-markdown-quote--line-height: 24px;
+  --text-table: 14px;
+  --text-table--line-height: 24px;
+  --text-table-head: 14px;
+  --text-table-head--line-height: 16px;
+  --text-inline-code: 14px;
+  --text-inline-code--line-height: 26px;
+  --text-code-toolbar: 14px;
+  --text-code-toolbar--line-height: 20px;
+  --text-code: 14px;
+  --text-code--line-height: 20px;
+
+  /* The role matrix uses only these four weights. Keep them explicit beside
+     the size scale so typography does not depend on Tailwind defaults. */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
   /* Semantic radius hierarchy. Parent surfaces use a larger role than their
      nested controls/items instead of selecting arbitrary radii in JSX. */
   --radius-detail: 4px;
@@ -28,6 +81,7 @@
   --radius-sm: var(--radius-detail);
   --radius-md: 6px;
   --radius-lg: var(--radius-item);
+  --radius-xl: 11.25px;
   --radius-2xl: var(--radius-card);
   /* Legacy transitions used the CSS default curve, not Tailwind's. */
   --default-transition-timing-function: ease;
@@ -43,6 +97,14 @@
   --color-text-primary: #1a1a19;
   --color-text-muted: #6b6a66;
   --color-text-faint: #b8b6b0;
+
+  /* Typography colors are isolated from the legacy UI-system text palette.
+     Tickets 03–05 opt business surfaces into these values explicitly. */
+  --color-type-primary: #0d0d0d;
+  --color-type-secondary: #5d5d5d;
+  --color-type-tertiary: #8f8f8f;
+  --color-type-disabled: #b4b4b4;
+  --color-type-user-message: #0c274a;
 
   /* Assistant code surfaces use a restrained light syntax palette. */
   --color-code-surface: #f3f3f3;
@@ -129,8 +191,18 @@
   --color-danger-hover: var(--color-danger-soft);
   --shadow-menu: var(--shadow-popover);
 
+  /* Typeface responsibilities:
+     - ui is the sole non-brand application stack;
+     - sans preserves only the iChat wordmark/AuthScreen brand stack;
+     - code/mono and serif are content-only exceptions, never UI fallbacks;
+     - KaTeX continues to own the font families inside its math descendants. */
+  --font-ui: -apple-system-body, ui-sans-serif, -apple-system, system-ui,
+    "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif,
+    "Segoe UI Emoji", "Segoe UI Symbol";
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", serif;
 
@@ -220,30 +292,56 @@
   --scrollbar-thumb-hover: rgba(20, 20, 19, 0.32);
 }
 
+/* Font-family exceptions are intentionally centralized here:
+   1. Wordmark/AuthScreen brand text uses --font-sans;
+   2. assistant source code uses --font-code below;
+   3. KaTeX descendants keep the families from its third-party stylesheet.
+   All other visible application text inherits or explicitly selects --font-ui. */
+.wordmark {
+  display: inline-block;
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.025em;
+  line-height: 1.6;
+  transform: scaleX(1.04) scaleY(0.9);
+  transform-origin: left;
+}
+
+.auth-brand-title {
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+  line-height: 1.6;
+}
+
 /* Desktop navigation follows the current ChatGPT sidebar surface. The shell
    background is shared with the chat column; typography and interaction
    colors remain scoped to the sidebar. */
 .sidebar-desktop {
   --color-bg: var(--chat-shell-bg);
   --color-border: rgb(0 0 0 / 5%);
-  --color-fg: #0d0d0d;
-  --color-fg-subtle: #8f8f8f;
+  --color-fg: var(--color-type-primary);
+  --color-fg-subtle: var(--color-type-tertiary);
   --color-hover: rgb(0 0 0 / 5%);
   --color-active: rgb(0 0 0 / 10%);
   --color-selected: rgb(0 0 0 / 5%);
-  --color-text-primary: #0d0d0d;
-  --color-text-muted: #8f8f8f;
+  --color-text-primary: var(--color-type-primary);
+  --color-text-muted: var(--color-type-tertiary);
   color: var(--color-fg);
-  font-family: -apple-system-body, ui-sans-serif, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial,
-    sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
-  font-size: 16px;
-  line-height: 24px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sidebar-root);
+  line-height: var(--text-sidebar-root--line-height);
 }
 
 .sidebar-desktop .wordmark {
+  /* Frozen ticket-01 exception: the desktop wordmark intentionally inherits
+     the Sidebar system stack instead of the brand --font-sans stack. */
   font-family: inherit;
   letter-spacing: -0.27px;
+  line-height: var(--text-sidebar-root--line-height);
 }
 
 .sidebar-scrollport {
@@ -268,10 +366,10 @@ body {
   height: 100%;
   margin: 0;
   background: var(--color-bg);
-  color: var(--color-fg);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.6;
+  color: var(--color-type-primary);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -305,13 +403,11 @@ body {
 /* Assistant Markdown typography. ReactMarkdown owns the descendants, so this
    deliberately narrow scope is the handwritten-CSS seam for generated nodes. */
 .assistant-markdown {
-  color: #0d0d0d;
-  font-family: -apple-system-body, ui-sans-serif, -apple-system, system-ui,
-    "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif,
-    "Segoe UI Emoji", "Segoe UI Symbol";
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 26px;
+  color: var(--color-type-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-assistant);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-assistant--line-height);
   overflow-wrap: break-word;
   text-wrap: auto;
   word-break: normal;
@@ -324,9 +420,9 @@ body {
 
 .assistant-markdown h1 {
   margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 32px;
+  font-size: var(--text-markdown-h1);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-markdown-h1--line-height);
 }
 
 .assistant-markdown > h1:not(:first-child) { margin-top: 16px; }
@@ -335,17 +431,17 @@ body {
 .assistant-markdown h2,
 .assistant-markdown h3 {
   margin: 16px 0 4px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .assistant-markdown h2 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: var(--text-markdown-h2);
+  line-height: var(--text-markdown-h2--line-height);
 }
 
 .assistant-markdown h3 {
-  font-size: 18px;
-  line-height: 28px;
+  font-size: var(--text-markdown-h3);
+  line-height: var(--text-markdown-h3--line-height);
 }
 
 .assistant-markdown > hr + h2,
@@ -353,29 +449,29 @@ body {
 
 .assistant-markdown h4 {
   margin: 16px 0 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 24px;
+  font-size: var(--text-markdown-h4);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-markdown-h4--line-height);
 }
 
 .assistant-markdown h5 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 26px;
+  font-size: var(--text-markdown-h5);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-markdown-h5--line-height);
 }
 
 .assistant-markdown h6 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 26px;
+  font-size: var(--text-markdown-h6);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-markdown-h6--line-height);
 }
 
 .assistant-markdown p {
   margin: 16px 0;
-  font-size: 16px;
-  line-height: 26px;
+  font-size: var(--text-assistant);
+  line-height: var(--text-assistant--line-height);
   text-wrap: auto;
 }
 
@@ -394,8 +490,8 @@ body {
 .assistant-markdown ol {
   margin: 0;
   padding-left: 26px;
-  font-size: 16px;
-  line-height: 26px;
+  font-size: var(--text-markdown-list);
+  line-height: var(--text-markdown-list--line-height);
 }
 
 /* Tailwind preflight removes list markers; generated Markdown restores them. */
@@ -411,8 +507,8 @@ body {
 .assistant-markdown li > ul,
 .assistant-markdown li > ol { margin-block: 0; }
 .assistant-markdown li::marker {
-  color: #0d0d0d;
-  font-weight: 700;
+  color: var(--color-type-primary);
+  font-weight: var(--font-weight-bold);
 }
 
 /* GFM task lists own their checkbox marker instead of displaying two markers. */
@@ -441,16 +537,16 @@ body {
 }
 
 .assistant-markdown a {
-  color: #0d0d0d;
+  color: var(--color-type-primary);
   overflow-wrap: break-word;
   word-break: normal;
   text-decoration-line: underline;
   text-decoration-style: dotted;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
-  text-decoration-color: #8f8f8f;
+  text-decoration-color: var(--color-type-tertiary);
 }
-.assistant-markdown a:hover { text-decoration-color: #0d0d0d; }
+.assistant-markdown a:hover { text-decoration-color: var(--color-type-primary); }
 
 .assistant-markdown .external-link-icon {
   display: inline-block;
@@ -463,7 +559,7 @@ body {
 
 .assistant-markdown .external-link-icon svg { display: block; }
 
-.assistant-markdown strong { font-weight: 600; }
+.assistant-markdown strong { font-weight: var(--font-weight-semibold); }
 
 .assistant-markdown blockquote {
   position: relative;
@@ -472,14 +568,14 @@ body {
   padding: 8px 0 8px 24px;
   color: inherit;
   font-style: normal;
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 24px;
+  font-size: var(--text-markdown-quote);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-markdown-quote--line-height);
 }
 
-.assistant-markdown blockquote p { line-height: 24px; }
-.assistant-markdown blockquote code { line-height: 24px; }
-.assistant-markdown blockquote :is(ul, ol, li) { line-height: 24px; }
+.assistant-markdown blockquote p { line-height: var(--text-markdown-quote--line-height); }
+.assistant-markdown blockquote code { line-height: var(--text-markdown-quote--line-height); }
+.assistant-markdown blockquote :is(ul, ol, li) { line-height: var(--text-markdown-quote--line-height); }
 .assistant-markdown blockquote > :first-child { margin-top: 0; }
 .assistant-markdown blockquote > p:first-child {
   margin-top: 0;
@@ -502,11 +598,10 @@ body {
 }
 
 .assistant-markdown code {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 26px;
+  font-family: var(--font-code);
+  font-size: var(--text-inline-code);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-inline-code--line-height);
   background: #ececec;
   padding: 2.4px 4.8px;
   border-radius: var(--radius-detail);
@@ -522,7 +617,7 @@ body {
   border: 1px solid var(--color-code-border);
   border-radius: var(--radius-code-block);
   background: var(--color-code-surface);
-  color: #0d0d0d;
+  color: var(--color-type-primary);
 }
 
 .assistant-markdown .code-block-header {
@@ -544,11 +639,10 @@ body {
   max-width: 75%;
   align-items: center;
   overflow: hidden;
-  color: #0d0d0d;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+  color: var(--color-type-primary);
+  font-size: var(--text-code-toolbar);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-code-toolbar--line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -568,12 +662,11 @@ body {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #0d0d0d;
+  color: var(--color-type-primary);
   cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+  font-size: var(--text-code-toolbar);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-code-toolbar--line-height);
   padding: 8px;
   transition: background-color 120ms ease;
 }
@@ -595,12 +688,11 @@ body {
   border-radius: 999px;
   padding: 0 12px;
   background: transparent;
-  color: #0d0d0d;
+  color: var(--color-type-primary);
   cursor: default;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+  font-size: var(--text-code-toolbar);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-code-toolbar--line-height);
 }
 
 .assistant-markdown .code-block-run > span {
@@ -648,7 +740,7 @@ body {
   border-radius: 999px;
   padding: 8px;
   background: transparent;
-  color: #0d0d0d;
+  color: var(--color-type-primary);
   cursor: pointer;
 }
 
@@ -710,11 +802,10 @@ body {
   min-width: 100%;
   max-width: none;
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 20px;
+  font-family: var(--font-code);
+  font-size: var(--text-code);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-code--line-height);
   white-space: pre;
   overflow: visible;
   overflow-wrap: normal;
@@ -775,7 +866,7 @@ body {
 .assistant-markdown .token.property,
 .assistant-markdown .token.selector { color: var(--color-code-property); }
 
-.assistant-markdown [data-language="json"] .token.property { color: #0d0d0d; }
+.assistant-markdown [data-language="json"] .token.property { color: var(--color-type-primary); }
 .assistant-markdown [data-language="markup"] .token.tag,
 .assistant-markdown [data-language="markup"] .token.tag .token.punctuation {
   color: var(--color-code-tag);
@@ -830,8 +921,7 @@ body {
 }
 
 .assistant-markdown .table-block-header button {
-  color: #5d5d5d;
-  font-family: inherit;
+  color: var(--color-type-secondary);
   border-radius: var(--radius-detail);
   opacity: 0;
   pointer-events: none;
@@ -856,8 +946,8 @@ body {
   border-collapse: separate;
   border-spacing: 0;
   background: transparent;
-  font-size: 14px;
-  line-height: 24px;
+  font-size: var(--text-table);
+  line-height: var(--text-table--line-height);
 }
 
 .assistant-markdown .table-block th,
@@ -893,18 +983,20 @@ body {
   padding-top: 8px;
   padding-bottom: 8px;
   background: transparent;
-  font-weight: 600;
-  line-height: 16px;
+  font-size: var(--text-table-head);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-table-head--line-height);
 }
 
 .assistant-markdown .table-block td {
   padding-top: 10px;
   padding-bottom: 10px;
-  font-weight: 400;
-  line-height: 24px;
+  font-size: var(--text-table);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-table--line-height);
 }
 
-.assistant-markdown .table-block code { line-height: 24px; }
+.assistant-markdown .table-block code { line-height: var(--text-table--line-height); }
 .assistant-markdown .table-block tbody tr:last-child td { padding-bottom: 24px; }
 
 .assistant-markdown hr {
@@ -918,11 +1010,11 @@ body {
    clipped to the glyphs, animated by background-position — same direction as
    the title skeleton). Hovering forces solid black in any state. */
 .thinking-label {
-  color: var(--color-text-muted);
+  color: var(--color-type-tertiary);
   transition: color 120ms ease;
 }
 .thinking-label:hover {
-  color: var(--color-text-primary);
+  color: var(--color-type-primary);
 }
 .thinking-label.is-streaming {
   /* A lighter glint sweeps over the gray base text (DeepSeek-style): the bright
@@ -930,11 +1022,11 @@ body {
      reads as a glow passing first→last char rather than a dark smudge. */
   background: linear-gradient(
     90deg,
-    var(--color-text-muted) 0%,
-    var(--color-text-muted) 40%,
-    var(--color-text-faint) 50%,
-    var(--color-text-muted) 60%,
-    var(--color-text-muted) 100%
+    var(--color-type-tertiary) 0%,
+    var(--color-type-tertiary) 40%,
+    var(--color-type-disabled) 50%,
+    var(--color-type-tertiary) 60%,
+    var(--color-type-tertiary) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -946,8 +1038,8 @@ body {
 }
 .thinking-label.is-streaming:hover {
   background: none;
-  -webkit-text-fill-color: var(--color-text-primary);
-  color: var(--color-text-primary);
+  -webkit-text-fill-color: var(--color-type-primary);
+  color: var(--color-type-primary);
   animation: none;
 }
 @keyframes thinking-shimmer {

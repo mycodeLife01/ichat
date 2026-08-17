@@ -30,7 +30,7 @@ const buttonStateBase =
   "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait aria-busy:opacity-60";
 
 export const buttonControl =
-  `${buttonStateBase} text-text-primary hover:bg-hover`;
+  `${buttonStateBase} text-type-primary hover:bg-hover`;
 
 export const primaryButton =
   `${buttonStateBase} bg-accent text-accent-foreground hover:opacity-90`;
@@ -41,7 +41,7 @@ export const solidDangerButton =
 const interactiveItemStateBase =
   `rounded-item ${focusRing} transition-[background,color] duration-[120ms] ` +
   "aria-current:bg-selected aria-selected:bg-selected data-[selected=true]:bg-selected " +
-  "disabled:cursor-not-allowed disabled:text-text-faint disabled:hover:bg-transparent " +
+  "disabled:cursor-not-allowed disabled:text-type-disabled disabled:hover:bg-transparent " +
   "aria-busy:cursor-wait aria-busy:opacity-60";
 
 export const interactiveItem =
@@ -62,10 +62,76 @@ export const dialogSurface =
 export const composerSurface =
   "rounded-composer border border-border-strong bg-surface shadow-composer";
 
+// ChatGPT-aligned typography roles. These strings are the public seam for
+// business surfaces; generated Markdown keeps consuming the same underlying
+// tokens from its narrow global.css scope.
+const uiTextBase = "font-ui text-ui font-normal [letter-spacing:normal]";
+const uiLabelBase = "font-ui text-ui font-medium [letter-spacing:normal]";
+const metaTextBase = "font-ui text-meta font-normal [letter-spacing:normal]";
+const composerTextBase = "font-ui text-composer font-normal [letter-spacing:normal]";
+const readingTextWrap =
+  "whitespace-normal [text-wrap:wrap] [overflow-wrap:break-word] [word-break:normal]";
+
+export const uiText = `${uiTextBase} text-type-primary`;
+export const uiLabel = `${uiLabelBase} text-type-primary`;
+export const metaText = `${metaTextBase} text-type-tertiary`;
+export const surfaceTitle =
+  "font-ui text-surface-title font-normal text-type-primary [letter-spacing:normal] [text-wrap:balance] [overflow-wrap:break-word] [word-break:normal]";
+
+// These semantic aliases intentionally share one metric contract. Pages choose
+// a role name instead of copying the same utility combination locally.
+export const controlText = uiText;
+export const formLabel = uiText;
+export const formValue = uiText;
+export const formHelp = `${metaText} ${readingTextWrap}`;
+
+export const composerText =
+  `${composerTextBase} text-type-primary [white-space:break-spaces] ` +
+  "[overflow-wrap:break-word] [word-break:normal] placeholder:text-type-tertiary placeholder:opacity-100";
+export const composerPlaceholder =
+  `${composerTextBase} overflow-hidden text-ellipsis whitespace-nowrap text-type-tertiary`;
+export const composerMode =
+  `${composerTextBase} whitespace-nowrap text-type-tertiary`;
+export const composerMenuItem = `${uiText} !text-ui !leading-5`;
+export const composerMenuValue =
+  `${uiTextBase} min-w-0 truncate whitespace-nowrap text-type-tertiary group-disabled:text-type-disabled`;
+
+export const userMessageText =
+  "font-ui text-user-message font-normal text-type-user-message [letter-spacing:normal] " +
+  "whitespace-pre-wrap [overflow-wrap:anywhere] [word-break:normal]";
+export const assistantText =
+  `font-ui text-assistant font-normal text-type-primary [letter-spacing:normal] ${readingTextWrap}`;
+export const reasoningCollapsed =
+  "font-ui text-reasoning font-normal text-type-tertiary [letter-spacing:normal] " +
+  readingTextWrap;
+export const reasoningText =
+  "font-ui text-reasoning font-normal text-type-primary [letter-spacing:normal] " +
+  readingTextWrap;
+
+export const attachmentTitle = `${uiLabel} min-w-0 truncate whitespace-nowrap`;
+export const attachmentMeta = `${metaText} ${readingTextWrap}`;
+export const sourceTitle = `${uiLabel} ${readingTextWrap}`;
+export const sourceMeta = `${metaText} ${readingTextWrap}`;
+
+// Message actions use the ordinary control role. Their dark-surface hover hint
+// keeps the Meta metrics without binding a foreground tone.
+export const messageActionText = controlText;
+export const messageActionSecondary =
+  `${uiTextBase} !text-ui !leading-5 text-type-tertiary`;
+export const messageActionHint = metaTextBase;
+export const chatControlLabel = uiLabelBase;
+
+// Status tone supplies its own foreground; these roles only choose density.
+// Important metrics let a chat-only consumer override an unmigrated shared
+// surface without changing ticket 04's default typography early.
+export const semanticStatus = `${uiTextBase} !text-ui !leading-5`;
+export const semanticStatusMeta = `${metaTextBase} !text-meta !leading-4`;
+export const runStatusText = semanticStatus;
+
 // User message bubble — a static content container in the reading column,
 // shared by the live thread and the public share page.
 export const messageBubble =
-  "min-w-0 overflow-hidden rounded-[22px] bg-sunken px-4 py-2.5 text-[16px] leading-6 text-text-primary";
+  `min-w-0 overflow-hidden rounded-[22px] bg-sunken px-4 py-2.5 ${userMessageText}`;
 
 // One semantic width/alignment seam for final, streaming, and shared
 // assistant turns. The Markdown body and its adjacent surfaces stay together.
@@ -74,29 +140,30 @@ export const assistantContentColumn =
 
 const menuItemBase =
   `${interactiveItemStateBase} flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-3 ` +
-  "text-left text-[14px] font-normal leading-none";
+  `text-left ${controlText}`;
 
 export const neutralMenuItem =
-  `${menuItemBase} text-text-primary hover:bg-hover focus-visible:bg-hover active:bg-active`;
+  `${menuItemBase} text-type-primary hover:bg-hover focus-visible:bg-hover active:bg-active`;
 
 export const dangerMenuItem =
   `${menuItemBase} text-danger hover:bg-danger-soft focus-visible:bg-danger-soft active:bg-danger-soft`;
 
 export const mobileActionItem =
-  "min-h-11 gap-3 px-5 text-[15px]";
+  "min-h-11 gap-3 px-5";
 
 export const inputControl =
-  `rounded-item border border-border bg-canvas text-text-primary ${focusRing} ` +
+  `rounded-item border border-border bg-canvas ${formValue} ${focusRing} ` +
   "transition-[background,border-color] duration-[120ms] hover:border-border-strong " +
-  "disabled:cursor-not-allowed disabled:bg-sunken disabled:text-text-faint " +
+  "placeholder:text-type-tertiary placeholder:opacity-100 " +
+  "disabled:cursor-not-allowed disabled:bg-sunken disabled:text-type-disabled " +
   "aria-busy:cursor-wait aria-busy:bg-sunken aria-invalid:border-error-border " +
   "data-[state=success]:border-success-border";
 
 export const statusNotice =
-  "flex items-start gap-2 rounded-control border px-3 py-2 text-[12.5px] leading-[1.55]";
+  `flex items-start gap-2 rounded-control border px-3 py-2 ${semanticStatusMeta}`;
 
 export const toastSurface =
-  "flex items-center gap-2 rounded-control border px-3.5 py-2 text-[13px] shadow-popover";
+  `box-border flex w-max max-w-[calc(100vw-32px)] items-center gap-2 rounded-control border px-3.5 py-2 shadow-popover ${semanticStatus}`;
 
 type InteractionState =
   | "default"

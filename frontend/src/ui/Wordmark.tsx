@@ -4,9 +4,10 @@ type WordmarkProps = { size?: number };
 // tracking, and a slight vertical squash (scaleY < 1, scaleX > 1) that gives
 // the squat, confident look a regular text weight doesn't have.
 export function Wordmark({ size = 18 }: WordmarkProps) {
+  // Brand size variants are the only allowed inline font metric.
   return (
     <span
-      className="wordmark inline-block origin-left font-sans font-semibold tracking-[-0.025em] text-fg [transform:scaleX(1.04)_scaleY(0.9)]"
+      className="wordmark"
       style={{ fontSize: size }}
     >
       iChat
