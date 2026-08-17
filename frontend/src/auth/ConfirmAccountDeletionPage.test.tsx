@@ -39,7 +39,7 @@ describe("ConfirmAccountDeletionPage", () => {
     const notice = screen.getByRole("status");
     expect(notice).toHaveAttribute("data-tone", "warning");
     expect(notice).toHaveTextContent("账号状态未发生变化");
-    expect(screen.getByRole("link", { name: "返回 iChat" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回 Piko" })).toBeInTheDocument();
   });
 
   it("shows the warning without calling the API when the token is missing", () => {

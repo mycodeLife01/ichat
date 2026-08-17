@@ -9,7 +9,7 @@ export function Wordmark({ size = 18 }: WordmarkProps) {
       className="wordmark inline-block origin-left font-sans font-semibold tracking-[-0.025em] text-fg [transform:scaleX(1.04)_scaleY(0.9)]"
       style={{ fontSize: size }}
     >
-      iChat
+      Piko
     </span>
   );
 }

@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { Wordmark } from "./Wordmark";
 
 describe("Wordmark", () => {
-  it("renders the iChat wordmark", () => {
+  it("renders the Piko wordmark", () => {
     render(<Wordmark />);
-    expect(screen.getByText("iChat")).toBeInTheDocument();
+    expect(screen.getByText("Piko")).toBeInTheDocument();
   });
 });

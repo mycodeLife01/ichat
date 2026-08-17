@@ -136,7 +136,7 @@ describe("VerifyEmailPage", () => {
         .closest("[data-tone]"),
     ).toHaveAttribute("data-tone", "warning");
     expect(screen.queryByRole("button", { name: "Resend verification email" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Go to iChat" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to Piko" })).toBeInTheDocument();
   });
 
   it("offers resend with an English confirmation when the recovered user is unverified", async () => {

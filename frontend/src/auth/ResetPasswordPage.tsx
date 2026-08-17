@@ -64,7 +64,7 @@ export function ResetPasswordPage() {
   return (
     <main className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
-        <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
+        <Link to="/" className="flex min-h-11 items-center" aria-label="Piko 首页">
           <Wordmark size={18} />
         </Link>
       </header>

@@ -341,7 +341,7 @@ export function UserMenu({
               </div>
               <div className="mt-5 inline-flex items-center gap-2 rounded-lg bg-bg-sunken px-3.5 py-2 text-[11.5px] text-fg-muted">
                 <Info size={13} aria-hidden="true" />
-                这将使你退出 iChat。
+                这将使你退出 Piko。
               </div>
               <div className="mt-5 flex flex-col gap-2">
                 <button

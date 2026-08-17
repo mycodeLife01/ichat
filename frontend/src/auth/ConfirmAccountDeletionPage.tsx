@@ -42,7 +42,7 @@ export function ConfirmAccountDeletionPage() {
   return (
     <main className="flex h-full flex-col bg-bg">
       <header className="flex h-[52px] shrink-0 items-center border-b border-border px-6">
-        <Link to="/" className="flex min-h-11 items-center" aria-label="iChat 首页">
+        <Link to="/" className="flex min-h-11 items-center" aria-label="Piko 首页">
           <Wordmark size={18} />
         </Link>
       </header>
@@ -75,7 +75,7 @@ export function ConfirmAccountDeletionPage() {
             to="/"
             className={`${buttonControl} mt-6 h-11 border border-border-strong px-5 text-[13px] font-medium`}
           >
-            返回 iChat
+            返回 Piko
           </Link>
         </>}
       </div>
