@@ -44,6 +44,12 @@
   --color-text-muted: #6b6a66;
   --color-text-faint: #b8b6b0;
 
+  /* ChatGPT light-mode message surfaces sampled from the live app in Chrome. */
+  --color-user-message: #e8f3fe;
+  --color-user-message-foreground: #0c274a;
+  --color-message-editor: #ececec;
+  --color-message-editor-foreground: #0d0d0d;
+
   /* Assistant code surfaces use a restrained light syntax palette. */
   --color-code-surface: #f3f3f3;
   --color-code-border: rgba(0, 0, 0, 0.05);

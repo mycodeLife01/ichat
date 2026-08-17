@@ -67,7 +67,12 @@ describe("Message", () => {
 
   it("renders a user bubble", () => {
     render(<Message message={userMessage} />);
-    expect(screen.getByText("你好")).toBeInTheDocument();
+    const content = screen.getByText("你好");
+    expect(content).toBeInTheDocument();
+    expect(content.parentElement?.parentElement).toHaveClass(
+      "bg-user-message",
+      "text-user-message-foreground",
+    );
   });
 
   it("renders a signed image thumbnail and reopens its preview without another read-url request", async () => {
@@ -385,7 +390,15 @@ describe("Message", () => {
     const attachmentRail = screen.getByLabelText("编辑消息附件");
     const image = screen.getByRole("group", { name: "photo.png" });
     const file = screen.getByRole("group", { name: "report.pdf" });
-    expect(editor).toHaveClass("w-full", "rounded-[24px]", "bg-sunken", "px-3", "py-3");
+    expect(editor).toHaveClass(
+      "w-full",
+      "rounded-[24px]",
+      "bg-message-editor",
+      "text-message-editor-foreground",
+      "px-3",
+      "py-3",
+    );
+    expect(screen.getByRole("textbox")).toHaveClass("text-message-editor-foreground");
     expect(attachmentRail).toHaveClass("flex", "flex-wrap", "gap-2");
     expect(image).toHaveClass("h-[60px]", "w-14", "rounded-xl");
     expect(file).toHaveClass("w-[320px]", "min-w-[320px]");
