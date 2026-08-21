@@ -58,10 +58,12 @@ test("keeps an overflowing conversation history scrollbar inside clipping bounda
     (accountGeometry.region?.bottom ?? Number.NaN) -
       (accountGeometry.button.top + accountGeometry.button.height),
   ).toBeCloseTo(6, 1);
+  // 10px = (52px rail - 32px avatar) / 2, so the collapsed rail keeps the
+  // avatar centered without any shift.
   expect(
     (accountGeometry.avatarLeft ?? Number.NaN) -
       (accountGeometry.sidebar?.left ?? Number.NaN),
-  ).toBeCloseTo(14, 1);
+  ).toBeCloseTo(10, 1);
   expect(accountGeometry.region?.bottom).toBeCloseTo(
     accountGeometry.sidebar?.bottom ?? Number.NaN,
     1,

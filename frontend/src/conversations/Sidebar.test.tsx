@@ -185,13 +185,15 @@ describe("Sidebar", () => {
       "px-1.5",
       "pt-2",
       "pb-1.5",
+      "transition-[border-color]",
     );
     expect(accountRegion).not.toHaveClass("mt-2");
+    // px-1.5 (6) + pl-1 (4) centers the 32px avatar on the 52px rail axis.
     expect(accountTrigger).toHaveClass(
       "h-13",
       "w-full",
       "gap-2",
-      "pl-2",
+      "pl-1",
       "pr-2.5",
     );
     expect(desktopPanel).not.toHaveClass("pb-2.5");
@@ -208,7 +210,11 @@ describe("Sidebar", () => {
     rerender(<Sidebar {...props} collapsed />);
 
     expect(screen.getByRole("button", { name: "打开个人中心" })).toBe(accountTrigger);
-    expect(accountTrigger).toHaveClass("h-13", "w-full", "pl-2", "pr-2.5");
+    expect(accountTrigger).toHaveClass("h-13", "w-full", "pl-1", "pr-2.5");
+    // Same trigger node means zero shift while collapsing; the rail state only
+    // fades the separator away.
+    expect(accountRegion).toHaveClass("border-t", "border-transparent");
+    expect(accountRegion).not.toHaveClass("border-border");
     expect(historyPanel).toHaveClass("opacity-0");
     // The cropping edge starts on the first frame in both directions.
     expect(document.querySelector("aside.sidebar")).toHaveClass(
