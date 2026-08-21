@@ -219,7 +219,11 @@ export function UserMenu({
       ref={rootRef}
       className={
         pinnedToDesktopRail
-          ? "relative z-20 -mx-2.5 w-[var(--sidebar-width)] border-t border-border px-1.5 pt-2 pb-1.5"
+          ? // The rail state hides the separator by fading it out, so the line
+            // never pops against the width/crossfade choreography.
+            `relative z-20 -mx-2.5 w-[var(--sidebar-width)] border-t px-1.5 pt-2 pb-1.5 transition-[border-color] duration-[150ms] motion-reduce:transition-none ${
+              compact ? "border-transparent" : "border-border"
+            }`
           : compact
             ? "relative"
             : "relative mt-2 border-t border-border pt-2 pb-1"
@@ -229,7 +233,9 @@ export function UserMenu({
         ref={triggerRef}
         className={
           pinnedToDesktopRail
-            ? `flex h-13 w-full items-center gap-2 pl-2 pr-2.5 text-left aria-expanded:bg-selected ${interactiveItem}`
+            ? // px-1.5 (6) + pl-1 (4) puts the 32px avatar at 10px, the exact
+              // center of the 52px rail, so collapsing never shifts it.
+              `flex h-13 w-full items-center gap-2 pl-1 pr-2.5 text-left aria-expanded:bg-selected ${interactiveItem}`
             : compact
             ? `flex h-9 w-9 items-center justify-center rounded-full aria-expanded:bg-selected ${interactiveItem}`
             : `flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left aria-expanded:bg-selected ${interactiveItem}`
