@@ -20,6 +20,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
 | Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
+| Modifying `ThinkingBlock`, the thinking/tool status header, the reasoning preview, or any layout class toggled by stream state | `docs/handover/2026-08-31-thinking-header-geometry-shift.md` + `docs/handover/2026-07-31-reasoning-preview-not-showing.md` |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
@@ -89,6 +90,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-08-09-file-upload-performance.md` — measured upload phase baseline and the adaptive multipart, server-side promotion, fresh-client, worker recycling, telemetry, rollout, and real-R2 verification changes.
 - `2026-08-13-clamav-startup-readiness.md` — ClamAV startup refresh ordering, signature-aware readiness, the persisted-database race, and local/production verification.
 - `2026-08-29-database-model-catalog.md` — database-backed chat-model management, fixed-key Web console, multiple upstream routes, encrypted credential operations, raw/summary reasoning and continuation behavior, rollout/rollback, and hot-switch commands.
+- `2026-08-31-thinking-header-geometry-shift.md` — why the 正在思考 label shifted mid-stream (a `hasContent`-toggled dual vertical geometry), the fix that made header geometry unconditional, the anchor-row rule for any delta-toggled class, the test that had enshrined the bug, and the real-Chrome measurement method jsdom cannot replace.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 
 ### `docs/handover/frontend/`

@@ -6,7 +6,7 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 
 ### Language
 
-- Use Chinese for Codex interactions unless the user or task requires another language.
+- Use Chinese for agent interactions unless the user or task requires another language.
 - Write project documentation under `docs/` in Chinese. Keep `AGENTS.md` and `docs/README.md` in English.
 - Use English for code comments, docstrings, user-facing error messages, and application-level hints.
 
@@ -20,6 +20,11 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 
 - Prefix branch names with a change type or scope such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`; prefer this style over author or agent prefixes.
 - Use Conventional Commits, for example `fix(frontend): replace share loading text with icon`.
+
+### Streaming surfaces
+
+- Streaming anchors that persist across deltas (thinking/tool status headers and their labels) must keep identical vertical geometry in every phase state. Never toggle `height`/`padding`/`margin-top` on an already-rendered row from a stream-derived boolean; conditional classes may only add space below the anchor. Regression timeline and rules: `docs/handover/2026-08-31-thinking-header-geometry-shift.md`.
+- Verify geometry-sensitive streaming changes by measuring real Chrome layout across the phase timeline (method in the handover above); jsdom/vitest cannot detect layout shifts.
 
 ## Workflow
 
