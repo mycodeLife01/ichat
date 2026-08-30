@@ -25,7 +25,6 @@ from app.schemas.conversations import (
 )
 from app.schemas.files import MessageAttachmentResponse
 from app.schemas.runs import RunStatus
-from app.services.agents.catalog import available_chat_models
 from app.services.conversations.image_context import (
     ImageContextFacts,
     MessageImageFacts,
@@ -39,6 +38,7 @@ from app.services.files.bindings import (
     refresh_detached_state,
 )
 from app.services.files.service import attachment_responses
+from app.services.model_catalog import available_chat_models
 from app.services.runs.transcript import append_transcript_message
 
 CONVERSATION_NOT_FOUND_MESSAGE = "Conversation not found"
@@ -85,6 +85,7 @@ def message_response(
         role=cast(Literal["user", "assistant"], message.role),
         content=message.content,
         reasoning=message.reasoning,
+        reasoning_summary=message.reasoning_summary,
         metadata=message.metadata_,
         position=message.position,
         created_at=message.created_at,
@@ -329,6 +330,7 @@ async def submit_user_message(
     content: str,
     provider_name: str,
     provider_model: str,
+    model_config_snapshot: dict[str, Any] | None = None,
     supports_image_input: bool | None = None,
     image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
@@ -350,6 +352,7 @@ async def submit_user_message(
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
+        model_config_snapshot=model_config_snapshot,
         supports_image_input=supports_image_input,
         image_token_reserve=image_token_reserve,
         provider_options=provider_options,
@@ -368,6 +371,7 @@ async def create_conversation_with_message(
     content: str,
     provider_name: str,
     provider_model: str,
+    model_config_snapshot: dict[str, Any] | None = None,
     supports_image_input: bool | None = None,
     image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
@@ -385,6 +389,7 @@ async def create_conversation_with_message(
         content=content,
         provider_name=provider_name,
         provider_model=provider_model,
+        model_config_snapshot=model_config_snapshot,
         supports_image_input=supports_image_input,
         image_token_reserve=image_token_reserve,
         provider_options=provider_options,
@@ -409,6 +414,7 @@ async def _submit_user_message_to_conversation(
     content: str,
     provider_name: str,
     provider_model: str,
+    model_config_snapshot: dict[str, Any] | None = None,
     supports_image_input: bool | None = None,
     image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
@@ -459,6 +465,7 @@ async def _submit_user_message_to_conversation(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        model_config_snapshot=model_config_snapshot,
         provider_options=_run_provider_options(
             provider_options,
             image_token_reserve=image_token_reserve,
@@ -512,6 +519,7 @@ async def edit_user_message_and_regenerate(
     new_content: str,
     provider_name: str,
     provider_model: str,
+    model_config_snapshot: dict[str, Any] | None = None,
     supports_image_input: bool | None = None,
     image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
@@ -602,6 +610,7 @@ async def edit_user_message_and_regenerate(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        model_config_snapshot=model_config_snapshot,
         provider_options=_run_provider_options(
             provider_options,
             image_token_reserve=image_token_reserve,
@@ -658,6 +667,7 @@ async def regenerate_from_message(
     message_public_id: uuid.UUID,
     provider_name: str,
     provider_model: str,
+    model_config_snapshot: dict[str, Any] | None = None,
     supports_image_input: bool | None = None,
     image_token_reserve: int | None = None,
     provider_options: dict[str, Any] | None = None,
@@ -745,6 +755,7 @@ async def regenerate_from_message(
         status="queued",
         provider_name=provider_name,
         provider_model=provider_model,
+        model_config_snapshot=model_config_snapshot,
         provider_options=_run_provider_options(
             provider_options,
             image_token_reserve=image_token_reserve,
@@ -878,6 +889,7 @@ async def materialize_assistant_message(
     run_id: int,
     content: str,
     reasoning: str | None = None,
+    reasoning_summary: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> Message:
     run = await session.get(Run, run_id)
@@ -894,6 +906,7 @@ async def materialize_assistant_message(
         role="assistant",
         content=content,
         reasoning=reasoning,
+        reasoning_summary=reasoning_summary,
         metadata_=metadata,
         position=next_position,
     )
@@ -1049,7 +1062,7 @@ async def _image_context_response(
     settings: Settings,
 ) -> ImageContextResponse:
     facts = await derive_image_context(session, conversation_id=conversation.id)
-    models = available_chat_models(settings)
+    models = await available_chat_models(session, settings=settings)
 
     def compatible(model_index: int) -> bool:
         model = models[model_index]
@@ -1059,21 +1072,25 @@ async def _image_context_response(
             return not model.supports_image_input
         return True
 
-    model_indexes = {model.model: index for index, model in enumerate(models)}
-    recent_models = list(
-        (
-            await session.scalars(
-                select(Run.provider_model)
-                .join(Message, Message.run_id == Run.id)
-                .where(
-                    Message.conversation_id == conversation.id,
-                    Message.role == "user",
-                    Message.archived_at.is_(None),
-                )
-                .order_by(Run.created_at.desc(), Run.id.desc())
+    model_indexes = {model.key: index for index, model in enumerate(models)}
+    recent_rows = (
+        await session.execute(
+            select(Run.model_config_snapshot, Run.provider_model)
+            .join(Message, Message.run_id == Run.id)
+            .where(
+                Message.conversation_id == conversation.id,
+                Message.role == "user",
+                Message.archived_at.is_(None),
             )
-        ).all()
-    )
+            .order_by(Run.created_at.desc(), Run.id.desc())
+        )
+    ).all()
+    recent_models = [
+        snapshot.get("catalog_model")
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("catalog_model"), str)
+        else provider_model
+        for snapshot, provider_model in recent_rows
+    ]
     recommended_model = next(
         (
             model

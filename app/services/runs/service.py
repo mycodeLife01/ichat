@@ -186,6 +186,7 @@ async def get_owned_run_state(
     latest_persisted_delta_seq = 0
     draft_text = ""
     draft_reasoning = ""
+    draft_reasoning_summary = ""
     terminal_event: RunEventResponse | None = None
     tool_state: RunToolStateResponse | None = None
 
@@ -199,7 +200,10 @@ async def get_owned_run_state(
         if event.type == "reasoning_delta":
             text = event.payload.get("text")
             if isinstance(text, str):
-                draft_reasoning += text
+                if event.payload.get("kind", "raw") == "summary":
+                    draft_reasoning_summary += text
+                else:
+                    draft_reasoning += text
                 latest_persisted_delta_seq = event.seq
         if event.type in TERMINAL_EVENT_TYPES:
             terminal_event = run_event_response(event)
@@ -211,6 +215,7 @@ async def get_owned_run_state(
     if draft is not None and draft.seq >= latest_persisted_delta_seq:
         draft_text = draft.text
         draft_reasoning = draft.reasoning
+        draft_reasoning_summary = draft.reasoning_summary
         latest_seq = max(latest_seq, draft.seq)
         stream_after_seq = draft.seq
 
@@ -228,7 +233,10 @@ async def get_owned_run_state(
                 if stream_event.type == "text_delta" and isinstance(text, str):
                     draft_text += text
                 elif stream_event.type == "reasoning_delta" and isinstance(text, str):
-                    draft_reasoning += text
+                    if stream_event.payload.get("kind", "raw") == "summary":
+                        draft_reasoning_summary += text
+                    else:
+                        draft_reasoning += text
 
     return RunStateResponse(
         run_id=run.public_id,
@@ -237,6 +245,7 @@ async def get_owned_run_state(
         latest_seq=latest_seq,
         draft_text=draft_text,
         draft_reasoning=draft_reasoning,
+        draft_reasoning_summary=draft_reasoning_summary,
         tool_state=tool_state,
         terminal_event=terminal_event,
     )

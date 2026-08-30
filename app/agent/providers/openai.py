@@ -7,16 +7,17 @@ must not pin ``temperature`` (reasoning models only accept the default), and
 tool history replays fine without tools registered
 (``supports_tool_history=True``).
 
-Reasoning text on responses depends on the upstream: OpenAI's own API never
-returns it through Chat Completions, but OpenAI-compatible aggregators do —
-OpenRouter streams it in ``delta.reasoning``, DeepSeek-style gateways in
-``delta.reasoning_content``. The adapter reads both, so thinking panels light
-up whenever the upstream provides the text.
+Reasoning text on responses depends on the upstream: OpenAI's own API does not
+return it through Chat Completions, while some compatible gateways use
+``delta.reasoning`` or ``delta.reasoning_content``. The adapter only exposes
+those fields when the selected route explicitly declares raw reasoning output.
 """
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
+from app.agent.messages import ReasoningKind
 from app.agent.provider import ProviderCapabilities, ReasoningConfig
 from app.agent.providers.openai_compat import OpenAIChatCompletionsProvider
 
@@ -54,6 +55,17 @@ def supports_reasoning_control(model: str) -> bool:
 
 
 class OpenAIProvider(OpenAIChatCompletionsProvider):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        reasoning_outputs: Sequence[ReasoningKind] = ("raw",),
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(api_key=api_key, base_url=base_url, **kwargs)
+        self._reasoning_outputs = frozenset(reasoning_outputs)
+
     @property
     def name(self) -> str:
         return "openai"
@@ -78,6 +90,8 @@ class OpenAIProvider(OpenAIChatCompletionsProvider):
         return _reasoning_kwargs(model, reasoning)
 
     def _reasoning_from_delta(self, delta: Any) -> str | None:
+        if "raw" not in self._reasoning_outputs:
+            return None
         # Neither field is in the typed delta model. `reasoning` is OpenRouter's
         # normalized field; `reasoning_content` covers DeepSeek-style gateways.
         for attribute in ("reasoning", "reasoning_content"):

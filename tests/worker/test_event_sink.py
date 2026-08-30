@@ -104,7 +104,12 @@ async def test_fanout_streams_every_chunk_but_postgres_keeps_only_semantic_event
         assert [row.type for row in rows] == ["run_started", "tool_call_started"]
         draft = await session.get(RunDraft, run_id)
         assert draft is not None
-        assert (draft.seq, draft.text, draft.reasoning) == (3, "Hello", "")
+        assert (draft.seq, draft.text, draft.reasoning, draft.reasoning_summary) == (
+            3,
+            "Hello",
+            "",
+            "",
+        )
         run = await session.get(Run, run_id)
         assert run is not None
         assert run.status == "streaming"
@@ -150,13 +155,30 @@ async def test_draft_checkpoint_flushes_after_interval(
         max_pending_chars=4096,
     )
 
-    await sink.emit(RunEvent(seq=1, type="reasoning_delta", payload={"text": "think"}))
+    await sink.emit(
+        RunEvent(
+            seq=1,
+            type="reasoning_delta",
+            payload={"text": "think", "kind": "raw"},
+        )
+    )
+    await sink.emit(
+        RunEvent(
+            seq=2,
+            type="reasoning_delta",
+            payload={"text": "summary", "kind": "summary"},
+        )
+    )
     await asyncio.sleep(0.05)
 
     async with session_factory() as session:
         draft = await session.get(RunDraft, run_id)
         assert draft is not None
-        assert (draft.seq, draft.reasoning) == (1, "think")
+        assert (draft.seq, draft.reasoning, draft.reasoning_summary) == (
+            2,
+            "think",
+            "summary",
+        )
 
 
 async def test_redis_stream_sink_drops_redis_failure_without_raising() -> None:

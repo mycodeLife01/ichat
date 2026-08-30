@@ -44,6 +44,7 @@ describe("useAppActions", () => {
         capabilitiesApi: {} as AppActions["services"]["capabilitiesApi"],
         conversationApi: {} as AppActions["services"]["conversationApi"],
         filesApi: {} as AppActions["services"]["filesApi"],
+        modelAdminApi: {} as AppActions["services"]["modelAdminApi"],
         runApi: {} as AppActions["services"]["runApi"],
         shareApi: {} as AppActions["services"]["shareApi"],
       },

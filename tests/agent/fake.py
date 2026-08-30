@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
-from app.agent.messages import Message
+from app.agent.messages import Message, ProviderContinuationBlock
 from app.agent.provider import (
     ImageInputResolver,
     Provider,
@@ -30,7 +30,15 @@ class Sleep:
     seconds: float
 
 
-ScriptItem = TextDelta | ReasoningDelta | ToolCallDone | StreamDone | RaiseError | Sleep
+ScriptItem = (
+    TextDelta
+    | ReasoningDelta
+    | ProviderContinuationBlock
+    | ToolCallDone
+    | StreamDone
+    | RaiseError
+    | Sleep
+)
 
 
 class FakeProvider(Provider):

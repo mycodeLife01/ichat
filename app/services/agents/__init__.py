@@ -15,17 +15,24 @@ from app.services.agents.chat_agent import (
 )
 from app.services.agents.context import build_context
 from app.services.agents.prompts import build_system_prompt, bundled_base_prompt
-from app.services.agents.registry import UnknownProviderError, resolve_provider
+from app.services.agents.registry import (
+    ProviderConnection,
+    UnknownProviderError,
+    build_provider,
+    resolve_provider,
+)
 from app.services.agents.title_agent import TitleAgent, build_title_agent, normalize_generated_title
 
 __all__ = [
     "ChatAgent",
     "ChatAgentOptions",
     "ProviderResolver",
+    "ProviderConnection",
     "RetryPolicy",
     "TitleAgent",
     "UnknownProviderError",
     "build_chat_agent",
+    "build_provider",
     "build_title_agent",
     "build_context",
     "build_system_prompt",

@@ -129,6 +129,7 @@ class DraftCheckpointSink:
         self._lock = asyncio.Lock()
         self._text_parts: list[str] = []
         self._reasoning_parts: list[str] = []
+        self._reasoning_summary_parts: list[str] = []
         self._events: list[dict[str, Any]] = []
         self._latest_seq = 0
         self._pending_chars = 0
@@ -147,7 +148,11 @@ class DraftCheckpointSink:
                 if event.type == "text_delta":
                     self._text_parts.append(text)
                 else:
-                    self._reasoning_parts.append(text)
+                    kind = event.payload.get("kind", "raw")
+                    if kind == "summary":
+                        self._reasoning_summary_parts.append(text)
+                    else:
+                        self._reasoning_parts.append(text)
                 self._events.append(
                     {"seq": event.seq, "type": event.type, "payload": dict(event.payload)}
                 )
@@ -229,6 +234,7 @@ class DraftCheckpointSink:
                 seq=self._latest_seq,
                 text="".join(self._text_parts),
                 reasoning="".join(self._reasoning_parts),
+                reasoning_summary="".join(self._reasoning_summary_parts),
                 events=list(self._events),
             )
             await session.commit()

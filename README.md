@@ -2,13 +2,15 @@
 
 iChat 是一个前后端分离的 AI 聊天服务。后端使用 FastAPI，流式 Run 由独立
 Worker 执行并通过 SSE 推送；前端是部署在 Cloudflare Pages 的 React SPA。
-当前接入 DeepSeek，并通过 provider-neutral agent kernel 保留扩展其他模型与工具的边界。
+聊天模型、上游供应商与路由由 PostgreSQL 动态管理；DeepSeek、OpenAI 和 OpenRouter 通过
+provider-neutral agent kernel 的独立适配器接入。
 
 ## 功能
 
 - **实时对话**：文本与推理内容流式输出，支持断线重连、`after_seq` 游标重放和刷新恢复
 - **Agent 工具调用**：模型按需调用 Tavily Web Search，工具事件与来源元数据随 Run 持久化
 - **推理级别**：每次发送、编辑或重生成均可覆盖 thinking mode 与 reasoning effort
+- **动态模型目录**：同一逻辑模型可配置多个上游，通过固定密钥 Web 控制台即时管理模型、路由和凭据，无需重启服务
 - **对话管理**：草稿对话、自动标题、重命名、软删除、编辑消息、重生成和运行取消
 - **对话分享**：创建时生成只读快照，支持公开链接、所有者查询和撤销
 - **完整账户流程**：JWT Access/Refresh Token、邮箱验证、密码重置、修改密码和账户停用
@@ -21,7 +23,7 @@ Worker 执行并通过 SSE 推送；前端是部署在 Cloudflare Pages 的 Reac
 | 层级 | 技术 |
 |---|---|
 | API | Python 3.12、FastAPI、Pydantic、SQLAlchemy 2.0 async、Alembic |
-| Agent | provider-neutral content blocks、Provider/Tool protocols、DeepSeek adapter、Tavily |
+| Agent | provider-neutral content blocks、Provider/Tool protocols、DeepSeek/OpenAI/OpenRouter adapters、Tavily |
 | 异步执行 | asyncio Worker、Celery Worker/Beat |
 | 状态与传输 | PostgreSQL 16、Redis 7 Streams/Pub/Sub |
 | 认证与媒体 | PyJWT、Argon2、Postmark/Resend、Cloudflare R2 |
@@ -62,6 +64,7 @@ pnpm dev
 - OpenAPI：<http://localhost:8000/docs>
 - 存活检查：<http://localhost:8000/healthz>
 - 就绪检查：<http://localhost:8000/readyz>
+- 模型管理：<http://localhost:5173/model-admin>（需配置 `MODEL_ADMIN_ACCESS_KEY`）
 
 `.env.example` 默认使用 console 邮件 provider，并关闭 Web Search 与头像存储，因此本地启动
 不需要邮件服务、Tavily 或 R2 凭据。启用这些集成前，请填写对应配置。
@@ -84,7 +87,7 @@ Browser
        │      ├── PostgreSQL：业务事实源、Run 队列、语义事件、draft checkpoint
        │      └── Redis：Run Stream、排队/取消信号、认证限流、Celery broker
        │
-       ├────────► asyncio Worker × N ──► ChatAgent ──► DeepSeek / Tavily
+       ├────────► asyncio Worker × N ──► ChatAgent ──► DeepSeek / OpenAI / OpenRouter / Tavily
        │             └── claim、lease、heartbeat、流式事件写入
        │
        └────────► Celery
@@ -105,8 +108,8 @@ Browser
 3. `app/worker/` 是平台执行层，负责 Run claim、租约、取消、序号分配、event sink、
    checkpoint、状态机和最终持久化；API 与运行服务负责 SSE 读取和恢复合并。
 
-这个边界使 agent loop 可独立测试，也避免把数据库和 Redis 泄漏到 kernel；DeepSeek
-wire format 则被封装在 kernel 的 provider adapter 内，不进入中性消息词汇和编排层。
+这个边界使 agent loop 可独立测试，也避免把数据库和 Redis 泄漏到 kernel；各供应商的
+wire format 被封装在 kernel 的 provider adapter 内，不进入中性消息词汇和编排层。
 
 ### Run 与 SSE
 
@@ -127,7 +130,7 @@ PostgreSQL 是业务事实源；Redis 是可降级的实时传输与唤醒层。
 ```text
 app/
 ├── agent/              # 纯 Agent kernel：消息、Provider/Tool 协议、adapter、原语
-├── api/v1/             # FastAPI 路由：auth、avatar、conversation、run、share
+├── api/v1/             # FastAPI 路由：auth、conversation、run、share、model admin
 ├── core/               # 配置、日志、应用错误
 ├── db/                 # async/sync 数据库 session
 ├── models/             # SQLAlchemy ORM 模型
@@ -139,6 +142,7 @@ app/
 │   ├── avatars/        # 头像上传会话和媒体作业
 │   ├── conversations/  # 对话、消息、重生成和标题作业
 │   ├── email/          # outbox、渲染与邮件 provider
+│   ├── model_catalog/  # 动态聊天模型、上游、路由和加密凭据
 │   ├── run_events/     # Redis Run Stream 适配
 │   ├── runs/           # Run 生命周期、PG 事件、历史、draft、恢复与唤醒
 │   └── shares/         # 对话分享快照
@@ -152,6 +156,7 @@ frontend/
 ├── src/auth/           # 登录注册、验证邮箱、重置密码
 ├── src/conversations/  # 对话列表、详情与用户分享列表
 ├── src/messages/       # 消息渲染与公开分享页
+├── src/model-admin/    # 固定密钥模型路由控制台
 ├── src/runs/           # 流式订阅、恢复、取消、推理/搜索选项
 ├── src/styles/         # Tailwind v4 全局主题
 └── src/ui/             # 通用 UI 组件与分享对话框
@@ -174,6 +179,7 @@ compose.prod.yml        # 生产服务拓扑
 | `/auth/*` | 注册、登录、刷新、登出、个人资料、邮箱验证、密码和账户生命周期 |
 | `/auth/me/avatar-uploads/*` | 创建直传会话、确认上传、查询处理状态 |
 | `/capabilities` | 返回当前可用的 Web Search 等服务端能力 |
+| `/model-admin/*` | 固定密钥管理聊天模型、上游、路由与目录源；不接受用户 JWT 替代 |
 | `/conversations/*` | 对话 CRUD、发送、编辑、重生成、创建/查询/撤销分享 |
 | `/runs/{id}/state` | 获取 Run 状态与可恢复快照 |
 | `/runs/{id}/events` | 订阅 SSE；支持 `after_seq` |
@@ -191,7 +197,8 @@ compose.prod.yml        # 生产服务拓扑
 | 分组 | 关键变量 |
 |---|---|
 | 基础 | `DATABASE_URL`、`JWT_SECRET`、`CORS_ALLOWED_ORIGINS`、`LOG_LEVEL` |
-| DeepSeek | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_THINKING_ENABLED`、`DEEPSEEK_REASONING_EFFORT` |
+| 模型目录 | `MODEL_CATALOG_ENCRYPTION_KEY`、`MODEL_ADMIN_ACCESS_KEY`；聊天模型、上游和路由存于 PostgreSQL |
+| 旧目录/标题 | `DEEPSEEK_*`、`OPENAI_*`、`SUMMARY_*`（迁移回退及内部标题任务） |
 | Agent | `DEFAULT_SYSTEM_PROMPT`、`CONTEXT_BUDGET_TOKENS`、`WEB_SEARCH_*`、`TAVILY_*` |
 | Run Worker | `RUN_LEASE_SECONDS`、`WORKER_*`、`RUN_STREAM_*`、`DRAFT_CHECKPOINT_*` |
 | Redis/Celery | `REDIS_URL`、`CELERY_BROKER_URL` |

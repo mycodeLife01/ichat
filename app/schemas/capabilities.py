@@ -17,15 +17,17 @@ class FileUploadCapabilityResponse(BaseModel):
 
 
 class ChatModelResponse(BaseModel):
-    """One user-selectable chat model. ``id`` is the provider model identifier
-    the client echoes back as the run option ``model``; ``label`` is the
-    display name (vendor prefix stripped); ``thinking_levels`` lists the
-    selectable effort tiers, weakest to strongest."""
+    """One user-selectable chat model. ``id`` is the stable logical model key
+    the client echoes back as the run option ``model``; ``provider`` identifies
+    the currently selected adapter; ``thinking_levels`` lists the selectable
+    effort tiers, weakest to strongest."""
 
     id: str
     provider: str
     label: str
     thinking_levels: list[str]
+    reasoning_outputs: list[str]
+    supports_reasoning_summary: bool
     supports_image_input: bool
     default: bool
 

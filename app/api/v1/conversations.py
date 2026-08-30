@@ -23,8 +23,6 @@ from app.schemas.conversations import (
 )
 from app.schemas.responses import SuccessResponse
 from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
-from app.services.agents.catalog import ChatModel, resolve_chat_model
-from app.services.agents.registry import resolve_provider
 from app.services.auth.dependencies import get_current_user
 from app.services.conversations.service import (
     create_conversation,
@@ -39,6 +37,11 @@ from app.services.conversations.service import (
     rename_conversation,
     restore_conversation,
     submit_user_message,
+)
+from app.services.model_catalog import (
+    ChatModel,
+    resolve_chat_model,
+    token_counter_for_chat_model,
 )
 from app.services.runs.wakeup import RunQueuedPublisher
 from app.services.shares.service import (
@@ -95,15 +98,21 @@ def user_suppresses_web_search(content: str) -> bool:
     return any(marker in normalized for marker in _WEB_SEARCH_NEGATION_MARKERS)
 
 
-def resolve_chat_selection(
-    settings: Settings, request: RunOptionsRequest | None
+async def resolve_chat_selection(
+    session: AsyncSession,
+    settings: Settings,
+    request: RunOptionsRequest | None,
 ) -> ChatModel:
     """Validate the request's optional ``model`` against the catalog.
 
     Raises a 422 ``AppError`` for models the server does not offer, so a run is
     only ever persisted with a (provider, model) pair the worker can execute.
     """
-    return resolve_chat_model(settings, request.model if request is not None else None)
+    return await resolve_chat_model(
+        session,
+        settings=settings,
+        requested_model=request.model if request is not None else None,
+    )
 
 
 def resolve_provider_options(
@@ -173,15 +182,16 @@ async def create_conversation_with_message_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[ConversationCreateWithMessageResponse]:
-    chat_model = resolve_chat_selection(settings, request)
-    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
+    chat_model = await resolve_chat_selection(session, settings, request)
+    count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
     result = await create_conversation_with_message(
         session,
         user=current_user,
         title=request.title,
         content=request.content,
         provider_name=chat_model.provider_name,
-        provider_model=chat_model.model,
+        provider_model=chat_model.provider_model,
+        model_config_snapshot=chat_model.snapshot(),
         supports_image_input=chat_model.supports_image_input,
         image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
@@ -320,15 +330,16 @@ async def send_message_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[SendMessageResponse]:
-    chat_model = resolve_chat_selection(settings, request)
-    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
+    chat_model = await resolve_chat_selection(session, settings, request)
+    count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
     result = await submit_user_message(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
         content=request.content,
         provider_name=chat_model.provider_name,
-        provider_model=chat_model.model,
+        provider_model=chat_model.provider_model,
+        model_config_snapshot=chat_model.snapshot(),
         supports_image_input=chat_model.supports_image_input,
         image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
@@ -360,13 +371,13 @@ async def edit_and_regenerate_route(
         Depends(_get_run_queued_publisher),
     ],
 ) -> SuccessResponse[SendMessageResponse]:
-    chat_model = resolve_chat_selection(settings, request)
+    chat_model = await resolve_chat_selection(session, settings, request)
     if "attachment_ids" in request.model_fields_set and request.attachment_ids is None:
         raise AppError(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "attachment_ids must be an array when provided",
         )
-    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
+    count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
     result = await edit_user_message_and_regenerate(
         session,
         user=current_user,
@@ -374,7 +385,8 @@ async def edit_and_regenerate_route(
         message_public_id=message_id,
         new_content=request.content,
         provider_name=chat_model.provider_name,
-        provider_model=chat_model.model,
+        provider_model=chat_model.provider_model,
+        model_config_snapshot=chat_model.snapshot(),
         supports_image_input=chat_model.supports_image_input,
         image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
@@ -408,15 +420,16 @@ async def regenerate_route(
     ],
     request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
-    chat_model = resolve_chat_selection(settings, request)
-    count_tokens = resolve_provider(chat_model.provider_name, settings=settings).count_tokens
+    chat_model = await resolve_chat_selection(session, settings, request)
+    count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
     result = await regenerate_from_message(
         session,
         user=current_user,
         conversation_public_id=conversation_id,
         message_public_id=message_id,
         provider_name=chat_model.provider_name,
-        provider_model=chat_model.model,
+        provider_model=chat_model.provider_model,
+        model_config_snapshot=chat_model.snapshot(),
         supports_image_input=chat_model.supports_image_input,
         image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request),

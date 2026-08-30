@@ -7,8 +7,8 @@ import { reasoningPreview } from "./reasoningPreview";
 type ThinkingBlockProps = {
   content: string;
   streaming: boolean;
-  // OpenAI streams user-facing summary headlines. DeepSeek streams raw
-  // reasoning, which stays behind the generic collapsed status instead.
+  // Summaries may surface a user-facing preview. Raw reasoning stays behind
+  // the generic status unless the caller chooses to expand it while streaming.
   showStreamingPreview?: boolean;
   autoExpandWhileStreaming?: boolean;
   // Overrides the default header — used while a tool call is in flight to
@@ -23,8 +23,8 @@ export function ThinkingBlock({
   autoExpandWhileStreaming = false,
   label,
 }: ThinkingBlockProps) {
-  // OpenAI summaries and completed history start collapsed. DeepSeek raw
-  // reasoning opens when its streaming phase begins, but later user toggles
+  // Summaries and completed history start collapsed. Raw reasoning can open
+  // when its streaming phase begins, but later user toggles
   // remain authoritative because content deltas do not retrigger this effect.
   const [open, setOpen] = useState(autoExpandWhileStreaming && streaming);
   useLayoutEffect(() => {

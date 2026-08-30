@@ -58,5 +58,6 @@ class RunStateResponse(BaseModel):
     latest_seq: int
     draft_text: str
     draft_reasoning: str = ""
+    draft_reasoning_summary: str = ""
     tool_state: RunToolStateResponse | None = None
     terminal_event: RunEventResponse | None = None

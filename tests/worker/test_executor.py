@@ -390,6 +390,8 @@ async def test_execute_run_does_not_retry_temporary_image_failure_after_persiste
 
     fake = FakeProvider(
         script=[
+            ReasoningDelta(text="partial raw", kind="raw"),
+            ReasoningDelta(text="partial summary", kind="summary"),
             TextDelta(text="partial"),
             RaiseError(
                 code="image_input_temporary",
@@ -420,7 +422,26 @@ async def test_execute_run_does_not_retry_temporary_image_failure_after_persiste
         ).all()
         assert [(e.seq, e.type) for e in events] == [
             (1, "run_started"),
-            (3, "run_failed"),
+            (5, "run_failed"),
+        ]
+
+        transcript = (
+            await session.scalars(
+                select(RunProviderMessage)
+                .where(RunProviderMessage.run_id == run_id)
+                .order_by(RunProviderMessage.seq.asc())
+            )
+        ).all()
+        assert len(transcript) == 1
+        assert transcript[0].role == "assistant"
+        assert transcript[0].blocks == [
+            {"type": "reasoning", "kind": "raw", "text": "partial raw"},
+            {
+                "type": "reasoning",
+                "kind": "summary",
+                "text": "partial summary",
+            },
+            {"type": "text", "text": "partial"},
         ]
 
         messages = (
@@ -616,6 +637,8 @@ async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
 
     fake = FakeProvider(
         script=[
+            ReasoningDelta(text="partial raw", kind="raw"),
+            ReasoningDelta(text="partial summary", kind="summary"),
             TextDelta(text="part one"),
             Sleep(seconds=0.5),
             TextDelta(text="part two"),
@@ -666,6 +689,23 @@ async def test_execute_run_marks_cancelled_when_status_flips_during_stream(
         ).all()
         roles = [m.role for m in messages]
         assert "assistant" not in roles
+        transcript = (
+            await session.scalars(
+                select(RunProviderMessage)
+                .where(RunProviderMessage.run_id == run_id)
+                .order_by(RunProviderMessage.seq.asc())
+            )
+        ).all()
+        assert len(transcript) == 1
+        assert transcript[0].blocks == [
+            {"type": "reasoning", "kind": "raw", "text": "partial raw"},
+            {
+                "type": "reasoning",
+                "kind": "summary",
+                "text": "partial summary",
+            },
+            {"type": "text", "text": "part one"},
+        ]
         conversation = await session.get(Conversation, run.conversation_id)
         assert conversation is not None
         assert conversation.activated_at is None
@@ -1148,6 +1188,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             self.calls += 1
             if self.calls == 1:
                 yield ReasoningDelta(text="Need live info")
+                yield ReasoningDelta(text="Need fresh sources", kind="summary")
                 yield ToolCallDone(
                     id="call_1",
                     name="web_search",
@@ -1159,6 +1200,8 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
                 any(isinstance(block, ToolResultBlock) for block in message.blocks)
                 for message in messages
             )
+            yield ReasoningDelta(text="Use retrieved evidence")
+            yield ReasoningDelta(text="Checked the latest source", kind="summary")
             yield TextDelta(text="Here is the latest summary.")
             yield StreamDone(finish_reason="stop")
 
@@ -1185,17 +1228,22 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
     replay = await stream.list_after(run_id, after_seq=1)
     assert [(event.seq, event.type) for event in replay] == [
         (2, "reasoning_delta"),
-        (3, "tool_call_started"),
-        (4, "tool_call_succeeded"),
-        (5, "text_delta"),
-        (6, "run_succeeded"),
+        (3, "reasoning_delta"),
+        (4, "tool_call_started"),
+        (5, "tool_call_succeeded"),
+        (6, "reasoning_delta"),
+        (7, "reasoning_delta"),
+        (8, "text_delta"),
+        (9, "run_succeeded"),
     ]
-    assert replay[1].payload == {
+    assert replay[0].payload == {"text": "Need live info", "kind": "raw"}
+    assert replay[1].payload == {"text": "Need fresh sources", "kind": "summary"}
+    assert replay[2].payload == {
         "tool_name": "web_search",
         "query": "latest iChat release",
         "provider": "tavily",
     }
-    assert replay[2].payload["sources"] == [
+    assert replay[3].payload["sources"] == [
         {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
     ]
 
@@ -1210,9 +1258,9 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         ).all()
         assert [(event.seq, event.type) for event in events] == [
             (1, "run_started"),
-            (3, "tool_call_started"),
-            (4, "tool_call_succeeded"),
-            (6, "run_succeeded"),
+            (4, "tool_call_started"),
+            (5, "tool_call_succeeded"),
+            (9, "run_succeeded"),
         ]
         assert events[2].payload["sources"] == [
             {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
@@ -1223,6 +1271,10 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         )
         assert assistant is not None
         assert assistant.content == "Here is the latest summary."
+        assert assistant.reasoning == "Need live info\n\nUse retrieved evidence"
+        assert assistant.reasoning_summary == (
+            "Need fresh sources\n\nChecked the latest source"
+        )
         assert assistant.metadata_ == {
             "sources": [
                 {
@@ -1244,7 +1296,12 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         ).all()
         assert [row.role for row in transcript] == ["assistant", "user", "assistant"]
         assert transcript[0].blocks == [
-            {"type": "reasoning", "text": "Need live info"},
+            {"type": "reasoning", "kind": "raw", "text": "Need live info"},
+            {
+                "type": "reasoning",
+                "kind": "summary",
+                "text": "Need fresh sources",
+            },
             {
                 "type": "tool_call",
                 "id": "call_1",
@@ -1256,6 +1313,16 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         assert transcript[1].blocks[0]["type"] == "tool_result"
         assert transcript[1].blocks[0]["tool_call_id"] == "call_1"
         assert transcript[2].blocks == [
+            {
+                "type": "reasoning",
+                "kind": "raw",
+                "text": "Use retrieved evidence",
+            },
+            {
+                "type": "reasoning",
+                "kind": "summary",
+                "text": "Checked the latest source",
+            },
             {"type": "text", "text": "Here is the latest summary."}
         ]
         assert transcript[2].message_id == assistant.id
@@ -1324,7 +1391,7 @@ async def test_web_search_final_answer_streams_incremental_deltas(
 
     replay = await stream.list_after(run_id, after_seq=1)
     assert [(event.seq, event.type, event.payload) for event in replay] == [
-        (2, "reasoning_delta", {"text": "think"}),
+        (2, "reasoning_delta", {"text": "think", "kind": "raw"}),
         (3, "text_delta", {"text": "first"}),
         (4, "text_delta", {"text": "second"}),
         (5, "run_succeeded", {}),
@@ -1350,3 +1417,4 @@ async def test_web_search_final_answer_streams_incremental_deltas(
         assert assistant is not None
         assert assistant.content == "firstsecond"
         assert assistant.reasoning == "think"
+        assert assistant.reasoning_summary is None

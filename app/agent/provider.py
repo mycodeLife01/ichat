@@ -12,7 +12,12 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from app.agent.messages import ImageBlock, Message
+from app.agent.messages import (
+    ImageBlock,
+    Message,
+    ProviderContinuationBlock,
+    ReasoningKind,
+)
 from app.agent.tools.base import ToolSpec
 
 
@@ -67,6 +72,7 @@ class TextDelta:
 @dataclass(frozen=True)
 class ReasoningDelta:
     text: str
+    kind: ReasoningKind = "raw"
 
 
 @dataclass(frozen=True)
@@ -89,7 +95,13 @@ class StreamDone:
     provider_request_id: str | None = None
 
 
-StreamEvent = TextDelta | ReasoningDelta | ToolCallDone | StreamDone
+StreamEvent = (
+    TextDelta
+    | ReasoningDelta
+    | ProviderContinuationBlock
+    | ToolCallDone
+    | StreamDone
+)
 
 
 class ProviderError(Exception):

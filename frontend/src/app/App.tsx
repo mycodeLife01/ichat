@@ -6,6 +6,7 @@ import { VerifyEmailPage } from "../auth/VerifyEmailPage";
 import { ResetPasswordPage } from "../auth/ResetPasswordPage";
 import { ConfirmAccountDeletionPage } from "../auth/ConfirmAccountDeletionPage";
 import { SharePage } from "../messages/SharePage";
+import { ModelAdminPage } from "../model-admin/ModelAdminPage";
 import { AppShell } from "./AppShell";
 
 export function App() {
@@ -19,6 +20,8 @@ export function App() {
       {/* Public password reset: the emailed link carries a ?token= and must work logged-out. */}
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/confirm-account-deletion" element={<ConfirmAccountDeletionPage />} />
+      {/* Operational console with its own fixed-key gate, independent of user auth. */}
+      <Route path="/model-admin" element={<ModelAdminPage />} />
       <Route path="*" element={<AuthGate />} />
     </Routes>
   );

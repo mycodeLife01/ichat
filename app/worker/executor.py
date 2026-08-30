@@ -8,12 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent import (
     AgentFinal,
+    ContentBlock,
     ImageInputResolver,
     Message,
     MessageDone,
     Provider,
     ProviderError,
+    ReasoningBlock,
     ReasoningDelta,
+    ReasoningKind,
+    TextBlock,
     TextDelta,
     ToolCallFinished,
     ToolCallStarted,
@@ -25,6 +29,7 @@ from app.models.run import Run
 from app.services.agents import ChatAgent, ChatAgentOptions, build_chat_agent
 from app.services.conversations import materialize_assistant_message
 from app.services.conversations.title_jobs import create_title_job
+from app.services.model_catalog import resolve_run_model_runtime
 from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.events import RunEvent
 from app.services.runs.history import load_conversation_history
@@ -91,6 +96,12 @@ async def execute_run(
         initial_seq = await get_next_run_event_seq(session, run_id=run_id) - 1
         try:
             history = await load_conversation_history(session, run_id=run_id)
+            model_runtime = await resolve_run_model_runtime(
+                session,
+                run=run,
+                settings=settings,
+                legacy_resolver=resolve_provider,
+            )
             agent = build_chat_agent(
                 settings=settings,
                 history=history,
@@ -98,9 +109,11 @@ async def execute_run(
                     provider_name=run.provider_name,
                     model=run.provider_model,
                     provider_options=run.provider_options or {},
-                    image_token_reserve=_run_image_token_reserve(run, settings=settings),
+                    image_token_reserve=model_runtime.image_token_reserve,
+                    supports_reasoning=model_runtime.supports_reasoning,
+                    supports_image_input=model_runtime.supports_image_input,
                 ),
-                resolve_provider=resolve_provider,
+                provider=model_runtime.provider,
                 image_resolver=image_resolver,
             )
             run.system_prompt_snapshot = agent.system_prompt
@@ -254,16 +267,28 @@ async def _consume_agent(
         usage: dict[str, object] | None = None
         provider_request_id: str | None = None
         forwarded_any = False
+        pending_blocks: list[ContentBlock] = []
 
         gen = agent.stream()
         try:
             async for event in _iter_until_cancel(gen, cancel):
                 if isinstance(event, MessageDone):
                     transcript.append(event.message)
+                    pending_blocks = []
                 elif isinstance(event, AgentFinal):
                     usage = event.usage
                     provider_request_id = event.provider_request_id
                 else:
+                    if isinstance(event, TextDelta):
+                        _append_partial_block(
+                            pending_blocks,
+                            TextBlock(text=event.text),
+                        )
+                    elif isinstance(event, ReasoningDelta):
+                        _append_partial_block(
+                            pending_blocks,
+                            ReasoningBlock(text=event.text, kind=event.kind),
+                        )
                     seq += 1
                     await sink.emit(
                         _to_run_event(
@@ -281,6 +306,7 @@ async def _consume_agent(
                 provider_request_id=provider_request_id,
             )
         except _Cancelled:
+            _append_partial_message(transcript, pending_blocks)
             return _StreamOutcome(
                 status="cancelled",
                 transcript=transcript,
@@ -297,28 +323,13 @@ async def _consume_agent(
             )
             if retryable:
                 continue
+            _append_partial_message(transcript, pending_blocks)
             return _StreamOutcome(
                 status="failed",
                 transcript=transcript,
                 last_seq=seq,
                 error=exc,
             )
-
-
-def _run_image_token_reserve(run: Run, *, settings: Settings) -> int:
-    """Recover the admission reserve persisted with the run.
-
-    Rows created before the option was persisted fall back to the current
-    model-level allowlist so in-flight runs from the same release still trim
-    context consistently.
-    """
-
-    raw = (run.provider_options or {}).get("image_token_reserve")
-    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
-        return raw
-    if run.provider_name == "openai" and run.provider_model in settings.openai_vision_models_list:
-        return settings.openai_image_token_reserve
-    return 0
 
 
 def _error_allows_retry(exc: ProviderError) -> bool:
@@ -412,7 +423,11 @@ def _to_run_event(
     if isinstance(event, TextDelta):
         return RunEvent(seq=seq, type="text_delta", payload={"text": event.text})
     if isinstance(event, ReasoningDelta):
-        return RunEvent(seq=seq, type="reasoning_delta", payload={"text": event.text})
+        return RunEvent(
+            seq=seq,
+            type="reasoning_delta",
+            payload={"text": event.text, "kind": event.kind},
+        )
     if isinstance(event, ToolCallStarted):
         internal = RunEvent(
             seq=seq,
@@ -515,7 +530,11 @@ async def _finalize_result(
                 session,
                 run_id=run_id,
                 content=final.text(),
-                reasoning=final.reasoning(),
+                reasoning=_aggregate_reasoning(outcome.transcript, kind="raw"),
+                reasoning_summary=_aggregate_reasoning(
+                    outcome.transcript,
+                    kind="summary",
+                ),
                 metadata=agent.assistant_metadata(),
             )
             await _persist_transcript(
@@ -603,6 +622,55 @@ def _final_assistant_message(transcript: list[Message]) -> Message:
     if not transcript or transcript[-1].role != "assistant":
         raise ValueError("Succeeded agent run did not return a final assistant message")
     return transcript[-1]
+
+
+def _aggregate_reasoning(
+    transcript: list[Message],
+    *,
+    kind: ReasoningKind,
+) -> str | None:
+    calls: list[str] = []
+    for message in transcript:
+        if message.role != "assistant":
+            continue
+        text = "".join(
+            block.text
+            for block in message.blocks
+            if isinstance(block, ReasoningBlock) and block.kind == kind
+        )
+        if text:
+            calls.append(text)
+    return "\n\n".join(calls) if calls else None
+
+
+def _append_partial_block(
+    blocks: list[ContentBlock],
+    block: TextBlock | ReasoningBlock,
+) -> None:
+    if blocks:
+        previous = blocks[-1]
+        if isinstance(previous, TextBlock) and isinstance(block, TextBlock):
+            blocks[-1] = TextBlock(text=previous.text + block.text)
+            return
+        if (
+            isinstance(previous, ReasoningBlock)
+            and isinstance(block, ReasoningBlock)
+            and previous.kind == block.kind
+        ):
+            blocks[-1] = ReasoningBlock(
+                text=previous.text + block.text,
+                kind=block.kind,
+            )
+            return
+    blocks.append(block)
+
+
+def _append_partial_message(
+    transcript: list[Message],
+    blocks: list[ContentBlock],
+) -> None:
+    if blocks:
+        transcript.append(Message(role="assistant", blocks=list(blocks)))
 
 
 async def _mark_failed_or_cancelled_if_cancelling(

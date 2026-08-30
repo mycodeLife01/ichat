@@ -24,6 +24,7 @@ dependencies = [
     "sqlalchemy[asyncio]",
     "uvicorn[standard]",
     "openai>=2.46.0",
+    "cryptography>=48.0.0",
 ]
 
 [dependency-groups]

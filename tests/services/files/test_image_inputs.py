@@ -21,7 +21,11 @@ from app.models.files import (
 )
 from app.services.files.image_inputs import FileImageInputResolver
 from app.services.files.protocols import PresignedDownload, StorageObjectMetadata
-from app.services.files.storage import StorageObjectMissing, StoragePermissionDenied
+from app.services.files.storage import (
+    StorageCredentialsUnavailable,
+    StorageObjectMissing,
+    StoragePermissionDenied,
+)
 
 
 class _Result:
@@ -278,6 +282,25 @@ async def test_missing_preview_is_rejected_before_signing(failure: Exception) ->
 
     assert exc_info.value.code == "image_input_unavailable"
     assert exc_info.value.retryable is False
+    assert signer.head_calls == [preview.object_key]
+    assert signer.calls == []
+
+
+async def test_unconfigured_preview_signer_is_permanent_and_observable() -> None:
+    asset, preview, block = _asset_and_block()
+    signer = _Signer(head_failure=StorageCredentialsUnavailable())
+    resolver, _ = _resolver([(asset, preview)], signer)
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, serialize=True)
+    try:
+        with pytest.raises(ImageInputError) as exc_info:
+            await resolver.resolve((block,))
+    finally:
+        logger.remove(sink_id)
+
+    assert exc_info.value.code == "image_input_unavailable"
+    assert exc_info.value.retryable is False
+    assert "preview_signer_unconfigured" in "".join(lines)
     assert signer.head_calls == [preview.object_key]
     assert signer.calls == []
 

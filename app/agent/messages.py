@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 Role = Literal["system", "user", "assistant"]
+ReasoningKind = Literal["raw", "summary"]
 
 
 @dataclass(frozen=True)
@@ -23,10 +24,24 @@ class TextBlock:
 
 @dataclass(frozen=True)
 class ReasoningBlock:
-    """Model reasoning / thinking content (DeepSeek ``reasoning_content``,
-    Anthropic ``thinking``, Gemini thought parts)."""
+    """Visible model reasoning classified by semantic output kind."""
 
     text: str
+    kind: ReasoningKind = "raw"
+
+
+@dataclass(frozen=True)
+class ProviderContinuationBlock:
+    """Opaque provider-owned state required to continue a model turn.
+
+    The kernel stores and transports this block without interpreting payload.
+    Only the adapter named by ``owner`` may project it back to a wire format.
+    """
+
+    owner: str
+    codec: str
+    scope: str
+    payload: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -107,6 +122,7 @@ ContentBlock = (
     | ImageBlock
     | AttachmentNoticeBlock
     | ReasoningBlock
+    | ProviderContinuationBlock
     | ToolCallBlock
     | ToolResultBlock
 )
@@ -121,9 +137,16 @@ class Message:
         """Concatenate the user-facing text blocks (ignores reasoning/tool)."""
         return "".join(b.text for b in self.blocks if isinstance(b, TextBlock))
 
-    def reasoning(self) -> str | None:
-        parts = [b.text for b in self.blocks if isinstance(b, ReasoningBlock)]
+    def reasoning(self, *, kind: ReasoningKind = "raw") -> str | None:
+        parts = [
+            b.text
+            for b in self.blocks
+            if isinstance(b, ReasoningBlock) and b.kind == kind
+        ]
         return "".join(parts) if parts else None
+
+    def reasoning_summary(self) -> str | None:
+        return self.reasoning(kind="summary")
 
 
 def user_text(text: str) -> Message:

@@ -66,6 +66,7 @@ export type MessageResponse = {
   role: MessageRole;
   content: string;
   reasoning: string | null;
+  reasoning_summary?: string | null;
   metadata?: MessageMetadata | null;
   attachments?: FileAttachment[];
   position: number;
@@ -131,6 +132,7 @@ export type RunStateResponse = {
   latest_seq: number;
   draft_text: string;
   draft_reasoning: string;
+  draft_reasoning_summary?: string;
   tool_state?: RunToolState | null;
   terminal_event: RunEventResponse | null;
 };
@@ -161,6 +163,8 @@ export type ChatModelCapability = {
   provider: string;
   label: string;
   thinking_levels: string[];
+  reasoning_outputs?: ("raw" | "summary")[];
+  supports_reasoning_summary?: boolean;
   default: boolean;
   supports_image_input: boolean;
 };

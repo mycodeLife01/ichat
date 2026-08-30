@@ -21,6 +21,7 @@ async def upsert_run_draft(
     seq: int,
     text: str,
     reasoning: str,
+    reasoning_summary: str = "",
     events: list[dict[str, Any]] | None = None,
 ) -> None:
     statement = insert(RunDraft).values(
@@ -28,6 +29,7 @@ async def upsert_run_draft(
         seq=seq,
         text=text,
         reasoning=reasoning,
+        reasoning_summary=reasoning_summary,
         events=events or [],
     )
     await session.execute(
@@ -37,6 +39,7 @@ async def upsert_run_draft(
                 "seq": statement.excluded.seq,
                 "text": statement.excluded.text,
                 "reasoning": statement.excluded.reasoning,
+                "reasoning_summary": statement.excluded.reasoning_summary,
                 "events": statement.excluded.events,
                 "updated_at": func.now(),
             },

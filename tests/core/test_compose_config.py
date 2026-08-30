@@ -66,6 +66,37 @@ def test_compose_isolates_preview_credentials_by_process_role() -> None:
             assert "FILES_" not in service
 
 
+def test_compose_exposes_model_admin_key_only_to_api() -> None:
+    for filename in ("compose.yml", "compose.prod.yml"):
+        compose = Path(filename).read_text()
+        api = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
+        worker = compose.split("  worker:", 1)[1].split("  celery-worker:", 1)[0]
+        celery_worker = compose.split("  celery-worker:", 1)[1].split("  media-worker:", 1)[0]
+        media_worker = compose.split("  media-worker:", 1)[1].split("  clamav:", 1)[0]
+        beat = compose.split("  celery-beat:", 1)[1].split("  nginx:", 1)[0]
+
+        assert 'MODEL_ADMIN_ACCESS_KEY: ""' not in api
+        for service in (worker, celery_worker, media_worker, beat):
+            assert 'MODEL_ADMIN_ACCESS_KEY: ""' in service
+
+
+def test_compose_exposes_model_catalog_key_only_to_api_and_llm_worker() -> None:
+    for filename in ("compose.yml", "compose.prod.yml"):
+        compose = Path(filename).read_text()
+        api = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
+        worker = compose.split("  worker:", 1)[1].split("  celery-worker:", 1)[0]
+        celery_worker = compose.split("  celery-worker:", 1)[1].split("  media-worker:", 1)[0]
+        media_worker = compose.split("  media-worker:", 1)[1].split("  clamav:", 1)[0]
+        file_worker = compose.split("  file-worker:", 1)[1].split("  celery-beat:", 1)[0]
+        beat = compose.split("  celery-beat:", 1)[1].split("  nginx:", 1)[0]
+
+        assert 'MODEL_CATALOG_ENCRYPTION_KEY: ""' not in api
+        assert 'MODEL_CATALOG_ENCRYPTION_KEY: ""' not in worker
+        for service in (celery_worker, media_worker, beat):
+            assert 'MODEL_CATALOG_ENCRYPTION_KEY: ""' in service
+        assert "MODEL_CATALOG_ENCRYPTION_KEY" not in file_worker
+
+
 def test_clamav_startup_and_healthcheck_are_signature_aware() -> None:
     entrypoint_path = "./deploy/clamav/entrypoint.sh:/usr/local/bin/ichat-clamav-entrypoint.sh:ro"
     healthcheck_path = (

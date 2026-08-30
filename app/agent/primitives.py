@@ -17,6 +17,7 @@ from typing import Any
 from app.agent.messages import (
     ContentBlock,
     Message,
+    ProviderContinuationBlock,
     ReasoningBlock,
     TextBlock,
     ToolCallBlock,
@@ -61,8 +62,7 @@ async def stream_model_call(
     Raises ``ProviderError`` on provider failure or if the stream ends without a
     finish event.
     """
-    text_parts: list[str] = []
-    reasoning_parts: list[str] = []
+    response_blocks: list[ContentBlock] = []
     tool_calls: list[ToolCallBlock] = []
 
     stream_kwargs: dict[str, Any] = {
@@ -77,23 +77,22 @@ async def stream_model_call(
     try:
         async for event in stream:
             if isinstance(event, ReasoningDelta):
-                reasoning_parts.append(event.text)
+                _append_textual_block(
+                    response_blocks,
+                    ReasoningBlock(text=event.text, kind=event.kind),
+                )
                 yield event
             elif isinstance(event, TextDelta):
-                text_parts.append(event.text)
+                _append_textual_block(response_blocks, TextBlock(text=event.text))
                 yield event
+            elif isinstance(event, ProviderContinuationBlock):
+                response_blocks.append(event)
             elif isinstance(event, ToolCallDone):
                 tool_calls.append(
                     ToolCallBlock(id=event.id, name=event.name, arguments=event.arguments)
                 )
             elif isinstance(event, StreamDone):
-                blocks: list[ContentBlock] = []
-                reasoning_text = "".join(reasoning_parts)
-                content = "".join(text_parts)
-                if reasoning_text:
-                    blocks.append(ReasoningBlock(text=reasoning_text))
-                if content:
-                    blocks.append(TextBlock(text=content))
+                blocks = list(response_blocks)
                 blocks.extend(tool_calls)
                 yield ModelCallResult(
                     message=Message(role="assistant", blocks=blocks),
@@ -111,6 +110,30 @@ async def stream_model_call(
         code="no_finish",
         message="Provider stream ended without a finish event",
     )
+
+
+def _append_textual_block(
+    blocks: list[ContentBlock],
+    block: TextBlock | ReasoningBlock,
+) -> None:
+    """Coalesce adjacent streamed text without changing semantic block order."""
+
+    if blocks:
+        previous = blocks[-1]
+        if isinstance(block, TextBlock) and isinstance(previous, TextBlock):
+            blocks[-1] = TextBlock(text=previous.text + block.text)
+            return
+        if (
+            isinstance(block, ReasoningBlock)
+            and isinstance(previous, ReasoningBlock)
+            and previous.kind == block.kind
+        ):
+            blocks[-1] = ReasoningBlock(
+                text=previous.text + block.text,
+                kind=block.kind,
+            )
+            return
+    blocks.append(block)
 
 
 async def execute_tool(tool: Tool, arguments: dict[str, Any]) -> ToolResult:

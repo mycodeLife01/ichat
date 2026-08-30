@@ -98,6 +98,7 @@ class MessageResponse(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     reasoning: str | None = None
+    reasoning_summary: str | None = None
     metadata: dict[str, Any] | None = None
     position: int
     created_at: datetime

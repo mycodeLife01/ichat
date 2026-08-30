@@ -15,6 +15,7 @@ from app.models.files import (
     FileUploadStatus,
     MessageAttachment,
 )
+from app.models.model_catalog import ChatModel, ModelCatalogState, ModelRoute, ModelUpstream
 from app.models.run import ConversationTitleJob, Run, RunDraft, RunEvent, RunProviderMessage
 from app.models.user import RefreshToken, User
 
@@ -22,6 +23,7 @@ __all__ = [
     "AuthToken",
     "AvatarDeletion",
     "AvatarUpload",
+    "ChatModel",
     "Conversation",
     "ConversationTitleJob",
     "EmailOutbox",
@@ -37,6 +39,9 @@ __all__ = [
     "FileUploadStatus",
     "Message",
     "MessageAttachment",
+    "ModelCatalogState",
+    "ModelRoute",
+    "ModelUpstream",
     "RefreshToken",
     "Run",
     "RunDraft",

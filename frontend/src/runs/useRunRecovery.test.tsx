@@ -72,11 +72,12 @@ describe("useRunRecovery", () => {
     expect(result.current.activeRun).toBeNull();
   });
 
-  it("restores and resumes an in-progress formal draft without completed reasoning", async () => {
+  it("restores and resumes an in-progress draft with raw reasoning and summary", async () => {
     const start = vi.fn();
     const state = vi.fn(async () => ({
       ...runStateResponse,
       draft_reasoning: "想",
+      draft_reasoning_summary: "摘要",
     }));
     const { result } = setup(start, createFakeServices({}, {}, { state }));
 
@@ -92,7 +93,8 @@ describe("useRunRecovery", () => {
       providerName: runStateResponse.provider_name,
       latestSeq: runStateResponse.latest_seq,
       draftText: runStateResponse.draft_text,
-      draftReasoning: "",
+      draftReasoning: "想",
+      draftReasoningSummary: "摘要",
       toolState: null,
       status: "streaming",
       cancelRequested: false,

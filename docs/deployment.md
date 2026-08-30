@@ -87,6 +87,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_THINKING_ENABLED=false
 
+# 数据库聊天模型目录凭据加密（生成一次并长期保管）
+MODEL_CATALOG_ENCRYPTION_KEY=<python -m app.model_admin generate-key 的输出>
+# 独立模型管理控制台固定密钥（至少 32 字符，仅 API 进程持有）
+MODEL_ADMIN_ACCESS_KEY=<openssl rand -hex 32 的输出>
+
 # Web Search（可选，默认关闭）
 WEB_SEARCH_ENABLED=false
 WEB_SEARCH_PROVIDER=tavily
@@ -168,7 +173,7 @@ clamd，避免持久卷中的旧病毒库与 clamd 并发加载。健康检查�
 普通扫描不足以进入 healthy。`file-worker` 继续依赖该健康状态启动，因此不能删除
 `deploy/clamav` 脚本挂载，也不能把健康检查退回单纯的 `clamdscan --ping`。
 
-compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。
+compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。数据库模型目录启用视觉模型时，LLM Worker 启动门禁直接读取数据库目录并要求 preview LLM 凭据，不再依赖旧 `OPENAI_VISION_MODELS`；因此删除 provider ENV 配置时必须保留这组静态存储凭据。
 
 `media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical/preview 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)；视觉白名单、preview backfill、真实 GPT/R2 smoke 与回滚见[GPT 图片输入交接](handover/2026-08-03-gpt-vision-input.md)。
 
@@ -177,6 +182,8 @@ compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker �
 > **注意**：修改 `.env` 中的 `CORS_ALLOWED_ORIGINS` 后，必须 `docker compose -f compose.prod.yml up -d --force-recreate api` 才会生效——`restart` 不会重新加载 env。
 
 > **Web Search**：后端通过 `GET /api/v1/capabilities` 对前端公开联网搜索是否可用；只有 `WEB_SEARCH_ENABLED=true` 且 `TAVILY_API_KEY` 非空时返回 enabled。修改 `WEB_SEARCH_ENABLED`、`TAVILY_API_KEY` 或相关超时/额度配置后，需至少 force-recreate `api` 和 `worker` 容器，让 capabilities 与 worker runtime 同步加载新 env。
+
+> **聊天模型目录**：`MODEL_CATALOG_ENCRYPTION_KEY` 是一次性部署配置，必须同时提供给 API 和流式 Worker；`MODEL_ADMIN_ACCESS_KEY` 是独立 Web 管理密钥，只允许 API 容器持有。首次配置或轮换任一密钥后按其范围 force-recreate 进程；模型管理密钥轮换只需重建 API。之后从 `https://chat.feslia.com/model-admin` 管理聊天模型、上游 endpoint/API key、路由、优先级、推理输出能力和启停，所有业务变更写 PostgreSQL 并对新请求即时生效，无需重启；`python -m app.model_admin` 保留为应急入口。管理 API 使用 `X-Model-Admin-Key`，不得把密钥放入 URL、Pages 构建变量、浏览器 localStorage 或日志。Compose 会在 Worker、Celery 与媒体进程中显式清空该密钥。对话标题仍使用 `SUMMARY_*` 与旧 provider ENV。完整首次导入、OpenRouter reasoning/tool continuation smoke 和无重启回滚见[数据库聊天模型目录交接](handover/2026-08-29-database-model-catalog.md)。
 
 > **Redis / Celery**：`compose.prod.yml` 显式使用 `maxmemory-policy noeviction`；不得改为会驱逐 key 的策略，否则 Celery broker 与 Run Stream 都可能丢数据。`celery-beat` 必须**单实例**。修改 Run Stream/checkpoint env 后须 force-recreate `api worker`；修改标题 provider/model 或邮件 env 后须 force-recreate `celery-worker`（邮件调度还涉及 `celery-beat`）。Postmark DNS/DKIM/SPF、dead outbox、以及 nginx Cloudflare realip + 源站防火墙清单详见 `docs/handover/2026-06-26-email-verification.md`。
 
@@ -268,6 +275,8 @@ cat deploy_key
 
 - 生产域名：`https://chat.feslia.com`（自定义域），另有 `ichat-arr.pages.dev` 默认域。
 - `VITE_API_BASE_URL` 为**构建时注入**，修改后需触发重新构建才生效。
+- 模型控制台与聊天 SPA 使用同一 Pages 部署，路径为 `/model-admin`；固定管理密钥绝不能作为
+  Pages 构建变量注入。
 - 非 `main` 分支 push 会自动生成预览部署，分支别名域名固定（如 `<branch>.ichat-arr.pages.dev`）。
 
 ### CORS 联动

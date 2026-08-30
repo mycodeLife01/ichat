@@ -402,6 +402,12 @@ async def test_get_owned_run_state_builds_draft_reasoning_from_reasoning_delta_e
             session, run_id=run.id, event_type="reasoning_delta", payload={"text": "more"}
         )
         await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="reasoning_delta",
+            payload={"text": "short summary", "kind": "summary"},
+        )
+        await append_run_event(
             session, run_id=run.id, event_type="text_delta", payload={"text": "answer"}
         )
         await append_run_event(session, run_id=run.id, event_type="run_succeeded", payload={})
@@ -410,6 +416,7 @@ async def test_get_owned_run_state_builds_draft_reasoning_from_reasoning_delta_e
 
     assert state.draft_text == "answer"
     assert state.draft_reasoning == "think more"
+    assert state.draft_reasoning_summary == "short summary"
     assert state.provider_name == "deepseek"
 
 

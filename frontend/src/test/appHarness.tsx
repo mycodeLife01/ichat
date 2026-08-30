@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ConversationApi } from "../api/conversations";
 import type { CapabilitiesApi } from "../api/capabilities";
 import type { FilesApi } from "../api/files";
+import type { ModelAdminApi } from "../api/modelAdmin";
 import type { RunApi } from "../api/runs";
 import type { ShareApi } from "../api/share";
 import type { RunEventResponse, RunStreamEvent } from "../api/types";
@@ -161,6 +162,29 @@ export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi 
   };
 }
 
+export function createFakeModelAdminApi(
+  overrides: Partial<ModelAdminApi> = {},
+): ModelAdminApi {
+  const emptyCatalog = {
+    database_enabled: false,
+    models: [],
+    upstreams: [],
+    routes: [],
+  };
+  return {
+    getCatalog: async () => emptyCatalog,
+    upsertModel: async () => emptyCatalog,
+    setModelEnabled: async () => emptyCatalog,
+    upsertUpstream: async () => emptyCatalog,
+    setUpstreamEnabled: async () => emptyCatalog,
+    upsertRoute: async () => emptyCatalog,
+    setRouteEnabled: async () => emptyCatalog,
+    setCatalogEnabled: async () => emptyCatalog,
+    importEnvironment: async () => emptyCatalog,
+    ...overrides,
+  };
+}
+
 export function createFakeServices(
   authApi: Partial<AuthApi> = {},
   conversationApi: Partial<ConversationApi> = {},
@@ -168,12 +192,14 @@ export function createFakeServices(
   capabilitiesApi: Partial<CapabilitiesApi> = {},
   shareApi: Partial<ShareApi> = {},
   filesApi: Partial<FilesApi> = {},
+  modelAdminApi: Partial<ModelAdminApi> = {},
 ): Services {
   return {
     authApi: createFakeAuthApi(authApi),
     capabilitiesApi: createFakeCapabilitiesApi(capabilitiesApi),
     conversationApi: createFakeConversationApi(conversationApi),
     filesApi: createFakeFilesApi(filesApi),
+    modelAdminApi: createFakeModelAdminApi(modelAdminApi),
     runApi: createFakeRunApi(runApi),
     shareApi: createFakeShareApi(shareApi),
   };

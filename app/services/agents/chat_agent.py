@@ -33,7 +33,6 @@ from app.agent.tools import ToolRegistry, ToolResult, WebSearchConfig, WebSearch
 from app.core.config import Settings
 from app.search import SourceRegistry
 from app.search.registry import resolve_search_client
-from app.services.agents.catalog import available_chat_models
 from app.services.agents.context import build_context
 from app.services.agents.prompts import build_system_prompt
 from app.services.agents.registry import resolve_provider as default_resolve_provider
@@ -66,6 +65,8 @@ class ChatAgentOptions:
     model: str
     provider_options: Mapping[str, Any] = field(default_factory=dict)
     image_token_reserve: int = 0
+    supports_reasoning: bool | None = None
+    supports_image_input: bool | None = None
 
 
 class ChatAgent:
@@ -211,6 +212,7 @@ def build_chat_agent(
     settings: Settings,
     history: list[Message],
     options: ChatAgentOptions,
+    provider: Provider | None = None,
     resolve_provider: ProviderResolver = default_resolve_provider,
     now: datetime | None = None,
     image_resolver: ImageInputResolver | None = None,
@@ -222,24 +224,29 @@ def build_chat_agent(
     its ``SourceRegistry`` internalized as a closure), the tool-call limit, and
     the retry policy.
     """
-    selected_model = next(
-        (
-            entry
-            for entry in available_chat_models(settings)
-            if entry.provider_name == options.provider_name and entry.model == options.model
-        ),
-        None,
+    resolved_provider = provider or resolve_provider(options.provider_name, settings=settings)
+    supports_image_input = (
+        options.supports_image_input
+        if options.supports_image_input is not None
+        else options.provider_name == "openai"
+        and options.model in settings.openai_vision_models_list
     )
-    if _contains_image_block(history) and (
-        selected_model is None or not selected_model.supports_image_input
-    ):
+    if _contains_image_block(history) and not supports_image_input:
         raise ProviderError(
             code=f"{options.provider_name}_image_input_not_supported",
             message="This model does not support image input",
         )
 
-    provider = resolve_provider(options.provider_name, settings=settings)
-    reasoning = _reasoning_config(options.provider_options, settings)
+    supports_reasoning = (
+        options.supports_reasoning
+        if options.supports_reasoning is not None
+        else resolved_provider.capabilities.supports_reasoning
+    )
+    reasoning = _reasoning_config(
+        options.provider_options,
+        settings,
+        supports_reasoning=supports_reasoning,
+    )
     web_search_enabled = _web_search_enabled(options.provider_options, settings)
     system_prompt = build_system_prompt(
         settings=settings,
@@ -250,7 +257,7 @@ def build_chat_agent(
         system_prompt=system_prompt,
         history=history,
         budget_tokens=settings.context_budget_tokens,
-        count_tokens=provider.count_tokens,
+        count_tokens=resolved_provider.count_tokens,
         image_token_reserve=max(options.image_token_reserve, 0),
     )
 
@@ -272,7 +279,7 @@ def build_chat_agent(
         return {"sources": collected} if collected else None
 
     return ChatAgent(
-        provider=provider,
+        provider=resolved_provider,
         model=options.model,
         reasoning=reasoning,
         tools=tools,
@@ -287,8 +294,21 @@ def build_chat_agent(
     )
 
 
-def _reasoning_config(options: Mapping[str, Any], settings: Settings) -> ReasoningConfig:
+def _reasoning_config(
+    options: Mapping[str, Any],
+    settings: Settings,
+    *,
+    supports_reasoning: bool,
+) -> ReasoningConfig | None:
     """Rebuild per-run reasoning options, falling back for legacy rows."""
+    if not supports_reasoning:
+        # ``None`` means "use provider default" to the DeepSeek adapter, which
+        # could re-enable thinking. An empty thinking-level catalog is an
+        # explicit model-level off switch, so carry that intent to every adapter.
+        return ReasoningConfig(
+            enabled=False,
+            effort=settings.deepseek_reasoning_effort,
+        )
     return ReasoningConfig(
         enabled=bool(options.get("thinking_enabled", settings.deepseek_thinking_enabled)),
         effort=str(options.get("reasoning_effort", settings.deepseek_reasoning_effort)),

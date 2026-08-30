@@ -7,6 +7,7 @@ import pytest
 
 from app.agent.messages import (
     Message,
+    ProviderContinuationBlock,
     ReasoningBlock,
     TextBlock,
     ToolCallBlock,
@@ -69,6 +70,42 @@ async def test_stream_model_call_buffers_tool_calls_into_message() -> None:
     result = items[0]
     assert isinstance(result, ModelCallResult)
     assert result.message.blocks == [ToolCallBlock("call_1", "lookup", {"q": "x"})]
+
+
+async def test_stream_model_call_keeps_typed_reasoning_and_continuation_order() -> None:
+    continuation = ProviderContinuationBlock(
+        owner="openrouter",
+        codec="reasoning_details.v1",
+        scope="assistant_message",
+        payload={
+            "reasoning_details": [
+                {"type": "reasoning.encrypted", "data": "opaque", "index": 1}
+            ]
+        },
+    )
+    provider = FakeProvider(
+        script=[
+            ReasoningDelta("plan", kind="summary"),
+            continuation,
+            ReasoningDelta("work", kind="raw"),
+            StreamDone("stop"),
+        ]
+    )
+
+    items = await _drain(provider)
+
+    assert [type(item).__name__ for item in items] == [
+        "ReasoningDelta",
+        "ReasoningDelta",
+        "ModelCallResult",
+    ]
+    result = items[-1]
+    assert isinstance(result, ModelCallResult)
+    assert result.message.blocks == [
+        ReasoningBlock("plan", kind="summary"),
+        continuation,
+        ReasoningBlock("work", kind="raw"),
+    ]
 
 
 async def test_stream_model_call_raises_provider_error() -> None:

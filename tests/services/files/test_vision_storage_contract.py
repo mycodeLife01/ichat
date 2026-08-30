@@ -4,10 +4,13 @@ from hashlib import sha256
 
 import pytest
 
+from app.core.config import get_settings
 from app.models.files import FileStorageLocation
+from app.services.files.dependencies import build_file_storage
 from app.services.files.storage import (
     FakeFileStorage,
     R2FileStorage,
+    StorageCredentialsUnavailable,
     StorageIntegrityError,
     StoragePermissionDenied,
 )
@@ -123,3 +126,17 @@ def test_r2_preview_roles_are_read_only_and_bucket_scoped() -> None:
             filename="image.webp",
             storage_location=FileStorageLocation.CANONICAL_PRIVATE,
         )
+
+
+def test_unconfigured_preview_llm_storage_fails_before_network_access() -> None:
+    settings = get_settings().model_copy(
+        update={
+            "files_r2_endpoint_url": "https://account.r2.cloudflarestorage.com",
+            "files_preview_llm_access_key_id": "",
+            "files_preview_llm_secret_access_key": "",
+        }
+    )
+    storage = build_file_storage(settings, role="preview_llm")
+
+    with pytest.raises(StorageCredentialsUnavailable):
+        storage.head_model_preview("files/image/preview")
