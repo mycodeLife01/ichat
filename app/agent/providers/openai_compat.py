@@ -118,15 +118,44 @@ class OpenAIChatCompletionsProvider(Provider):
         return None
 
     def _reasoning_events_from_delta(
-        self, delta: Any
+        self, delta: Any, *, model: str
     ) -> list[ReasoningDeltaEvent | ProviderContinuationBlock]:
         text = self._reasoning_from_delta(delta)
         return [ReasoningDeltaEvent(text=text, kind="raw")] if text else []
 
-    def _assistant_message_extras(self, message: Message) -> Mapping[str, Any]:
+    def _assistant_message_extras(
+        self, message: Message, *, model: str
+    ) -> Mapping[str, Any]:
         """Project adapter-owned continuation blocks back to wire fields."""
 
         return {}
+
+    def _provider_error_from_status(
+        self,
+        exc: APIStatusError,
+        *,
+        contains_image_input: bool,
+        summarize: bool = False,
+    ) -> ProviderError:
+        if summarize:
+            return ProviderError(
+                code=self._error_code("summarize_http_error"),
+                message=(
+                    f"{self._display_name} summarize returned "
+                    f"{exc.status_code}: {_error_body(exc)}"
+                ),
+            )
+        return ProviderError(
+            code=self._error_code("http_error"),
+            message=(
+                _safe_image_request_error(
+                    self._display_name,
+                    status_code=exc.status_code,
+                )
+                if contains_image_input
+                else f"{self._display_name} returned {exc.status_code}: {_error_body(exc)}"
+            ),
+        )
 
     @property
     def _supports_image_input(self) -> bool:
@@ -181,7 +210,10 @@ class OpenAIChatCompletionsProvider(Provider):
             strip_tool_history=self._should_strip_tool_history(tools),
             replay_reasoning=self._replay_reasoning_in_history,
             resolved_images=resolved_images,
-            assistant_message_extras=self._assistant_message_extras,
+            assistant_message_extras=lambda message: self._assistant_message_extras(
+                message,
+                model=model,
+            ),
         )
         create_kwargs: dict[str, Any] = {
             "model": model,
@@ -196,13 +228,9 @@ class OpenAIChatCompletionsProvider(Provider):
         try:
             response = await self._async().chat.completions.create(**create_kwargs)
         except APIStatusError as exc:
-            raise ProviderError(
-                code=self._error_code("http_error"),
-                message=(
-                    _safe_image_request_error(self._display_name, status_code=exc.status_code)
-                    if contains_image_input
-                    else f"{self._display_name} returned {exc.status_code}: {_error_body(exc)}"
-                ),
+            raise self._provider_error_from_status(
+                exc,
+                contains_image_input=contains_image_input,
             ) from exc
         except (APIConnectionError, APITimeoutError) as exc:
             raise ProviderError(
@@ -228,7 +256,7 @@ class OpenAIChatCompletionsProvider(Provider):
                     continue
                 choice = choices[0]
                 delta = choice.delta
-                for reasoning_event in self._reasoning_events_from_delta(delta):
+                for reasoning_event in self._reasoning_events_from_delta(delta, model=model):
                     yield reasoning_event
                 if delta.content:
                     yield TextDelta(text=delta.content)
@@ -254,13 +282,9 @@ class OpenAIChatCompletionsProvider(Provider):
                         )
                     tool_buffers.clear()
         except APIStatusError as exc:
-            raise ProviderError(
-                code=self._error_code("http_error"),
-                message=(
-                    _safe_image_request_error(self._display_name, status_code=exc.status_code)
-                    if contains_image_input
-                    else f"{self._display_name} returned {exc.status_code}: {_error_body(exc)}"
-                ),
+            raise self._provider_error_from_status(
+                exc,
+                contains_image_input=contains_image_input,
             ) from exc
         except (APIConnectionError, APITimeoutError) as exc:
             raise ProviderError(
@@ -295,7 +319,10 @@ class OpenAIChatCompletionsProvider(Provider):
             messages,
             strip_tool_history=not self.capabilities.supports_tool_history,
             replay_reasoning=self._replay_reasoning_in_history,
-            assistant_message_extras=self._assistant_message_extras,
+            assistant_message_extras=lambda message: self._assistant_message_extras(
+                message,
+                model=model,
+            ),
         )
         create_kwargs: dict[str, Any] = {
             "model": model,
@@ -310,12 +337,10 @@ class OpenAIChatCompletionsProvider(Provider):
         try:
             completion: Any = self._sync().chat.completions.create(**create_kwargs)
         except APIStatusError as exc:
-            raise ProviderError(
-                code=self._error_code("summarize_http_error"),
-                message=(
-                    f"{self._display_name} summarize returned "
-                    f"{exc.status_code}: {_error_body(exc)}"
-                ),
+            raise self._provider_error_from_status(
+                exc,
+                contains_image_input=False,
+                summarize=True,
             ) from exc
         except (APIConnectionError, APITimeoutError) as exc:
             raise ProviderError(

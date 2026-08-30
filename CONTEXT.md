@@ -97,8 +97,12 @@ _Avoid_: 隐藏思维链（系统只保存上游实际返回的内容）、推�
 _Avoid_: 原始推理、前端截断、由应用自行总结的 reasoning
 
 **Provider 续传块（Provider Continuation Block）**:
-`run_provider_messages.blocks` 中由某个适配器拥有的不透明 JSON 状态，用于在工具调用后按上游协议继续同一推理过程。只有 `owner` 对应的适配器可以解释和回放；它不进入消息 API、SSE、公开分享、模型管理响应或日志。
+`run_provider_messages.blocks` 中由某个适配器拥有的不透明 JSON 状态，用于在工具调用后按上游协议继续同一推理过程。只有 `owner` 对应的适配器可以解释，且只能在所属 Provider 续传阶段内回放；它不进入消息 API、SSE、公开分享、模型管理响应或日志。
 _Avoid_: 新的数据库保存机制、用户可见推理、通用 provider 参数
+
+**Provider 续传阶段（Provider Continuation Stage）**:
+同一 Provider 适配器、模型上游入口和上游模型连续成功生成的一段对话历史，只有该段历史可以复用不透明续传状态。成功切换到不兼容执行路径会结束旧阶段；之后即使切回原路径，也会开始一个新阶段。
+_Avoid_: 同一会话、同一网关、仅按 continuation owner 推断兼容
 
 **模型管理访问密钥（Model Management Access Key）**:
 部署时固定配置、只授权模型管理 Web/API 的高熵秘密。它不代表用户身份或管理员角色，不进入 PostgreSQL，也不能替代模型上游 API key；普通用户 JWT 同样不能替代它。

@@ -60,9 +60,17 @@ provider 名称推测。
 `format=google-gemini-v1` 的结构化事实为依据，不扫描 Markdown 标题或自然语言内容。
 
 OpenRouter 某些模型要求在工具调用续接时原样、按顺序回传不透明 `reasoning_details`。当前实现把
-整组 detail 保存为 `ProviderContinuationBlock(owner="openrouter", codec="reasoning_details.v1")`，
-随 assistant transcript 一起持久化，下一次同一 Adapter 调用时恢复为 wire
-`reasoning_details`。该 payload 不进入用户消息 API、Run SSE、公开分享、模型管理响应或日志。
+整组 detail 保存为 `ProviderContinuationBlock(owner="openrouter", codec="reasoning_details.v2")`，
+随 assistant transcript 一起持久化；v2 payload 还带规范化 endpoint + provider model 的 replay
+key，只在匹配请求中恢复为 wire `reasoning_details`。存量 `reasoning_details.v1` 保持可读，但由
+历史层的 Provider 续传阶段约束保护，不能仅因下一次仍使用 OpenRouter Adapter 就回放。该 payload
+不进入用户消息 API、Run SSE、公开分享、模型管理响应或日志。
+
+历史层以 `(adapter, upstream, 规范化 base_url, provider_model)` 判定当前连续成功阶段。阶段内
+完整保留 reasoning、continuation、tool call/result；阶段外的成功 Run 只投影精确用户输入（含
+附件）与最终助手正文。失败/取消 Run 仍只保留精确用户输入且不形成切换屏障；Grok → Gemini →
+Grok 会形成三个阶段，第二次 Grok 不复活第一次 Grok 的加密状态，只有随后连续 Grok Run 才能
+续用新状态。DeepSeek 官方与 OpenRouter DeepSeek 也属于不同阶段。完整决策见 ADR 0013。
 上线新模型前仍必须用真实上游跑 reasoning + tool continuation smoke，不能只因它“兼容
 OpenAI”就直接启用。参考 [DeepSeek thinking mode](https://api-docs.deepseek.com/guides/thinking_mode/)、[DeepSeek chat completion](https://api-docs.deepseek.com/api/create-chat-completion/)、[OpenRouter reasoning tokens](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) 和 [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)。
 

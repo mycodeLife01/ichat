@@ -6,7 +6,7 @@
 
 推理控制与推理输出是两个独立能力：`chat_models.thinking_levels` 表示用户能否调节思考强度，`model_routes.reasoning_outputs` 表示具体上游路径可能返回 `raw`、`summary` 中的哪些可见内容。Run 快照同时固化二者。该字段是能力声明，不是 transcript 过滤器；结构化输出由适配器结合网关 detail type 与明确的底层 format 语义归类并完整保存，无类型 plaintext 才按快照声明保守分类。不得按文本内容猜测类型：例如 OpenRouter 的 `reasoning.text` 通常是 raw，但 `format=google-gemini-v1` 承载的是 Gemini 对外提供的 thought summary，必须归为 summary。数据库只能选择代码定义的能力，不开放任意 provider wire 参数；管理服务必须按适配器支持矩阵验证路由配置和后续适配器变更。
 
-DeepSeek 官方、OpenAI 官方和 OpenRouter 的请求、响应分类与历史回放差异由明确的代码适配器处理。Provider 输出统一归一化为带 `kind` 的 `ReasoningDelta` / `ReasoningBlock`。OpenRouter 等协议要求续传的签名、加密块和结构化 `reasoning_details` 作为 `ProviderContinuationBlock` 保存在既有 `run_provider_messages.blocks` 中，仅由所属适配器解释和原样回放；它不得暴露给用户 API、SSE、分享、模型管理或日志。
+DeepSeek 官方、OpenAI 官方和 OpenRouter 的请求、响应分类与历史回放差异由明确的代码适配器处理。Provider 输出统一归一化为带 `kind` 的 `ReasoningDelta` / `ReasoningBlock`。OpenRouter 等协议要求续传的签名、加密块和结构化 `reasoning_details` 作为 `ProviderContinuationBlock` 保存在既有 `run_provider_messages.blocks` 中，仅由所属适配器解释，并只在 ADR 0013 定义的 Provider 续传阶段内原样回放；它不得暴露给用户 API、SSE、分享、模型管理或日志。
 
 `run_provider_messages` 是一次 Run 全部模型调用和工具交互的完整事实记录。成功终态的 `messages.reasoning` 与 `messages.reasoning_summary` 分别只是全部 raw/summary block 的有序读取投影；失败或取消不物化 assistant message，但保留已完成调用和当前调用已产生的 partial transcript。
 

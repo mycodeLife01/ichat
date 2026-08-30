@@ -35,7 +35,8 @@ class ProviderContinuationBlock:
     """Opaque provider-owned state required to continue a model turn.
 
     The kernel stores and transports this block without interpreting payload.
-    Only the adapter named by ``owner`` may project it back to a wire format.
+    Only the adapter named by ``owner`` may project it back to a wire format;
+    the business history layer decides whether the source route is replayable.
     """
 
     owner: str

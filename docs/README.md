@@ -25,7 +25,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
 | Frontend deployment / CORS issues | `docs/handover/frontend/2026-05-24-backend-decoupling-and-cors.md` + `docs/deployment.md` |
 | Verifying provider integration behavior | `docs/handover/2026-05-17-deepseek-smoke.md` |
-| Adding, editing, enabling, disabling, routing, or rolling back chat models/upstreams; model-management Web access; reasoning output/continuation behavior | `docs/handover/2026-08-29-database-model-catalog.md` + ADR `0012-use-database-model-routes-and-code-adapters.md` + `docs/deployment.md` + `docs/architecture/frontend.md` |
+| Adding, editing, enabling, disabling, routing, or rolling back chat models/upstreams; model-management Web access; reasoning output/continuation behavior | `docs/handover/2026-08-31-provider-continuation-route-affinity.md` + `docs/handover/2026-08-29-database-model-catalog.md` + ADRs `0012-use-database-model-routes-and-code-adapters.md` and `0013-scope-provider-continuations-by-route-affinity.md` + `docs/deployment.md` + `docs/architecture/frontend.md` |
 | Editing the assistant's system prompt or how prompts are assembled/injected | `docs/handover/2026-06-17-system-prompt-management.md` |
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
@@ -57,6 +57,7 @@ Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching yo
 - `0010-use-adaptive-multipart-and-server-side-promotion.md` — adaptive multipart transport, PG-owned upload lifecycle, R2 server-side original promotion, and PG-only derived document text for new uploads.
 - `0011-grant-attachment-reads-to-public-shares.md` — public shares now exchange an opaque snapshot `ref` for short-lived preview/download URLs (superseding the placeholder-only boundary), with the threat model and the guards that bound it.
 - `0012-use-database-model-routes-and-code-adapters.md` — database-backed chat models/upstreams/routes, fixed-key Web management, non-secret Run route snapshots, encrypted upstream credentials, route-level reasoning outputs, adapter-owned continuation state, and no implicit in-Run failover.
+- `0013-scope-provider-continuations-by-route-affinity.md` — immutable transcripts plus route-affinity history projection, portable cross-route turns, non-resurrection after switching back, and OpenRouter endpoint/model replay keys.
 
 ### `docs/handover/`
 
@@ -90,6 +91,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-08-09-file-upload-performance.md` — measured upload phase baseline and the adaptive multipart, server-side promotion, fresh-client, worker recycling, telemetry, rollout, and real-R2 verification changes.
 - `2026-08-13-clamav-startup-readiness.md` — ClamAV startup refresh ordering, signature-aware readiness, the persisted-database race, and local/production verification.
 - `2026-08-29-database-model-catalog.md` — database-backed chat-model management, fixed-key Web console, multiple upstream routes, encrypted credential operations, raw/summary reasoning and continuation behavior, rollout/rollback, and hot-switch commands.
+- `2026-08-31-provider-continuation-route-affinity.md` — Grok→Gemini encrypted-reasoning 404 root cause and fix, route-affinity continuation stages, DeepSeek official/OpenRouter switching semantics, local Docker rollout, and regression coverage.
 - `2026-08-31-thinking-header-geometry-shift.md` — why the 正在思考 label shifted mid-stream (a `hasContent`-toggled dual vertical geometry), the fix that made header geometry unconditional, the anchor-row rule for any delta-toggled class, the test that had enshrined the bug, and the real-Chrome measurement method jsdom cannot replace.
 - `2026-07-17-agent-runtime-refactor-issue01-02.md` — session handoff for agent-runtime-refactor tickets 01–02: kernel/legacy coexist strategy, the three architecture-purity rulings (DB-free kernel context, tool-agnostic ToolResult, flat message lists), env pitfalls, and next steps (tickets 03/04).
 

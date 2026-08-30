@@ -185,6 +185,8 @@ compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker �
 
 > **聊天模型目录**：`MODEL_CATALOG_ENCRYPTION_KEY` 是一次性部署配置，必须同时提供给 API 和流式 Worker；`MODEL_ADMIN_ACCESS_KEY` 是独立 Web 管理密钥，只允许 API 容器持有。首次配置或轮换任一密钥后按其范围 force-recreate 进程；模型管理密钥轮换只需重建 API。之后从 `https://chat.feslia.com/model-admin` 管理聊天模型、上游 endpoint/API key、路由、优先级、推理输出能力和启停，所有业务变更写 PostgreSQL 并对新请求即时生效，无需重启；`python -m app.model_admin` 保留为应急入口。管理 API 使用 `X-Model-Admin-Key`，不得把密钥放入 URL、Pages 构建变量、浏览器 localStorage 或日志。Compose 会在 Worker、Celery 与媒体进程中显式清空该密钥。对话标题仍使用 `SUMMARY_*` 与旧 provider ENV。完整首次导入、OpenRouter reasoning/tool continuation smoke 和无重启回滚见[数据库聊天模型目录交接](handover/2026-08-29-database-model-catalog.md)。
 
+> **Provider 续传阶段代码更新**：涉及历史投影或 OpenRouter continuation codec 的版本上线时，必须重建并 force-recreate 全部流式 `worker` 副本；API、Celery 和数据库 schema 不受影响。不要清理或改写旧 `run_provider_messages`，存量 v1 continuation 由兼容读取和请求时路由亲和投影处理。切换语义与 smoke 矩阵见[Provider 续传路由亲和交接](handover/2026-08-31-provider-continuation-route-affinity.md)。
+
 > **Redis / Celery**：`compose.prod.yml` 显式使用 `maxmemory-policy noeviction`；不得改为会驱逐 key 的策略，否则 Celery broker 与 Run Stream 都可能丢数据。`celery-beat` 必须**单实例**。修改 Run Stream/checkpoint env 后须 force-recreate `api worker`；修改标题 provider/model 或邮件 env 后须 force-recreate `celery-worker`（邮件调度还涉及 `celery-beat`）。Postmark DNS/DKIM/SPF、dead outbox、以及 nginx Cloudflare realip + 源站防火墙清单详见 `docs/handover/2026-06-26-email-verification.md`。
 
 ### 5. 创建证书目录（可选，HTTPS 用）

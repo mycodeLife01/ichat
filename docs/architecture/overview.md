@@ -2,7 +2,7 @@
 
 > 本文是 iChat 后端当前运行时架构的总结。模块/目录职责见
 > [`module-boundaries.md`](module-boundaries.md)；后台任务归属与可靠性模式见
-> [`background-tasks.md`](background-tasks.md)。状态截至 2026-08-29。
+> [`background-tasks.md`](background-tasks.md)。状态截至 2026-08-31。
 
 ## 服务拓扑
 
@@ -58,8 +58,11 @@ API 创建 Run 时把所选路由的 adapter、endpoint、上游 model id 和能
 DeepSeek、OpenAI 与 OpenRouter 的 reasoning、token limit、tool/reasoning 历史投影差异由
 独立代码适配器处理，数据库不能注入任意 wire 参数。`chat_models.thinking_levels` 只描述推理
 控制；`model_routes.reasoning_outputs` 独立描述该路径可能返回的 `raw` / `summary`，但不据此
-丢弃上游已经明确标型的结构化内容。适配器把实际响应分类为 typed reasoning block，并把仅供同一上游工具续传的签名、加密块或
-`reasoning_details` 保存成 adapter-owned continuation block。
+丢弃上游已经明确标型的结构化内容。适配器把实际响应分类为 typed reasoning block，并把仅供
+同一路由亲和路径续传的签名、加密块或 `reasoning_details` 保存成 adapter-owned continuation
+block。历史加载按 Provider 续传阶段投影：只有 `(adapter, upstream, 规范化 endpoint,
+provider model)` 相同的连续成功 Run 保留完整推理/工具/续传协议；更早或不兼容的成功 Run
+只保留精确用户输入和最终助手正文。原始 transcript 不因该请求投影而修改。
 
 ## 文件上传与消息附件数据流
 
@@ -106,7 +109,7 @@ API ── FileUpload queued ──► Celery files queue / file-worker
 
 ### 2. Agent 执行与事件写入
 
-Worker 加载历史、按 Run 路由快照构造 provider 并构建 `ChatAgent`，消费
+Worker 加载面向目标路由投影后的历史、按 Run 路由快照构造 provider 并构建 `ChatAgent`，消费
 `ChatAgent.stream()` 产生的 AgentEvent：
 
 - Worker 为每个事件分配单调整数 `seq`。
@@ -253,6 +256,8 @@ LLM Worker 不把 Redis health 作为启动前置条件，因此 Redis 在启动
 8. 附件原件不进入 provider；目标用户 turn 使用完整 DocumentBlock 快照或图片 notice，超预算
    必须在提交前拒绝，不能静默截断。
 9. 文件读取、配额、资产回收和对象删除均经 files 服务；会话/Run 历史不能通过 R2 重新构造事实。
+10. Provider 私有推理、工具协议和续传状态只在当前 Provider 续传阶段回放；切换成功后不得因
+    再次选择旧路径而复活切换前状态，transcript 本身保持完整不可变。
 
 ## 关联文档
 
