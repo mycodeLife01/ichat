@@ -47,8 +47,8 @@ describe("ThinkingBlock", () => {
     expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("keeps an empty streaming status at one-line height", () => {
-    const { container } = render(
+  it("keeps the streaming header geometry stable across the first reasoning delta", () => {
+    const { container, rerender } = render(
       <ThinkingBlock
         content={"\n"}
         streaming
@@ -56,10 +56,17 @@ describe("ThinkingBlock", () => {
         autoExpandWhileStreaming
       />,
     );
+    const block = container.querySelector(".thinking");
+    const rowClassName = block?.firstElementChild?.className;
+    expect(container.querySelector(".thinking-body")).toBeNull();
 
-    const body = container.querySelector(".thinking-body");
-    expect(body).toBeNull();
-    expect(container.querySelector(".thinking")?.className).toContain("h-7");
+    rerender(<ThinkingBlock content="第一段想法" streaming />);
+
+    // Header padding is unconditional: if the empty status used a different
+    // vertical geometry, the first delta would nudge the label mid-stream.
+    expect(block?.className).not.toContain("h-7");
+    expect(block?.className).toContain("py-0.5");
+    expect(block?.firstElementChild?.className).toBe(rowClassName);
   });
 
   it("auto-collapses raw reasoning when the formal answer starts", () => {

@@ -35,12 +35,17 @@ export function ThinkingBlock({
   const headerText =
     label ?? (streaming ? preview || "正在思考" : "已思考");
 
+  // The header's vertical geometry (root + row padding) is unconditional: the
+  // empty status and the first reasoning delta must share one layout, or the
+  // hasContent flip would nudge the label ~3px down mid-stream. Only the
+  // bottom margin tracks hasContent — it spaces the collapsed block above the
+  // answer and never moves the label itself.
   return (
     <div
-      className={`thinking${open ? "" : " collapsed"}${hasContent ? " mb-3.5 py-0.5" : " h-7"} text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
+      className={`thinking${open ? "" : " collapsed"}${hasContent ? " mb-3.5" : ""} py-0.5 text-[14px] leading-[1.6] text-text-muted max-[760px]:text-[15px]`}
     >
       <div
-        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail select-none${hasContent ? " py-0.5" : " h-full"}`}
+        className={`group ${focusRing} inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-detail select-none py-0.5`}
         role="button"
         tabIndex={0}
         aria-expanded={open}
