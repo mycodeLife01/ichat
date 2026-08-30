@@ -98,6 +98,8 @@ class RunModelRuntime:
     reasoning_outputs: tuple[ReasoningKind, ...]
     supports_image_input: bool
     image_token_reserve: int
+    # The run's project model code (the catalog key), never the upstream model.
+    catalog_model: str
 
 
 async def available_chat_models(
@@ -188,6 +190,8 @@ async def resolve_run_model_runtime(
                 model.supports_image_input if model is not None else image_token_reserve > 0
             ),
             image_token_reserve=image_token_reserve,
+            # Environment-mode catalog keys equal the provider model string.
+            catalog_model=run.provider_model,
         )
 
     if not isinstance(raw, Mapping):
@@ -218,6 +222,7 @@ async def resolve_run_model_runtime(
         reasoning_outputs=snapshot["reasoning_outputs"],
         supports_image_input=snapshot["supports_image_input"],
         image_token_reserve=snapshot["image_token_reserve"] or 0,
+        catalog_model=snapshot["catalog_model"],
     )
 
 

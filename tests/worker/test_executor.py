@@ -190,8 +190,13 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert run.usage_metadata == {"prompt_tokens": 4, "completion_tokens": 2}
         assert run.provider_request_id == "req-1"
         # The worker records the assembled system prompt it sent. With web search
-        # off and DEFAULT_SYSTEM_PROMPT overridden in tests, that is the override.
-        assert run.system_prompt_snapshot == settings.default_system_prompt
+        # off and DEFAULT_SYSTEM_PROMPT overridden in tests, that is the override
+        # plus the run's model-code block (environment-mode key = provider model).
+        assert run.system_prompt_snapshot == (
+            f"{settings.default_system_prompt}\n\nYour model code is `fake-model`. "
+            "If asked which model you are, identify yourself with this code "
+            "instead of an upstream model name."
+        )
 
         events = (
             await session.scalars(
@@ -1196,10 +1201,10 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             return "tavily"
 
         async def search(self, request: SearchRequest) -> list[SearchResult]:
-            assert request.query == "latest iChat release"
+            assert request.query == "latest Piko release"
             return [
                 SearchResult(
-                    title="iChat release notes",
+                    title="Piko release notes",
                     url="https://example.com/releases",
                     snippet="Version 1.2 shipped today.",
                     provider="tavily",
@@ -1237,7 +1242,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
                 yield ToolCallDone(
                     id="call_1",
                     name="web_search",
-                    arguments={"query": "latest iChat release", "max_results": 3},
+                    arguments={"query": "latest Piko release", "max_results": 3},
                 )
                 yield StreamDone(finish_reason="tool_calls")
                 return
@@ -1285,11 +1290,11 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
     assert replay[1].payload == {"text": "Need fresh sources", "kind": "summary"}
     assert replay[2].payload == {
         "tool_name": "web_search",
-        "query": "latest iChat release",
+        "query": "latest Piko release",
         "provider": "tavily",
     }
     assert replay[3].payload["sources"] == [
-        {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
+        {"id": 1, "title": "Piko release notes", "url": "https://example.com/releases"}
     ]
 
     async with session_factory() as session:
@@ -1308,7 +1313,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             (9, "run_succeeded"),
         ]
         assert events[2].payload["sources"] == [
-            {"id": 1, "title": "iChat release notes", "url": "https://example.com/releases"}
+            {"id": 1, "title": "Piko release notes", "url": "https://example.com/releases"}
         ]
 
         assistant = await session.scalar(
@@ -1324,7 +1329,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             "sources": [
                 {
                     "id": 1,
-                    "title": "iChat release notes",
+                    "title": "Piko release notes",
                     "url": "https://example.com/releases",
                     "snippet": "Version 1.2 shipped today.",
                     "published_at": None,
@@ -1351,7 +1356,7 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
                 "type": "tool_call",
                 "id": "call_1",
                 "name": "web_search",
-                "arguments": {"query": "latest iChat release", "max_results": 3},
+                "arguments": {"query": "latest Piko release", "max_results": 3},
             },
         ]
         assert transcript[1].blocks is not None

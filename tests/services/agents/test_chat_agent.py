@@ -187,6 +187,39 @@ async def test_build_chat_agent_explicitly_disables_unsupported_reasoning() -> N
     assert provider.last_reasoning.enabled is False
 
 
+def test_build_chat_agent_injects_catalog_model_code_into_system_prompt() -> None:
+    provider = FakeProvider(script=[StreamDone(finish_reason="stop")])
+    settings = _settings_with()
+
+    agent = build_chat_agent(
+        settings=settings,
+        history=[user_text("hello")],
+        options=ChatAgentOptions(
+            provider_name="deepseek",
+            model="deepseek-v4-flash",
+            catalog_model="piko-pro",
+        ),
+        provider=provider,
+    )
+
+    assert "Your model code is `piko-pro`" in agent.system_prompt
+    assert "deepseek-v4-flash" not in agent.system_prompt
+
+
+def test_build_chat_agent_falls_back_to_provider_model_as_catalog_code() -> None:
+    provider = FakeProvider(script=[StreamDone(finish_reason="stop")])
+    settings = _settings_with()
+
+    agent = build_chat_agent(
+        settings=settings,
+        history=[user_text("hello")],
+        options=ChatAgentOptions(provider_name="deepseek", model="deepseek-v4-flash"),
+        provider=provider,
+    )
+
+    assert "Your model code is `deepseek-v4-flash`" in agent.system_prompt
+
+
 async def test_multi_tool_turn_yields_events_and_messages() -> None:
     provider = FakeProvider(
         scripts=[
