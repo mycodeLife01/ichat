@@ -5,6 +5,13 @@ import type { ActiveRunState } from "../runs/state";
 import { StreamingMessage } from "./StreamingMessage";
 
 function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<ActiveRunState> {
+  const streamPhase =
+    overrides.streamPhase ??
+    (overrides.toolState
+      ? "tool"
+      : overrides.draftText?.trim()
+        ? "text"
+        : "waiting");
   return {
     runId: "1",
     conversationId: "10",
@@ -17,6 +24,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
     status: "streaming",
     cancelRequested: false,
     ...overrides,
+    streamPhase,
   };
 }
 
@@ -68,6 +76,25 @@ describe("StreamingMessage", () => {
       "true",
     );
     expect(screen.getByText("在想")).not.toHaveClass("hidden");
+  });
+
+  it("keeps a titleless reasoning summary behind the generic thinking label", () => {
+    const summary =
+      'The question is: "为什么宋朝会灭亡" which is Chinese for "Why did the Song Dynasty fall?"\n\n' +
+      "### 1. **军事体制的根本缺陷**\n\n分析内容。\n\n" +
+      "### 2.";
+    const { container } = render(
+      <StreamingMessage
+        run={run({ draftReasoningSummary: summary, status: "streaming" })}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    const body = container.querySelector(".thinking-body");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).not.toHaveTextContent(summary);
+    expect(body).toHaveClass("hidden");
+    expect(body?.textContent).toBe(summary);
   });
 
   it("auto-expands DeepSeek raw reasoning behind the generic thinking label", () => {
@@ -205,6 +232,55 @@ describe("StreamingMessage", () => {
       "**分析来源** 正在核对",
     );
     expect(screen.queryByText("不应作为预览显示的完整过程")).toBeNull();
+  });
+
+  it("follows text, tool, and resumed reasoning phases in one run", () => {
+    const firstSummary = "正在判断该选哪一道题。";
+    const { container, rerender } = render(
+      <StreamingMessage
+        run={run({
+          draftText: "先查一下真正够难的图论题。",
+          draftReasoningSummary: firstSummary,
+          streamPhase: "text",
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /已思考/ })).toBeInTheDocument();
+
+    rerender(
+      <StreamingMessage
+        run={run({
+          draftText: "先查一下真正够难的图论题。",
+          draftReasoningSummary: firstSummary,
+          streamPhase: "tool",
+          toolState: {
+            status: "running",
+            tool_name: "web_search",
+            query: "奥数图论题",
+            message: null,
+            result_count: null,
+            sources: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /正在搜索 奥数图论题/ })).toBeInTheDocument();
+
+    const resumedSummary = `${firstSummary}\n搜索后继续分析候选题。`;
+    rerender(
+      <StreamingMessage
+        run={run({
+          draftText: "先查一下真正够难的图论题。",
+          draftReasoningSummary: resumedSummary,
+          streamPhase: "reasoning",
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /正在思考/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /已思考/ })).toBeNull();
+    const body = container.querySelector(".thinking-body");
+    expect(body).toHaveClass("hidden");
+    expect(body?.textContent).toBe(resumedSummary);
   });
 
   it("keeps the running tool label above earlier reasoning", () => {
