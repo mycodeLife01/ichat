@@ -508,6 +508,51 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
         assert run.error_code == "dead"
 
 
+async def test_execute_run_does_not_retry_incompatible_provider_continuation(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session,
+            worker_id="worker-x",
+            lease_seconds=settings.run_lease_seconds,
+        )
+        await session.commit()
+
+    provider = FakeProvider(
+        scripts=[
+            [
+                RaiseError(
+                    code="openrouter_continuation_incompatible",
+                    message=(
+                        "OpenRouter continuation state is incompatible with the selected model"
+                    ),
+                )
+            ],
+            [TextDelta(text="must not retry"), StreamDone(finish_reason="stop")],
+        ]
+    )
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(provider),
+    )
+
+    assert len(provider.calls) == 1
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_code == "openrouter_continuation_incompatible"
+
+
 async def test_execute_run_does_not_retry_permanent_image_failure(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,

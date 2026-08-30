@@ -333,8 +333,10 @@ async def _consume_agent(
 
 
 def _error_allows_retry(exc: ProviderError) -> bool:
-    """Keep legacy provider retry behavior while honoring image permanence."""
+    """Keep legacy retry behavior while honoring known permanent failures."""
 
+    if exc.code == "openrouter_continuation_incompatible":
+        return False
     if "image_input" in exc.code:
         return exc.retryable
     return True

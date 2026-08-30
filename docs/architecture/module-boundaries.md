@@ -62,7 +62,7 @@
 
 ## `app/services/runs`
 
-负责 run 状态机、queue claiming、取消、lease/recovery、语义 `run_events`、`run_drafts` checkpoint、provider transcript 持久化和 replay/state 拼装语义；`events.py` 定义 worker 使用的 `RunEvent`/`RunEventType`，`drafts.py` 提供快照 upsert/read/delete，`history.py` 把可见会话历史（含 succeeded run 的转写回放）加载为 agent 内核消息。Redis 只是传输加速器，Run 所有权与终态事实仍归本模块和 PG。
+负责 run 状态机、queue claiming、取消、lease/recovery、语义 `run_events`、`run_drafts` checkpoint、provider transcript 持久化和 replay/state 拼装语义；`events.py` 定义 worker 使用的 `RunEvent`/`RunEventType`，`drafts.py` 提供快照 upsert/read/delete，`history.py` 把可见会话历史按目标 Run 的 Provider 续传阶段投影为 agent 内核消息：阶段内完整回放，阶段外只保留可移植 turn，且不改写 transcript。Redis 只是传输加速器，Run 所有权与终态事实仍归本模块和 PG。
 
 ## `app/services/run_events`
 

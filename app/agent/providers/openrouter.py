@@ -8,11 +8,13 @@ Plaintext reasoning is classified by the selected route contract. Structured
 unchanged for tool-call continuation.
 """
 
+import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
-from openai import AsyncOpenAI, OpenAI
+from openai import APIStatusError, AsyncOpenAI, OpenAI
 
 from app.agent.messages import (
     Message,
@@ -98,7 +100,7 @@ class OpenRouterProvider(OpenAIChatCompletionsProvider):
         return kwargs
 
     def _reasoning_events_from_delta(
-        self, delta: Any
+        self, delta: Any, *, model: str
     ) -> list[ReasoningDelta | ProviderContinuationBlock]:
         details = _reasoning_details(delta)
         events: list[ReasoningDelta | ProviderContinuationBlock] = []
@@ -107,9 +109,15 @@ class OpenRouterProvider(OpenAIChatCompletionsProvider):
             events.append(
                 ProviderContinuationBlock(
                     owner="openrouter",
-                    codec="reasoning_details.v1",
+                    codec="reasoning_details.v2",
                     scope="assistant_message",
-                    payload={"reasoning_details": details},
+                    payload={
+                        "reasoning_details": details,
+                        "replay_key": _continuation_replay_key(
+                            base_url=self._base_url,
+                            model=model,
+                        ),
+                    },
                 )
             )
             for detail in details:
@@ -135,16 +143,26 @@ class OpenRouterProvider(OpenAIChatCompletionsProvider):
                 events.append(ReasoningDelta(text=plaintext, kind=kind))
         return events
 
-    def _assistant_message_extras(self, message: Message) -> Mapping[str, Any]:
+    def _assistant_message_extras(
+        self, message: Message, *, model: str
+    ) -> Mapping[str, Any]:
         details: list[dict[str, Any]] = []
+        replay_key = _continuation_replay_key(
+            base_url=self._base_url,
+            model=model,
+        )
         for block in message.blocks:
             if not isinstance(block, ProviderContinuationBlock):
                 continue
             if (
                 block.owner != "openrouter"
-                or block.codec != "reasoning_details.v1"
                 or block.scope != "assistant_message"
             ):
+                continue
+            if block.codec == "reasoning_details.v2":
+                if block.payload.get("replay_key") != replay_key:
+                    continue
+            elif block.codec != "reasoning_details.v1":
                 continue
             raw_details = block.payload.get("reasoning_details")
             if isinstance(raw_details, list) and all(
@@ -160,6 +178,26 @@ class OpenRouterProvider(OpenAIChatCompletionsProvider):
             if isinstance(block, ReasoningBlock)
         )
         return {"reasoning": reasoning} if reasoning else {}
+
+    def _provider_error_from_status(
+        self,
+        exc: APIStatusError,
+        *,
+        contains_image_input: bool,
+        summarize: bool = False,
+    ) -> ProviderError:
+        if not summarize and _is_continuation_incompatible_error(exc):
+            return ProviderError(
+                code="openrouter_continuation_incompatible",
+                message=(
+                    "OpenRouter continuation state is incompatible with the selected model"
+                ),
+            )
+        return super()._provider_error_from_status(
+            exc,
+            contains_image_input=contains_image_input,
+            summarize=summarize,
+        )
 
 
 def _plaintext_reasoning(delta: Any) -> str | None:
@@ -242,3 +280,46 @@ def _reasoning_extra(reasoning: ReasoningConfig | None) -> dict[str, Any]:
     if effort not in _KNOWN_EFFORTS:
         effort = "medium"
     return {"extra_body": {"reasoning": {"effort": effort}}}
+
+
+def _continuation_replay_key(*, base_url: str, model: str) -> str:
+    material = f"{_normalized_base_url(base_url)}\n{model}".encode()
+    digest = hashlib.sha256(material).hexdigest()
+    return f"openrouter:v1:{digest}"
+
+
+def _normalized_base_url(value: str) -> str:
+    parsed = urlsplit(value.strip())
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if ":" in host:
+        host = f"[{host}]"
+    default_port = 80 if scheme == "http" else 443
+    port = parsed.port
+    netloc = host if port in (None, default_port) else f"{host}:{port}"
+    return urlunsplit((scheme, netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def _is_continuation_incompatible_error(exc: APIStatusError) -> bool:
+    candidates: list[str] = []
+    body = getattr(exc, "body", None)
+    if isinstance(body, Mapping):
+        error = body.get("error")
+        if isinstance(error, Mapping):
+            message = error.get("message")
+            if isinstance(message, str):
+                candidates.append(message)
+        message = body.get("message")
+        if isinstance(message, str):
+            candidates.append(message)
+    exception_message = getattr(exc, "message", None)
+    if isinstance(exception_message, str):
+        candidates.append(exception_message)
+    text = " ".join(candidates).lower()
+    return (
+        "encrypted reasoning or compaction content" in text
+        and "different model" in text
+    ) or (
+        "encrypted payloads can only be replayed" in text
+        and "endpoint" in text
+    )

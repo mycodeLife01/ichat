@@ -10,6 +10,7 @@ from app.agent.messages import (
     ProviderContinuationBlock,
     ReasoningBlock,
     ReasoningKind,
+    TextBlock,
     ToolCallBlock,
     ToolResultBlock,
     user_text,
@@ -42,16 +43,17 @@ def _streaming_provider(
     handler: Any,
     *,
     reasoning_outputs: tuple[ReasoningKind, ...] = ("raw",),
+    base_url: str = "https://openrouter.test/api/v1",
 ) -> OpenRouterProvider:
     client = AsyncOpenAI(
-        base_url="https://openrouter.test/api/v1",
+        base_url=base_url,
         api_key="test-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
     return OpenRouterProvider(
         api_key="test-key",
-        base_url="https://openrouter.test/api/v1",
+        base_url=base_url,
         token_profile="deepseek",
         reasoning_outputs=reasoning_outputs,
         async_client=client,
@@ -185,13 +187,14 @@ async def test_stream_classifies_structured_details_and_keeps_opaque_state() -> 
         )
     ]
 
-    assert events[:3] == [
-        ProviderContinuationBlock(
-            owner="openrouter",
-            codec="reasoning_details.v1",
-            scope="assistant_message",
-            payload={"reasoning_details": details},
-        ),
+    continuation = events[0]
+    assert isinstance(continuation, ProviderContinuationBlock)
+    assert continuation.owner == "openrouter"
+    assert continuation.codec == "reasoning_details.v2"
+    assert continuation.scope == "assistant_message"
+    assert continuation.payload["reasoning_details"] == details
+    assert continuation.payload["replay_key"].startswith("openrouter:v1:")
+    assert events[1:3] == [
         ReasoningDelta(text="Check the latest source", kind="summary"),
         ReasoningDelta(text="Inspect the source carefully", kind="raw"),
     ]
@@ -229,18 +232,15 @@ async def test_stream_classifies_google_gemini_text_details_as_summary() -> None
         )
     ]
 
-    assert events[:2] == [
-        ProviderContinuationBlock(
-            owner="openrouter",
-            codec="reasoning_details.v1",
-            scope="assistant_message",
-            payload={"reasoning_details": details},
-        ),
-        ReasoningDelta(text=details[0]["text"], kind="summary"),
-    ]
+    continuation = events[0]
+    assert isinstance(continuation, ProviderContinuationBlock)
+    assert continuation.codec == "reasoning_details.v2"
+    assert continuation.payload["reasoning_details"] == details
+    assert continuation.payload["replay_key"].startswith("openrouter:v1:")
+    assert events[1] == ReasoningDelta(text=details[0]["text"], kind="summary")
 
 
-async def test_stream_replays_structured_reasoning_details_unchanged() -> None:
+async def test_stream_replays_legacy_structured_reasoning_details_unchanged() -> None:
     captured: dict[str, Any] = {}
     details = [
         {"type": "reasoning.summary", "summary": "Plan", "index": 0},
@@ -290,6 +290,102 @@ async def test_stream_replays_structured_reasoning_details_unchanged() -> None:
     assert "reasoning_content" not in assistant
 
 
+@pytest.mark.parametrize(
+    ("target_model", "target_base_url", "expects_replay"),
+    [
+        ("x-ai/grok", "https://openrouter.test/api/v1", True),
+        ("google/gemini", "https://openrouter.test/api/v1", False),
+        ("x-ai/grok", "https://other-openrouter.test/api/v1", False),
+    ],
+)
+async def test_stream_replays_v2_details_only_for_the_creating_endpoint(
+    target_model: str,
+    target_base_url: str,
+    expects_replay: bool,
+) -> None:
+    details = [
+        {
+            "type": "reasoning.encrypted",
+            "data": "opaque",
+            "format": "xai-responses-v1",
+            "index": 0,
+        }
+    ]
+
+    def source_handler(_request: httpx.Request) -> httpx.Response:
+        return _stream_response(
+            [_chunk({"reasoning_details": details}), _chunk({}, finish="stop")]
+        )
+
+    source = _streaming_provider(
+        source_handler,
+        base_url="https://openrouter.test/api/v1/",
+    )
+    source_events = [
+        event
+        async for event in source.stream(
+            model="x-ai/grok",
+            messages=[user_text("source")],
+        )
+    ]
+    continuation = source_events[0]
+    assert isinstance(continuation, ProviderContinuationBlock)
+    assert continuation.codec == "reasoning_details.v2"
+
+    captured: dict[str, Any] = {}
+
+    def target_handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return _stream_response([_chunk({}, finish="stop")])
+
+    target = _streaming_provider(target_handler, base_url=target_base_url)
+    history = [
+        user_text("source"),
+        Message(
+            role="assistant",
+            blocks=[continuation, TextBlock("source answer")],
+        ),
+        user_text("follow up"),
+    ]
+    async for _ in target.stream(model=target_model, messages=history):
+        pass
+
+    assistant = next(message for message in captured["messages"] if message["role"] == "assistant")
+    if expects_replay:
+        assert assistant["reasoning_details"] == details
+    else:
+        assert "reasoning_details" not in assistant
+
+
+async def test_stream_classifies_foreign_encrypted_payload_error_without_leaking_body() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={
+                "error": {
+                    "message": (
+                        "Your request contains encrypted reasoning or compaction content "
+                        "that was produced under a different model. Encrypted payloads can "
+                        "only be replayed to the endpoint that created them."
+                    ),
+                    "code": 404,
+                    "metadata": {"pinned_endpoint_slug": "secret-endpoint"},
+                }
+            },
+        )
+
+    provider = _streaming_provider(handler)
+    with pytest.raises(ProviderError) as exc_info:
+        async for _ in provider.stream(model="google/gemini", messages=[user_text("hi")]):
+            pass
+
+    assert exc_info.value.code == "openrouter_continuation_incompatible"
+    assert exc_info.value.message == (
+        "OpenRouter continuation state is incompatible with the selected model"
+    )
+    assert "secret-endpoint" not in exc_info.value.message
+
+
 async def test_stream_classifies_plaintext_as_summary_only_for_summary_only_route() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return _stream_response(
@@ -328,13 +424,12 @@ async def test_stream_keeps_all_typed_details_when_route_declaration_is_conserva
         )
     ]
 
-    assert events[:3] == [
-        ProviderContinuationBlock(
-            owner="openrouter",
-            codec="reasoning_details.v1",
-            scope="assistant_message",
-            payload={"reasoning_details": details},
-        ),
+    continuation = events[0]
+    assert isinstance(continuation, ProviderContinuationBlock)
+    assert continuation.codec == "reasoning_details.v2"
+    assert continuation.payload["reasoning_details"] == details
+    assert continuation.payload["replay_key"].startswith("openrouter:v1:")
+    assert events[1:3] == [
         ReasoningDelta(text="Full reasoning", kind="raw"),
         ReasoningDelta(text="Short summary", kind="summary"),
     ]
