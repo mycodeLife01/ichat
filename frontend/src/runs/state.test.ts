@@ -9,6 +9,7 @@ const started: ActiveRunState = {
   latestSeq: 0,
   draftText: "",
   draftReasoning: "",
+  draftReasoningSummary: "",
   toolState: null,
   status: "started",
   cancelRequested: false,
@@ -32,6 +33,17 @@ describe("activeRunReducer", () => {
     expect(b?.status).toBe("streaming");
   });
 
+  it("accumulates raw reasoning and reasoning summaries independently", () => {
+    const raw = activeRunReducer(started, {
+      type: "run/reasoningDelta", seq: 1, text: "完整过程", kind: "raw",
+    });
+    const summary = activeRunReducer(raw, {
+      type: "run/reasoningDelta", seq: 2, text: "简短摘要", kind: "summary",
+    });
+    expect(summary?.draftReasoning).toBe("完整过程");
+    expect(summary?.draftReasoningSummary).toBe("简短摘要");
+  });
+
   it("accumulates text deltas", () => {
     const a = activeRunReducer(started, { type: "run/textDelta", seq: 3, text: "Hel" });
     const b = activeRunReducer(a, { type: "run/textDelta", seq: 4, text: "lo" });
@@ -40,7 +52,7 @@ describe("activeRunReducer", () => {
     expect(b?.status).toBe("streaming");
   });
 
-  it("clears reasoning and tool state when the formal answer starts", () => {
+  it("keeps reasoning but clears tool state when the formal answer starts", () => {
     const reasoning = activeRunReducer(started, {
       type: "run/reasoningDelta", seq: 1, text: "想法",
     });
@@ -60,11 +72,11 @@ describe("activeRunReducer", () => {
       type: "run/textDelta", seq: 3, text: "正文",
     });
     expect(next?.draftText).toBe("正文");
-    expect(next?.draftReasoning).toBe("");
+    expect(next?.draftReasoning).toBe("想法");
     expect(next?.toolState).toBeNull();
   });
 
-  it("sets terminal status, keeps the formal draft, and clears reasoning", () => {
+  it("sets terminal status and keeps both the formal draft and reasoning", () => {
     const reasoning = activeRunReducer(started, {
       type: "run/reasoningDelta", seq: 1, text: "想法",
     });
@@ -74,7 +86,7 @@ describe("activeRunReducer", () => {
     const failed = activeRunReducer(streaming, { type: "run/terminal", status: "failed" });
     expect(failed?.status).toBe("failed");
     expect(failed?.draftText).toBe("x");
-    expect(failed?.draftReasoning).toBe("");
+    expect(failed?.draftReasoning).toBe("想法");
   });
 
   it("marks cancel requested", () => {
@@ -114,7 +126,7 @@ describe("activeRunReducer", () => {
     expect(activeRunReducer(null, { type: "run/cancelRequested" })).toBeNull();
   });
 
-  it("restores a run with a formal draft without completed reasoning", () => {
+  it("restores raw reasoning and summary even when a formal draft exists", () => {
     const next = activeRunReducer(null, {
       type: "run/restored",
       runId: "100",
@@ -123,6 +135,7 @@ describe("activeRunReducer", () => {
       latestSeq: 5,
       draftText: "Hel",
       draftReasoning: "想",
+      draftReasoningSummary: "摘要",
       status: "streaming",
     });
     expect(next).toEqual({
@@ -131,7 +144,8 @@ describe("activeRunReducer", () => {
       providerName: null,
       latestSeq: 5,
       draftText: "Hel",
-      draftReasoning: "",
+      draftReasoning: "想",
+      draftReasoningSummary: "摘要",
       toolState: null,
       status: "streaming",
       cancelRequested: false,

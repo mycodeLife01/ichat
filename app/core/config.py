@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # allowlist. An empty value is the rollout kill switch.
     openai_vision_models: str = ""
     openai_image_token_reserve: int = 8_192
+    # One deployment-level Fernet key protects all database-backed model
+    # upstream credentials. It is stable across model changes; an empty value
+    # keeps the legacy ENV catalog available but cannot activate the DB catalog.
+    model_catalog_encryption_key: str = ""
+    # Fixed deployment secret for the standalone model-management console. It
+    # is deliberately separate from user JWTs and is never stored in PostgreSQL.
+    model_admin_access_key: str = ""
     # Optional override for the assistant's base system prompt. Empty (default)
     # means use the bundled production prompt in app/agent/.
     default_system_prompt: str = ""
@@ -223,6 +230,19 @@ class Settings(BaseSettings):
             )
         return normalized
 
+    @field_validator("model_admin_access_key")
+    @classmethod
+    def validate_model_admin_access_key(cls, value: str) -> str:
+        if not value:
+            return value
+        if len(value) < 32:
+            raise ValueError("model_admin_access_key must be at least 32 characters")
+        if any(character.isspace() for character in value):
+            raise ValueError("model_admin_access_key must not contain whitespace")
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("model_admin_access_key must not contain control characters")
+        return value
+
     @field_validator("email_provider")
     @classmethod
     def normalize_email_provider(cls, value: str) -> str:
@@ -371,21 +391,38 @@ def validate_api_vision_settings(settings: Settings) -> None:
     )
 
 
-def validate_worker_vision_settings(settings: Settings) -> None:
-    """Fail LLM-worker startup unless preview-only signing is configured."""
+def validate_worker_vision_settings(
+    settings: Settings,
+    *,
+    vision_enabled: bool | None = None,
+    require_openai_api_key: bool | None = None,
+) -> None:
+    """Fail LLM-worker startup unless the active vision runtime is configured.
 
-    if not settings.openai_vision_models_list:
+    The default arguments preserve the legacy ENV catalog contract. Database
+    routes provide their provider credentials from PostgreSQL, so their Worker
+    check only requires the preview-signing infrastructure.
+    """
+
+    legacy_vision_enabled = bool(settings.openai_vision_models_list)
+    if vision_enabled is None:
+        vision_enabled = legacy_vision_enabled
+    if require_openai_api_key is None:
+        require_openai_api_key = legacy_vision_enabled
+    if not vision_enabled:
         return
     _validate_preview_bucket_isolation(settings)
+    required = [
+        ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
+        ("files_preview_bucket", settings.files_preview_bucket),
+        ("files_preview_llm_access_key_id", settings.files_preview_llm_access_key_id),
+        ("files_preview_llm_secret_access_key", settings.files_preview_llm_secret_access_key),
+    ]
+    if require_openai_api_key:
+        required.insert(0, ("openai_api_key", settings.openai_api_key))
     _require_non_empty(
         "LLM worker vision runtime",
-        (
-            ("openai_api_key", settings.openai_api_key),
-            ("files_r2_endpoint_url", settings.files_r2_endpoint_url),
-            ("files_preview_bucket", settings.files_preview_bucket),
-            ("files_preview_llm_access_key_id", settings.files_preview_llm_access_key_id),
-            ("files_preview_llm_secret_access_key", settings.files_preview_llm_secret_access_key),
-        ),
+        tuple(required),
     )
 
 

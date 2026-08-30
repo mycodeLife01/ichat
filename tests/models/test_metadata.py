@@ -23,12 +23,16 @@ def test_core_tables_are_registered() -> None:
         "files",
         "messages",
         "message_attachments",
+        "model_catalog_state",
+        "model_routes",
+        "model_upstreams",
         "refresh_tokens",
         "run_drafts",
         "run_events",
         "run_provider_messages",
         "runs",
         "share_links",
+        "chat_models",
         "users",
     }
 
@@ -70,6 +74,8 @@ def test_messages_have_linear_position_constraints() -> None:
     messages = Base.metadata.tables["messages"]
 
     assert isinstance(messages.c.metadata.type, JSONB)
+    assert messages.c.reasoning.nullable is True
+    assert messages.c.reasoning_summary.nullable is True
     assert any(
         isinstance(constraint, UniqueConstraint)
         and [column.name for column in constraint.columns] == ["conversation_id", "position"]
@@ -90,6 +96,7 @@ def test_runs_have_status_constraints_and_active_run_index() -> None:
     runs = Base.metadata.tables["runs"]
 
     assert "system_prompt_snapshot" in runs.c
+    assert isinstance(runs.c.model_config_snapshot.type, JSONB)
     assert any(
         isinstance(constraint, CheckConstraint)
         and "status IN" in str(constraint.sqltext)
@@ -149,6 +156,13 @@ def test_run_provider_messages_store_protocol_transcript() -> None:
     )
 
 
+def test_run_drafts_checkpoint_raw_and_summary_reasoning() -> None:
+    drafts = Base.metadata.tables["run_drafts"]
+
+    assert drafts.c.reasoning.nullable is False
+    assert drafts.c.reasoning_summary.nullable is False
+
+
 def test_share_links_are_bigint_token_keyed_snapshots() -> None:
     share_links = Base.metadata.tables["share_links"]
 
@@ -193,3 +207,39 @@ def test_email_outbox_is_jsonb_payload_queue() -> None:
     }
     assert ("status", "next_attempt_at") in index_columns
     assert ("locked_until",) in index_columns
+
+
+def test_model_catalog_separates_models_upstreams_and_routes() -> None:
+    state = Base.metadata.tables["model_catalog_state"]
+    models = Base.metadata.tables["chat_models"]
+    upstreams = Base.metadata.tables["model_upstreams"]
+    routes = Base.metadata.tables["model_routes"]
+
+    assert any(
+        isinstance(constraint, CheckConstraint) and "id = 1" in str(constraint.sqltext)
+        for constraint in state.constraints
+    )
+    assert isinstance(models.c.thinking_levels.type, JSONB)
+    assert models.c.key.unique is True
+    assert upstreams.c.key.unique is True
+    assert upstreams.c.api_key_ciphertext.nullable is False
+    assert "api_key" not in upstreams.c
+    assert any(
+        isinstance(constraint, CheckConstraint)
+        and "openrouter" in str(constraint.sqltext)
+        for constraint in upstreams.constraints
+    )
+    model_fk = next(iter(routes.c.chat_model_id.foreign_keys))
+    upstream_fk = next(iter(routes.c.upstream_id.foreign_keys))
+    assert model_fk.column.table.name == "chat_models"
+    assert upstream_fk.column.table.name == "model_upstreams"
+    assert model_fk.ondelete == "CASCADE"
+    assert upstream_fk.ondelete == "RESTRICT"
+    assert isinstance(routes.c.reasoning_outputs.type, JSONB)
+    assert routes.c.reasoning_outputs.nullable is False
+    assert any(
+        isinstance(constraint, CheckConstraint)
+        and "reasoning_outputs IN" in str(constraint.sqltext)
+        and '[\"raw\", \"summary\"]' in str(constraint.sqltext)
+        for constraint in routes.constraints
+    )

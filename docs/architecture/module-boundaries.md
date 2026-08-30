@@ -8,7 +8,7 @@
 
 ## `app/api`
 
-负责 FastAPI 路由、引用请求/响应 schema、依赖注入入口。路由处理器应保持薄，不直接调用 provider，不直接拼装复杂业务流程。
+负责 FastAPI 路由、引用请求/响应 schema、依赖注入入口。路由处理器应保持薄，不直接调用 provider，不直接拼装复杂业务流程。模型管理固定密钥的 header 校验、常量时间比较和失败限流属于传输访问边界，集中在 `app/api/v1/model_admin.py`；模型目录 service 不感知 HTTP、用户 JWT 或访问密钥。
 
 不放在 `services` 下的理由：`api` 是传输层入口，不是业务能力本身。
 
@@ -26,7 +26,7 @@
 
 ## `app/models`
 
-负责 SQLAlchemy ORM model 类：users、refresh_tokens、conversations、messages、runs、run_events、run_provider_messages，以及 files 领域的 `file_uploads`、`files`、`file_objects`、`message_attachments`、`file_quotas`、`file_object_deletions` 等。
+负责 SQLAlchemy ORM model 类：users、refresh_tokens、conversations、messages、runs、run_events、run_provider_messages，模型目录的 `chat_models`、`model_upstreams`、`model_routes`，以及 files 领域的 `file_uploads`、`files`、`file_objects`、`message_attachments`、`file_quotas`、`file_object_deletions` 等。
 
 不放在 `services` 下的理由：ORM models 描述数据库结构和跨业务关系，会被多个 service、migration 和 query 使用。
 
@@ -70,13 +70,19 @@
 
 ## `app/agent`
 
-agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek 适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
+agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型，含 typed `ReasoningBlock` 与 adapter-owned `ProviderContinuationBlock`）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek、OpenAI、OpenRouter 代码适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
 
-边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部；OpenAI provider 只依赖注入的中立图像解析协议把稳定 `ImageBlock` 投影成临时 wire URL，协议实现及存储凭证仍在 files 服务；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部，不能由数据库任意 wire 参数替代。Continuation payload 在内核中保持不透明，只有 owner adapter 可投影回 wire，不得被编排层解释。支持图像的 provider 只依赖注入的中立图像解析协议把稳定 `ImageBlock` 投影成临时 wire URL，协议实现及存储凭证仍在 files 服务；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
+
+## `app/services/model_catalog`
+
+聊天模型管理深模块，拥有“聊天模型—模型路由—模型上游”的数据库目录、启停与优先级规则、路由级 `reasoning_outputs` 验证、上游凭据加解密、旧 ENV 目录导入和 Run 路由快照恢复。管理 Web API 与 operator CLI 都只能调用该模块的同一组操作；API 每次创建 Run 时读取当前目录并固化不含密钥的路由快照；Worker 按快照构造代码适配器，只从当前上游行读取加密凭据。目录不做进程缓存，因此提交数据库事务后，新请求立即看到模型、路由和上游变更。
+
+该模块可以依赖 ORM、Settings 和 `services/agents/registry` 的窄 provider factory；它不拼装 prompt、不执行 agent 循环、不解释 provider wire 字段。数据库只保存显式适配器类型（`deepseek`、`openai`、`openrouter`），不保存任意请求参数。旧 ENV 目录是迁移与紧急回滚面；`model_catalog_state.database_enabled` 是切换事实。
 
 ## `app/services/agents`
 
-agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChain 的 harness 层（`create_agent`）。负责：`resolve_provider` 注册表（Settings→适配器窄参的展开发生在这里）、system prompt 组装、context 预算裁剪（`Turn` 词汇归此）、工具装配、`max_tool_calls` 与声明式 `RetryPolicy`；`build_chat_agent(...) -> ChatAgent`，`ChatAgent.stream()` 内执行 model call 调度与工具分发循环，向上 yield AgentEvent。未来的 middleware、HITL、条件工具路由在此层生长。
+agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChain 的 harness 层（`create_agent`）。负责：provider factory 与旧 ENV resolver、system prompt 组装、context 预算裁剪（`Turn` 词汇归此）、工具装配、`max_tool_calls` 与声明式 `RetryPolicy`；数据库目录解析后可向 `build_chat_agent(...)` 注入已经构造的 Provider 与模型能力。`ChatAgent.stream()` 内执行 model call 调度与工具分发循环，向上 yield AgentEvent。未来的 middleware、HITL、条件工具路由在此层生长。
 
 **生成器即边界**：编排层只 yield 事件宣告，不知道 seq/sink/发布/持久化；与取消无关（仅需取消安全）。`SourceRegistry` 等单一工具的私有产物以闭包内化，通过 `assistant_metadata` 中性钩子交给 worker，web_search/sources/tavily 词汇不出包。不读数据库——历史加载归 `app/services/runs`。
 
@@ -86,7 +92,7 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 
 ## `app/worker`
 
-负责独立 worker 进程的 Redis 唤醒 + PG polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()`（seq 分配、AgentEvent→外部 RunEvent 映射、重试执行、取消）、通过 `RedisStreamSink` / `PostgresEventSink` / `DraftCheckpointSink` / `FanoutSink` 发布与持久化、终态状态机转换、转写落库和 assistant message 物化。标题 prompt/模型选择/清洗归 `services/agents/title_agent.py`，标题执行归 Celery `tasks/llm_tasks.py`；worker 不含标题业务组装。
+负责独立 worker 进程的 Redis 唤醒 + PG polling、claim、heartbeat 与 lease recovery，以及 run 执行的**纯工程化**：调 `services/runs` 加载历史、调 `services/model_catalog` 恢复 Run 路由、调 `services/agents` 构建 `ChatAgent`、消费 `agent.stream()`（seq 分配、typed reasoning→外部 RunEvent 映射、重试执行、取消）、通过 `RedisStreamSink` / `PostgresEventSink` / `DraftCheckpointSink` / `FanoutSink` 发布与持久化、终态状态机转换、完整/partial 转写落库和 assistant message 聚合物化。标题 prompt/模型选择/清洗归 `services/agents/title_agent.py`，标题执行归 Celery `tasks/llm_tasks.py`；worker 不含标题业务组装。
 
 不放在 `services` 下的理由：`worker` 是独立进程入口和调度边界，会调用多个模块，但本身不是领域 service。
 
@@ -99,6 +105,8 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 - `app/api` 可以调用 `app/services/...`，但不承载业务状态机，也不直接调用 provider。
 - `app/worker` 可以调用 `app/agent`、`app/search`、`app/services/...` 和 `app/db`，但不做业务组装决策，不实现 agent 循环。
 - `app/services/agents` 依赖 `app/agent`、`app/core`、`app/search`；不读数据库、不 import 传输/发布设施。
+- `app/services/model_catalog` 是聊天模型目录、上游凭据与路由选择的唯一业务拥有者；不得把 provider wire 参数或 prompt 装配移入该模块。
+- 模型管理访问密钥只属于 API 传输边界；不得写入 PostgreSQL、Run 快照、模型目录 service 或 Worker 环境。
 - `app/agent` 不 import `app.core.config`、不读取数据库、不 import ORM/`app/services`；可以依赖 `app/search`。
 - `app/search` 不读取数据库。
 - `app/services/runs` 不拼装 prompt。

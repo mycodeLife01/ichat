@@ -53,6 +53,37 @@ def test_settings_require_configuration_when_env_file_is_disabled(
     assert "deepseek_api_key" in missing_fields
 
 
+def test_model_admin_access_key_requires_high_entropy_length() -> None:
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings(  # type: ignore[call-arg]
+            _env_file=None,
+            summary_provider_name="deepseek",
+            model_admin_access_key="too-short",
+        )
+
+    with pytest.raises(ValidationError, match="must not contain whitespace"):
+        Settings(  # type: ignore[call-arg]
+            _env_file=None,
+            summary_provider_name="deepseek",
+            model_admin_access_key=" " * 32,
+        )
+
+
+def test_model_admin_access_key_can_be_disabled_or_configured() -> None:
+    disabled = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        summary_provider_name="deepseek",
+    )
+    configured = Settings(
+        _env_file=None,
+        summary_provider_name="deepseek",
+        model_admin_access_key="a" * 32,
+    )  # type: ignore[call-arg]
+
+    assert disabled.model_admin_access_key == ""
+    assert configured.model_admin_access_key == "a" * 32
+
+
 def test_settings_parse_environment_values(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
     monkeypatch.setenv("JWT_SECRET", "secret")
@@ -384,6 +415,26 @@ def test_vision_runtime_validators_require_their_separate_preview_credentials() 
 
     with pytest.raises(ValueError, match="files_preview_llm_access_key_id"):
         validate_worker_vision_settings(_vision_settings(files_preview_llm_access_key_id=""))
+
+
+def test_database_vision_runtime_uses_catalog_credentials_not_legacy_openai_env() -> None:
+    settings = _vision_settings(
+        openai_api_key="",
+        openai_vision_models="",
+    )
+
+    validate_worker_vision_settings(
+        settings,
+        vision_enabled=True,
+        require_openai_api_key=False,
+    )
+
+    with pytest.raises(ValueError, match="files_preview_llm_access_key_id"):
+        validate_worker_vision_settings(
+            settings.model_copy(update={"files_preview_llm_access_key_id": ""}),
+            vision_enabled=True,
+            require_openai_api_key=False,
+        )
 
 
 def test_vision_runtime_rejects_preview_bucket_aliasing_an_original_bucket() -> None:

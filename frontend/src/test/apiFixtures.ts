@@ -97,6 +97,7 @@ export const runStateResponse: RunStateResponse = {
   latest_seq: 1,
   draft_text: "Hello",
   draft_reasoning: "",
+  draft_reasoning_summary: "",
   tool_state: null,
   terminal_event: null,
 };

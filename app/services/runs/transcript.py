@@ -11,7 +11,9 @@ from app.agent.messages import (
     DocumentBlock,
     ImageBlock,
     Message,
+    ProviderContinuationBlock,
     ReasoningBlock,
+    ReasoningKind,
     Role,
     TextBlock,
     ToolCallBlock,
@@ -120,7 +122,19 @@ def serialize_blocks(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
                 }
             )
         elif isinstance(block, ReasoningBlock):
-            serialized.append({"type": "reasoning", "text": block.text})
+            serialized.append(
+                {"type": "reasoning", "kind": block.kind, "text": block.text}
+            )
+        elif isinstance(block, ProviderContinuationBlock):
+            serialized.append(
+                {
+                    "type": "provider_continuation",
+                    "owner": block.owner,
+                    "codec": block.codec,
+                    "scope": block.scope,
+                    "payload": block.payload,
+                }
+            )
         elif isinstance(block, ToolCallBlock):
             serialized.append(
                 {
@@ -223,7 +237,34 @@ def _deserialize_blocks(raw_blocks: object) -> list[ContentBlock]:
                 )
             )
         elif block_type == "reasoning":
-            blocks.append(ReasoningBlock(text=_required_string(raw, "text")))
+            kind = raw.get("kind", "raw")
+            if kind not in ("raw", "summary"):
+                raise ValueError("Transcript reasoning kind is unsupported")
+            blocks.append(
+                ReasoningBlock(
+                    text=_required_string(raw, "text"),
+                    kind=cast(ReasoningKind, kind),
+                )
+            )
+        elif block_type == "provider_continuation":
+            _require_exact_fields(
+                raw,
+                {"type", "owner", "codec", "scope", "payload"},
+                block_name="provider continuation",
+            )
+            payload = raw.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError(
+                    "Transcript provider continuation payload must be a JSON object"
+                )
+            blocks.append(
+                ProviderContinuationBlock(
+                    owner=_required_string(raw, "owner"),
+                    codec=_required_string(raw, "codec"),
+                    scope=_required_string(raw, "scope"),
+                    payload=payload,
+                )
+            )
         elif block_type == "tool_call":
             arguments = raw.get("arguments")
             if not isinstance(arguments, dict):
@@ -284,9 +325,16 @@ def _required_positive_int(raw: Mapping[object, object], field: str) -> int:
     return value
 
 
-def _require_exact_fields(raw: Mapping[object, object], expected: set[str]) -> None:
+def _require_exact_fields(
+    raw: Mapping[object, object],
+    expected: set[str],
+    *,
+    block_name: str = "image",
+) -> None:
     if set(raw) != expected:
-        raise ValueError("Transcript image fields are incomplete or inconsistent")
+        raise ValueError(
+            f"Transcript {block_name} fields are incomplete or inconsistent"
+        )
 
 
 def _estimate_tokens(

@@ -91,6 +91,7 @@ function runState(
     latestSeq: 12,
     draftText,
     draftReasoning: "",
+    draftReasoningSummary: "",
     toolState: null,
     status,
     cancelRequested: status === "cancelling",

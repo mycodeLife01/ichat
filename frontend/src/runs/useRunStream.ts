@@ -41,7 +41,10 @@ export function useRunStream() {
           const text = typeof raw === "string" ? raw : "";
 
           if (event.type === "reasoning_delta") {
-            if (isActiveRun()) dispatch({ type: "run/reasoningDelta", seq: event.seq, text });
+            const kind = event.data.payload.kind === "summary" ? "summary" : "raw";
+            if (isActiveRun()) {
+              dispatch({ type: "run/reasoningDelta", seq: event.seq, text, kind });
+            }
           } else if (event.type === "text_delta") {
             if (isActiveRun()) dispatch({ type: "run/textDelta", seq: event.seq, text });
           } else if (

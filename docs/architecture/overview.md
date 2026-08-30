@@ -2,7 +2,7 @@
 
 > 本文是 iChat 后端当前运行时架构的总结。模块/目录职责见
 > [`module-boundaries.md`](module-boundaries.md)；后台任务归属与可靠性模式见
-> [`background-tasks.md`](background-tasks.md)。状态截至 2026-08-01。
+> [`background-tasks.md`](background-tasks.md)。状态截至 2026-08-29。
 
 ## 服务拓扑
 
@@ -41,6 +41,26 @@ Nginx ──► API (FastAPI)
 - 文件上传也属于有限、非流式 Celery 任务；`file-worker` 与 `media-worker` 分 queue、分凭证，
   但上传/资产/补偿的事实均在 PostgreSQL。
 
+## 聊天模型目录与路由
+
+PostgreSQL 持有三个独立概念：`chat_models` 是前端选择的稳定逻辑模型，
+`model_upstreams` 是 endpoint、加密 API key 与代码适配器类型，`model_routes` 记录二者之间
+的上游 model id、优先级、启停状态和可见推理输出能力。一个聊天模型可以有多条路由，例如
+同时指向 DeepSeek 官方和 OpenRouter；新 Run 使用优先级数值最小的可用路由。
+
+API 创建 Run 时把所选路由的 adapter、endpoint、上游 model id 和能力写入
+`runs.model_config_snapshot`，不写 API key。Worker 执行时按快照恢复相同适配器与 endpoint，
+并按上游稳定 key 读取当前加密凭据。因此凭据轮换可立即生效，但已经排队的 Run 不会因路由
+启停或优先级变化静默改用另一供应商；新 Run 会立即使用已提交的目录配置。目录不使用进程内
+缓存，也不在一次 Run 内自动跨上游 failover。
+
+`model_catalog_state.database_enabled=false` 时仍使用旧 ENV 目录，供首次迁移和紧急回滚。
+DeepSeek、OpenAI 与 OpenRouter 的 reasoning、token limit、tool/reasoning 历史投影差异由
+独立代码适配器处理，数据库不能注入任意 wire 参数。`chat_models.thinking_levels` 只描述推理
+控制；`model_routes.reasoning_outputs` 独立描述该路径可能返回的 `raw` / `summary`，但不据此
+丢弃上游已经明确标型的结构化内容。适配器把实际响应分类为 typed reasoning block，并把仅供同一上游工具续传的签名、加密块或
+`reasoning_details` 保存成 adapter-owned continuation block。
+
 ## 文件上传与消息附件数据流
 
 ```text
@@ -77,7 +97,8 @@ API ── FileUpload queued ──► Celery files queue / file-worker
 
 ### 1. 入队与唤醒
 
-1. API 在同一 PG 事务内写 user message 和 `runs(status='queued')`。
+1. API 读取当前聊天模型目录，选择一条可用路由，在同一 PG 事务内写 user message 和
+   `runs(status='queued')`，并固化非敏感路由快照。
 2. 事务成功 commit 后，API 向 Redis `runs_queued` channel publish 内部 `run.id`。
 3. Worker 的 Redis pub/sub listener 收到任意提示后唤醒 claim loop。
 4. 信号不携带所有权：Worker 仍用 `FOR UPDATE SKIP LOCKED` claim，并写 lease。
@@ -85,15 +106,21 @@ API ── FileUpload queued ──► Celery files queue / file-worker
 
 ### 2. Agent 执行与事件写入
 
-Worker 加载历史并构建 `ChatAgent`，消费 `ChatAgent.stream()` 产生的 AgentEvent：
+Worker 加载历史、按 Run 路由快照构造 provider 并构建 `ChatAgent`，消费
+`ChatAgent.stream()` 产生的 AgentEvent：
 
 - Worker 为每个事件分配单调整数 `seq`。
-- 每个 text/reasoning chunk 立即 `XADD run:{internal_run_id}:events`。
+- 每个 text/reasoning chunk 立即 `XADD run:{internal_run_id}:events`；reasoning payload 携带
+  `kind=raw|summary`，旧事件缺失时按 raw 读取。
 - `tool_call_*` 事件同时写 Redis Stream 与 PG `run_events`。
 - 首个可见事件把 Run 从 `started` 推进为 `streaming`。
-- 累计文本与 reasoning 以低频快照写 `run_drafts`：时间窗、待写字符上限或工具边界先到者触发。
-- 成功时物化 assistant message、一次性写 transcript，并在同一 PG 事务内写
-  `run_succeeded`；失败/取消同理写对应语义终态。
+- 累计正文、raw reasoning 与 reasoning summary 以低频快照写 `run_drafts`：时间窗、待写
+  字符上限或工具边界先到者触发。
+- 每次完成的模型调用与工具结果都加入 provider-neutral transcript；成功时一次性落库全部
+  transcript，并把所有模型调用的 raw/summary 分别聚合进 assistant message 后，在同一 PG
+  事务内写 `run_succeeded`。
+- 失败/取消不物化 assistant message；已完成调用及当前调用已收到的 partial text/raw/summary
+  仍写 transcript，再写对应语义终态。
 - Run 终态事件写 PG 后，Worker best-effort 写入 Redis 并把 Stream TTL 缩短；draft 行删除。
 
 Redis XADD 失败只记警告；PG checkpoint、Run 状态机和最终 assistant message 不受影响。
@@ -105,8 +132,8 @@ Redis XADD 失败只记警告；PG checkpoint、Run 状态机和最终 assistant
 1. 从 PG 读取 `N` 之后的语义事件（并兼容清理前的存量 delta 行）。
 2. 用 Redis `XRANGE` 补齐断线期间事件，按 `seq` 与 PG 结果合并去重。
 3. 进入每连接独立的 `XREAD BLOCK` 跟随；多个标签页互不抢占。
-4. Redis 不可用或该 Run 的 Stream 缺失时，轮询 `run_drafts`，把累计快照转换为粗粒度
-   delta；终态仍从 PG 读取。
+4. Redis 不可用或该 Run 的 Stream 缺失时，轮询 `run_drafts`，把正文、raw 与 summary
+   累计快照转换为 typed 粗粒度 delta；终态仍从 PG 读取。
 5. 收到 `run_succeeded` / `run_failed` / `run_cancelled` 后关闭流。
 
 `GET /api/v1/runs/{id}/state` 使用同一坐标系：
@@ -116,7 +143,8 @@ Redis XADD 失败只记警告；PG checkpoint、Run 状态机和最终 assistant
 - 工具状态和终态来自 PG 语义事件；
 - Redis 失败时直接返回 PG checkpoint。
 
-SSE 的 `id` / `event` / `data` 帧及 `RunEventResponse` schema 保持不变，前端无需配合改造。
+SSE 的 `id` / `event` / `data` 帧及事件名保持不变；`reasoning_delta.payload` 新增 `kind`，旧
+消费者可忽略该附加字段，当前前端用它把 raw 与 summary 分开恢复和展示。
 
 ## Run 状态机
 
@@ -139,11 +167,15 @@ cancelled            ├──────── finish ────────
 
 | 表 | 角色 |
 |---|---|
-| `runs` | Run 状态机、PG 队列行、lease、provider/usage 元数据 |
+| `runs` | Run 状态机、PG 队列行、lease、非敏感模型路由快照、provider/usage 元数据 |
+| `model_catalog_state` | 数据库目录/旧 ENV 目录的单行切换状态 |
+| `chat_models` | 用户可选的稳定逻辑模型与模型级能力 |
+| `model_upstreams` | endpoint、代码适配器类型和加密 API key |
+| `model_routes` | 聊天模型到上游 model id 的可启停优先级路径及路由级推理输出能力 |
 | `run_events` | 语义事件事实源；暂时兼容历史 delta 行 |
-| `run_drafts` | 每 Run 一行的累计 text/reasoning checkpoint，供 Redis 故障降级 |
-| `run_provider_messages` | provider-neutral content blocks transcript |
-| `messages` | 用户可见 user/assistant 消息；assistant 仅在成功终态物化 |
+| `run_drafts` | 每 Run 一行的累计正文/raw/summary checkpoint，供 Redis 故障降级 |
+| `run_provider_messages` | provider-neutral content blocks transcript，含 adapter-owned continuation state |
+| `messages` | 用户可见 user/assistant 消息；assistant 仅在成功终态物化，reasoning 字段是 transcript 聚合投影 |
 | `file_uploads` | 有期限上传状态机、confirm ETag、lease、尝试数和 output manifest |
 | `files` / `file_objects` | 不可变逻辑资产与其 R2 原件/派生物表示 |
 | `message_attachments` | Message 到附件资产的显式有序关系与稳定展示元数据 |

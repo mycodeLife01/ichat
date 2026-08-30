@@ -202,6 +202,7 @@ async def test_get_run_state_returns_current_draft(
         "latest_seq": 3,
         "draft_text": "Hello world",
         "draft_reasoning": "",
+        "draft_reasoning_summary": "",
         "tool_state": None,
         "terminal_event": None,
     }
@@ -232,6 +233,7 @@ async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
             seq=2,
             text="Hel",
             reasoning="Think",
+            reasoning_summary="Summary",
         )
         run_public_id = str(run.public_id)
         run_db_id = run.id
@@ -252,6 +254,7 @@ async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
         "latest_seq": 3,
         "draft_text": "Hello",
         "draft_reasoning": "Think",
+        "draft_reasoning_summary": "Summary",
         "tool_state": None,
         "terminal_event": None,
     }
@@ -556,7 +559,8 @@ async def test_run_events_fall_back_to_checkpoint_when_redis_is_unavailable(
             run_id=run.id,
             seq=2,
             text="Checkpoint text",
-            reasoning="",
+            reasoning="Checkpoint raw",
+            reasoning_summary="Checkpoint summary",
         )
         run_db_id = run.id
         run_public_id = str(run.public_id)
@@ -583,7 +587,10 @@ async def test_run_events_fall_back_to_checkpoint_when_redis_is_unavailable(
             with contextlib.suppress(asyncio.CancelledError):
                 await response_task
 
-    assert "id: 2\nevent: text_delta" in response.text
+    assert "id: 2\nevent: reasoning_delta" in response.text
+    assert '"payload":{"text":"Checkpoint raw","kind":"raw"}' in response.text
+    assert '"payload":{"text":"Checkpoint summary","kind":"summary"}' in response.text
+    assert "event: text_delta" in response.text
     assert '"payload":{"text":"Checkpoint text"}' in response.text
     assert "id: 3\nevent: run_succeeded" in response.text
 

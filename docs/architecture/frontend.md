@@ -26,6 +26,7 @@
 | `src/runs/` | 临时 Run 状态、单流消费、取消和进入会话时的恢复。它不拥有服务端已物化消息。 |
 | `src/files/` | 未发送附件的浏览器状态、直传、轮询和草稿恢复。持久上传状态仍由服务端拥有。 |
 | `src/messages/` | 已物化消息、临时流式回复、Markdown、来源和分享快照的展示。 |
+| `src/model-admin/` | 工作台外的模型路由控制台、标签页级访问密钥 store、模型/上游/路由编辑器和运行路径展示；不复用普通用户认证状态。 |
 | `src/ui/` | 可复用展示组件、交互原语及纯 UI 状态；业务副作用留在功能 hook。 |
 | `src/styles/global.css` | Tailwind CSS v4 的 `@theme`、全局基础规则以及无法由 utility 表达的白名单 CSS。 |
 | `src/test/` | 跨测试共享的 provider harness、API fixtures 和可控 stream helpers；业务测试与源文件同目录。 |
@@ -43,6 +44,8 @@
   注册，使 logout 或认证失效可以在不了解流实现的情况下中止它。
 - 页面生命周期内的展示状态可以留在组件；跨组件、参与业务守卫或需要统一 reset 的状态进入
   reducer；需要刷新恢复的偏好或草稿通过各自 store 写入 localStorage。
+- 模型管理访问密钥是独立运维能力，不进入 reducer 或 localStorage；`model-admin` 只在
+  sessionStorage 保存当前标签页会话，显式锁定、401 或 429 后立即清除。
 - logout、refresh 失败或身份切换必须中止当前 stream、清理上一身份的附件草稿并执行全局
   `app/reset`，防止私有状态跨身份泄漏。
 
@@ -64,14 +67,17 @@
 
 ## 路由与认证
 
-- `/share/:token`、`/verify-email`、`/reset-password` 和
-  `/confirm-account-deletion` 位于认证门之外，匿名访问不能等待或依赖登录恢复。
+- `/share/:token`、`/verify-email`、`/reset-password`、`/confirm-account-deletion` 和
+  `/model-admin` 位于普通用户认证门之外，不能等待或依赖登录恢复；其中 `/model-admin`
+  不是匿名业务页面，而是使用独立固定密钥门。
 - 登录后的空白新会话使用 `/`，已有会话使用 `/c/:publicId`。URL 是深链入口，reducer 中的
   `selectedId` 是渲染状态；两者由 `AppShell` 双向同步。
 - `AppShell` 在 `/` 与 `/c/:publicId` 之间保持同一实例，避免路由切换重新执行 bootstrap。
   无效、已删除或无权访问的 public id 应清理选择并回到空白新会话。
 - 公开分享读取显式禁用认证 header 和 401 refresh；不得把当前登录用户的 token 带到匿名
   snapshot 请求。
+- 模型管理请求同样显式设置 `auth: false` 与 `retryOnUnauthorized: false`，只发送
+  `X-Model-Admin-Key`；用户 token 刷新、登出和角色状态不得参与管理授权。
 
 ## API 与认证会话
 
@@ -84,6 +90,22 @@
 - capability（模型、联网搜索、文件上传）来自 `/capabilities`。前端只根据服务端声明展示入口
   和构造请求，不按 provider 名称或本地配置推测能力。
 
+## 模型路由控制台
+
+- `/model-admin` 是单页运维入口。解锁后每次写操作都以服务端返回的完整目录替换本地镜像，
+  不在前端乐观推演路由选择。
+- 路由轨道中的“当前路由”由后端 `selected` 投影决定；数据库目录未激活时相同位置显示为
+  “目录首选”，不能误称为当前运行路径。优先级数值越小越靠前。
+- 路由编辑器显式维护 `reasoning_outputs`。选项由 adapter 支持矩阵约束；它描述上游可能返回
+  的可见 raw/summary，与聊天模型的 `thinking_levels` 独立，前端不得按模型或 provider 名称猜测；
+  运行时若收到声明外但已明确标型的内容，仍按事件中的真实 `kind` 保存和渲染。
+- 聊天模型 key、模型上游 key 和既有路由三元组是稳定身份，Web 编辑时不可原地改名；需要
+  更换身份时先新增、验证，再下线旧项。Web 与 CLI 均不提供 hard delete。
+- 上游 API key 输入只在保存请求中存在，编辑页不回填；目录响应只消费 `api_key_hint`，不得
+  接收、缓存或展示明文与数据库密文。
+- 控制台沿用全局 token 和组件原语，但其路由轨道是业务信息图，不得退化成仅靠表格顺序猜测
+  当前上游。窄屏必须保留启停、编辑和锁定入口。
+
 ## 会话与 Run 生命周期
 
 ### 提交与流式
@@ -94,8 +116,10 @@
 3. `useRunStream` 是唯一 stream owner；同一时间最多消费一条流，新 start 会中止旧 consumer。
 4. SSE 按 `after_seq` 续读。事件 dispatch 前必须确认 run id 仍是当前 active Run，防止迟到事件
    写入另一会话。
-5. `conversationDetail.messages` 始终保持服务端已物化消息；正文、思考和工具状态流式草稿只存在
-   于 `activeRun`，由临时 `StreamingMessage` 展示。
+5. `conversationDetail.messages` 始终保持服务端已物化消息；正文、raw reasoning、reasoning
+   summary 和工具状态流式草稿只存在于 `activeRun`，由临时 `StreamingMessage` 展示。
+6. `reasoning_delta.payload.kind` 决定追加到 `draftReasoning` 或
+   `draftReasoningSummary`；旧事件缺失 kind 时按 raw。正文到达或 Run 终态都不能清空这两个字段。
 
 ### 终态与恢复
 
@@ -106,9 +130,13 @@
 - cancel 只发送取消请求并等待 SSE terminal；本地流继续消费。取消请求失败时回退 stopping
   状态，让用户可以重试。
 - 进入会话时，若最后一个 user message 的 Run 尚无物化 assistant message，恢复逻辑读取
-  `/runs/{id}/state`，用服务端 draft 和 `latest_seq` 重建 active Run，并从该 cursor 续流。
+  `/runs/{id}/state`，用服务端正文/raw/summary draft 和 `latest_seq` 重建 active Run，并从该
+  cursor 续流。
 - 编辑并重新生成或重新生成会在服务端归档线程分支；成功创建新 Run 后必须重拉 detail 获取
   权威截断结果，再复用普通 Run 流程，不能在客户端自行裁剪消息。
+- 临时与最终 assistant message 都采用“summary 优先、raw fallback”的展示策略。raw 在流式
+  推理阶段自动展开，摘要可作为流式标题预览；正文开始后 thinking surface 保留并折叠，最终
+  消息仍可展开。公开分享继续不展示 reasoning。
 
 ## 附件与模型能力
 

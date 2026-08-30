@@ -10,6 +10,7 @@ export type ActiveRunState = {
   latestSeq: number;
   draftText: string;
   draftReasoning: string;
+  draftReasoningSummary: string;
   toolState: RunToolState | null;
   status: RunStatus;
   cancelRequested: boolean;
@@ -32,10 +33,16 @@ export type ActiveRunAction =
       latestSeq: number;
       draftText: string;
       draftReasoning: string;
+      draftReasoningSummary?: string;
       toolState?: RunToolState | null;
       status: RunStatus;
     }
-  | { type: "run/reasoningDelta"; seq: number; text: string }
+  | {
+      type: "run/reasoningDelta";
+      seq: number;
+      text: string;
+      kind?: "raw" | "summary";
+    }
   | { type: "run/textDelta"; seq: number; text: string }
   | { type: "run/toolState"; seq: number; toolState: RunToolState }
   | { type: "run/terminal"; status: "succeeded" | "failed" | "cancelled" }
@@ -56,6 +63,7 @@ export function activeRunReducer(
         latestSeq: 0,
         draftText: "",
         draftReasoning: "",
+        draftReasoningSummary: "",
         toolState: null,
         status: "started",
         cancelRequested: false,
@@ -64,10 +72,14 @@ export function activeRunReducer(
       if (state === null) return state;
       return {
         ...state,
-        // Once the formal answer starts, reasoning is no longer retained in
-        // frontend state even if a late/replayed reasoning event arrives.
         draftReasoning:
-          state.draftText === "" ? state.draftReasoning + action.text : "",
+          (action.kind ?? "raw") === "raw"
+            ? state.draftReasoning + action.text
+            : state.draftReasoning,
+        draftReasoningSummary:
+          action.kind === "summary"
+            ? state.draftReasoningSummary + action.text
+            : state.draftReasoningSummary,
         latestSeq: action.seq,
         // Deltas keep arriving while a cancel is in flight; don't let them
         // flip "cancelling" back to "streaming" (re-enabling the stop button).
@@ -78,7 +90,6 @@ export function activeRunReducer(
       return {
         ...state,
         draftText: state.draftText + action.text,
-        draftReasoning: "",
         toolState: null,
         latestSeq: action.seq,
         status: state.status === "cancelling" ? state.status : "streaming",
@@ -95,12 +106,11 @@ export function activeRunReducer(
       if (state === null) return state;
       return {
         ...state,
-        draftReasoning: "",
         toolState: null,
         status: action.status,
       };
     case "run/restored": {
-      const keepThinking =
+      const keepToolState =
         action.draftText === "" &&
         action.status !== "succeeded" &&
         action.status !== "failed" &&
@@ -111,8 +121,9 @@ export function activeRunReducer(
         providerName: action.providerName ?? null,
         latestSeq: action.latestSeq,
         draftText: action.draftText,
-        draftReasoning: keepThinking ? action.draftReasoning : "",
-        toolState: keepThinking ? (action.toolState ?? null) : null,
+        draftReasoning: action.draftReasoning,
+        draftReasoningSummary: action.draftReasoningSummary ?? "",
+        toolState: keepToolState ? (action.toolState ?? null) : null,
         status: action.status,
         cancelRequested: action.status === "cancelling",
       };

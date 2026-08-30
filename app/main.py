@@ -11,6 +11,7 @@ from app.api.v1.avatars import router as avatars_router
 from app.api.v1.capabilities import router as capabilities_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.files import router as files_router
+from app.api.v1.model_admin import router as model_admin_router
 from app.api.v1.runs import router as runs_router
 from app.api.v1.share import router as share_router
 from app.api.v1.shares import router as shares_router
@@ -56,6 +57,7 @@ def create_app(
     app.include_router(avatars_router)
     app.include_router(conversations_router)
     app.include_router(files_router)
+    app.include_router(model_admin_router)
     app.include_router(runs_router)
     app.include_router(share_router)
     app.include_router(shares_router)
@@ -104,8 +106,13 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_allowed_origins_list,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Model-Admin-Key",
+        ],
     )
 
     return app

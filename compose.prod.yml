@@ -72,6 +72,7 @@ services:
     env_file:
       - .env
     environment:
+      MODEL_ADMIN_ACCESS_KEY: ""
       FILE_UPLOAD_ENABLED: "false"
       FILES_UPLOAD_ACCESS_KEY_ID: ""
       FILES_UPLOAD_SECRET_ACCESS_KEY: ""
@@ -96,6 +97,8 @@ services:
     env_file:
       - .env
     environment:
+      MODEL_ADMIN_ACCESS_KEY: ""
+      MODEL_CATALOG_ENCRYPTION_KEY: ""
       FILE_UPLOAD_ENABLED: "false"
       FILES_UPLOAD_ACCESS_KEY_ID: ""
       FILES_UPLOAD_SECRET_ACCESS_KEY: ""
@@ -121,6 +124,8 @@ services:
     env_file:
       - .env
     environment:
+      MODEL_ADMIN_ACCESS_KEY: ""
+      MODEL_CATALOG_ENCRYPTION_KEY: ""
       FILE_UPLOAD_ENABLED: "false"
       FILES_UPLOAD_ACCESS_KEY_ID: ""
       FILES_UPLOAD_SECRET_ACCESS_KEY: ""
@@ -222,6 +227,8 @@ services:
     env_file:
       - .env
     environment:
+      MODEL_ADMIN_ACCESS_KEY: ""
+      MODEL_CATALOG_ENCRYPTION_KEY: ""
       FILE_UPLOAD_ENABLED: "false"
       FILES_UPLOAD_ACCESS_KEY_ID: ""
       FILES_UPLOAD_SECRET_ACCESS_KEY: ""

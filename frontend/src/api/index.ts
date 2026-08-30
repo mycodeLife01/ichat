@@ -3,6 +3,17 @@ export { ApiClient, getDefaultApiClient } from "./client";
 export { capabilitiesApi, createCapabilitiesApi } from "./capabilities";
 export { conversationApi, createConversationApi } from "./conversations";
 export { filesApi, createFilesApi } from "./files";
+export { createModelAdminApi } from "./modelAdmin";
+export type {
+  ModelAdminApi,
+  ModelAdminCatalog,
+  ModelAdminChatModel,
+  ModelAdminRoute,
+  ModelAdminUpstream,
+  UpsertChatModelRequest,
+  UpsertModelRouteRequest,
+  UpsertModelUpstreamRequest,
+} from "./modelAdmin";
 export {
   ApiError,
   getErrorCode,

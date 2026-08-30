@@ -1,6 +1,6 @@
 # iChat
 
-AI 聊天服务：用户与 DeepSeek 模型进行流式对话。单一限界上下文，认证与账户生命周期、会话与运行（Run）编排共处一个领域。
+AI 聊天服务：用户通过可配置的聊天模型进行流式对话。单一限界上下文，认证与账户生命周期、会话与运行（Run）编排共处一个领域。
 
 ## Language
 
@@ -45,11 +45,11 @@ _Avoid_: 无限期软删除、账户注销、立即物理删除
 _Avoid_: 任务、请求（与 HTTP 请求混淆）
 
 **转写（Transcript）**:
-一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。代码域一律使用 transcript 词根（如 `load_transcript`、`append_transcript_message`）。
+一次 run 中业务与 LLM 之间完整通信记录的事实源，持久化在 `run_provider_messages` 表（表名不改）。它按模型调用顺序保存正文、原始推理、推理摘要、工具调用/结果和仅供适配器续传的不透明状态；代码域一律使用 transcript 词根（如 `load_transcript`、`append_transcript_message`）。
 _Avoid_: provider message（代码词汇层已废弃）、聊天记录（那是面向用户的 messages）
 
 **草稿检查点（Draft Checkpoint）**:
-`run_drafts` 中每个活跃 Run 至多一行的累计 text/reasoning 快照。它是 Redis Stream 故障时的粗粒度恢复面，不是完整事件历史；由时间窗、待写字符上限或工具边界触发 upsert，终态后删除。
+`run_drafts` 中每个活跃 Run 至多一行的累计正文、原始推理和推理摘要快照。它是 Redis Stream 故障时的粗粒度恢复面，不是完整事件历史；由时间窗、待写字符上限或工具边界触发 upsert，终态后删除。
 _Avoid_: draft event（它是覆盖式快照）、assistant message（成功终态才物化）
 
 **Run Stream**:
@@ -72,8 +72,40 @@ _Avoid_: agent 框架（明确不做图编排/chain/多 agent）、编排核心�
 agent 循环内对 LLM provider 的一次流式请求-响应。一个 run 可含多次模型调用（工具循环）。与「轮（Turn）」区分：turn 专指用户↔助手的一轮对话交换（历史裁剪的计量单位），不用于指代单次 provider 调用。
 _Avoid_: turn（指 provider 调用时）、请求（与 HTTP 请求混淆）
 
+**聊天模型（Chat Model）**:
+用户可选择的稳定逻辑模型，拥有展示名称与思考、图像输入等模型级能力；它不等同于任一第三方接口中的 model id，同一聊天模型可以通过多个模型路由执行。
+_Avoid_: provider model、上游 model id、供应商
+
+**模型上游（Model Upstream）**:
+一个可调用的第三方入口，由稳定名称、endpoint、加密凭据与 provider 适配器类型共同标识；同一模型上游可以承载多个聊天模型。
+_Avoid_: 聊天模型、provider 适配器、API key
+
+**模型路由（Model Route）**:
+聊天模型到模型上游的一条可启停执行路径，记录该上游使用的 model id、优先级与可见推理输出能力；Run 创建时只选择一条路由并固化非敏感配置快照。
+_Avoid_: 自动重试、模型上游、负载均衡
+
+**Provider 适配器（Provider Adapter）**:
+把中立内容块和调用选项投影为某类上游协议、再结合网关类型与底层格式语义把响应还原为内核事件的代码适配器；DeepSeek 官方、OpenAI 官方与 OpenRouter 的行为差异由各自适配器收编，而不是从聊天模型名称或文本样式推测。
+_Avoid_: 模型上游、聊天模型、通用 OpenAI-compatible 开关
+
+**原始推理（Raw Reasoning）**:
+上游对外提供且未被其定义为摘要的可见推理文本，在内核中表示为 `ReasoningBlock(kind="raw")`。一次 Run 可有多次模型调用，成功消息的 `messages.reasoning` 是全部 raw block 的有序聚合，但完整分段与工具交错顺序仍以 transcript 为准。
+_Avoid_: 隐藏思维链（系统只保存上游实际返回的内容）、推理摘要、最后一段推理
+
+**推理摘要（Reasoning Summary）**:
+上游定义为其内部推理之用户可读摘要的文本，在内核中表示为 `ReasoningBlock(kind="summary")`；网关即使以通用 text 类型承载，也以其明确的底层格式语义为准。不得根据文字长短、文风或 Markdown 猜测；成功消息的 `messages.reasoning_summary` 是全部 summary block 的有序聚合。
+_Avoid_: 原始推理、前端截断、由应用自行总结的 reasoning
+
+**Provider 续传块（Provider Continuation Block）**:
+`run_provider_messages.blocks` 中由某个适配器拥有的不透明 JSON 状态，用于在工具调用后按上游协议继续同一推理过程。只有 `owner` 对应的适配器可以解释和回放；它不进入消息 API、SSE、公开分享、模型管理响应或日志。
+_Avoid_: 新的数据库保存机制、用户可见推理、通用 provider 参数
+
+**模型管理访问密钥（Model Management Access Key）**:
+部署时固定配置、只授权模型管理 Web/API 的高熵秘密。它不代表用户身份或管理员角色，不进入 PostgreSQL，也不能替代模型上游 API key；普通用户 JWT 同样不能替代它。
+_Avoid_: 管理员账号、管理员 JWT、模型上游 API key
+
 **内容块（Content Block）**:
-中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / DocumentBlock / ImageBlock / AttachmentNoticeBlock / ReasoningBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
+中立消息模型的组成单元：`Message(role, blocks)`，块类型为 TextBlock / DocumentBlock / ImageBlock / AttachmentNoticeBlock / ReasoningBlock / ProviderContinuationBlock / ToolCallBlock / ToolResultBlock；工具结果作为 user 消息内的 ToolResultBlock（Anthropic 式）。任何 provider 的 wire format 都是它的有损/无损投影，转换发生在 provider 适配器内。
 _Avoid_: 直接以 DeepSeek/OpenAI wire 字段（如 `reasoning_content`、`tool_calls` 数组）描述业务内部消息
 
 ### 文件

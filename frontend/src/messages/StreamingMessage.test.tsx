@@ -12,6 +12,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
     latestSeq: 1,
     draftText: "",
     draftReasoning: "",
+    draftReasoningSummary: "",
     toolState: null,
     status: "streaming",
     cancelRequested: false,
@@ -60,10 +61,13 @@ describe("StreamingMessage", () => {
     );
   });
 
-  it("rolls streamed reasoning into the header before the formal answer starts", () => {
+  it("shows raw reasoning behind a generic thinking label", () => {
     render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
-    expect(screen.getByRole("button", { name: /在想/ })).toBeInTheDocument();
-    expect(screen.queryByText("正在思考")).toBeNull();
+    expect(screen.getByRole("button", { name: /正在思考/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("在想")).not.toHaveClass("hidden");
   });
 
   it("auto-expands DeepSeek raw reasoning behind the generic thinking label", () => {
@@ -178,11 +182,12 @@ describe("StreamingMessage", () => {
     expect(screen.queryByText("[1] Release notes")).toBeNull();
   });
 
-  it("lets reasoning take the header back after a tool call succeeds", () => {
-    render(
+  it("lets a reasoning summary take the header back after a tool call succeeds", () => {
+    const { container } = render(
       <StreamingMessage
         run={run({
-          draftReasoning: "**分析来源**\n\n正在核对",
+          draftReasoning: "不应作为预览显示的完整过程",
+          draftReasoningSummary: "**分析来源**\n\n正在核对",
           toolState: {
             status: "succeeded",
             tool_name: "web_search",
@@ -196,6 +201,10 @@ describe("StreamingMessage", () => {
     );
     expect(screen.getByRole("button", { name: /分析来源/ })).toBeInTheDocument();
     expect(screen.queryByText("已找到 5 个来源")).toBeNull();
+    expect(container.querySelector(".thinking-body")).toHaveTextContent(
+      "**分析来源** 正在核对",
+    );
+    expect(screen.queryByText("不应作为预览显示的完整过程")).toBeNull();
   });
 
   it("keeps the running tool label above earlier reasoning", () => {

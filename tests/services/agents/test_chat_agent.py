@@ -166,6 +166,27 @@ async def test_build_chat_agent_allows_image_for_explicit_vision_model() -> None
     assert any(isinstance(block, ImageBlock) for block in provider.last_messages[1].blocks)
 
 
+async def test_build_chat_agent_explicitly_disables_unsupported_reasoning() -> None:
+    provider = FakeProvider(script=[StreamDone(finish_reason="stop")])
+    settings = _settings_with()
+
+    agent = build_chat_agent(
+        settings=settings,
+        history=[user_text("hello")],
+        options=ChatAgentOptions(
+            provider_name="deepseek",
+            model="non-reasoning-model",
+            supports_reasoning=False,
+        ),
+        provider=provider,
+    )
+
+    await collect(agent)
+
+    assert provider.last_reasoning is not None
+    assert provider.last_reasoning.enabled is False
+
+
 async def test_multi_tool_turn_yields_events_and_messages() -> None:
     provider = FakeProvider(
         scripts=[

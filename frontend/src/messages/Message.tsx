@@ -18,6 +18,7 @@ import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
 import { MessageAttachments } from "./MessageAttachments";
 import { SourceFavicon } from "./SourcesPanel";
+import { ThinkingBlock } from "./ThinkingBlock";
 
 type MessageProps = {
   message: MessageResponse;
@@ -435,9 +436,14 @@ export function Message({
   }
 
   const sources = message.metadata?.sources ?? [];
+  const displayedReasoning =
+    message.reasoning_summary?.trim() ? message.reasoning_summary : message.reasoning;
   return (
     <div className={`${msgBase} assistant items-stretch`}>
       <div className={assistantContentColumn}>
+        {displayedReasoning?.trim() ? (
+          <ThinkingBlock content={displayedReasoning} streaming={false} />
+        ) : null}
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}

@@ -178,8 +178,31 @@ def test_cors_preflight_allows_methods(monkeypatch: MonkeyPatch) -> None:
         assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
         allow_methods = response.headers["access-control-allow-methods"]
         assert "POST" in allow_methods
+        assert "PUT" in allow_methods
         assert "PATCH" in allow_methods
         assert "DELETE" in allow_methods
+    finally:
+        get_settings.cache_clear()
+
+
+def test_cors_preflight_allows_model_admin_key_header(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+    get_settings.cache_clear()
+    try:
+        client = TestClient(create_app(database_ready_check=ready))
+
+        response = client.options(
+            "/api/v1/model-admin/models/deepseek-v4",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "content-type,x-model-admin-key",
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        allow_headers = response.headers["access-control-allow-headers"].lower()
+        assert "x-model-admin-key" in allow_headers
     finally:
         get_settings.cache_clear()
 

@@ -12,6 +12,7 @@ from app.core.logging import configure_logging, logger
 from app.db.session import get_session_factory
 from app.schemas.runs import RunEventResponse
 from app.services.agents import resolve_provider as default_resolve_provider
+from app.services.model_catalog import available_chat_models, database_catalog_enabled
 from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.events import RunEvent
 from app.services.runs.lifecycle import (
@@ -234,11 +235,35 @@ async def _wait_for_signal_or_stop(
                 await task
 
 
+async def validate_worker_runtime_settings(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    """Validate the active catalog before constructing the Worker runtime."""
+
+    async with session_factory() as session:
+        uses_database_catalog = await database_catalog_enabled(session)
+        models = (
+            await available_chat_models(session, settings=settings)
+            if uses_database_catalog
+            else []
+        )
+    if not uses_database_catalog:
+        validate_worker_vision_settings(settings)
+        return
+    validate_worker_vision_settings(
+        settings,
+        vision_enabled=any(model.supports_image_input for model in models),
+        require_openai_api_key=False,
+    )
+
+
 async def run_worker_from_settings() -> None:
     settings = get_settings()
-    validate_worker_vision_settings(settings)
     configure_logging(settings.log_level)
     factory = get_session_factory()
+    await validate_worker_runtime_settings(session_factory=factory, settings=settings)
     worker_id = build_worker_id()
     stop_event = asyncio.Event()
 

@@ -61,13 +61,16 @@ class Run(Base):
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    provider_model: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_model: Mapped[str] = mapped_column(String(256), nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     system_prompt_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Per-run provider options resolved at run creation (request value or env
     # default), e.g. {"thinking_enabled": bool, "reasoning_effort": str}.
     # NULL for legacy rows — consumers fall back to settings.
     provider_options: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Immutable, non-secret catalog/route snapshot selected when the Run is
+    # created. NULL identifies rows created through the legacy ENV catalog.
+    model_config_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -140,6 +143,7 @@ class RunDraft(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     reasoning: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    reasoning_summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     events: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,

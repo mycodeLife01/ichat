@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.agent.messages import (
     ImageBlock,
     Message,
+    ProviderContinuationBlock,
     ReasoningBlock,
     TextBlock,
     ToolCallBlock,
@@ -176,6 +177,54 @@ def test_image_block_transcript_rejects_invalid_or_incomplete_fields(mutate) -> 
 
     with pytest.raises(ValueError):
         _deserialize_blocks([mutate(block)])
+
+
+def test_reasoning_and_provider_continuation_blocks_round_trip_without_loss() -> None:
+    details = [
+        {
+            "type": "reasoning.summary",
+            "summary": "Check the current source",
+            "index": 0,
+        },
+        {
+            "type": "reasoning.encrypted",
+            "data": "opaque-ciphertext",
+            "id": "reasoning-1",
+            "format": "openai-responses-v1",
+            "index": 1,
+        },
+    ]
+    blocks = [
+        ReasoningBlock("internal chain", kind="raw"),
+        ReasoningBlock("Short summary", kind="summary"),
+        ProviderContinuationBlock(
+            owner="openrouter",
+            codec="reasoning_details.v1",
+            scope="assistant_message",
+            payload={"reasoning_details": details},
+        ),
+    ]
+
+    raw = serialize_blocks(blocks)
+
+    assert raw == [
+        {"type": "reasoning", "kind": "raw", "text": "internal chain"},
+        {"type": "reasoning", "kind": "summary", "text": "Short summary"},
+        {
+            "type": "provider_continuation",
+            "owner": "openrouter",
+            "codec": "reasoning_details.v1",
+            "scope": "assistant_message",
+            "payload": {"reasoning_details": details},
+        },
+    ]
+    assert _deserialize_blocks(raw) == blocks
+
+
+def test_legacy_reasoning_block_without_kind_defaults_to_raw() -> None:
+    assert _deserialize_blocks([{"type": "reasoning", "text": "legacy"}]) == [
+        ReasoningBlock("legacy", kind="raw")
+    ]
 
 
 async def test_new_transcript_rows_round_trip_blocks_only(

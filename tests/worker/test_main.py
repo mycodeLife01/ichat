@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from pytest import MonkeyPatch
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -13,7 +14,8 @@ from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunEvent
 from app.models.user import User
-from app.worker.main import run_worker_loop
+from app.services.model_catalog import ChatModel
+from app.worker.main import run_worker_loop, validate_worker_runtime_settings
 from tests.agent.fake import FakeProvider
 
 TEST_DATABASE_URL = os.environ.get(
@@ -120,6 +122,72 @@ async def make_lease_expired_run(session: AsyncSession) -> int:
     session.add(run)
     await session.flush()
     return run.id
+
+
+async def test_worker_runtime_validates_database_vision_preview_credentials(
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    database_vision_model = ChatModel(
+        key="glm-5.3-flash",
+        label="GLM 5.3 Flash",
+        thinking_levels=("high", "max"),
+        reasoning_outputs=("raw", "summary"),
+        supports_image_input=True,
+        image_token_reserve=8192,
+        token_profile="default",
+        provider_name="openrouter",
+        provider_model="z-ai/glm-5.3-flash",
+        upstream_key="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        source="database",
+        route_id=1,
+    )
+
+    async def available_models(
+        _session: AsyncSession,
+        *,
+        settings: Settings,
+    ) -> list[ChatModel]:
+        del settings
+        return [database_vision_model]
+
+    async def database_catalog_is_enabled(_session: AsyncSession) -> bool:
+        return True
+
+    monkeypatch.setattr("app.worker.main.available_chat_models", available_models)
+    monkeypatch.setattr(
+        "app.worker.main.database_catalog_enabled",
+        database_catalog_is_enabled,
+    )
+    settings = get_settings().model_copy(
+        update={
+            "openai_api_key": "",
+            "openai_vision_models": "",
+            "files_r2_endpoint_url": "https://account.r2.cloudflarestorage.com",
+            "files_staging_bucket": "staging",
+            "files_canonical_bucket": "canonical",
+            "files_preview_bucket": "preview",
+            "files_preview_llm_access_key_id": "",
+            "files_preview_llm_secret_access_key": "",
+        }
+    )
+
+    with pytest.raises(ValueError, match="files_preview_llm_access_key_id"):
+        await validate_worker_runtime_settings(
+            session_factory=session_factory,
+            settings=settings,
+        )
+
+    await validate_worker_runtime_settings(
+        session_factory=session_factory,
+        settings=settings.model_copy(
+            update={
+                "files_preview_llm_access_key_id": "preview-llm-key",
+                "files_preview_llm_secret_access_key": "preview-llm-secret",
+            }
+        ),
+    )
 
 
 async def test_run_worker_loop_processes_queued_runs_with_fake_provider(

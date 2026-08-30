@@ -247,11 +247,25 @@ describe("Message", () => {
     );
   });
 
-  it("renders only the formal assistant reply after completion", () => {
+  it("renders the formal reply with completed reasoning collapsed above it", async () => {
+    const user = userEvent.setup();
     render(<Message message={assistantMessage} />);
     expect(screen.getByText("回答")).toBeInTheDocument(); // bold rendered
+    expect(screen.getByText("我的推理")).toHaveClass("hidden");
+    await user.click(screen.getByRole("button", { name: "已思考" }));
+    expect(screen.getByText("我的推理")).not.toHaveClass("hidden");
+  });
+
+  it("prefers a reasoning summary over raw reasoning", async () => {
+    const user = userEvent.setup();
+    render(
+      <Message
+        message={{ ...assistantMessage, reasoning_summary: "给用户看的摘要" }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "已思考" }));
+    expect(screen.getByText("给用户看的摘要")).toBeInTheDocument();
     expect(screen.queryByText("我的推理")).toBeNull();
-    expect(screen.queryByText("已思考")).toBeNull();
   });
 
   it("keeps assistant body and actions in the shared content column", () => {
@@ -578,7 +592,7 @@ describe("Message", () => {
 
     const actionBar = container.querySelector(".msg-actions");
     expect(actionBar).toHaveClass("gap-0.5");
-    for (const action of screen.getAllByRole("button")) {
+    for (const action of actionBar?.querySelectorAll("button") ?? []) {
       expect(action).toHaveClass("w-7");
     }
   });

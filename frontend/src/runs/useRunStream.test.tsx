@@ -119,6 +119,41 @@ describe("useRunStream", () => {
     );
   });
 
+  it("routes typed summaries separately and treats legacy reasoning as raw", async () => {
+    const services = createFakeServices(
+      {},
+      {},
+      {
+        streamEvents: () =>
+          fakeStream([
+            {
+              ...reasoningDeltaEvent,
+              seq: 1,
+              payload: { text: "旧格式过程" },
+            },
+            {
+              ...reasoningDeltaEvent,
+              seq: 2,
+              payload: { text: "摘要", kind: "summary" },
+            },
+          ]),
+      },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: "100", conversationId: "10" });
+    });
+    await act(async () => {
+      await result.current.start("100", "10", 0);
+    });
+
+    expect(result.current.activeRun?.draftReasoning).toBe("旧格式过程");
+    expect(result.current.activeRun?.draftReasoningSummary).toBe("摘要");
+  });
+
   it("keeps run failure in message context without adding a toast", async () => {
     const detail = vi.fn(async () => conversationDetailResponse);
     const services = createFakeServices(

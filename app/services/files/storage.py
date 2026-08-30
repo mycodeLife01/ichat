@@ -44,6 +44,10 @@ class StoragePermissionDenied(Exception):
     """Raised when a credential-scoped adapter is used outside its capability."""
 
 
+class StorageCredentialsUnavailable(Exception):
+    """Raised before storage access when the role has no configured credentials."""
+
+
 class StorageIntegrityError(Exception):
     """Raised when a copied object does not match its durable database fact."""
 
@@ -522,6 +526,7 @@ class R2FileStorage(S3FileStorage):
         canonical_bucket: str,
         preview_bucket: str | None = None,
         credential_role: StorageCredentialRole,
+        credentials_available: bool = True,
         parallel_download_threshold_bytes: int = 5 * 1024 * 1024,
         parallel_download_max_concurrency: int = 3,
     ) -> None:
@@ -534,6 +539,7 @@ class R2FileStorage(S3FileStorage):
             parallel_download_max_concurrency=parallel_download_max_concurrency,
         )
         self._credential_role = credential_role
+        self._credentials_available = credentials_available
 
     def presign_upload(
         self,
@@ -732,15 +738,21 @@ class R2FileStorage(S3FileStorage):
         ttl_seconds: int,
     ) -> PresignedDownload:
         self._require("preview_llm")
+        self._require_credentials()
         return super().presign_model_preview(object_key, ttl_seconds=ttl_seconds)
 
     def head_model_preview(self, object_key: str) -> StorageObjectMetadata:
         self._require("preview_llm")
+        self._require_credentials()
         return super().head_model_preview(object_key)
 
     def _require(self, *roles: StorageCredentialRole) -> None:
         if self._credential_role not in roles:
             raise StoragePermissionDenied
+
+    def _require_credentials(self) -> None:
+        if not self._credentials_available:
+            raise StorageCredentialsUnavailable
 
 
 def _quoted_etag(etag: str) -> str:

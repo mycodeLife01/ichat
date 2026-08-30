@@ -28,7 +28,11 @@ from app.models.files import (
     FileStorageLocation,
 )
 from app.services.files.protocols import PresignedDownload, PreviewLlmSigner
-from app.services.files.storage import StorageObjectMissing, StoragePermissionDenied
+from app.services.files.storage import (
+    StorageCredentialsUnavailable,
+    StorageObjectMissing,
+    StoragePermissionDenied,
+)
 from app.services.files.telemetry import emit_image_input_resolution
 
 _UNAVAILABLE_CODE = "image_input_unavailable"
@@ -277,6 +281,10 @@ class FileImageInputResolver(ImageInputResolver):
                     self._signer.head_model_preview,
                     preview.object_key,
                 )
+            except StorageCredentialsUnavailable:
+                raise _ResolverFailure(
+                    category="preview_signer_unconfigured", retryable=False
+                ) from None
             except (StorageObjectMissing, StoragePermissionDenied):
                 _raise_permanent("preview_object_unavailable")
             except ImageInputError as exc:
@@ -300,6 +308,10 @@ class FileImageInputResolver(ImageInputResolver):
                     preview.object_key,
                     ttl_seconds=self._ttl_seconds,
                 )
+            except StorageCredentialsUnavailable:
+                raise _ResolverFailure(
+                    category="preview_signer_unconfigured", retryable=False
+                ) from None
             except (StorageObjectMissing, StoragePermissionDenied):
                 _raise_permanent("preview_signature_denied")
             except ImageInputError as exc:

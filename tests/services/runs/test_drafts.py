@@ -82,6 +82,7 @@ async def test_run_draft_upsert_overwrites_snapshot_and_delete_removes_it(
             seq=2,
             text="Hel",
             reasoning="Think",
+            reasoning_summary="Summary",
         )
         await upsert_run_draft(
             session,
@@ -89,13 +90,19 @@ async def test_run_draft_upsert_overwrites_snapshot_and_delete_removes_it(
             seq=4,
             text="Hello",
             reasoning="Thinking",
+            reasoning_summary="Summarized",
         )
         await session.commit()
 
     async with session_factory() as session:
         draft = await get_run_draft(session, run_id=run_id)
         assert draft is not None
-        assert (draft.seq, draft.text, draft.reasoning) == (4, "Hello", "Thinking")
+        assert (draft.seq, draft.text, draft.reasoning, draft.reasoning_summary) == (
+            4,
+            "Hello",
+            "Thinking",
+            "Summarized",
+        )
         await delete_run_draft(session, run_id=run_id)
         await session.commit()
 

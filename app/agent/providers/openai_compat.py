@@ -12,7 +12,7 @@ base_url/api_key), which reuses connections across calls.
 """
 
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from functools import lru_cache
 from typing import Any, cast
 
@@ -30,6 +30,7 @@ from app.agent.messages import (
     DocumentBlock,
     ImageBlock,
     Message,
+    ProviderContinuationBlock,
     ReasoningBlock,
     TextBlock,
     ToolCallBlock,
@@ -116,6 +117,17 @@ class OpenAIChatCompletionsProvider(Provider):
         emits any (DeepSeek's ``reasoning_content``); ``None`` otherwise."""
         return None
 
+    def _reasoning_events_from_delta(
+        self, delta: Any
+    ) -> list[ReasoningDeltaEvent | ProviderContinuationBlock]:
+        text = self._reasoning_from_delta(delta)
+        return [ReasoningDeltaEvent(text=text, kind="raw")] if text else []
+
+    def _assistant_message_extras(self, message: Message) -> Mapping[str, Any]:
+        """Project adapter-owned continuation blocks back to wire fields."""
+
+        return {}
+
     @property
     def _supports_image_input(self) -> bool:
         return self.capabilities.supports_image_input
@@ -169,6 +181,7 @@ class OpenAIChatCompletionsProvider(Provider):
             strip_tool_history=self._should_strip_tool_history(tools),
             replay_reasoning=self._replay_reasoning_in_history,
             resolved_images=resolved_images,
+            assistant_message_extras=self._assistant_message_extras,
         )
         create_kwargs: dict[str, Any] = {
             "model": model,
@@ -215,9 +228,8 @@ class OpenAIChatCompletionsProvider(Provider):
                     continue
                 choice = choices[0]
                 delta = choice.delta
-                reasoning_text = self._reasoning_from_delta(delta)
-                if reasoning_text:
-                    yield ReasoningDeltaEvent(text=reasoning_text)
+                for reasoning_event in self._reasoning_events_from_delta(delta):
+                    yield reasoning_event
                 if delta.content:
                     yield TextDelta(text=delta.content)
                 for tool_delta in delta.tool_calls or []:
@@ -283,6 +295,7 @@ class OpenAIChatCompletionsProvider(Provider):
             messages,
             strip_tool_history=not self.capabilities.supports_tool_history,
             replay_reasoning=self._replay_reasoning_in_history,
+            assistant_message_extras=self._assistant_message_extras,
         )
         create_kwargs: dict[str, Any] = {
             "model": model,
@@ -330,6 +343,7 @@ def messages_to_wire(
     strip_tool_history: bool,
     replay_reasoning: bool = True,
     resolved_images: Mapping[str, ResolvedImageInput] | None = None,
+    assistant_message_extras: Callable[[Message], Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     wire: list[dict[str, Any]] = []
     for message in messages:
@@ -339,6 +353,11 @@ def messages_to_wire(
                     message,
                     strip_tool_history=strip_tool_history,
                     replay_reasoning=replay_reasoning,
+                    extras=(
+                        assistant_message_extras(message)
+                        if assistant_message_extras is not None
+                        else {}
+                    ),
                 )
             )
         elif message.role == "user":
@@ -355,7 +374,11 @@ def messages_to_wire(
 
 
 def _assistant_to_wire(
-    message: Message, *, strip_tool_history: bool, replay_reasoning: bool
+    message: Message,
+    *,
+    strip_tool_history: bool,
+    replay_reasoning: bool,
+    extras: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
@@ -363,7 +386,7 @@ def _assistant_to_wire(
     for block in message.blocks:
         if isinstance(block, TextBlock):
             content_parts.append(block.text)
-        elif isinstance(block, ReasoningBlock):
+        elif isinstance(block, ReasoningBlock) and block.kind == "raw":
             reasoning_parts.append(block.text)
         elif isinstance(block, ToolCallBlock) and not strip_tool_history:
             tool_calls.append(
@@ -386,6 +409,7 @@ def _assistant_to_wire(
         payload["reasoning_content"] = reasoning
     if tool_calls:
         payload["tool_calls"] = tool_calls
+    payload.update(extras)
     return [payload]
 
 

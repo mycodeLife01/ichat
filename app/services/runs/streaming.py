@@ -38,6 +38,7 @@ async def iter_run_events(
     cursor = after_seq
     sent_text = ""
     sent_reasoning = ""
+    sent_reasoning_summary = ""
     checkpoint_baseline_known = after_seq == 0
     redis_failure_logged = False
     first_iteration = True
@@ -75,10 +76,11 @@ async def iter_run_events(
                     if event.seq <= cursor:
                         continue
                     cursor = event.seq
-                    sent_text, sent_reasoning = _accumulate_snapshot(
+                    sent_text, sent_reasoning, sent_reasoning_summary = _accumulate_snapshot(
                         event,
                         sent_text=sent_text,
                         sent_reasoning=sent_reasoning,
+                        sent_reasoning_summary=sent_reasoning_summary,
                         enabled=checkpoint_baseline_known,
                     )
                     yield event
@@ -102,13 +104,29 @@ async def iter_run_events(
             ]
             if not checkpoint_events and checkpoint_baseline_known:
                 reasoning_delta = _snapshot_suffix(draft.reasoning, sent_reasoning)
+                reasoning_summary_delta = _snapshot_suffix(
+                    draft.reasoning_summary,
+                    sent_reasoning_summary,
+                )
                 text_delta = _snapshot_suffix(draft.text, sent_text)
                 if reasoning_delta:
                     checkpoint_events.append(
                         RunEventResponse(
                             seq=draft.seq,
                             type="reasoning_delta",
-                            payload={"text": reasoning_delta},
+                            payload={"text": reasoning_delta, "kind": "raw"},
+                            created_at=draft.updated_at,
+                        )
+                    )
+                if reasoning_summary_delta:
+                    checkpoint_events.append(
+                        RunEventResponse(
+                            seq=draft.seq,
+                            type="reasoning_delta",
+                            payload={
+                                "text": reasoning_summary_delta,
+                                "kind": "summary",
+                            },
                             created_at=draft.updated_at,
                         )
                     )
@@ -123,10 +141,12 @@ async def iter_run_events(
                     )
             sent_text = draft.text
             sent_reasoning = draft.reasoning
+            sent_reasoning_summary = draft.reasoning_summary
             checkpoint_baseline_known = True
         elif draft is not None and draft.seq == cursor and not checkpoint_baseline_known:
             sent_text = draft.text
             sent_reasoning = draft.reasoning
+            sent_reasoning_summary = draft.reasoning_summary
             checkpoint_baseline_known = True
 
         merged = {event.seq: [event] for event in streamed}
@@ -140,10 +160,11 @@ async def iter_run_events(
                 if event.seq < cursor:
                     continue
                 cursor = max(cursor, event.seq)
-                sent_text, sent_reasoning = _accumulate_snapshot(
+                sent_text, sent_reasoning, sent_reasoning_summary = _accumulate_snapshot(
                     event,
                     sent_text=sent_text,
                     sent_reasoning=sent_reasoning,
+                    sent_reasoning_summary=sent_reasoning_summary,
                     enabled=checkpoint_baseline_known and event not in checkpoint_events,
                 )
                 yield event
@@ -186,16 +207,20 @@ def _accumulate_snapshot(
     *,
     sent_text: str,
     sent_reasoning: str,
+    sent_reasoning_summary: str,
     enabled: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     if not enabled:
-        return sent_text, sent_reasoning
+        return sent_text, sent_reasoning, sent_reasoning_summary
     text = event.payload.get("text")
     if event.type == "text_delta" and isinstance(text, str):
         sent_text += text
     elif event.type == "reasoning_delta" and isinstance(text, str):
-        sent_reasoning += text
-    return sent_text, sent_reasoning
+        if event.payload.get("kind", "raw") == "summary":
+            sent_reasoning_summary += text
+        else:
+            sent_reasoning += text
+    return sent_text, sent_reasoning, sent_reasoning_summary
 
 
 def _draft_events_after(

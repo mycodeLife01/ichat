@@ -28,6 +28,10 @@ async def ready() -> bool:
     return True
 
 
+async def database_catalog_disabled(_session: AsyncSession) -> bool:
+    return False
+
+
 async def clean_test_data(session: AsyncSession) -> None:
     user_ids = select(User.id).where(User.email.like(f"%@{TEST_EMAIL_DOMAIN}")).scalar_subquery()
     conversation_ids = (
@@ -80,8 +84,13 @@ def run_queued_publisher(
 async def app(
     session_factory: async_sessionmaker[AsyncSession],
     run_queued_publisher: RecordingRunQueuedPublisher,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[FastAPI]:
     get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.services.model_catalog.service.database_catalog_enabled",
+        database_catalog_disabled,
+    )
     app = create_app(database_ready_check=ready)
 
     async def override_get_session() -> AsyncIterator[AsyncSession]:
@@ -714,6 +723,8 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
                 "provider": "deepseek",
                 "label": "deepseek-v4-flash",
                 "thinking_levels": ["low", "high", "max"],
+                "reasoning_outputs": ["raw"],
+                "supports_reasoning_summary": False,
                 "supports_image_input": False,
                 "default": True,
             },
@@ -722,6 +733,8 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
                 "provider": "deepseek",
                 "label": "deepseek-v4-pro",
                 "thinking_levels": ["high", "max"],
+                "reasoning_outputs": ["raw"],
+                "supports_reasoning_summary": False,
                 "supports_image_input": False,
                 "default": False,
             },
@@ -753,6 +766,8 @@ async def test_capabilities_lists_openai_models_when_configured(
         "provider": "openai",
         "label": "gpt-5.6-luna",
         "thinking_levels": ["low", "medium", "high", "xhigh", "max"],
+        "reasoning_outputs": [],
+        "supports_reasoning_summary": False,
         "supports_image_input": True,
         "default": False,
     }

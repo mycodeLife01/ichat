@@ -22,6 +22,7 @@ from app.agent.messages import (
     DocumentBlock,
     ImageBlock,
     Message,
+    ProviderContinuationBlock,
     ToolCallBlock,
     ToolResultBlock,
     system_text,
@@ -110,6 +111,8 @@ def _block_text(block: ContentBlock) -> str:
         return json.dumps(block.arguments, ensure_ascii=False)
     if isinstance(block, ToolResultBlock):
         return block.content
+    if isinstance(block, ProviderContinuationBlock):
+        return json.dumps(block.payload, ensure_ascii=False, separators=(",", ":"))
     if isinstance(block, AttachmentNoticeBlock):
         return "\n".join((block.filename, block.media_type, block.notice))
     if isinstance(block, ImageBlock):

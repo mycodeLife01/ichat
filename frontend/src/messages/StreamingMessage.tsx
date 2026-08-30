@@ -20,15 +20,20 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // answer text; otherwise the message briefly collapses to an empty Markdown
   // node and flashes at the bottom of the scroll container.
   const thinking = isStreaming && draftText.trim() === "";
-  const hasReasoning = (run?.draftReasoning ?? "").trim() !== "";
+  const reasoningSummary = run?.draftReasoningSummary ?? "";
+  const rawReasoning = run?.draftReasoning ?? "";
+  const showingSummary = reasoningSummary.trim() !== "";
+  const displayedReasoning = showingSummary ? reasoningSummary : rawReasoning;
+  const hasReasoning = displayedReasoning.trim() !== "";
 
   // Header ownership: a running web_search always owns the label (正在搜索…).
-  // Once the call finishes, its result label (已找到 n 个来源) only holds until
-  // reasoning text exists — reasoning streamed around tool calls would
-  // otherwise stay hidden behind a stale tool label for the whole phase.
+  // Once the call finishes, its result label (已找到 n 个来源) only yields to a
+  // user-facing summary preview. Raw reasoning stays behind the generic/tool
+  // status and is never promoted into the label.
   const toolState = run?.toolState;
   const toolLabel = toolState ? labelForToolState(toolState) : undefined;
-  const hasReasoningPreview = reasoningPreview(run?.draftReasoning ?? "") !== "";
+  const hasReasoningPreview =
+    showingSummary && reasoningPreview(displayedReasoning) !== "";
   const label =
     toolState?.status === "running" || !hasReasoningPreview ? toolLabel : undefined;
   // Once visible answer text arrives, keep the reasoning surface mounted and
@@ -41,10 +46,10 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
       <div className={assistantContentColumn}>
         {showThinking && (
           <ThinkingBlock
-            content={run?.draftReasoning ?? ""}
+            content={displayedReasoning}
             streaming={thinking}
-            showStreamingPreview={run?.providerName !== "deepseek"}
-            autoExpandWhileStreaming={run?.providerName === "deepseek"}
+            showStreamingPreview={showingSummary}
+            autoExpandWhileStreaming={!showingSummary && hasReasoning}
             label={label}
           />
         )}
