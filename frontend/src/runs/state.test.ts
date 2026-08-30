@@ -10,6 +10,7 @@ const started: ActiveRunState = {
   draftText: "",
   draftReasoning: "",
   draftReasoningSummary: "",
+  streamPhase: "waiting",
   toolState: null,
   status: "started",
   cancelRequested: false,
@@ -50,6 +51,47 @@ describe("activeRunReducer", () => {
     expect(b?.draftText).toBe("Hello");
     expect(b?.latestSeq).toBe(4);
     expect(b?.status).toBe("streaming");
+  });
+
+  it("tracks reasoning, text, tool, and resumed reasoning as distinct stream phases", () => {
+    const reasoning = activeRunReducer(started, {
+      type: "run/reasoningDelta",
+      seq: 1,
+      text: "先分析",
+      kind: "summary",
+    });
+    expect(reasoning?.streamPhase).toBe("reasoning");
+
+    const text = activeRunReducer(reasoning, {
+      type: "run/textDelta",
+      seq: 2,
+      text: "先搜索一下。",
+    });
+    expect(text?.streamPhase).toBe("text");
+
+    const tool = activeRunReducer(text, {
+      type: "run/toolState",
+      seq: 3,
+      toolState: {
+        status: "running",
+        tool_name: "web_search",
+        query: "奥数图论题",
+        message: null,
+        result_count: null,
+        sources: [],
+      },
+    });
+    expect(tool?.streamPhase).toBe("tool");
+    expect(tool?.toolState?.status).toBe("running");
+
+    const resumedReasoning = activeRunReducer(tool, {
+      type: "run/reasoningDelta",
+      seq: 4,
+      text: "继续分析",
+      kind: "summary",
+    });
+    expect(resumedReasoning?.streamPhase).toBe("reasoning");
+    expect(resumedReasoning?.toolState).toBeNull();
   });
 
   it("keeps reasoning but clears tool state when the formal answer starts", () => {
@@ -146,6 +188,7 @@ describe("activeRunReducer", () => {
       draftText: "Hel",
       draftReasoning: "想",
       draftReasoningSummary: "摘要",
+      streamPhase: "text",
       toolState: null,
       status: "streaming",
       cancelRequested: false,
@@ -163,6 +206,52 @@ describe("activeRunReducer", () => {
       status: "streaming",
     });
     expect(next?.draftReasoning).toBe("想");
+  });
+
+  it("restores a running tool even after intermediate text", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: "100",
+      conversationId: "10",
+      latestSeq: 5,
+      draftText: "先搜索一下。",
+      draftReasoning: "先分析",
+      toolState: {
+        status: "running",
+        tool_name: "web_search",
+        query: "奥数图论题",
+        message: null,
+        result_count: null,
+        sources: [],
+      },
+      status: "streaming",
+    });
+
+    expect(next?.streamPhase).toBe("tool");
+    expect(next?.toolState?.status).toBe("running");
+  });
+
+  it("does not restore a completed tool over visible text without a current phase", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: "100",
+      conversationId: "10",
+      latestSeq: 5,
+      draftText: "部分正文",
+      draftReasoning: "先分析",
+      toolState: {
+        status: "succeeded",
+        tool_name: "web_search",
+        query: "奥数图论题",
+        message: null,
+        result_count: 3,
+        sources: [],
+      },
+      status: "streaming",
+    });
+
+    expect(next?.streamPhase).toBe("text");
+    expect(next?.toolState).toBeNull();
   });
 
   it("marks cancelRequested when restoring a cancelling run", () => {

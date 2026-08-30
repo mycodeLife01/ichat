@@ -120,12 +120,12 @@ describe("ThinkingBlock", () => {
   it("stays expanded when streaming turns false", async () => {
     const user = userEvent.setup();
     const { container, rerender } = render(
-      <ThinkingBlock content="想法" streaming={true} />,
+      <ThinkingBlock content="**想法**" streaming={true} />,
     );
     await user.click(screen.getByRole("button", { name: /想法/ }));
     expect(container.querySelector(".thinking")?.className).not.toContain("collapsed");
 
-    rerender(<ThinkingBlock content="想法" streaming={false} />);
+    rerender(<ThinkingBlock content="**想法**" streaming={false} />);
     expect(container.querySelector(".thinking")?.className).not.toContain("collapsed");
   });
 

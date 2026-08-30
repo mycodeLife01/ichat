@@ -96,6 +96,9 @@ function runState(
     status,
     cancelRequested: status === "cancelling",
     ...overrides,
+    streamPhase:
+      overrides.streamPhase ??
+      ((overrides.draftText ?? draftText).trim() ? "text" : "waiting"),
   };
 }
 

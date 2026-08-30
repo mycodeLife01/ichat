@@ -19,7 +19,11 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // the formal answer. Keep the thinking block mounted until there is visible
   // answer text; otherwise the message briefly collapses to an empty Markdown
   // node and flashes at the bottom of the scroll container.
-  const thinking = isStreaming && draftText.trim() === "";
+  // Cumulative text cannot describe the current model activity: one Run may
+  // emit intermediate text, call a tool, and then resume reasoning. Follow the
+  // latest SSE-driven phase instead, while preserving the leading-whitespace
+  // handoff behavior in the reducer.
+  const thinking = isStreaming && (run === null || run.streamPhase !== "text");
   const reasoningSummary = run?.draftReasoningSummary ?? "";
   const rawReasoning = run?.draftReasoning ?? "";
   const showingSummary = reasoningSummary.trim() !== "";
@@ -30,7 +34,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
   // Once the call finishes, its result label (已找到 n 个来源) only yields to a
   // user-facing summary preview. Raw reasoning stays behind the generic/tool
   // status and is never promoted into the label.
-  const toolState = run?.toolState;
+  const toolState = run?.streamPhase === "tool" ? run.toolState : null;
   const toolLabel = toolState ? labelForToolState(toolState) : undefined;
   const hasReasoningPreview =
     showingSummary && reasoningPreview(displayedReasoning) !== "";
@@ -49,7 +53,9 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
             content={displayedReasoning}
             streaming={thinking}
             showStreamingPreview={showingSummary}
-            autoExpandWhileStreaming={!showingSummary && hasReasoning}
+            autoExpandWhileStreaming={
+              !showingSummary && hasReasoning && run?.streamPhase !== "tool"
+            }
             label={label}
           />
         )}

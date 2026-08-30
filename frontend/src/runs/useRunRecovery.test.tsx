@@ -95,6 +95,7 @@ describe("useRunRecovery", () => {
       draftText: runStateResponse.draft_text,
       draftReasoning: "想",
       draftReasoningSummary: "摘要",
+      streamPhase: "text",
       toolState: null,
       status: "streaming",
       cancelRequested: false,

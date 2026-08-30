@@ -1,6 +1,8 @@
 import type { RunStatus, RunToolState } from "../api/types";
 import type { AppAction } from "../app/store";
 
+export type RunStreamPhase = "waiting" | "reasoning" | "text" | "tool";
+
 // AbortController is intentionally NOT stored in the reducer (not serializable).
 // useRunStream registers its abort via streamAbort; only serializable state lives here.
 export type ActiveRunState = {
@@ -11,6 +13,7 @@ export type ActiveRunState = {
   draftText: string;
   draftReasoning: string;
   draftReasoningSummary: string;
+  streamPhase: RunStreamPhase;
   toolState: RunToolState | null;
   status: RunStatus;
   cancelRequested: boolean;
@@ -64,6 +67,7 @@ export function activeRunReducer(
         draftText: "",
         draftReasoning: "",
         draftReasoningSummary: "",
+        streamPhase: "waiting",
         toolState: null,
         status: "started",
         cancelRequested: false,
@@ -80,26 +84,37 @@ export function activeRunReducer(
           action.kind === "summary"
             ? state.draftReasoningSummary + action.text
             : state.draftReasoningSummary,
+        streamPhase: "reasoning",
+        toolState: null,
         latestSeq: action.seq,
         // Deltas keep arriving while a cancel is in flight; don't let them
         // flip "cancelling" back to "streaming" (re-enabling the stop button).
         status: state.status === "cancelling" ? state.status : "streaming",
       };
-    case "run/textDelta":
+    case "run/textDelta": {
       if (state === null) return state;
+      // A provider can emit a leading newline at the reasoning → answer
+      // boundary. It is not a visible phase change until actual answer text
+      // arrives, so keep the current activity and tool label for whitespace.
+      const hasVisibleText = action.text.trim() !== "";
       return {
         ...state,
         draftText: state.draftText + action.text,
-        toolState: null,
+        streamPhase: hasVisibleText ? "text" : state.streamPhase,
+        toolState: hasVisibleText ? null : state.toolState,
         latestSeq: action.seq,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
+    }
     case "run/toolState":
       if (state === null) return state;
       return {
         ...state,
         latestSeq: action.seq,
-        toolState: state.draftText === "" ? (action.toolState ?? null) : null,
+        streamPhase: "tool",
+        // Tool calls may happen after an intermediate text segment. Preserve
+        // the current call instead of treating any prior text as final output.
+        toolState: action.toolState,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
     case "run/terminal":
@@ -110,11 +125,28 @@ export function activeRunReducer(
         status: action.status,
       };
     case "run/restored": {
+      const restoredToolState = action.toolState ?? null;
+      const hasVisibleText = action.draftText.trim() !== "";
       const keepToolState =
-        action.draftText === "" &&
         action.status !== "succeeded" &&
         action.status !== "failed" &&
-        action.status !== "cancelled";
+        action.status !== "cancelled" &&
+        restoredToolState !== null &&
+        // The state endpoint does not yet expose the latest delta kind. A
+        // running call is authoritative even after intermediate text; a
+        // completed call is only current when no visible answer has followed.
+        (restoredToolState.status === "running" || !hasVisibleText);
+      let streamPhase: RunStreamPhase = "waiting";
+      if (keepToolState) {
+        streamPhase = "tool";
+      } else if (hasVisibleText) {
+        streamPhase = "text";
+      } else if (
+        action.draftReasoning.trim() !== "" ||
+        (action.draftReasoningSummary ?? "").trim() !== ""
+      ) {
+        streamPhase = "reasoning";
+      }
       return {
         runId: action.runId,
         conversationId: action.conversationId,
@@ -123,7 +155,8 @@ export function activeRunReducer(
         draftText: action.draftText,
         draftReasoning: action.draftReasoning,
         draftReasoningSummary: action.draftReasoningSummary ?? "",
-        toolState: keepToolState ? (action.toolState ?? null) : null,
+        streamPhase,
+        toolState: keepToolState ? restoredToolState : null,
         status: action.status,
         cancelRequested: action.status === "cancelling",
       };

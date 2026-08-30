@@ -29,9 +29,27 @@ describe("reasoningPreview", () => {
     expect(reasoningPreview("## 分析问题\n\n正在拆解")).toBe("分析问题");
   });
 
-  it("falls back to the latest non-empty line without headlines", () => {
-    expect(reasoningPreview("第一行\n\n第二行\n")).toBe("第二行");
-    expect(reasoningPreview("- 检查 `edge case`")).toBe("检查 edge case");
+  it("does not promote numbered summary sections or their streaming prefixes", () => {
+    const content =
+      'The question is: "为什么宋朝会灭亡"\n\n' +
+      "### 1. **军事体制的根本缺陷**\n\n分析内容。\n\n" +
+      "### 2.";
+
+    expect(reasoningPreview(content)).toBe("");
+    expect(reasoningPreview("### 1. **军事体制的根本缺陷**")).toBe("");
+  });
+
+  it("keeps a dedicated headline above later numbered summary sections", () => {
+    const content =
+      "**Analyzing the causes**\n\nChecking the context.\n\n" +
+      "### 1. **军事体制的根本缺陷**";
+
+    expect(reasoningPreview(content)).toBe("Analyzing the causes");
+  });
+
+  it("does not promote summary prose to a headline", () => {
+    expect(reasoningPreview("第一行\n\n第二行\n")).toBe("");
+    expect(reasoningPreview("- 检查 `edge case`")).toBe("");
   });
 
   it("returns empty for empty or whitespace content", () => {
