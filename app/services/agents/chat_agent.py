@@ -67,6 +67,9 @@ class ChatAgentOptions:
     image_token_reserve: int = 0
     supports_reasoning: bool | None = None
     supports_image_input: bool | None = None
+    # The project model code injected into the system prompt. Falls back to
+    # ``model`` when unset (environment-mode keys equal the provider model).
+    catalog_model: str | None = None
 
 
 class ChatAgent:
@@ -252,6 +255,7 @@ def build_chat_agent(
         settings=settings,
         web_search_enabled=web_search_enabled,
         now=now or datetime.now(UTC),
+        catalog_model=options.catalog_model or options.model,
     )
     messages = build_context(
         system_prompt=system_prompt,

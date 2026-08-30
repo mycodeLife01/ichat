@@ -112,6 +112,7 @@ async def execute_run(
                     image_token_reserve=model_runtime.image_token_reserve,
                     supports_reasoning=model_runtime.supports_reasoning,
                     supports_image_input=model_runtime.supports_image_input,
+                    catalog_model=model_runtime.catalog_model,
                 ),
                 provider=model_runtime.provider,
                 image_resolver=image_resolver,

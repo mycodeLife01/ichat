@@ -27,6 +27,28 @@ def test_override_replaces_bundled_base_prompt() -> None:
     assert prompt == "Custom base."
 
 
+def test_catalog_model_appends_model_code_block() -> None:
+    prompt = build_system_prompt(
+        settings=_settings("Base."), web_search_enabled=False, now=_NOW, catalog_model="piko-pro"
+    )
+    assert prompt == (
+        "Base.\n\nYour model code is `piko-pro`. If asked which model you are, "
+        "identify yourself with this code instead of an upstream model name."
+    )
+
+
+def test_catalog_model_omitted_when_not_provided() -> None:
+    prompt = build_system_prompt(settings=_settings("Base."), web_search_enabled=False, now=_NOW)
+    assert "model code" not in prompt
+
+
+def test_catalog_model_block_precedes_web_search_block() -> None:
+    prompt = build_system_prompt(
+        settings=_settings("Base."), web_search_enabled=True, now=_NOW, catalog_model="piko-pro"
+    )
+    assert prompt.index("Your model code is `piko-pro`") < prompt.index("Today's date")
+
+
 def test_web_search_appends_date_and_guidance() -> None:
     prompt = build_system_prompt(settings=_settings("Base."), web_search_enabled=True, now=_NOW)
     assert prompt.startswith("Base.\n\n")

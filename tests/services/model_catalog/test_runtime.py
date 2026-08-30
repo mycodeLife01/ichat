@@ -55,3 +55,20 @@ async def test_run_runtime_uses_route_snapshot_but_current_encrypted_credential(
     assert runtime.reasoning_outputs == ()
     assert runtime.supports_image_input is False
     assert runtime.image_token_reserve == 0
+    assert runtime.catalog_model == "deepseek-v4"
+
+
+async def test_run_runtime_legacy_fallback_reports_provider_model_as_catalog_code() -> None:
+    """Environment-mode runs have no snapshot; their catalog key equals the
+    provider model string (see ``legacy_chat_models``)."""
+    run = Run(provider_name="deepseek", provider_model="deepseek-v4-flash")
+    settings = get_settings()
+
+    runtime = await resolve_run_model_runtime(
+        AsyncMock(spec=AsyncSession),
+        run=run,
+        settings=settings,
+        legacy_resolver=lambda name, *, settings: object(),  # type: ignore[arg-type,return-value]
+    )
+
+    assert runtime.catalog_model == "deepseek-v4-flash"
