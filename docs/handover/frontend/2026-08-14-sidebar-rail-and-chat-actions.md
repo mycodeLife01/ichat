@@ -47,7 +47,7 @@
 ### 新增
 
 - `conversations/ThreadActions.tsx`：聊天页浮动操作层。外层 `absolute inset-x-0 top-0` + `pointer-events-none`，每个按钮单独 `pointer-events-auto`，因此浮层不吃正文滚动；按钮用 `bg-bg/85 + backdrop-blur-[2px]` 保证压在正文上仍可读。`hasConversation=false`（空白新对话）时隐藏分享与 three-dot，只保留移动端导航按钮。three-dot 菜单在外部 pointerdown 与 Escape 时关闭，`hasConversation` 变 false 时强制关闭。
-- `conversations/useQuickShare.ts`：`shareApi.list` → 有生效链接取其 token，否则 `create(id, null, hasAttachments ? true : undefined)`；再写剪贴板。失败分三类文案：`创建分享失败` / `复制失败` / 成功 `公开链接已复制到剪贴板`。`navigator.clipboard` 缺失按失败处理，避免「提示已复制但没复制」。
+- `conversations/useQuickShare.ts`：`shareApi.list` → 有生效链接取其 token，否则 `create(id, null, hasAttachments ? true : undefined)`；再写剪贴板。失败分三类文案：`创建分享失败` / `复制失败` / 成功 `公开链接已复制到剪贴板`。当前兼容补丁在首个异步请求前启动基于 `ClipboardItem` 的延迟写入，并在 Clipboard API 缺失时尝试临时选区复制；已确认真实手机失败环境为 iOS 18 Chrome 的局域网 HTTP，不能将该选区路径视为通用移动端兜底。用户选择按生产 HTTPS 范围收尾；补丁、复现证据与上线后复测要求见 `2026-09-05-mobile-quick-share-copy-failure.md`。桌面和移动端均不打开 `ShareDialog`。
 - `conversations/ThreadActions.test.tsx`：桌面/移动两套控件、空白新对话、Escape 关闭。
 
 ### 删除
