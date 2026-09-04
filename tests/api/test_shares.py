@@ -161,6 +161,7 @@ async def seed_completed_turn(
         return {
             "conversation_id": str(conversation.public_id),
             "conversation_db_id": conversation.id,
+            "assistant_message_db_id": assistant_message.id,
         }
 
 
@@ -215,6 +216,60 @@ async def test_create_share_returns_token_and_public_read_serves_snapshot(
     assert "id" not in data
     assert "conversation_id" not in assistant
     assert "created_by" not in data
+
+
+async def test_public_share_maps_reply_quote_to_snapshot_local_source(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-share-quote",
+        email=f"alice-share-quote@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    seeded = await seed_completed_turn(
+        session_factory,
+        user_email=f"alice-share-quote@{TEST_EMAIL_DOMAIN}",
+    )
+    async with session_factory() as session:
+        session.add(
+            Message(
+                conversation_id=seeded["conversation_db_id"],
+                role="user",
+                content="follow-up",
+                reply_quote_source_message_id=seeded["assistant_message_db_id"],
+                reply_quote_excerpt="world",
+                reply_quote_source_anchor_version=1,
+                reply_quote_source_anchor_start=0,
+                reply_quote_source_anchor_end=5,
+                position=3,
+            )
+        )
+        await session.commit()
+
+    created = await _create_share(client, seeded["conversation_id"], headers)
+    public = await client.get(f"/api/v1/share/{created['token']}")
+
+    assert public.status_code == status.HTTP_200_OK
+    messages = public.json()["data"]["messages"]
+    assert messages[2]["reply_quote"] == {
+        "excerpt": "world",
+        "source_message_index": 1,
+        "source_anchor": {"version": 1, "start": 0, "end": 5},
+    }
+    assert set(messages[2]) == {
+        "role",
+        "content",
+        "reasoning",
+        "sources",
+        "attachments",
+        "reply_quote",
+    }
+    assert "source_message_id" not in public.text
+    assert "run_id" not in public.text
+    assert "position" not in public.text
+    assert "user_id" not in public.text
 
 
 async def test_list_shares_returns_only_the_active_link(

@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/errors";
@@ -32,12 +33,131 @@ describe("SharePage", () => {
     expect(await screen.findByText("ask something")).toBeInTheDocument();
     expect(screen.getByText("the answer")).toBeInTheDocument();
     expect(screen.queryByText("let me think")).toBeNull();
-    expect(container.querySelector(".assistant-content > .assistant-markdown")).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".assistant-content > .reply-quote-surface > .assistant-markdown",
+      ),
+    ).not.toBeNull();
     expect(container.querySelector(".thread-inner")).toHaveClass(
       "max-w-[calc(var(--assistant-content-width)+64px)]",
     );
     // The snapshot is read-only — no composer / edit affordances.
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("renders a quote-only shared user turn without exposing a source id", async () => {
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Shared quote",
+        messages: [
+          {
+            role: "user",
+            content: "",
+            sources: [],
+            reply_quote: { excerpt: "frozen excerpt" },
+          },
+        ],
+        created_at: "2026-08-31T10:05:00Z",
+      }),
+    });
+
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+
+    const quote = await screen.findByLabelText("回复引用");
+    expect(quote).toHaveTextContent("frozen excerpt");
+    expect(quote.tagName).toBe("DIV");
+    expect(quote.querySelector("a, button")).toBeNull();
+    expect(container.querySelector(".bg-user-message")).toBeNull();
+    expect(container.textContent).not.toContain("source_message_id");
+  });
+
+  it("reveals a snapshot-local quoted source without exposing a message id", async () => {
+    const user = userEvent.setup();
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Shared quote source",
+        messages: [
+          { role: "assistant", content: "source paragraph", sources: [] },
+          {
+            role: "user",
+            content: "follow-up",
+            sources: [],
+            reply_quote: {
+              excerpt: "source paragraph",
+              source_message_index: 0,
+              source_anchor: { version: 1, start: 0, end: 16 },
+            },
+          },
+        ],
+        created_at: "2026-09-05T10:05:00Z",
+      }),
+    });
+
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+    await user.click(
+      await screen.findByRole("button", { name: "source paragraph" }),
+    );
+
+    const source = container.querySelector<HTMLElement>(
+      '[data-reply-quote-share-index="0"] [data-reply-quote-start="0"]',
+    );
+    expect(source?.style.backgroundColor).toBe("rgba(255, 235, 140, 0.6)");
+    expect(container.innerHTML).not.toContain("source_message_id");
+  });
+
+  it("uses a unique excerpt within the snapshot source for a legacy anchor", async () => {
+    const user = userEvent.setup();
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Legacy shared quote",
+        messages: [
+          { role: "assistant", content: "prefix unique source suffix", sources: [] },
+          {
+            role: "user",
+            content: "follow-up",
+            sources: [],
+            reply_quote: { excerpt: "unique source", source_message_index: 0 },
+          },
+        ],
+        created_at: "2026-09-05T10:05:00Z",
+      }),
+    });
+
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+    await user.click(await screen.findByRole("button", { name: "unique source" }));
+
+    expect(
+      container.querySelector<HTMLElement>('[data-reply-quote-share-index="0"] p')?.style
+        .backgroundColor,
+    ).toBe("rgba(255, 235, 140, 0.6)");
+  });
+
+  it("does not guess a highlighted node for an ambiguous legacy excerpt", async () => {
+    const user = userEvent.setup();
+    const services = servicesWithShare({
+      getPublic: async () => ({
+        title: "Ambiguous legacy quote",
+        messages: [
+          { role: "assistant", content: "repeat\n\nrepeat", sources: [] },
+          {
+            role: "user",
+            content: "follow-up",
+            sources: [],
+            reply_quote: { excerpt: "repeat", source_message_index: 0 },
+          },
+        ],
+        created_at: "2026-09-05T10:05:00Z",
+      }),
+    });
+
+    const { container } = renderWithApp(<App />, services, undefined, ["/share/tok123"]);
+    await user.click(await screen.findByRole("button", { name: "repeat" }));
+
+    for (const paragraph of container.querySelectorAll<HTMLElement>(
+      '[data-reply-quote-share-index="0"] p',
+    )) {
+      expect(paragraph.style.backgroundColor).toBe("");
+    }
   });
 
   it("renders shared tables and external links through the shared Markdown surface", async () => {

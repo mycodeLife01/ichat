@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunEvent
+from app.models.run import Run, RunEvent, RunProviderMessage
 from app.models.user import User
 from app.services.conversations.service import (
     edit_user_message_and_regenerate,
@@ -168,6 +168,60 @@ async def test_edit_user_message_archives_target_and_inserts_new_message_and_run
     assert new_run.user_message_id == new_message.id
     assert new_run.provider_name == "deepseek"
     assert new_run.provider_model == "deepseek-chat"
+
+
+async def test_edit_reply_quote_only_inherits_immutable_snapshot_and_model_input(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "quote-edit")
+        conversation, messages, _runs = await seed_conversation_with_turns(session, user=user)
+        source = messages[1]
+        target = messages[2]
+        target.content = "original prompt"
+        target.reply_quote_source = source
+        target.reply_quote_excerpt = "frozen excerpt"
+        target.reply_quote_source_anchor_version = 1
+        target.reply_quote_source_anchor_start = 11
+        target.reply_quote_source_anchor_end = 29
+        await session.flush()
+
+        result = await edit_user_message_and_regenerate(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            message_public_id=target.public_id,
+            new_content="",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        new_message = await session.scalar(
+            select(Message).where(Message.public_id == result.message.id)
+        )
+        assert new_message is not None
+        transcript = await session.scalar(
+            select(RunProviderMessage).where(RunProviderMessage.message_id == new_message.id)
+        )
+        await session.commit()
+
+    assert result.message.content == ""
+    assert result.message.reply_quote is not None
+    assert result.message.reply_quote.source_message_id == source.public_id
+    assert result.message.reply_quote.excerpt == "frozen excerpt"
+    assert result.message.reply_quote.source_anchor is not None
+    assert result.message.reply_quote.source_anchor.model_dump() == {
+        "version": 1,
+        "start": 11,
+        "end": 29,
+    }
+    assert new_message is not None
+    assert new_message.reply_quote_source_anchor_version == 1
+    assert new_message.reply_quote_source_anchor_start == 11
+    assert new_message.reply_quote_source_anchor_end == 29
+    assert transcript is not None and transcript.blocks is not None
+    assert "frozen excerpt" in transcript.blocks[0]["text"]
+    assert "解释这段引用内容" in transcript.blocks[0]["text"]
+    assert "source_anchor" not in transcript.blocks[0]["text"]
 
 
 async def test_edit_rejects_assistant_message(

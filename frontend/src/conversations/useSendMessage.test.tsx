@@ -109,6 +109,61 @@ describe("useSendMessage", () => {
     );
   });
 
+  it("sends a reply quote without prompt text to an existing conversation", async () => {
+    const start = vi.fn();
+    const sendMessage = vi.fn(async () => ({
+      ...sendMessageResponse,
+      message: {
+        ...sendMessageResponse.message,
+        content: "",
+        reply_quote: { source_message_id: "assistant-1", excerpt: "quoted answer" },
+      },
+    }));
+    const services = createFakeServices({}, { sendMessage });
+    const { result } = renderHook(() => useSendProbe(start), { wrapper: makeWrapper(services) });
+    const replyQuote = { source_message_id: "assistant-1", excerpt: "quoted answer" };
+
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: "55" });
+    });
+    await act(async () => {
+      await result.current.send("", undefined, [], replyQuote);
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "55",
+      "",
+      {
+        thinking_enabled: true,
+        reasoning_effort: "low",
+        web_search_enabled: false,
+      },
+      undefined,
+      replyQuote,
+    );
+  });
+
+  it("rejects a reply quote when no conversation is selected", async () => {
+    const sendMessage = vi.fn(async () => sendMessageResponse);
+    const createWithMessage = vi.fn();
+    const services = createFakeServices({}, { sendMessage, createWithMessage });
+    const { result } = renderHook(() => useSendProbe(vi.fn()), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      expect(
+        await result.current.send("", undefined, [], {
+          source_message_id: "assistant-1",
+          excerpt: "quoted answer",
+        }),
+      ).toBe(false);
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(createWithMessage).not.toHaveBeenCalled();
+  });
+
   it("exposes a pending submission until the send API resolves", async () => {
     const start = vi.fn();
     let resolveSend!: (value: typeof sendMessageResponse) => void;

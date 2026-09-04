@@ -59,6 +59,22 @@ export type MessageMetadata = {
   sources?: MessageSource[];
 };
 
+export type ReplyQuoteSourceAnchor = {
+  version: 1;
+  start: number;
+  end: number;
+};
+
+export type ReplyQuote = {
+  source_message_id: string | null;
+  excerpt: string;
+  source_anchor?: ReplyQuoteSourceAnchor | null;
+};
+
+export type ReplyQuoteDraft = ReplyQuote & {
+  source_message_id: string;
+};
+
 export type MessageResponse = {
   id: string;
   conversation_id: string;
@@ -69,6 +85,7 @@ export type MessageResponse = {
   reasoning_summary?: string | null;
   metadata?: MessageMetadata | null;
   attachments?: FileAttachment[];
+  reply_quote?: ReplyQuote | null;
   position: number;
   created_at: string;
 };
@@ -203,12 +220,19 @@ export type SharedSource = {
   provider?: string | null;
 };
 
+export type SharedReplyQuote = {
+  excerpt: string;
+  source_message_index?: number | null;
+  source_anchor?: ReplyQuoteSourceAnchor | null;
+};
+
 export type SharedMessage = {
   role: MessageRole;
   content: string;
   reasoning?: string | null;
   sources: SharedSource[];
   attachments?: SharedAttachmentPlaceholder[];
+  reply_quote?: SharedReplyQuote | null;
 };
 
 // Anonymous read payload — the frozen snapshot, no internal ids or user.

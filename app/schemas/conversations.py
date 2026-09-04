@@ -47,7 +47,42 @@ class RunOptionsRequest(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=128)
 
 
-class MessageCreateRequest(RunOptionsRequest):
+class ReplyQuoteSourceAnchor(BaseModel):
+    version: Literal[1]
+    start: int = Field(ge=0, le=2_147_483_647)
+    end: int = Field(ge=0, le=2_147_483_647)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def require_ordered_range(self) -> "ReplyQuoteSourceAnchor":
+        if self.end <= self.start:
+            raise ValueError("Reply quote source anchor end must be greater than start")
+        return self
+
+
+class ReplyQuoteRequest(BaseModel):
+    source_message_id: uuid.UUID
+    excerpt: str = Field(min_length=1, max_length=4000)
+    source_anchor: ReplyQuoteSourceAnchor | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("excerpt", mode="before")
+    @classmethod
+    def normalize_excerpt(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+        return value
+
+
+class ReplyQuoteResponse(BaseModel):
+    source_message_id: uuid.UUID | None
+    excerpt: str
+    source_anchor: ReplyQuoteSourceAnchor | None = None
+
+
+class MessageInputRequest(RunOptionsRequest):
     content: str = Field(default="", max_length=20000)
     attachment_ids: list[uuid.UUID] | None = Field(default=None, max_length=5)
 
@@ -60,15 +95,23 @@ class MessageCreateRequest(RunOptionsRequest):
             raise ValueError("Attachment IDs must be unique")
         return value
 
+
+class MessageCreateRequest(MessageInputRequest):
+    reply_quote: ReplyQuoteRequest | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
     @model_validator(mode="after")
-    def require_text_or_attachment(self) -> "MessageCreateRequest":
-        if not self.content.strip() and not self.attachment_ids:
-            raise ValueError("Enter a message or attach a readable file")
+    def require_input(self) -> "MessageCreateRequest":
+        if not self.content.strip() and not self.attachment_ids and self.reply_quote is None:
+            raise ValueError("Enter a message, attach a readable file, or quote a reply")
         return self
 
 
-class ConversationCreateWithMessageRequest(MessageCreateRequest):
+class ConversationCreateWithMessageRequest(MessageInputRequest):
     title: str | None = Field(default=None, max_length=255)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("title", mode="before")
     @classmethod
@@ -77,6 +120,16 @@ class ConversationCreateWithMessageRequest(MessageCreateRequest):
             normalized = value.strip()
             return normalized or None
         return value
+
+    @model_validator(mode="after")
+    def require_input(self) -> "ConversationCreateWithMessageRequest":
+        if not self.content.strip() and not self.attachment_ids:
+            raise ValueError("Enter a message or attach a readable file")
+        return self
+
+
+class MessageEditAndRegenerateRequest(MessageInputRequest):
+    model_config = ConfigDict(extra="forbid")
 
 
 class ConversationResponse(BaseModel):
@@ -103,6 +156,7 @@ class MessageResponse(BaseModel):
     position: int
     created_at: datetime
     attachments: list[MessageAttachmentResponse] = Field(default_factory=list)
+    reply_quote: ReplyQuoteResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -12,6 +12,7 @@ from app.schemas.conversations import (
     ConversationRenameRequest,
     ConversationResponse,
     MessageCreateRequest,
+    MessageEditAndRegenerateRequest,
     MessageResponse,
     RunResponse,
     SendMessageResponse,
@@ -55,6 +56,96 @@ def test_message_create_request_accepts_attachment_only() -> None:
     assert request.attachment_ids == [attachment_id]
 
 
+def test_message_create_request_accepts_reply_quote_only_and_normalizes_excerpt() -> None:
+    source_id = uuid4()
+
+    request = MessageCreateRequest(
+        content="",
+        reply_quote={
+            "source_message_id": source_id,
+            "excerpt": "  first\r\n  second  ",
+            "source_anchor": {"version": 1, "start": 3, "end": 27},
+        },
+    )
+
+    assert request.reply_quote is not None
+    assert request.reply_quote.source_message_id == source_id
+    assert request.reply_quote.excerpt == "first\n  second"
+    assert request.reply_quote.source_anchor is not None
+    assert request.reply_quote.source_anchor.model_dump() == {
+        "version": 1,
+        "start": 3,
+        "end": 27,
+    }
+
+
+@pytest.mark.parametrize(
+    "source_anchor",
+    [
+        {"version": 2, "start": 3, "end": 27},
+        {"version": 1, "start": -1, "end": 27},
+        {"version": 1, "start": 27, "end": 27},
+        {"version": 1, "start": 28, "end": 27},
+        {"version": 1, "start": 3, "end": 27, "unexpected": True},
+    ],
+)
+def test_message_create_request_rejects_invalid_reply_quote_anchor(
+    source_anchor: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        MessageCreateRequest(
+            content="question",
+            reply_quote={
+                "source_message_id": uuid4(),
+                "excerpt": "quoted",
+                "source_anchor": source_anchor,
+            },
+        )
+
+
+def test_message_create_request_keeps_legacy_reply_quote_without_anchor() -> None:
+    request = MessageCreateRequest(
+        content="question",
+        reply_quote={"source_message_id": uuid4(), "excerpt": "quoted"},
+    )
+
+    assert request.reply_quote is not None
+    assert request.reply_quote.source_anchor is None
+
+
+@pytest.mark.parametrize("excerpt", ["   ", "x" * 4001])
+def test_message_create_request_rejects_invalid_reply_quote_excerpt(excerpt: str) -> None:
+    with pytest.raises(ValidationError):
+        MessageCreateRequest(
+            content="",
+            reply_quote={"source_message_id": uuid4(), "excerpt": excerpt},
+        )
+
+
+def test_message_create_request_rejects_reply_quote_without_source() -> None:
+    with pytest.raises(ValidationError):
+        MessageCreateRequest(content="", reply_quote={"excerpt": "quoted"})
+
+
+def test_new_conversation_request_rejects_reply_quote() -> None:
+    with pytest.raises(ValidationError):
+        ConversationCreateWithMessageRequest(
+            content="hello",
+            reply_quote={"source_message_id": uuid4(), "excerpt": "quoted"},
+        )
+
+
+def test_edit_request_allows_empty_content_and_rejects_reply_quote() -> None:
+    request = MessageEditAndRegenerateRequest(content="")
+    assert request.content == ""
+
+    with pytest.raises(ValidationError):
+        MessageEditAndRegenerateRequest(
+            content="",
+            reply_quote={"source_message_id": uuid4(), "excerpt": "quoted"},
+        )
+
+
 def test_conversation_create_with_message_request_normalizes_fields() -> None:
     request = ConversationCreateWithMessageRequest(
         title="  Project chat  ",
@@ -96,6 +187,30 @@ def test_conversation_detail_response_contains_visible_messages() -> None:
     assert detail.id == conversation_id
     assert detail.activated_at == now
     assert detail.messages == [message]
+
+
+def test_message_response_preserves_reply_quote_when_source_is_missing() -> None:
+    now = datetime.now(UTC)
+    response = MessageResponse(
+        id=uuid4(),
+        conversation_id=uuid4(),
+        run_id=None,
+        role="user",
+        content="",
+        reply_quote={
+            "source_message_id": None,
+            "excerpt": "quoted",
+            "source_anchor": {"version": 1, "start": 10, "end": 20},
+        },
+        position=3,
+        created_at=now,
+    )
+
+    assert response.reply_quote is not None
+    assert response.reply_quote.source_message_id is None
+    assert response.reply_quote.excerpt == "quoted"
+    assert response.reply_quote.source_anchor is not None
+    assert response.reply_quote.source_anchor.start == 10
 
 
 def test_conversation_response_allows_null_activated_at() -> None:

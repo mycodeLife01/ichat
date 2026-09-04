@@ -19,6 +19,10 @@
 核心原则：
 - **快照在创建时冻结**（JSONB）：分享后续的编辑/新增消息**不会**泄露给持链人；快照取「未归档、按 position 排序」的消息（与 `get_conversation_detail` 同一查询），天然抗后续编辑（编辑会 archive 旧消息，不动快照）。
 - **快照只含** `title` + 每条消息 `role`/`content`/`reasoning`/`sources`，**不含**内部 ID、run id、position、时间戳、user 身份。
+- 2026-09-05 回复引用来源跳转扩展了展示字段：user message 可额外携带
+  `{excerpt, source_message_index, source_anchor}`。`source_message_index` 只指向同一公开
+  `messages` 数组中更早的 assistant，不是数据库 position 或消息 ID；匿名响应仍不暴露任何
+  live/public/internal message id，既有 immutable snapshot 不回填。
 - **公开读接口是系统中唯一绕过 `user_id` 校验的路径**，严格只读、只回 `snapshot`。
 - **每个会话同时只能有一个有效（未撤销、未过期）分享链接**（覆盖原 spec D6 的「多份」）：已存在有效链接时再次创建返回 **409**，需先撤销。撤销/过期的行**保留在表中仅供审计**，但对所有者列表与前端**不可见**。
 

@@ -4,9 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { iconControl } from "../../ui/classes";
 import { Icons } from "../../ui/icons";
 import { copyText } from "./copyText";
+import { replyQuoteAnchorProps, type MarkdownNode } from "./replyQuoteAnchorProps";
 import { tableToTsv } from "./tableTsv";
 
-export function TableBlock({ children }: ComponentPropsWithoutRef<"table">) {
+type TableBlockProps = ComponentPropsWithoutRef<"table"> & {
+  node?: MarkdownNode;
+};
+
+export function TableBlock({ children, node, ...props }: TableBlockProps) {
   const tableRef = useRef<HTMLTableElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyAttempt = useRef(0);
@@ -40,6 +45,7 @@ export function TableBlock({ children }: ComponentPropsWithoutRef<"table">) {
 
   return (
     <div
+      {...replyQuoteAnchorProps(node, props)}
       className="table-block table-block-viewport"
       data-table-block
       data-table-viewport
@@ -48,7 +54,7 @@ export function TableBlock({ children }: ComponentPropsWithoutRef<"table">) {
       tabIndex={0}
     >
       <div className="table-block-inner">
-        <div className="table-block-header">
+        <div className="table-block-header" data-reply-quote-exclude>
           <button
             className={`${iconControl} h-7 w-7 p-1`}
             type="button"

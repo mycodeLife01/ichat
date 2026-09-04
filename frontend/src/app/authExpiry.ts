@@ -2,6 +2,7 @@ import type { Dispatch } from "react";
 
 import type { AppAction } from "./store";
 import { attachmentDraftStore } from "../files/draftStore";
+import { replyQuoteDraftStore } from "../conversations/replyQuoteDraftStore";
 
 export type AuthExpiryDeps = {
   dispatch: Dispatch<AppAction>;
@@ -14,6 +15,7 @@ export function createAuthExpiryHandler(deps: AuthExpiryDeps): () => void {
   return () => {
     deps.abort();
     attachmentDraftStore.clearAll();
+    replyQuoteDraftStore.clearAll();
     deps.dispatch({ type: "app/reset" });
   };
 }

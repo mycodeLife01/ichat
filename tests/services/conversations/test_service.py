@@ -6,12 +6,14 @@ from uuid import uuid4
 import pytest
 from fastapi import status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
-from app.models.run import Run
+from app.models.run import Run, RunProviderMessage
 from app.models.user import User
+from app.schemas.conversations import ReplyQuoteRequest
 from app.services.conversations.service import (
     create_conversation,
     delete_conversation,
@@ -282,6 +284,187 @@ async def test_submit_user_message_creates_message_and_queued_run(
     assert stored_message.run_id == stored_run.id
     assert stored_run.public_id == result.run.id
     assert stored_message.public_id == result.message.id
+
+
+async def test_submit_reply_quote_only_persists_snapshot_and_model_input(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "reply-quote")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
+        session.add(
+            Message(
+                conversation_id=conversation.id,
+                role="user",
+                content="first question",
+                position=1,
+            )
+        )
+        source = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="first answer",
+            position=2,
+        )
+        session.add(source)
+        await session.flush()
+
+        result = await submit_user_message(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            content="",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+            reply_quote=ReplyQuoteRequest(
+                source_message_id=source.public_id,
+                excerpt="  selected\r\n  passage  ",
+                source_anchor={"version": 1, "start": 7, "end": 21},
+            ),
+        )
+        transcript = await session.scalar(
+            select(RunProviderMessage)
+            .join(Message, Message.id == RunProviderMessage.message_id)
+            .where(Message.public_id == result.message.id)
+        )
+        stored_message = await session.scalar(
+            select(Message).where(Message.public_id == result.message.id)
+        )
+        await session.commit()
+
+    assert result.message.content == ""
+    assert result.message.reply_quote is not None
+    assert result.message.reply_quote.source_message_id == source.public_id
+    assert result.message.reply_quote.excerpt == "selected\n  passage"
+    assert result.message.reply_quote.source_anchor is not None
+    assert result.message.reply_quote.source_anchor.model_dump() == {
+        "version": 1,
+        "start": 7,
+        "end": 21,
+    }
+    assert stored_message is not None
+    assert stored_message.reply_quote_source_anchor_version == 1
+    assert stored_message.reply_quote_source_anchor_start == 7
+    assert stored_message.reply_quote_source_anchor_end == 21
+    assert transcript is not None and transcript.blocks is not None
+    model_text = transcript.blocks[0]["text"]
+    assert "selected\\n  passage" in model_text
+    assert "解释这段引用内容" in model_text
+    assert "untrusted user-controlled context" in model_text
+    assert "source_anchor" not in model_text
+    assert '"start":7' not in model_text
+
+
+async def test_submit_reply_quote_rejects_non_assistant_source_without_disclosure(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "quote-invalid")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
+        source = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="not an assistant reply",
+            position=1,
+        )
+        session.add(source)
+        await session.flush()
+
+        with pytest.raises(AppError) as exc_info:
+            await submit_user_message(
+                session,
+                user=user,
+                conversation_public_id=conversation.public_id,
+                content="question",
+                provider_name="deepseek",
+                provider_model="deepseek-chat",
+                reply_quote=ReplyQuoteRequest(
+                    source_message_id=source.public_id,
+                    excerpt="selected",
+                ),
+            )
+
+    assert exc_info.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert exc_info.value.code == "REPLY_QUOTE_SOURCE_INVALID"
+    assert exc_info.value.detail == "The quoted reply is unavailable"
+
+
+async def test_reply_quote_keeps_excerpt_and_anchor_after_source_is_deleted(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "quote-del")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
+        source = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="source answer",
+            position=1,
+        )
+        quoted = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="follow-up",
+            reply_quote_source=source,
+            reply_quote_excerpt="source",
+            reply_quote_source_anchor_version=1,
+            reply_quote_source_anchor_start=0,
+            reply_quote_source_anchor_end=13,
+            position=2,
+        )
+        session.add_all([source, quoted])
+        await session.commit()
+        source_id = source.id
+        user_id = user.id
+        conversation_public_id = conversation.public_id
+
+    async with session_factory() as session:
+        await session.execute(delete(Message).where(Message.id == source_id))
+        await session.commit()
+        reloaded_user = await session.get(User, user_id)
+        assert reloaded_user is not None
+        detail = await get_conversation_detail(
+            session,
+            user=reloaded_user,
+            conversation_public_id=conversation_public_id,
+        )
+
+    assert len(detail.messages) == 1
+    reply_quote = detail.messages[0].reply_quote
+    assert reply_quote is not None
+    assert reply_quote.source_message_id is None
+    assert reply_quote.excerpt == "source"
+    assert reply_quote.source_anchor is not None
+    assert reply_quote.source_anchor.model_dump() == {"version": 1, "start": 0, "end": 13}
+
+
+async def test_reply_quote_anchor_constraint_rejects_partial_tuple(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "quote-half")
+        conversation = Conversation(user_id=user.id, title="Project chat")
+        session.add(conversation)
+        await session.flush()
+        session.add(
+            Message(
+                conversation_id=conversation.id,
+                role="user",
+                content="follow-up",
+                reply_quote_excerpt="source",
+                reply_quote_source_anchor_version=1,
+                position=1,
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            await session.flush()
 
 
 async def test_submit_user_message_persists_provider_options_on_run(

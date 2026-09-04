@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { MessageResponse, MessageSource } from "../api/types";
+import type { MessageResponse, MessageSource, ReplyQuote as ReplyQuoteData } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
 import type { FileReadRole } from "../files/types";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -17,6 +17,7 @@ import { Icons } from "../ui/icons";
 import { Markdown } from "./Markdown";
 import { MessageAction } from "./MessageAction";
 import { MessageAttachments } from "./MessageAttachments";
+import { ReplyQuote } from "./ReplyQuote";
 import { SourceFavicon } from "./SourcesPanel";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -44,6 +45,7 @@ type MessageProps = {
   pending?: boolean;
   // Opens the sources side panel (AppShell owns the panel state).
   onShowSources?: (sources: MessageSource[]) => void;
+  onRevealReplyQuote?: (replyQuote: ReplyQuoteData) => void;
 };
 
 function copy(text: string) {
@@ -72,6 +74,7 @@ export function Message({
   onLocalImagePreviewConsumed,
   pending = false,
   onShowSources,
+  onRevealReplyQuote,
 }: MessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -150,12 +153,15 @@ export function Message({
   const mutateLabel = isUser ? "编辑并重发" : "重新生成";
   const MutateIcon = isUser ? Icons.Pencil : Icons.Refresh;
   const messageAttachments = message.attachments ?? [];
-  const hasMessageModelInput = messageAttachments.some(
-    (attachment) => attachment.model_input_kind !== null,
-  );
+  const hasMessageModelInput =
+    message.reply_quote != null ||
+    messageAttachments.some((attachment) => attachment.model_input_kind !== null);
+  const hasVisibleContent = message.content.trim() !== "";
+  const copySource =
+    hasVisibleContent ? message.content : (message.reply_quote?.excerpt ?? "");
   // Copy shows a transient check (已复制) before reverting to the copy icon.
   const handleCopy = () => {
-    copy(message.content);
+    copy(copySource);
     setCopied(true);
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), 1500);
@@ -169,7 +175,7 @@ export function Message({
         className={`${neutralMenuItem} ${mobileActionItem}`}
         data-variant="neutral"
         onClick={() => {
-          copy(message.content);
+          copy(copySource);
           afterAction();
         }}
       >
@@ -298,6 +304,11 @@ export function Message({
               ))}
             </div>
           )}
+          {message.reply_quote && (
+            <div className="mx-2 mt-2 flex justify-end">
+              <ReplyQuote excerpt={message.reply_quote.excerpt} variant="message" />
+            </div>
+          )}
           <div className="m-2 max-h-[25dvh] overflow-y-auto">
             <textarea
               autoFocus
@@ -385,7 +396,20 @@ export function Message({
               align="end"
             />
           )}
-          {message.content !== "" && (
+          {message.reply_quote && (
+            <div className="flex w-full justify-end">
+              <ReplyQuote
+                excerpt={message.reply_quote.excerpt}
+                variant="message"
+                onReveal={
+                  message.reply_quote.source_message_id && onRevealReplyQuote
+                    ? () => onRevealReplyQuote(message.reply_quote!)
+                    : undefined
+                }
+              />
+            </div>
+          )}
+          {hasVisibleContent && (
             <div
               className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}${
                 isMobile ? " select-none [-webkit-touch-callout:none]" : ""
@@ -447,7 +471,14 @@ export function Message({
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}
-        <Markdown content={message.content} sources={message.metadata?.sources} isMobile={isMobile} />
+        <div data-reply-quote-message-id={message.id} className="reply-quote-surface">
+          <Markdown
+            content={message.content}
+            sources={message.metadata?.sources}
+            isMobile={isMobile}
+            replyQuoteAnchors
+          />
+        </div>
         {messageAttachments.length > 0 && (
           <MessageAttachments
             attachments={messageAttachments}

@@ -44,6 +44,15 @@
   --color-text-muted: #6b6a66;
   --color-text-faint: #b8b6b0;
 
+  /* Reply quote surfaces track the live reference independently from generic
+     muted text and popovers so matching them cannot recolor other controls. */
+  --color-reply-quote-action-foreground: #0d0d0d;
+  --color-reply-quote-action-hover: #f9f9f9;
+  --color-reply-quote-message: #8f8f8f;
+  --color-reply-quote-message-hover: #0d0d0d;
+  --color-reply-quote-composer: #5d5d5d;
+  --color-reply-quote-region: #f9f9f9;
+
   /* ChatGPT light-mode message surfaces sampled from the live app in Chrome. */
   --color-user-message: #e8f3fe;
   --color-user-message-foreground: #0c274a;
@@ -112,6 +121,8 @@
   --color-overlay: rgba(20, 20, 19, 0.45);
   --color-focus-ring: #2563eb;
   --shadow-popover: 0 5px 18px rgba(20, 20, 19, 0.14);
+  --shadow-reply-quote-action:
+    0 8px 12px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.62);
   --shadow-dialog: 0 24px 80px rgba(20, 20, 19, 0.22);
   --shadow-composer: 0 4px 16px rgba(20, 20, 19, 0.05);
 
@@ -1074,6 +1085,13 @@ body {
 }
 *:hover {
   scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+}
+
+/* Interactive controls rendered inside Markdown stay outside reply-quote text
+   selection while source code, table cells, formulas, and link labels remain selectable. */
+.reply-quote-surface button,
+.reply-quote-surface [data-reply-quote-exclude] {
+  user-select: none;
 }
 
 /* Horizontal attachment rails remain touch/trackpad scrollable without

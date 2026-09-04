@@ -155,6 +155,191 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
+  it("quotes a final assistant selection and sends it without prompt text", async () => {
+    tokenStore.save(createAuthSession(authTokenResponse));
+    const replyMessage: MessageResponse = {
+      id: "503",
+      conversation_id: conversationResponse.id,
+      run_id: "101",
+      role: "user",
+      content: "",
+      reasoning: null,
+      reply_quote: { source_message_id: "502", excerpt: "Hi!" },
+      position: 3,
+      created_at: "t",
+    };
+    const sendMessage = vi.fn(async () => ({
+      message: replyMessage,
+      run: {
+        id: "101",
+        conversation_id: conversationResponse.id,
+        user_message_id: replyMessage.id,
+        status: "queued" as const,
+        provider_name: "deepseek",
+        provider_model: "deepseek-chat",
+        created_at: "t",
+      },
+    }));
+    const services = createFakeServices(
+      { me: async () => authTokenResponse.user },
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            ...conversationDetailResponse.messages,
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "Hi!",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+          ],
+        }),
+        sendMessage,
+      },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    const answer = await screen.findByText("Hi!");
+    const range = document.createRange();
+    range.selectNodeContents(answer);
+    Object.defineProperty(range, "getClientRects", {
+      value: () => [{ top: 100, right: 150, bottom: 122, left: 110, width: 40, height: 22 }],
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, right: 150, bottom: 122, left: 110, width: 40, height: 22 }),
+    });
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    const action = await screen.findByRole("button", { name: "询问Piko" });
+    fireEvent.pointerDown(action);
+    fireEvent.click(action);
+
+    expect(screen.getByLabelText("回复引用")).toHaveTextContent("Hi!");
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveFocus());
+    const details = screen.getByRole("button", { name: "有关回复内容的详情" });
+    await user.click(details);
+    expect(answer.closest<HTMLElement>("[data-reply-quote-start]")?.style.backgroundColor).toBe(
+      "rgba(255, 235, 140, 0.6)",
+    );
+    expect(details).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        conversationResponse.id,
+        "",
+        expect.any(Object),
+        undefined,
+        {
+          source_message_id: "502",
+          excerpt: "Hi!",
+          source_anchor: { version: 1, start: 0, end: 3 },
+        },
+      ),
+    );
+    expect(await screen.findByRole("button", { name: "Hi!" })).toBeInTheDocument();
+  });
+
+  it("reveals the exact source of a sent reply quote without changing the route", async () => {
+    const services = createFakeServices(
+      { me: async () => authTokenResponse.user },
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            {
+              id: "502",
+              conversation_id: conversationResponse.id,
+              run_id: "100",
+              role: "assistant" as const,
+              content: "source paragraph",
+              reasoning: null,
+              position: 2,
+              created_at: "t",
+            },
+            {
+              id: "503",
+              conversation_id: conversationResponse.id,
+              run_id: "101",
+              role: "user" as const,
+              content: "follow-up",
+              reasoning: null,
+              reply_quote: {
+                source_message_id: "502",
+                excerpt: "source paragraph",
+                source_anchor: { version: 1 as const, start: 0, end: 16 },
+              },
+              position: 3,
+              created_at: "t",
+            },
+          ],
+        }),
+      },
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithApp(<AppShell />, services);
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    const quote = await screen.findByRole("button", { name: "source paragraph" });
+    const route = window.location.href;
+
+    await user.click(quote);
+
+    const source = container.querySelector<HTMLElement>(
+      '[data-reply-quote-message-id="502"] [data-reply-quote-start="0"]',
+    );
+    expect(source?.style.backgroundColor).toBe("rgba(255, 235, 140, 0.6)");
+    expect(document.activeElement).toBe(quote);
+    expect(window.location.href).toBe(route);
+  });
+
+  it("keeps an unavailable sent quote readable and reports the missing source", async () => {
+    const services = createFakeServices(
+      { me: async () => authTokenResponse.user },
+      {
+        list: async () => [conversationResponse],
+        detail: async () => ({
+          ...conversationDetailResponse,
+          messages: [
+            {
+              id: "503",
+              conversation_id: conversationResponse.id,
+              run_id: "101",
+              role: "user" as const,
+              content: "follow-up",
+              reasoning: null,
+              reply_quote: {
+                source_message_id: "missing-source",
+                excerpt: "still readable",
+                source_anchor: { version: 1 as const, start: 0, end: 14 },
+              },
+              position: 3,
+              created_at: "t",
+            },
+          ],
+        }),
+      },
+    );
+    const user = userEvent.setup();
+    renderWithApp(<AppShell />, services);
+    await user.click(await screen.findByText(conversationResponse.title as string));
+    const quote = await screen.findByRole("button", { name: "still readable" });
+
+    await user.click(quote);
+
+    expect(await screen.findByText("The quoted reply is no longer available.")).toBeInTheDocument();
+    expect(quote).toHaveFocus();
+    expect(quote).toHaveTextContent("still readable");
+  });
+
   it("copies a permanent share link from the chat header actions", async () => {
     const create = vi.fn(async () => shareLinkResponse);
     const services = createFakeServices(

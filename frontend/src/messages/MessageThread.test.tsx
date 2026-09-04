@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MessageResponse } from "../api/types";
 import { MessageThread } from "./MessageThread";
@@ -26,6 +26,11 @@ const pendingMessage: MessageResponse = {
   created_at: "2026-06-08T10:00:02Z",
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+  window.getSelection()?.removeAllRanges();
+});
+
 describe("MessageThread", () => {
   it("uses viewport width inside the mobile thread scrollport", () => {
     const { container } = render(<MessageThread messages={messages} />);
@@ -39,6 +44,144 @@ describe("MessageThread", () => {
     render(<MessageThread messages={messages} />);
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
+  });
+
+  it("offers 询问Piko only after a valid selection stays stable for 100ms", async () => {
+    vi.useFakeTimers();
+    const onReplyQuote = vi.fn();
+    render(
+      <MessageThread
+        messages={messages}
+        conversationId="10"
+        onReplyQuote={onReplyQuote}
+      />,
+    );
+    const answer = screen.getByText("答案");
+    const range = document.createRange();
+    range.selectNodeContents(answer);
+    Object.defineProperty(range, "getClientRects", {
+      value: () => [{ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }],
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }),
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(99));
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
+    const action = screen.getByRole("button", { name: "询问Piko" });
+    fireEvent.pointerDown(action);
+    fireEvent.click(action);
+
+    expect(onReplyQuote).toHaveBeenCalledWith({
+      source_message_id: "2",
+      excerpt: "答案",
+      source_anchor: { version: 1, start: 0, end: 2 },
+    });
+    expect(window.getSelection()?.isCollapsed).toBe(true);
+  });
+
+  it("keeps 询问Piko hidden while the pointer selection is still active", async () => {
+    vi.useFakeTimers();
+    render(<MessageThread messages={messages} conversationId="10" onReplyQuote={vi.fn()} />);
+    const answer = screen.getByText("答案");
+    const range = document.createRange();
+    range.selectNodeContents(answer);
+    Object.defineProperty(range, "getClientRects", {
+      value: () => [{ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }],
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }),
+    });
+
+    fireEvent.pointerDown(answer);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+
+    fireEvent.pointerUp(answer);
+    await act(() => vi.advanceTimersByTimeAsync(99));
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(screen.getByRole("button", { name: "询问Piko" })).toBeInTheDocument();
+  });
+
+  it("does not restore a pending selection action after the thread scrolls", async () => {
+    vi.useFakeTimers();
+    render(<MessageThread messages={messages} conversationId="10" onReplyQuote={vi.fn()} />);
+    const answer = screen.getByText("答案");
+    const range = document.createRange();
+    range.selectNodeContents(answer);
+    Object.defineProperty(range, "getClientRects", {
+      value: () => [{ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }],
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }),
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    await act(() => vi.advanceTimersByTimeAsync(50));
+
+    fireEvent.scroll(document);
+    await act(() => vi.advanceTimersByTimeAsync(100));
+
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+  });
+
+  it("keeps the selection action dismissed after an outside pointer interaction", async () => {
+    vi.useFakeTimers();
+    render(<MessageThread messages={messages} conversationId="10" onReplyQuote={vi.fn()} />);
+    const answer = screen.getByText("答案");
+    const range = document.createRange();
+    range.selectNodeContents(answer);
+    Object.defineProperty(range, "getClientRects", {
+      value: () => [{ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }],
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, right: 180, bottom: 122, left: 100, width: 80, height: 22 }),
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(screen.getByRole("button", { name: "询问Piko" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.pointerUp(document.body);
+    fireEvent.keyUp(document, { key: "Tab" });
+    await act(() => vi.advanceTimersByTimeAsync(100));
+
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
+  });
+
+  it("does not offer a reply quote action for a cross-message selection", () => {
+    render(
+      <MessageThread messages={messages} conversationId="10" onReplyQuote={vi.fn()} />,
+    );
+    const question = screen.getByText("问题").firstChild as Text;
+    const answer = screen.getByText("答案").firstChild as Text;
+    const range = document.createRange();
+    range.setStart(question, 0);
+    range.setEnd(answer, answer.length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    expect(screen.queryByRole("button", { name: "询问Piko" })).toBeNull();
   });
 
   it("renders a pending user message without message actions", () => {

@@ -334,6 +334,88 @@ describe("Message", () => {
     expect(writeText).toHaveBeenCalledWith("你好");
   });
 
+  it("renders a reply quote above the user bubble and copies only the prompt", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    render(
+      <Message
+        message={{
+          ...userMessage,
+          content: "my follow-up",
+          reply_quote: { source_message_id: "assistant-1", excerpt: "quoted answer" },
+        }}
+      />,
+    );
+
+    const quote = screen.getByLabelText("回复引用");
+    const bubble = screen.getByText("my follow-up").closest(".bg-user-message");
+    expect(quote.compareDocumentPosition(bubble as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(quote.tagName).toBe("DIV");
+    expect(quote.querySelector("a, button")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /复制/ }));
+    expect(writeText).toHaveBeenCalledWith("my follow-up");
+  });
+
+  it("reveals a resolvable sent reply quote through the message interface", async () => {
+    const user = userEvent.setup();
+    const onRevealReplyQuote = vi.fn();
+    const replyQuote = {
+      source_message_id: "assistant-1",
+      excerpt: "quoted answer",
+      source_anchor: { version: 1 as const, start: 4, end: 18 },
+    };
+    render(
+      <Message
+        message={{ ...userMessage, content: "follow-up", reply_quote: replyQuote }}
+        onRevealReplyQuote={onRevealReplyQuote}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "quoted answer" }));
+
+    expect(onRevealReplyQuote).toHaveBeenCalledWith(replyQuote);
+  });
+
+  it("preserves reply quote line breaks in the DOM for display-only wrapping", () => {
+    const excerpt = [
+      "开头就是：",
+      "",
+      "国破山河在，城春草木深。",
+      "感时花溅泪，恨别鸟惊心。",
+    ].join("\n");
+    render(
+      <Message
+        message={{
+          ...userMessage,
+          content: "令人感叹",
+          reply_quote: { source_message_id: "assistant-1", excerpt },
+        }}
+      />,
+    );
+
+    const quoteText = screen.getByLabelText("回复引用").querySelector("blockquote");
+    expect(quoteText?.textContent).toBe(excerpt);
+  });
+
+  it("renders a quote-only user turn without an empty bubble and copies the excerpt", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    const { container } = render(
+      <Message
+        message={{
+          ...userMessage,
+          content: "",
+          reply_quote: { source_message_id: "assistant-1", excerpt: "quoted answer" },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("quoted answer")).toBeInTheDocument();
+    expect(container.querySelector(".bg-user-message")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /复制/ }));
+    expect(writeText).toHaveBeenCalledWith("quoted answer");
+  });
+
   it("edits a user message and submits the new content", async () => {
     const user = userEvent.setup();
     const onEditAndRegenerate = vi.fn();

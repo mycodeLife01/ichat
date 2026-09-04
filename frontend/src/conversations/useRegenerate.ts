@@ -75,9 +75,16 @@ export function useRegenerate(start: StartStream) {
     ): Promise<boolean> => {
       const conversationId = stateRef.current.conversationIndex.selectedId;
       const trimmed = content.trim();
+      const target = stateRef.current.conversationDetail.messages.find(
+        (message) => message.id === messageId && message.role === "user",
+      );
+      const hasInheritedInput =
+        target?.reply_quote != null ||
+        (attachmentIds === undefined &&
+          target?.attachments?.some((attachment) => attachment.model_input_kind !== null));
       if (
         conversationId == null ||
-        (trimmed === "" && (attachmentIds === undefined || attachmentIds.length === 0))
+        (trimmed === "" && !hasInheritedInput && (attachmentIds?.length ?? 0) === 0)
       ) {
         return false;
       }

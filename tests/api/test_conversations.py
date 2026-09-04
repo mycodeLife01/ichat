@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import create_app
 from app.models.conversation import Conversation, Message
-from app.models.run import Run
+from app.models.run import Run, RunProviderMessage
 from app.models.user import User
 
 TEST_DATABASE_URL = os.environ.get(
@@ -531,6 +531,79 @@ async def seed_completed_turn(
         }
 
 
+async def test_send_reply_quote_only_creates_message_run_and_transcript(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-reply-quote",
+        email=f"alice-reply-quote@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory, user_email=f"alice-reply-quote@{TEST_EMAIL_DOMAIN}"
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages",
+        json={
+            "content": "",
+            "reply_quote": {
+                "source_message_id": seeded["assistant_message_id"],
+                "excerpt": "  selected\r\n  answer  ",
+                "source_anchor": {"version": 1, "start": 4, "end": 18},
+            },
+        },
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    body = response.json()["data"]
+    assert body["message"]["content"] == ""
+    assert body["message"]["reply_quote"] == {
+        "source_message_id": seeded["assistant_message_id"],
+        "excerpt": "selected\n  answer",
+        "source_anchor": {"version": 1, "start": 4, "end": 18},
+    }
+    assert body["run"]["status"] == "queued"
+
+    async with session_factory() as session:
+        message = await session.scalar(
+            select(Message).where(Message.public_id == uuid.UUID(body["message"]["id"]))
+        )
+        assert message is not None
+        assert message.reply_quote_source_anchor_version == 1
+        assert message.reply_quote_source_anchor_start == 4
+        assert message.reply_quote_source_anchor_end == 18
+        transcript = await session.scalar(
+            select(RunProviderMessage).where(RunProviderMessage.message_id == message.id)
+        )
+        assert transcript is not None and transcript.blocks is not None
+        assert "解释这段引用内容" in transcript.blocks[0]["text"]
+        assert "source_anchor" not in transcript.blocks[0]["text"]
+
+
+async def test_new_conversation_rejects_reply_quote(client: AsyncClient) -> None:
+    alice = await register_user(
+        client,
+        username="alice-new-reply-quote",
+        email=f"alice-new-reply-quote@{TEST_EMAIL_DOMAIN}",
+    )
+    response = await client.post(
+        "/api/v1/conversations/with-message",
+        json={
+            "content": "hello",
+            "reply_quote": {
+                "source_message_id": str(uuid.uuid4()),
+                "excerpt": "selected",
+            },
+        },
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 async def test_edit_and_regenerate_endpoint_creates_new_message_and_run(
     client: AsyncClient,
     session_factory: async_sessionmaker[AsyncSession],
@@ -563,6 +636,75 @@ async def test_edit_and_regenerate_endpoint_creates_new_message_and_run(
         old_assistant = await session.get(Message, seeded["assistant_message_db_id"])
         assert old_user is not None and old_user.archived_at is not None
         assert old_assistant is not None and old_assistant.archived_at is not None
+
+
+async def test_edit_and_regenerate_endpoint_inherits_persisted_reply_quote(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-edit-reply-quote",
+        email=f"alice-edit-reply-quote@{TEST_EMAIL_DOMAIN}",
+    )
+    seeded = await seed_completed_turn(
+        session_factory,
+        user_email=f"alice-edit-reply-quote@{TEST_EMAIL_DOMAIN}",
+    )
+
+    async with session_factory() as session:
+        quoted_user = Message(
+            conversation_id=seeded["conversation_db_id"],
+            role="user",
+            content="original question",
+            reply_quote_source_message_id=seeded["assistant_message_db_id"],
+            reply_quote_excerpt="frozen excerpt",
+            reply_quote_source_anchor_version=1,
+            reply_quote_source_anchor_start=4,
+            reply_quote_source_anchor_end=18,
+            position=3,
+        )
+        session.add(quoted_user)
+        await session.flush()
+
+        run = Run(
+            conversation_id=seeded["conversation_db_id"],
+            user_message_id=quoted_user.id,
+            status="succeeded",
+            provider_name="deepseek",
+            provider_model="deepseek-chat",
+        )
+        session.add(run)
+        await session.flush()
+        quoted_user.run_id = run.id
+        session.add(
+            Message(
+                conversation_id=seeded["conversation_db_id"],
+                run_id=run.id,
+                role="assistant",
+                content="quoted turn answer",
+                position=4,
+            )
+        )
+        await session.commit()
+        quoted_user_id = str(quoted_user.public_id)
+
+    response = await client.post(
+        f"/api/v1/conversations/{seeded['conversation_id']}/messages/"
+        f"{quoted_user_id}/edit-and-regenerate",
+        json={"content": "rewritten question"},
+        headers=auth_headers(alice),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    body = response.json()["data"]
+    assert body["message"]["content"] == "rewritten question"
+    assert body["message"]["reply_quote"] == {
+        "source_message_id": seeded["assistant_message_id"],
+        "excerpt": "frozen excerpt",
+        "source_anchor": {"version": 1, "start": 4, "end": 18},
+    }
+    assert body["run"]["status"] == "queued"
 
 
 async def test_regenerate_endpoint_reuses_user_message_for_assistant_target(

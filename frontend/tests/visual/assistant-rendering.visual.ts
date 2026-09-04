@@ -101,6 +101,108 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     });
   }
 
+  const replyQuoteEntries = entryParity.locator(
+    '[data-render-entry="final"] .msg.user button:has(blockquote), [data-render-entry="share"] .msg.user button:has(blockquote)',
+  );
+  await expect(replyQuoteEntries).toHaveCount(2);
+  const replyQuoteParity = await replyQuoteEntries.evaluateAll((elements) =>
+    elements.map((element) => {
+      const quote = element as HTMLElement;
+      const text = quote.querySelector<HTMLElement>("blockquote");
+      const icon = quote.querySelector<SVGElement>('[data-icon="reply-arrow"]');
+      const parent = quote.parentElement;
+      const quoteRect = quote.getBoundingClientRect();
+      const textRect = text?.getBoundingClientRect();
+      const iconRect = icon?.getBoundingClientRect();
+      const style = getComputedStyle(quote);
+      const textStyle = text ? getComputedStyle(text) : null;
+      return {
+        width: quoteRect.width,
+        height: quoteRect.height,
+        parentWidth: parent?.getBoundingClientRect().width,
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        gap: style.gap,
+        lineHeight: style.lineHeight,
+        margin: style.margin,
+        text: text && textRect && textStyle
+          ? {
+              content: text.textContent,
+              height: textRect.height,
+              innerText: text.innerText,
+              overflow: textStyle.overflow,
+              overflowWrap: textStyle.overflowWrap,
+              textAlign: textStyle.textAlign,
+              webkitBoxOrient: textStyle.webkitBoxOrient,
+              webkitLineClamp: textStyle.webkitLineClamp,
+              whiteSpace: textStyle.whiteSpace,
+            }
+          : null,
+        icon: iconRect && icon
+          ? {
+              d: icon.querySelector("path")?.getAttribute("d"),
+              fill: icon.getAttribute("fill"),
+              height: iconRect.height,
+              stroke: icon.getAttribute("stroke"),
+              viewBox: icon.getAttribute("viewBox"),
+              width: iconRect.width,
+            }
+          : null,
+      };
+    }),
+  );
+  await testInfo.attach("assistant-rendering-reply-quote-parity", {
+    body: JSON.stringify(replyQuoteParity, null, 2),
+    contentType: "application/json",
+  });
+  for (const quote of replyQuoteParity) {
+    expect(quote.width).toBeCloseTo((quote.parentWidth ?? Number.NaN) - 16, 1);
+    expect(quote).toMatchObject({
+      color: "rgb(143, 143, 143)",
+      fontSize: "14px",
+      fontWeight: "400",
+      gap: "6px",
+      height: 60,
+      lineHeight: "20px",
+      margin: "4px 8px",
+      text: {
+        height: 60,
+        overflow: "hidden",
+        overflowWrap: "break-word",
+        textAlign: "center",
+        webkitBoxOrient: "vertical",
+        webkitLineClamp: "3",
+        whiteSpace: "normal",
+      },
+      icon: {
+        fill: "currentColor",
+        height: 20,
+        stroke: null,
+        viewBox: "0 0 20 20",
+        width: 20,
+      },
+    });
+    expect(quote.text?.content).toContain("\n\n");
+    expect(quote.text?.innerText).not.toContain("\n");
+  }
+  expect(replyQuoteParity[1]).toEqual(replyQuoteParity[0]);
+  await replyQuoteEntries.first().hover();
+  await expect(replyQuoteEntries.first()).toHaveCSS("color", "rgb(13, 13, 13)");
+  await replyQuoteEntries.nth(1).hover();
+  await expect(replyQuoteEntries.nth(1)).toHaveCSS("color", "rgb(13, 13, 13)");
+  await page.mouse.move(0, 0);
+  const replyQuoteParityPath = testInfo.outputPath("assistant-rendering-reply-quote-parity.png");
+  await entryParity.screenshot({
+    path: replyQuoteParityPath,
+    animations: "disabled",
+    caret: "hide",
+  });
+  await testInfo.attach("assistant-rendering-reply-quote-parity", {
+    path: replyQuoteParityPath,
+    contentType: "image/png",
+  });
+
   const failedPartial = page.getByTestId("run-state-failed");
   const cancelledPartial = page.getByTestId("run-state-cancelled");
   const recoveredPartial = page.getByTestId("run-state-recovered");
@@ -617,6 +719,13 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
   await testInfo.attach("assistant-rendering-geometry", {
     body: JSON.stringify(geometry, null, 2),
     contentType: "application/json",
+  });
+
+  // Reply quote parity has its own diagnostic artifact above. Remove those two
+  // fixture-only user turns before the longstanding assistant-rendering golden
+  // so this focused addition does not invalidate unrelated Windows raster data.
+  await replyQuoteEntries.evaluateAll((elements) => {
+    for (const element of elements) element.closest(".msg.user")?.remove();
   });
 
   // Freeze the approved baseline in the steady state. Copy feedback is tested

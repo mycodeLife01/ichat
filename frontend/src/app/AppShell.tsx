@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar } from "../conversations/Sidebar";
@@ -7,10 +7,15 @@ import { useConversationLoader } from "../conversations/useConversationLoader";
 import { useQuickShare } from "../conversations/useQuickShare";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
+import { replyQuoteDraftStore } from "../conversations/replyQuoteDraftStore";
 import { useTitlePolling } from "../conversations/useTitlePolling";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
 import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
+import {
+  revealReplyQuoteSource,
+  type ReplyQuoteRevealHandle,
+} from "../messages/replyQuoteSourceNavigation";
 import { ScrollToBottomButton } from "../messages/ScrollToBottomButton";
 import { SourcesPanel } from "../messages/SourcesPanel";
 import { StreamingMessage } from "../messages/StreamingMessage";
@@ -34,7 +39,12 @@ import { isNewChatHotkey } from "../ui/hotkeys";
 import { Toast } from "../ui/Toast";
 import type { ToastHandler } from "../ui/state";
 import { useAppActions, useAppState } from "./context";
-import type { ChatModelCapability, MessageResponse, MessageSource } from "../api/types";
+import type {
+  ChatModelCapability,
+  MessageResponse,
+  MessageSource,
+  ReplyQuote,
+} from "../api/types";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -51,7 +61,7 @@ function useIsMobile() {
 
 export function AppShell() {
   const { user, logout } = useAuthSession();
-  const { ui, activeRun, conversationIndex, pendingSubmission } = useAppState();
+  const { ui, activeRun, conversationIndex, pendingSubmission, composer } = useAppState();
   const { dispatch, services, stateRef } = useAppActions();
   const {
     items,
@@ -79,6 +89,7 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const [fileCapability, setFileCapability] = useState<FilesCapability>();
   const sentImagePreviewUrlsRef = useRef(new Map<string, string>());
   const [sentImagePreviews, setSentImagePreviews] = useState<ReadonlyMap<string, string>>(
@@ -175,6 +186,37 @@ export function AppShell() {
         tone: "warning",
       }),
   });
+  useLayoutEffect(() => {
+    if (!user) return;
+    replyQuoteDraftStore.clearOtherUsers(user.id);
+    const restored = replyQuoteDraftStore.read(user.id, selectedId);
+    dispatch({ type: "composer/replyQuoteRestored", replyQuote: restored });
+  }, [dispatch, selectedId, user]);
+
+  useEffect(() => {
+    const quote = composer.replyQuote;
+    if (
+      !user ||
+      !selectedId ||
+      quote === null ||
+      detail.status !== "ready" ||
+      detail.conversation?.id !== selectedId
+    ) {
+      return;
+    }
+    const sourceVisible = detail.messages.some(
+      (message) => message.id === quote.source_message_id && message.role === "assistant",
+    );
+    if (sourceVisible) return;
+    dispatch({ type: "composer/replyQuoteCleared" });
+    replyQuoteDraftStore.clear(user.id, selectedId);
+    dispatch({
+      type: "ui/showToast",
+      message: "The quoted reply is no longer available.",
+      tone: "error",
+    });
+  }, [composer.replyQuote, detail, dispatch, selectedId, user]);
+
   const releaseSentImagePreview = useCallback((fileId: string) => {
     const url = sentImagePreviewUrlsRef.current.get(fileId);
     if (!url) return;
@@ -208,13 +250,50 @@ export function AppShell() {
       detail.messages.length,
       activeRun?.draftText,
       activeRun?.status === "failed",
-      pendingSubmission?.content,
+      pendingSubmission?.clientId,
     ],
     // Jump to the bottom unconditionally when entering a conversation or when
     // the user submits a new message — even if they had scrolled up. Keyed on
     // the loaded detail plus the pending content so both the optimistic turn
     // and the server-materialized message move the viewport after rendering.
-    `${detail.conversation?.id}:${lastUserMessageId}:${pendingSubmission?.content ?? ""}`,
+    `${detail.conversation?.id}:${lastUserMessageId}:${pendingSubmission?.clientId ?? ""}`,
+  );
+  const replyQuoteRevealRef = useRef<ReplyQuoteRevealHandle | null>(null);
+  const revealLiveReplyQuote = useCallback(
+    (replyQuote: ReplyQuote) => {
+      replyQuoteRevealRef.current?.cancel();
+      replyQuoteRevealRef.current = null;
+      const scrollRoot = threadRef.current;
+      const sourceMessageId = replyQuote.source_message_id;
+      const sourceRoot = scrollRoot
+        ? Array.from(
+            scrollRoot.querySelectorAll<HTMLElement>("[data-reply-quote-message-id]"),
+          ).find((element) => element.dataset.replyQuoteMessageId === sourceMessageId)
+        : undefined;
+      if (!scrollRoot || !sourceMessageId || !sourceRoot) {
+        dispatch({
+          type: "ui/showToast",
+          message: "The quoted reply is no longer available.",
+          tone: "error",
+        });
+        return;
+      }
+      replyQuoteRevealRef.current = revealReplyQuoteSource({
+        scrollRoot,
+        sourceRoot,
+        sourceAnchor: replyQuote.source_anchor,
+        excerpt: replyQuote.excerpt,
+      });
+    },
+    [dispatch, threadRef],
+  );
+
+  useEffect(
+    () => () => {
+      replyQuoteRevealRef.current?.cancel();
+      replyQuoteRevealRef.current = null;
+    },
+    [selectedId],
   );
 
   const onSend = () => {
@@ -222,7 +301,8 @@ export function AppShell() {
     const readyImagesAllowed =
       !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
     if (
-      (!text.trim() && (!attachmentUploads.hasModelConsumableAttachment || !readyImagesAllowed)) ||
+      (!text.trim() && composer.replyQuote === null &&
+        (!attachmentUploads.hasModelConsumableAttachment || !readyImagesAllowed)) ||
       attachmentUploads.hasPendingAttachments ||
       attachmentUploads.hasFailedAttachments ||
       pendingSubmission !== null
@@ -234,7 +314,10 @@ export function AppShell() {
     if (selectedId == null || messages.length === 0) {
       setAnimateComposer(true);
     }
+    const submittedReplyQuote = composer.replyQuote;
     onComposerValueChange("");
+    dispatch({ type: "composer/replyQuoteCleared" });
+    if (user && selectedId) replyQuoteDraftStore.clear(user.id, selectedId);
     const attachmentIds =
       attachmentUploads.readyAttachmentIds.length > 0
         ? attachmentUploads.readyAttachmentIds
@@ -255,7 +338,7 @@ export function AppShell() {
       }
       setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
     }
-    void send(text, attachmentIds, optimisticAttachments).then((sent) => {
+    void send(text, attachmentIds, optimisticAttachments, submittedReplyQuote).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
       if (!sent && stateRef.current.pendingSubmission === null) {
@@ -264,6 +347,15 @@ export function AppShell() {
           attachmentUploads.setDraftContent(restored);
           return restored;
         });
+        if (
+          submittedReplyQuote !== null &&
+          stateRef.current.composer.replyQuote === null &&
+          user &&
+          selectedId
+        ) {
+          dispatch({ type: "composer/replyQuoteRestored", replyQuote: submittedReplyQuote });
+          replyQuoteDraftStore.write(user.id, selectedId, submittedReplyQuote);
+        }
       }
       if (sent) {
         attachmentUploads.clear();
@@ -439,6 +531,7 @@ export function AppShell() {
         content: visiblePendingSubmission.content,
         reasoning: null,
         attachments: visiblePendingSubmission.attachments,
+        reply_quote: visiblePendingSubmission.replyQuote,
         position: (messages.at(-1)?.position ?? 0) + 1,
         created_at: "",
       }
@@ -483,11 +576,12 @@ export function AppShell() {
             : "This conversation requires a compatible vision model."
           : !readyImagesAllowed
             ? "Select a vision model before sending images."
-        : !composerValue.trim() && attachmentUploads.attachments.length > 0 && !attachmentUploads.hasModelConsumableAttachment
+        : !composerValue.trim() && composer.replyQuote === null && attachmentUploads.attachments.length > 0 && !attachmentUploads.hasModelConsumableAttachment
           ? "Add text or a readable document. Images alone cannot be sent."
           : null;
   const canSend = composerState === "idle" && sendDisabledReason === null && (
     Boolean(composerValue.trim()) ||
+    composer.replyQuote !== null ||
     (attachmentUploads.hasModelConsumableAttachment && readyImagesAllowed)
   );
 
@@ -648,6 +742,17 @@ export function AppShell() {
                   localImagePreviews={sentImagePreviews}
                   onLocalImagePreviewConsumed={releaseSentImagePreview}
                   onShowSources={showSources}
+                  conversationId={selectedId}
+                  onReplyQuote={(replyQuote) => {
+                    if (!user || !selectedId) return;
+                    dispatch({ type: "composer/replyQuoteSet", replyQuote });
+                    replyQuoteDraftStore.write(user.id, selectedId, replyQuote);
+                    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+                  }}
+                  onReplyQuoteError={(message) =>
+                    dispatch({ type: "ui/showToast", message, tone: "error" })
+                  }
+                  onRevealReplyQuote={revealLiveReplyQuote}
                 >
                   {visiblePendingSubmission !== null ||
                   (activeRun && activeRun.conversationId === selectedId) ? (
@@ -707,6 +812,15 @@ export function AppShell() {
                 onRetryAttachment={attachmentUploads.retryAttachment}
                 onMoveAttachment={attachmentUploads.moveAttachment}
                 onReadAttachment={services.filesApi.readUrl}
+                replyQuote={composer.replyQuote}
+                onRemoveReplyQuote={() => {
+                  dispatch({ type: "composer/replyQuoteCleared" });
+                  if (user && selectedId) replyQuoteDraftStore.clear(user.id, selectedId);
+                }}
+                onRevealReplyQuote={
+                  composer.replyQuote ? () => revealLiveReplyQuote(composer.replyQuote!) : undefined
+                }
+                inputRef={composerInputRef}
                 canSend={canSend}
                 sendDisabledReason={sendDisabledReason}
                 readOnly={visionMutationBlocked}
@@ -737,7 +851,9 @@ export function AppShell() {
             // Deletion may auto-select the next conversation; the resulting
             // selection change drives the URL, and the URL→state effect attaches
             // to any pending run — no explicit recovery needed here.
-            void deleteConversation(confirmTarget)
+            void deleteConversation(confirmTarget).then(() => {
+              if (user) replyQuoteDraftStore.clear(user.id, confirmTarget);
+            })
           }
           onCancel={() => dispatch({ type: "ui/closeConfirm" })}
         />

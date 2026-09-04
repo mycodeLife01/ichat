@@ -59,7 +59,41 @@ function codeIcon({ size = 20, ...props }: CustomIconProps) {
   );
 }
 
-// ChatGPT scroll-to-latest mark, using the reference interface's 20px path.
+// ChatGPT reply quote mark, using the reference interface's 20px path.
+function replyArrowIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      data-icon="reply-arrow"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12.53 6.53a.666.666 0 0 1 .836-.086l.105.085 4 4c.26.26.26.682 0 .942l-4 4a.666.666 0 0 1-.942-.942l2.865-2.864H6A3.665 3.665 0 0 1 2.335 8V4.5a.665.665 0 0 1 1.33 0V8A2.335 2.335 0 0 0 6 10.335h9.394l-2.865-2.864-.085-.105a.666.666 0 0 1 .085-.837" />
+    </svg>
+  );
+}
+
+function replyQuoteCloseIcon({ size = 20, ...props }: CustomIconProps) {
+  return (
+    <svg
+      {...props}
+      data-icon="reply-quote-close"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4.816 4.816c.26-.26.68-.26.94 0L10 9.059l4.245-4.243a.665.665 0 0 1 .94.94L10.94 10l4.244 4.245a.665.665 0 0 1-.94.94L9.999 10.94l-4.243 4.245a.666.666 0 0 1-.94-.941l4.243-4.245-4.243-4.243a.665.665 0 0 1 0-.94" />
+    </svg>
+  );
+}
+
 function scrollToBottomIcon({ size = 20, ...props }: CustomIconProps) {
   return (
     <svg
@@ -243,6 +277,8 @@ export const Icons = {
   Upload: Upload,
   ArrowUp: sendPromptIcon,
   ArrowDown: scrollToBottomIcon,
+  ReplyArrow: replyArrowIcon,
+  ReplyQuoteClose: replyQuoteCloseIcon,
   Mic: Mic,
   Play: playIcon,
   Stop: Square,

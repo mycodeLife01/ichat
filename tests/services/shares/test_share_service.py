@@ -129,9 +129,142 @@ async def test_create_share_snapshot_excludes_internal_ids(
         assert snapshot["title"] == "shared"
         # No internal ids / positions / user identity leak into the snapshot.
         for message in snapshot["messages"]:
-            assert set(message) == {"role", "content", "reasoning", "sources", "attachments"}
+            assert set(message) == {
+                "role",
+                "content",
+                "reasoning",
+                "sources",
+                "attachments",
+                "reply_quote",
+            }
             assert message["attachments"] == []
         assert snapshot["messages"][1]["sources"][0]["url"] == "https://x.test"
+
+
+async def test_share_snapshot_freezes_reply_quote_with_snapshot_local_source(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        source = await session.scalar(
+            select(Message).where(
+                Message.conversation_id == conversation.id,
+                Message.role == "assistant",
+            )
+        )
+        assert source is not None
+        quoted = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content="",
+            reply_quote_source=source,
+            reply_quote_excerpt="frozen excerpt",
+            reply_quote_source_anchor_version=1,
+            reply_quote_source_anchor_start=4,
+            reply_quote_source_anchor_end=18,
+            position=3,
+        )
+        session.add(quoted)
+        await session.flush()
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+        )
+        await session.commit()
+
+        share = await session.scalar(select(ShareLink).where(ShareLink.token == created.token))
+        assert share is not None
+        stored_quote = share.snapshot["messages"][2]["reply_quote"]
+        public = await get_public_share(session, token=created.token)
+
+    assert stored_quote == {
+        "excerpt": "frozen excerpt",
+        "source_message_index": 1,
+        "source_anchor": {"version": 1, "start": 4, "end": 18},
+    }
+    assert "source_message_id" not in stored_quote
+    assert public.messages[2].reply_quote is not None
+    assert public.messages[2].reply_quote.excerpt == "frozen excerpt"
+    assert public.messages[2].reply_quote.source_message_index == 1
+    assert public.messages[2].reply_quote.source_anchor is not None
+    assert public.messages[2].reply_quote.source_anchor.start == 4
+
+
+async def test_share_snapshot_maps_legacy_quote_without_an_anchor(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        source = await session.scalar(
+            select(Message).where(
+                Message.conversation_id == conversation.id,
+                Message.role == "assistant",
+            )
+        )
+        assert source is not None
+        session.add(
+            Message(
+                conversation_id=conversation.id,
+                role="user",
+                content="follow-up",
+                reply_quote_source=source,
+                reply_quote_excerpt="a",
+                position=3,
+            )
+        )
+        await session.flush()
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+        )
+        await session.commit()
+        share = await session.scalar(select(ShareLink).where(ShareLink.token == created.token))
+        assert share is not None
+
+    assert share.snapshot["messages"][2]["reply_quote"] == {
+        "excerpt": "a",
+        "source_message_index": 1,
+        "source_anchor": None,
+    }
+
+
+async def test_share_snapshot_does_not_invent_a_source_index(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        session.add(
+            Message(
+                conversation_id=conversation.id,
+                role="user",
+                content="follow-up",
+                reply_quote_excerpt="orphaned excerpt",
+                reply_quote_source_anchor_version=1,
+                reply_quote_source_anchor_start=0,
+                reply_quote_source_anchor_end=8,
+                position=3,
+            )
+        )
+        await session.flush()
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+        )
+        await session.commit()
+        share = await session.scalar(select(ShareLink).where(ShareLink.token == created.token))
+        assert share is not None
+
+    assert share.snapshot["messages"][2]["reply_quote"] == {
+        "excerpt": "orphaned excerpt",
+        "source_message_index": None,
+        "source_anchor": {"version": 1, "start": 0, "end": 8},
+    }
 
 
 async def test_inactive_user_cannot_create_a_share(
