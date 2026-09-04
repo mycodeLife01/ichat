@@ -6,6 +6,7 @@ import { Icons } from "../../ui/icons";
 import type { HighlightedCodeChunk } from "./codeHighlight";
 import { resolveCodeLanguage } from "./codeLanguage";
 import { copyText } from "./copyText";
+import { replyQuoteAnchorProps, type MarkdownNode } from "./replyQuoteAnchorProps";
 
 type CodeElementProps = {
   className?: string;
@@ -69,7 +70,11 @@ function highlightedSource(
   );
 }
 
-export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
+type CodeBlockProps = ComponentPropsWithoutRef<"pre"> & {
+  node?: MarkdownNode;
+};
+
+export function CodeBlock({ children, node, ...props }: CodeBlockProps) {
   const child = children as ReactElement<CodeElementProps> | undefined;
   const source = sourceFromChild(child);
   const language = resolveCodeLanguage(codeClassName(child));
@@ -211,6 +216,7 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
 
   return (
     <div
+      {...replyQuoteAnchorProps(node, props)}
       className={`code-block${language.showHeader ? "" : " code-block-plain"}${
         htmlPreview && view === "preview" ? " code-block-previewing" : ""
       }`}
@@ -219,7 +225,7 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
       data-code-view={htmlPreview ? view : undefined}
     >
       {language.showHeader ? (
-        <div className="code-block-header">
+        <div className="code-block-header" data-reply-quote-exclude>
           <span className="code-block-language">
             {headerIcon}
             <span>{language.label}</span>
@@ -227,10 +233,12 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
           {headerActions}
         </div>
       ) : (
-        <div className="code-block-plain-actions">{copyButton}</div>
+        <div className="code-block-plain-actions" data-reply-quote-exclude>
+          {copyButton}
+        </div>
       )}
       {htmlPreview && view === "preview" ? (
-        <div className="code-block-preview" ref={previewRef}>
+        <div className="code-block-preview" data-reply-quote-exclude ref={previewRef}>
           <iframe
             title="预览"
             sandbox=""
@@ -246,7 +254,7 @@ export function CodeBlock({ children }: ComponentPropsWithoutRef<"pre">) {
         </div>
       )}
       {copyState === "failure" ? (
-        <span className="sr-only" role="status">
+        <span className="sr-only" data-reply-quote-exclude role="status">
           Copy failed. Try again.
         </span>
       ) : null}

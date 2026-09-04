@@ -68,11 +68,13 @@ def _build_snapshot(
 ) -> dict[str, Any]:
     """Freeze the conversation into a snapshot dict.
 
-    Only role/content/reasoning/sources are kept — never internal ids, run ids,
-    positions, timestamps, or user identity. Attachment entries additionally
-    carry a ``file_id`` used server-side to sign reads; it is stripped from the
-    public response by ``SharedAttachmentResponse``, which does not declare it.
+    Message display fields and reply-quote snapshots are kept — never message
+    ids, run ids, database positions, timestamps, or user identity. A quote can
+    point only to an earlier assistant by snapshot-local array index. Attachment
+    entries additionally carry a ``file_id`` used server-side to sign reads; it
+    is stripped from the public response by ``SharedAttachmentResponse``.
     """
+    message_indexes = {message.id: index for index, message in enumerate(messages)}
     return {
         "title": conversation.title,
         "messages": [
@@ -82,9 +84,58 @@ def _build_snapshot(
                 "reasoning": message.reasoning,
                 "sources": (message.metadata_ or {}).get("sources", []),
                 "attachments": attachments.get(message.id, []),
+                "reply_quote": _snapshot_reply_quote(
+                    message,
+                    message_index=message_index,
+                    messages=messages,
+                    message_indexes=message_indexes,
+                ),
             }
-            for message in messages
+            for message_index, message in enumerate(messages)
         ],
+    }
+
+
+def _snapshot_reply_quote(
+    message: Message,
+    *,
+    message_index: int,
+    messages: list[Message],
+    message_indexes: dict[int, int],
+) -> dict[str, Any] | None:
+    if message.reply_quote_excerpt is None:
+        return None
+
+    source_index = (
+        message_indexes.get(message.reply_quote_source_message_id)
+        if message.reply_quote_source_message_id is not None
+        else None
+    )
+    if (
+        source_index is None
+        or source_index >= message_index
+        or messages[source_index].role != "assistant"
+    ):
+        source_index = None
+
+    source_anchor: dict[str, int] | None = None
+    if (
+        message.reply_quote_source_anchor_version == 1
+        and message.reply_quote_source_anchor_start is not None
+        and message.reply_quote_source_anchor_end is not None
+        and message.reply_quote_source_anchor_start >= 0
+        and message.reply_quote_source_anchor_end > message.reply_quote_source_anchor_start
+    ):
+        source_anchor = {
+            "version": 1,
+            "start": message.reply_quote_source_anchor_start,
+            "end": message.reply_quote_source_anchor_end,
+        }
+
+    return {
+        "excerpt": message.reply_quote_excerpt,
+        "source_message_index": source_index,
+        "source_anchor": source_anchor,
     }
 
 

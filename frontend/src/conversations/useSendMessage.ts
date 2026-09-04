@@ -4,6 +4,7 @@ import { ApiError } from "../api/errors";
 import { useAppActions } from "../app/context";
 import { currentRunOptions } from "../runs/runOptions";
 import type { FileAttachment } from "../files/types";
+import type { ReplyQuoteDraft } from "../api/types";
 import { selectionStore } from "./selectionStore";
 
 function createSubmissionId(): string {
@@ -24,16 +25,18 @@ export function useSendMessage(
       content: string,
       attachmentIds?: string[],
       optimisticAttachments: FileAttachment[] = [],
+      replyQuote: ReplyQuoteDraft | null = null,
     ): Promise<boolean> => {
       const trimmed = content.trim();
       if (
-        (trimmed === "" && (attachmentIds?.length ?? 0) === 0) ||
+        (trimmed === "" && (attachmentIds?.length ?? 0) === 0 && replyQuote === null) ||
         stateRef.current.pendingSubmission !== null
       ) {
         return false;
       }
 
       let targetId = stateRef.current.conversationIndex.selectedId;
+      if (targetId === null && replyQuote !== null) return false;
       const runOptions = currentRunOptions();
       const clientSubmissionId = createSubmissionId();
       dispatch({
@@ -42,6 +45,7 @@ export function useSendMessage(
         content: trimmed,
         conversationId: targetId,
         attachments: optimisticAttachments,
+        replyQuote,
       });
 
       try {
@@ -79,9 +83,17 @@ export function useSendMessage(
         }
 
         const { message, run, image_context: imageContext } =
-          attachmentIds === undefined
-            ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
-            : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds);
+          replyQuote === null
+            ? attachmentIds === undefined
+              ? await conversationApi.sendMessage(targetId, trimmed, runOptions)
+              : await conversationApi.sendMessage(targetId, trimmed, runOptions, attachmentIds)
+            : await conversationApi.sendMessage(
+                targetId,
+                trimmed,
+                runOptions,
+                attachmentIds,
+                replyQuote,
+              );
         onCommitted?.(message.id, clientSubmissionId);
         dispatch({ type: "conversations/messageAppended", message, imageContext });
         dispatch({

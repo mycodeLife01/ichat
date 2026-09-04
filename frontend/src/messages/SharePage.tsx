@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CircleAlert } from "lucide-react";
 
 import { ApiError } from "../api/errors";
-import type { MessageSource, PublicShareResponse, SharedMessage } from "../api/types";
+import type {
+  MessageSource,
+  PublicShareResponse,
+  SharedMessage,
+  SharedReplyQuote,
+} from "../api/types";
 import { useAppActions } from "../app/context";
 import {
   assistantContentColumn,
@@ -18,6 +23,11 @@ import type { FileReadRole } from "../files/types";
 import { MessageAttachments } from "./MessageAttachments";
 import { SourcesTrigger } from "./Message";
 import { SourcesPanel } from "./SourcesPanel";
+import { ReplyQuote } from "./ReplyQuote";
+import {
+  revealReplyQuoteSource,
+  type ReplyQuoteRevealHandle,
+} from "./replyQuoteSourceNavigation";
 
 type LoadState =
   | { status: "loading" }
@@ -51,6 +61,8 @@ export function SharePage() {
     sources: MessageSource[];
     open: boolean;
   }>({ sources: [], open: false });
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const replyQuoteRevealRef = useRef<ReplyQuoteRevealHandle | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -85,6 +97,32 @@ export function SharePage() {
         : Promise.reject(new Error("Missing share token")),
     [token, services],
   );
+  const revealSharedReplyQuote = useCallback((replyQuote: SharedReplyQuote) => {
+    replyQuoteRevealRef.current?.cancel();
+    replyQuoteRevealRef.current = null;
+    const scrollRoot = scrollRootRef.current;
+    const sourceIndex = replyQuote.source_message_index;
+    const sourceRoot = scrollRoot
+      ? Array.from(
+          scrollRoot.querySelectorAll<HTMLElement>("[data-reply-quote-share-index]"),
+        ).find((element) => element.dataset.replyQuoteShareIndex === String(sourceIndex))
+      : undefined;
+    if (!scrollRoot || sourceIndex == null || !sourceRoot) return;
+    replyQuoteRevealRef.current = revealReplyQuoteSource({
+      scrollRoot,
+      sourceRoot,
+      sourceAnchor: replyQuote.source_anchor,
+      excerpt: replyQuote.excerpt,
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      replyQuoteRevealRef.current?.cancel();
+      replyQuoteRevealRef.current = null;
+    },
+    [token],
+  );
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -111,7 +149,11 @@ export function SharePage() {
           slides in from the right and the content column shrinks to make room
           without disturbing the header. */}
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+        <div
+          ref={scrollRootRef}
+          data-share-scroll-root
+          className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+        >
           {state.status === "loading" && (
             <div
               className="flex justify-center px-8 pt-16 text-text-muted"
@@ -151,6 +193,7 @@ export function SharePage() {
               isMobile={isMobile}
               onReadAttachment={readAttachment}
               onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
+              onRevealReplyQuote={revealSharedReplyQuote}
             />
           )}
         </div>
@@ -173,11 +216,13 @@ function SharedThread({
   isMobile,
   onReadAttachment,
   onShowSources,
+  onRevealReplyQuote,
 }: {
   share: PublicShareResponse;
   isMobile: boolean;
   onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
   onShowSources: (sources: MessageSource[]) => void;
+  onRevealReplyQuote: (replyQuote: SharedReplyQuote) => void;
 }) {
   return (
     <>
@@ -192,9 +237,11 @@ function SharedThread({
           <SharedMessageView
             key={index}
             message={message}
+            messageIndex={index}
             isMobile={isMobile}
             onReadAttachment={onReadAttachment}
             onShowSources={onShowSources}
+            onRevealReplyQuote={onRevealReplyQuote}
           />
         ))}
       </div>
@@ -204,14 +251,18 @@ function SharedThread({
 
 function SharedMessageView({
   message,
+  messageIndex,
   isMobile,
   onReadAttachment,
   onShowSources,
+  onRevealReplyQuote,
 }: {
   message: SharedMessage;
+  messageIndex: number;
   isMobile: boolean;
   onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
   onShowSources: (sources: MessageSource[]) => void;
+  onRevealReplyQuote: (replyQuote: SharedReplyQuote) => void;
 }) {
   const attachments = message.attachments ?? [];
   if (message.role === "user") {
@@ -227,7 +278,18 @@ function SharedMessageView({
               align="end"
             />
           )}
-          {message.content !== "" && (
+          {message.reply_quote && (
+            <ReplyQuote
+              excerpt={message.reply_quote.excerpt}
+              variant="message"
+              onReveal={
+                message.reply_quote.source_message_index == null
+                  ? undefined
+                  : () => onRevealReplyQuote(message.reply_quote!)
+              }
+            />
+          )}
+          {message.content.trim() !== "" && (
             <div className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}`}>
               <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
                 {message.content}
@@ -243,11 +305,17 @@ function SharedMessageView({
   return (
     <div className="msg assistant flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
       <div className={assistantContentColumn}>
-        <Markdown
-          content={message.content}
-          sources={sources.length > 0 ? sources : undefined}
-          isMobile={isMobile}
-        />
+        <div
+          data-reply-quote-share-index={messageIndex}
+          className="reply-quote-surface"
+        >
+          <Markdown
+            content={message.content}
+            sources={sources.length > 0 ? sources : undefined}
+            isMobile={isMobile}
+            replyQuoteAnchors
+          />
+        </div>
         {attachments.length > 0 && (
           <MessageAttachments attachments={attachments} onReadAttachment={onReadAttachment} />
         )}

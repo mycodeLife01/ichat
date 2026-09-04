@@ -40,6 +40,26 @@ describe("rootReducer auth slice", () => {
   });
 });
 
+describe("rootReducer composer reply quote", () => {
+  it("sets, replaces, clears, and restores a reply quote", () => {
+    const first = { source_message_id: "assistant-1", excerpt: "first" };
+    const second = { source_message_id: "assistant-2", excerpt: "second" };
+
+    const added = rootReducer(initialState, { type: "composer/replyQuoteSet", replyQuote: first });
+    const replaced = rootReducer(added, { type: "composer/replyQuoteSet", replyQuote: second });
+    const cleared = rootReducer(replaced, { type: "composer/replyQuoteCleared" });
+    const restored = rootReducer(cleared, {
+      type: "composer/replyQuoteRestored",
+      replyQuote: first,
+    });
+
+    expect(added.composer.replyQuote).toEqual(first);
+    expect(replaced.composer.replyQuote).toEqual(second);
+    expect(cleared.composer.replyQuote).toBeNull();
+    expect(restored.composer.replyQuote).toEqual(first);
+  });
+});
+
 describe("rootReducer app/reset", () => {
   it("clears every slice but keeps bootstrapped true", () => {
     const session = createAuthSession(authTokenResponse);

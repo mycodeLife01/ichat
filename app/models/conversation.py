@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import Any
@@ -9,13 +11,14 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 
 from app.db.base import Base
@@ -65,6 +68,35 @@ class Message(Base):
     __table_args__ = (
         CheckConstraint("role IN ('user', 'assistant')", name="role_valid"),
         CheckConstraint("position > 0", name="position_positive"),
+        CheckConstraint(
+            "reply_quote_source_message_id IS NULL OR reply_quote_excerpt IS NOT NULL",
+            name="reply_quote_source_requires_excerpt",
+        ),
+        CheckConstraint(
+            "reply_quote_excerpt IS NULL OR role = 'user'",
+            name="reply_quote_user_only",
+        ),
+        CheckConstraint(
+            "reply_quote_excerpt IS NULL OR ("
+            "char_length(reply_quote_excerpt) BETWEEN 1 AND 4000 "
+            "AND reply_quote_excerpt !~ '^[[:space:]]*$'"
+            ")",
+            name="reply_quote_excerpt_valid",
+        ),
+        CheckConstraint(
+            "(reply_quote_source_anchor_version IS NULL "
+            "AND reply_quote_source_anchor_start IS NULL "
+            "AND reply_quote_source_anchor_end IS NULL) "
+            "OR (reply_quote_source_anchor_version IS NOT NULL "
+            "AND reply_quote_source_anchor_start IS NOT NULL "
+            "AND reply_quote_source_anchor_end IS NOT NULL "
+            "AND reply_quote_source_anchor_version = 1 "
+            "AND reply_quote_source_anchor_start >= 0 "
+            "AND reply_quote_source_anchor_end > reply_quote_source_anchor_start "
+            "AND role = 'user' "
+            "AND reply_quote_excerpt IS NOT NULL)",
+            name="reply_quote_source_anchor_valid",
+        ),
         UniqueConstraint("conversation_id", "position", name="uq_messages_conversation_position"),
         Index(
             "ix_messages_conversation_archived_position",
@@ -97,6 +129,23 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_quote_source_message_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reply_quote_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_quote_source_anchor_version: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+    reply_quote_source_anchor_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reply_quote_source_anchor_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reply_quote_source: Mapped[Message | None] = relationship(
+        "Message",
+        remote_side="Message.id",
+        foreign_keys=[reply_quote_source_message_id],
+        lazy="selectin",
+    )
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

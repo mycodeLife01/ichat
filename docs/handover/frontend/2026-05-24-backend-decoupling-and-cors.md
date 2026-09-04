@@ -78,3 +78,16 @@ uv run mypy app                                                    # Success: no
 - 默认 `CORS_ALLOWED_ORIGINS=""` 时不会下发任何 CORS 头。**生产环境必须显式注入** `CORS_ALLOWED_ORIGINS`（含 `https://feslia.com`）；本地开发需含 `http://localhost:5173`、`http://127.0.0.1:5173`。
 - SSE endpoint 仍走 `fetch` + `Authorization` header，未改用原生 `EventSource`，跨域由本次 CORS 预检覆盖；SSE 相关代码本次未改动。
 - `uiux_v1.html` 仍是仓库根目录未跟踪文件，本次未修改。
+
+## 2026-09-05 本地局域网访问补充
+
+本地前端改用 `VITE_API_BASE_URL=/api/v1`，Vite 将 `/api/*` 同源请求代理到
+`http://127.0.0.1:8000`。此前把 API 固定为 loopback 时，Mac/PC 浏览器可用，但通过局域网打开
+前端的手机会把 `127.0.0.1` 解释为手机自身并显示网络错误。代理方案让桌面与手机都只访问前端
+origin，不依赖易变化的局域网 IP，也不需要为本地手机 origin 扩大 FastAPI CORS 列表；生产仍
+使用 Pages 注入的绝对 `VITE_API_BASE_URL`，继续遵守本交接中的 CORS 边界。
+
+验证结果：API URL/Client/Auth 定向测试 15 passed，前端全量 Vitest 79 files/698 tests passed；
+ESLint、typecheck 与 production build 通过。真实浏览器从电脑局域网地址加载登录页后，登录请求
+命中同一 origin 的 `POST /api/v1/auth/login` 并收到后端 401 业务响应，未再访问
+`127.0.0.1:8000`；经 Vite 代理读取 `/api/v1/capabilities` 返回 200。

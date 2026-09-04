@@ -18,6 +18,7 @@ from app.schemas.conversations import (
     ConversationRenameRequest,
     ConversationResponse,
     MessageCreateRequest,
+    MessageEditAndRegenerateRequest,
     RunOptionsRequest,
     SendMessageResponse,
 )
@@ -344,6 +345,7 @@ async def send_message_route(
         image_token_reserve=chat_model.image_token_reserve,
         provider_options=resolve_provider_options(settings, request, content=request.content),
         attachment_ids=request.attachment_ids or [],
+        reply_quote=request.reply_quote,
         settings=settings,
         count_tokens=count_tokens,
     )
@@ -362,7 +364,7 @@ async def send_message_route(
 async def edit_and_regenerate_route(
     conversation_id: uuid.UUID,
     message_id: uuid.UUID,
-    request: MessageCreateRequest,
+    request: MessageEditAndRegenerateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],

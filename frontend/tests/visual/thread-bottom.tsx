@@ -22,11 +22,17 @@ const conversation: ConversationResponse = {
   updated_at: "2026-08-16T00:00:00Z",
 };
 
-const longAnswer = Array.from(
+const replyQuoteFixtureText = Array.from(
+  { length: 10 },
+  (_, index) =>
+    `这段较长的回复引用用于验证第 ${index + 1} 部分的正文宽度、三行限制、颜色和分享展示一致性。`,
+).join("");
+
+const longAnswer = `${Array.from(
   { length: 72 },
   (_, index) =>
     `### 段落 ${index + 1}\n\n正文继续向页面底部延伸，用于验证 Composer 后方的渐变模糊与滚动按钮。`,
-).join("\n\n");
+).join("\n\n")}\n\n### 引用测试\n\n${replyQuoteFixtureText}`;
 
 const messages: MessageResponse[] = [
   {
@@ -72,6 +78,32 @@ const services = createFakeServices(
   {
     list: async () => [conversation],
     detail: async () => detail,
+    sendMessage: async (_conversationId, content, _options, _attachmentIds, replyQuote) => {
+      const message: MessageResponse = {
+        id: `visual-user-reply-${messages.length}`,
+        conversation_id: conversation.id,
+        run_id: "visual-reply-run",
+        role: "user",
+        content,
+        reasoning: null,
+        metadata: null,
+        reply_quote: replyQuote ?? null,
+        position: messages.length + 1,
+        created_at: "2026-08-31T00:00:03Z",
+      };
+      return {
+        message,
+        run: {
+          id: "visual-reply-run",
+          conversation_id: conversation.id,
+          user_message_id: message.id,
+          status: "queued",
+          provider_name: "deepseek",
+          provider_model: "deepseek-chat",
+          created_at: message.created_at,
+        },
+      };
+    },
   },
 );
 

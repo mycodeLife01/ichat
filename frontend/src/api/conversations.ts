@@ -5,6 +5,7 @@ import type {
   ConversationCreateWithMessageResponse,
   ConversationDetailResponse,
   ConversationResponse,
+  ReplyQuoteDraft,
   SendMessageResponse,
 } from "./types";
 
@@ -76,6 +77,7 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
       content: string,
       options?: RunOptionsRequest,
       attachmentIds?: string[],
+      replyQuote?: ReplyQuoteDraft,
     ): Promise<SendMessageResponse> {
       return resolveClient().request<SendMessageResponse>(
         `/conversations/${conversationId}/messages`,
@@ -85,6 +87,7 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
             content,
             ...options,
             ...(attachmentIds === undefined ? {} : { attachment_ids: attachmentIds }),
+            ...(replyQuote === undefined ? {} : { reply_quote: replyQuote }),
           },
         },
       );

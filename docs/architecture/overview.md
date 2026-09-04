@@ -101,7 +101,10 @@ API ── FileUpload queued ──► Celery files queue / file-worker
 ### 1. 入队与唤醒
 
 1. API 读取当前聊天模型目录，选择一条可用路由，在同一 PG 事务内写 user message 和
-   `runs(status='queued')`，并固化非敏感路由快照。
+   `runs(status='queued')`，并固化非敏感路由快照。已有会话的 user message 可同时保存一个
+   回复引用：`messages` 持有可空来源关系、不可变 excerpt 和可选版本化 source anchor；会话服务
+   在行锁内验证来源属于当前可见分支、更早且为 assistant。来源删除只把关系置空，不改写 excerpt
+   或 anchor。anchor 只服务 UI 来源恢复，不进入模型输入或 transcript。
 2. 事务成功 commit 后，API 向 Redis `runs_queued` channel publish 内部 `run.id`。
 3. Worker 的 Redis pub/sub listener 收到任意提示后唤醒 claim loop。
 4. 信号不携带所有权：Worker 仍用 `FOR UPDATE SKIP LOCKED` claim，并写 lease。
@@ -178,7 +181,7 @@ cancelled            ├──────── finish ────────
 | `run_events` | 语义事件事实源；暂时兼容历史 delta 行 |
 | `run_drafts` | 每 Run 一行的累计正文/raw/summary checkpoint，供 Redis 故障降级 |
 | `run_provider_messages` | provider-neutral content blocks transcript，含 adapter-owned continuation state |
-| `messages` | 用户可见 user/assistant 消息；assistant 仅在成功终态物化，reasoning 字段是 transcript 聚合投影 |
+| `messages` | 用户可见 user/assistant 消息；assistant 仅在成功终态物化；user 可保存一个回复引用来源关系、不可变 excerpt 与 UI-only source anchor；reasoning 字段是 transcript 聚合投影 |
 | `file_uploads` | 有期限上传状态机、confirm ETag、lease、尝试数和 output manifest |
 | `files` / `file_objects` | 不可变逻辑资产与其 R2 原件/派生物表示 |
 | `message_attachments` | Message 到附件资产的显式有序关系与稳定展示元数据 |
@@ -258,6 +261,10 @@ LLM Worker 不把 Redis health 作为启动前置条件，因此 Redis 在启动
 9. 文件读取、配额、资产回收和对象删除均经 files 服务；会话/Run 历史不能通过 R2 重新构造事实。
 10. Provider 私有推理、工具协议和续传状态只在当前 Provider 续传阶段回放；切换成功后不得因
     再次选择旧路径而复活切换前状态，transcript 本身保持完整不可变。
+11. 回复引用是会话层输入语义：`messages.content` 只保存用户实际提示，excerpt 经低信任、
+    无歧义文本投影后与附件块一起固化进目标 Run transcript；引用-only 的默认解释意图只存在于
+    该模型输入投影，不写回可见消息，也不新增 agent/provider/SSE 协议。source anchor 与公开分享的
+    snapshot-local source index 均为 UI 导航坐标，禁止进入模型输入或泄露内部消息句柄。
 
 ## 关联文档
 

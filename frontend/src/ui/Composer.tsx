@@ -5,10 +5,11 @@ import {
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 
-import type { ChatModelCapability, ImageContext } from "../api/types";
+import type { ChatModelCapability, ImageContext, ReplyQuoteDraft } from "../api/types";
 import { AttachmentCard } from "../files/AttachmentCard";
 import type { DraftAttachment, FileReadRole, FilesCapability } from "../files/types";
 import { categoryForFileName } from "../files/utils";
@@ -26,6 +27,7 @@ import {
   primaryButton,
 } from "./classes";
 import { Icons } from "./icons";
+import { ReplyQuote } from "../messages/ReplyQuote";
 
 type ComposerState = "idle" | "submitting" | "streaming" | "stopping";
 
@@ -53,6 +55,10 @@ type ComposerProps = {
   onRetryAttachment?: (clientId: string) => void;
   onMoveAttachment?: (clientId: string, direction: -1 | 1) => void;
   onReadAttachment?: (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
+  replyQuote?: ReplyQuoteDraft | null;
+  onRemoveReplyQuote?: () => void;
+  onRevealReplyQuote?: () => void;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   canSend?: boolean;
   sendDisabledReason?: string | null;
   readOnly?: boolean;
@@ -157,12 +163,17 @@ export function Composer({
   onRetryAttachment = () => {},
   onMoveAttachment = () => {},
   onReadAttachment,
+  replyQuote = null,
+  onRemoveReplyQuote,
+  onRevealReplyQuote,
+  inputRef,
   canSend,
   sendDisabledReason = null,
   readOnly = false,
   isMobile = false,
 }: ComposerProps) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const localInputRef = useRef<HTMLTextAreaElement>(null);
+  const ref = inputRef ?? localInputRef;
   const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -203,7 +214,7 @@ export function Composer({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [toolsOpen]);
+  }, [toolsOpen, ref]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -214,7 +225,7 @@ export function Composer({
       el.scrollHeight >
         Math.max(window.innerHeight * PROMPT_MAX_VIEWPORT_RATIO, PROMPT_MIN_MAX_HEIGHT),
     );
-  }, [value]);
+  }, [value, ref]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -223,7 +234,7 @@ export function Composer({
     // state commits so clearing a long prompt cannot retain the padded height.
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [promptExpanded]);
+  }, [promptExpanded, ref]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -443,35 +454,63 @@ export function Composer({
         data-testid="composer"
         data-drag-active={dragActive ? "true" : "false"}
         data-expanded={promptExpanded ? "true" : "false"}
-        className={`composer relative mx-auto grid w-full max-w-[var(--assistant-content-width)] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1 px-2 py-[5px] ${composerSurface}`}
+        className={`composer relative mx-auto w-full max-w-[var(--assistant-content-width)] ${composerSurface}`}
       >
-        {attachments.length > 0 && (
+        {replyQuote !== null && (
           <div
-            className="scrollbar-none col-span-3 mx-1 mt-[7px] mb-[10px] flex min-w-0 max-w-full touch-pan-x items-stretch gap-2 overflow-x-auto overscroll-x-contain"
-            aria-label="附件"
+            data-reply-quote-region
+            className="rounded-t-[27px] bg-reply-quote-region pt-1"
           >
-            {attachments.map((attachment, index) => (
-              <AttachmentCard
-                key={attachment.client_id}
-                attachment={attachment}
-                mode="composer"
-                getReadUrl={onReadAttachment}
-                canMoveBack={index > 0}
-                canMoveForward={index < attachments.length - 1}
-                onCancel={onCancelAttachment}
-                onRetry={onRetryAttachment}
-                onMove={onMoveAttachment}
-                imageLayout={
-                  attachments.length === 1 &&
-                  (attachment.file?.category ?? attachment.category) === "image"
-                    ? "single"
-                    : hasMixedAttachmentKinds &&
-                        (attachment.file?.category ?? attachment.category) === "image"
-                      ? "mixed"
-                    : "collection"
-                }
-              />
-            ))}
+            <ReplyQuote
+              excerpt={replyQuote.excerpt}
+              variant="composer"
+              onReveal={onRevealReplyQuote}
+              onRemove={
+                onRemoveReplyQuote
+                  ? () => {
+                      onRemoveReplyQuote();
+                      window.requestAnimationFrame(() => ref.current?.focus());
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        )}
+        <div
+          data-composer-body
+          className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1 bg-surface px-2 py-[5px] ${
+            replyQuote !== null ? "rounded-b-[27px]" : "rounded-[27px]"
+          }`}
+        >
+        {attachments.length > 0 && (
+          <div className="col-span-3 flex min-w-0 flex-col">
+            <div
+              className="scrollbar-none mx-1 mt-[7px] mb-[10px] flex min-w-0 max-w-full touch-pan-x items-stretch gap-2 overflow-x-auto overscroll-x-contain"
+              aria-label="附件"
+            >
+              {attachments.map((attachment, index) => (
+                <AttachmentCard
+                  key={attachment.client_id}
+                  attachment={attachment}
+                  mode="composer"
+                  getReadUrl={onReadAttachment}
+                  canMoveBack={index > 0}
+                  canMoveForward={index < attachments.length - 1}
+                  onCancel={onCancelAttachment}
+                  onRetry={onRetryAttachment}
+                  onMove={onMoveAttachment}
+                  imageLayout={
+                    attachments.length === 1 &&
+                    (attachment.file?.category ?? attachment.category) === "image"
+                      ? "single"
+                      : hasMixedAttachmentKinds &&
+                          (attachment.file?.category ?? attachment.category) === "image"
+                        ? "mixed"
+                        : "collection"
+                  }
+                />
+              ))}
+            </div>
           </div>
         )}
         {/* Input state contract: only default applies. The field is
@@ -794,6 +833,7 @@ export function Composer({
               </button>
             )}
           </div>
+        </div>
         </div>
       </div>
       {(blockedFiles || pendingModelId) && (

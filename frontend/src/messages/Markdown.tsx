@@ -14,6 +14,7 @@ import { Citation } from "./Citation";
 import { rehypeCitations } from "./citations";
 import { CodeBlock } from "./markdown/CodeBlock";
 import { MarkdownLink } from "./markdown/MarkdownLink";
+import { rehypeReplyQuoteAnchors } from "./markdown/rehypeReplyQuoteAnchors";
 import { TableBlock } from "./markdown/TableBlock";
 import { normalizeMathDelimiters, clampStreamingMath } from "./mathDelimiters";
 
@@ -52,9 +53,17 @@ type MarkdownProps = {
   // True while the reply is still streaming: an unterminated display-math block
   // is clamped so KaTeX never renders a half-written formula as a red error.
   streaming?: boolean;
+  // Final assistant and public-share surfaces opt in to stable source anchors.
+  replyQuoteAnchors?: boolean;
 };
 
-export function Markdown({ content, sources, isMobile, streaming }: MarkdownProps) {
+export function Markdown({
+  content,
+  sources,
+  isMobile,
+  streaming,
+  replyQuoteAnchors,
+}: MarkdownProps) {
   // Memoized so unrelated app re-renders (e.g. typing in the composer, which
   // lives in a shared ancestor) don't re-parse the markdown or remount the
   // citation subtree. Remounting <Citation> would rebuild each <img> favicon,
@@ -74,6 +83,7 @@ export function Markdown({ content, sources, isMobile, streaming }: MarkdownProp
           rehypeCitations(new Set(sources!.map((s) => s.id))),
         ]
       : [[rehypeSanitize, mathSchema], rehypeKatex];
+    if (replyQuoteAnchors && !streaming) rehypePlugins.push(rehypeReplyQuoteAnchors);
 
     // `citation` is a custom tag injected by the plugin; react-markdown's
     // Components type only knows standard tags, so widen via the typed object.
@@ -105,7 +115,7 @@ export function Markdown({ content, sources, isMobile, streaming }: MarkdownProp
         {prepared}
       </ReactMarkdown>
     );
-  }, [content, sources, isMobile, streaming]);
+  }, [content, sources, isMobile, streaming, replyQuoteAnchors]);
 
   return (
     <div className="assistant-markdown body md">

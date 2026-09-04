@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.conversations import ReplyQuoteSourceAnchor
 from app.schemas.files import SharedAttachmentResponse
 
 
@@ -32,12 +33,19 @@ class SharedSource(BaseModel):
     provider: str | None = None
 
 
+class SharedReplyQuote(BaseModel):
+    excerpt: str
+    source_message_index: int | None = Field(default=None, ge=0)
+    source_anchor: ReplyQuoteSourceAnchor | None = None
+
+
 class SharedMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     reasoning: str | None = None
     sources: list[SharedSource] = Field(default_factory=list)
     attachments: list[SharedAttachmentResponse] = Field(default_factory=list)
+    reply_quote: SharedReplyQuote | None = None
 
 
 class PublicShareResponse(BaseModel):

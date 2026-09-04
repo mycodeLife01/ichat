@@ -1,11 +1,13 @@
 import type { AppAction } from "../app/store";
 import type { FileAttachment } from "../files/types";
+import type { ReplyQuoteDraft } from "../api/types";
 
 export type PendingSubmissionState = {
   clientId: string;
   content: string;
   conversationId: string | null;
   attachments: FileAttachment[];
+  replyQuote: ReplyQuoteDraft | null;
 } | null;
 
 export const initialPendingSubmissionState: PendingSubmissionState = null;
@@ -17,6 +19,7 @@ export type PendingSubmissionAction =
       content: string;
       conversationId: string | null;
       attachments: FileAttachment[];
+      replyQuote: ReplyQuoteDraft | null;
     }
   | { type: "submission/targeted"; conversationId: string }
   | { type: "submission/cleared" };
@@ -32,6 +35,7 @@ export function pendingSubmissionReducer(
         content: action.content,
         conversationId: action.conversationId,
         attachments: action.attachments,
+        replyQuote: action.replyQuote,
       };
     case "submission/targeted":
       return state === null ? state : { ...state, conversationId: action.conversationId };

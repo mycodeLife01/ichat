@@ -1,5 +1,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 
+import { replyQuoteAnchorProps, type MarkdownNode } from "./replyQuoteAnchorProps";
+
 function isExternalHttpHref(href: string | undefined) {
   if (!href) return false;
 
@@ -14,11 +16,16 @@ function isExternalHttpHref(href: string | undefined) {
   }
 }
 
-export function MarkdownLink({ children, href, title }: ComponentPropsWithoutRef<"a">) {
+type MarkdownLinkProps = ComponentPropsWithoutRef<"a"> & {
+  node?: MarkdownNode;
+};
+
+export function MarkdownLink({ children, href, title, node, ...props }: MarkdownLinkProps) {
   const external = isExternalHttpHref(href);
 
   return (
     <a
+      {...replyQuoteAnchorProps(node, props)}
       href={href}
       title={title}
       className={external ? "decorated-link" : undefined}

@@ -1,8 +1,15 @@
 import type { ReactNode } from "react";
 
-import type { MessageResponse, MessageSource } from "../api/types";
+import type {
+  MessageResponse,
+  MessageSource,
+  ReplyQuote,
+  ReplyQuoteDraft,
+} from "../api/types";
 import type { FileReadRole } from "../files/types";
 import { Message } from "./Message";
+import { ReplyQuoteSelectionAction } from "./ReplyQuoteSelectionAction";
+import { useReplyQuoteSelection } from "./useReplyQuoteSelection";
 
 type MessageThreadProps = {
   messages: MessageResponse[];
@@ -25,6 +32,10 @@ type MessageThreadProps = {
   localImagePreviews?: ReadonlyMap<string, string>;
   onLocalImagePreviewConsumed?: (fileId: string) => void;
   onShowSources?: (sources: MessageSource[]) => void;
+  conversationId?: string | null;
+  onReplyQuote?: (replyQuote: ReplyQuoteDraft) => void;
+  onReplyQuoteError?: (message: string) => void;
+  onRevealReplyQuote?: (replyQuote: ReplyQuote) => void;
   children?: ReactNode;
 };
 
@@ -45,8 +56,13 @@ export function MessageThread({
   localImagePreviews,
   onLocalImagePreviewConsumed,
   onShowSources,
+  conversationId = null,
+  onReplyQuote,
+  onReplyQuoteError,
+  onRevealReplyQuote,
   children,
 }: MessageThreadProps) {
+  const { candidate, dismiss } = useReplyQuoteSelection(conversationId);
   // Keep optimistic and server-materialized user messages in one flat keyed
   // list. The committed message reuses the client's render key, so React keeps
   // the AttachmentCard and its already-decoded image node mounted.
@@ -69,6 +85,7 @@ export function MessageThread({
   // the same 16px gutters as the Composer. Other MessageThread hosts retain
   // their own containing-block width.
   return (
+    <>
     <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+64px)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-6 max-[760px]:[.thread-region_&]:w-screen max-[760px]:px-4 max-[760px]:pt-6 max-[760px]:pb-[18px]">
       {displayMessages.map(({ message, renderKey, pending }) => (
         <Message
@@ -88,10 +105,31 @@ export function MessageThread({
           // Ownership starts once the server-materialized message takes over.
           onLocalImagePreviewConsumed={pending ? undefined : onLocalImagePreviewConsumed}
           onShowSources={onShowSources}
+          onRevealReplyQuote={onRevealReplyQuote}
           pending={pending}
         />
       ))}
       {children}
     </div>
+    {candidate && onReplyQuote && (
+      <ReplyQuoteSelectionAction
+        candidate={candidate}
+        onSelect={(selected) => {
+          if (Array.from(selected.excerpt).length > 4000) {
+            onReplyQuoteError?.("Select no more than 4,000 characters to quote.");
+            dismiss();
+            return;
+          }
+          onReplyQuote({
+            source_message_id: selected.sourceMessageId,
+            excerpt: selected.excerpt,
+            source_anchor: selected.sourceAnchor,
+          });
+          window.getSelection()?.removeAllRanges();
+          dismiss();
+        }}
+      />
+    )}
+    </>
   );
 }

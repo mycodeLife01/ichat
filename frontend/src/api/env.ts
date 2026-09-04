@@ -8,6 +8,12 @@ export function normalizeApiBaseUrl(value: string | undefined): string {
   return trimmed.replace(/\/+$/, "");
 }
 
+export function resolveApiBaseUrl(value: string | undefined, pageOrigin: string): string {
+  const normalized = normalizeApiBaseUrl(value);
+  if (!normalized.startsWith("/")) return normalized;
+  return `${pageOrigin.replace(/\/+$/, "")}${normalized}`;
+}
+
 export function getApiBaseUrl(): string {
-  return normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, window.location.origin);
 }

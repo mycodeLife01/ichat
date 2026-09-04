@@ -8,8 +8,10 @@
 
 - 前端是独立的 React + TypeScript + Vite SPA，由 Cloudflare Pages 托管；FastAPI 只提供
   API，不挂载或服务前端静态资源。
-- 浏览器通过 `VITE_API_BASE_URL` 跨域访问 `/api/v1`。该变量在构建时注入且必须存在；
-  域名、CORS 和 Pages 配置以 `docs/deployment.md` 为准。
+- 浏览器通过 `VITE_API_BASE_URL` 访问 `/api/v1`，该变量在构建时注入且必须存在。生产环境使用
+  完整 API origin 并由 CORS 放行；本地开发使用同源 `/api/v1`，由 Vite 代理到
+  `http://127.0.0.1:8000`，因此从局域网手机访问时不会把 loopback 错指向手机自身。生产域名、
+  CORS 和 Pages 配置以 `docs/deployment.md` 为准。
 - SSE 使用 `fetch` + `ReadableStream`，因为请求需要 `Authorization` header；不要改用
   原生 `EventSource`。
 - 服务端是会话、消息、Run 和文件状态的事实源。localStorage 只保存认证会话、用户偏好、
@@ -44,6 +46,11 @@
   注册，使 logout 或认证失效可以在不了解流实现的情况下中止它。
 - 页面生命周期内的展示状态可以留在组件；跨组件、参与业务守卫或需要统一 reset 的状态进入
   reducer；需要刷新恢复的偏好或草稿通过各自 store 写入 localStorage。
+- 未发送回复引用是 Composer 业务状态：reducer 保存
+  `{source_message_id, excerpt, source_anchor}`，并由
+  `replyQuoteDraftStore` 按“用户 + 已有会话”恢复；新会话不允许持久化回复引用。原生
+  `Selection`、`Range`、浮层坐标和 document listener 只属于 `messages` 页面生命周期，
+  不进入 reducer 或 localStorage。登出、认证失效、身份切换和会话删除同步清理该草稿。
 - 模型管理访问密钥是独立运维能力，不进入 reducer 或 localStorage；`model-admin` 只在
   sessionStorage 保存当前标签页会话，显式锁定、401 或 429 后立即清除。
 - logout、refresh 失败或身份切换必须中止当前 stream、清理上一身份的附件草稿并执行全局
@@ -112,7 +119,9 @@
 
 1. 提交开始先进入 `pendingSubmission`，表示尚未获得 Run id 的 HTTP 阶段；此时不能提供 Stop。
 2. 新会话使用原子 `createWithMessage`，已有会话使用 `sendMessage`。服务端返回真实 user message
-   与 Run 后，前端再建立 `activeRun` 并开始流式消费。
+   与 Run 后，前端再建立 `activeRun` 并开始流式消费。回复引用只能走已有会话端点；pending
+   submission 携带同一 DTO 快照，因此 quote-only user turn 在乐观态、服务端接管和失败恢复间
+   不会闪空或串用。
 3. `useRunStream` 是唯一 stream owner；同一时间最多消费一条流，新 start 会中止旧 consumer。
 4. SSE 按 `after_seq` 续读。事件 dispatch 前必须确认 run id 仍是当前 active Run，防止迟到事件
    写入另一会话。
@@ -165,9 +174,30 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   `messages/markdown/CodeBlock.tsx`、`TableBlock.tsx`、`MarkdownLink.tsx` 渲染，不在三个
   入口复制 parser 或 rich-surface 实现。
 - Markdown pipeline 固定为 math delimiter normalize → streaming clamp → remark GFM/math →
-  rehype sanitize → KaTeX → citation → React element renderer。不启用原始 HTML；renderer 只
+  rehype sanitize → KaTeX → citation → 可选 reply-quote anchor → React element renderer。
+  anchor 只在 final/share 非 streaming surface 上把仍合法的 unist source offset 投影到语义节点；
+  不启用原始 HTML；renderer 只
   消费 sanitize 后的 parsed node，不恢复被移除的危险 href，也不使用
   `dangerouslySetInnerHTML`。代码和表格复制只读取各自 parsed surface。
+- final assistant 的 Markdown 正文根节点是唯一可建立回复引用的选择 surface；思考、来源、
+  附件、动作和 `StreamingMessage` 不在该根节点内。选择协调器要求选区两端属于同一根节点，
+  用浏览器可见文本生成 excerpt，并从 `Range.startContainer` 最近的语义节点捕获版本化
+  source anchor，再把 fixed 浮层 portal 到 `body`。pointer 仍在选择时不发布
+  候选；最后一次有效 Selection 变化或 pointer release 后稳定 100ms 才显示动作。scroll、
+  resize、Escape、外部 pointer 和路由切换同时关闭候选并取消待执行 timer，旧选区不得延迟
+  复活。
+- 已发送 user message 与公开分享共同使用 `ReplyQuote` 的 message 模式：引用行独立占正文列
+  减去左右各 8px，使用 `white-space: normal` 在布局层折叠原始换行、以 `break-word` 自然换行并
+  居中排版，最多显示三行，但 DOM 与数据继续保留完整 excerpt。Composer 使用可关闭、
+  三行预览模式；其引用前导区是独立的次级背景层，下方输入与附件主体保持白色。前导背景
+  自身匹配 Composer 顶部圆角，不能通过裁剪 Composer 外层实现，因为模型与思考强度菜单仍
+  以内联 absolute surface 向外展开。
+- Composer 引用正文、live/pending 已发送引用和新公开分享引用是原生按钮；Composer 的移除按钮
+  与来源按钮互为 sibling。点击通过 `replyQuoteSourceNavigation` 在实际滚动容器内按“来源消息 +
+  source anchor”恢复语义节点，保持 URL 与焦点不变，滚动稳定后标黄 2 秒并淡出 1 秒。旧 live
+  引用仅在已限定的单个来源正文内唯一匹配 excerpt 时降级标注；歧义时只滚到来源消息，不猜测。
+  新分享只使用 `source_message_index` 指向快照数组内更早的 assistant，DOM 和匿名响应均不包含
+  live/public/internal message id；没有 index 的历史分享保持静态。
 - 助手内容列使用独立 token `--assistant-content-width: 768px`，不改页面级
   `--reading-width`。final、streaming 和 share 的正文、来源、附件与动作共享该列；share
   外壳需要 `calc(var(--assistant-content-width) + 64px)` 为两侧 `px-8` 留出准确 gutter。

@@ -109,6 +109,44 @@ const READY_IMAGE = {
 } satisfies DraftAttachment;
 
 describe("Composer", () => {
+  it("renders a reply quote and removes it without changing the prompt", async () => {
+    const user = userEvent.setup();
+    const onRemoveReplyQuote = vi.fn();
+    renderComposer({
+      value: "keep my question",
+      replyQuote: { source_message_id: "assistant-1", excerpt: "quoted answer" },
+      onRemoveReplyQuote,
+      canSend: true,
+    });
+
+    const quote = screen.getByLabelText("回复引用");
+    expect(quote).toHaveTextContent("quoted answer");
+    expect(screen.getByTestId("composer").querySelector("[data-reply-quote-region]")).toContainElement(
+      quote,
+    );
+    expect(screen.getByTestId("composer").querySelector("[data-composer-body]")).not.toBeNull();
+    expect(screen.queryByText(/引用 Piko|引用内容|解释这段引用内容/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "取消引用" }));
+    expect(onRemoveReplyQuote).toHaveBeenCalledOnce();
+    expect(screen.getByRole("textbox")).toHaveValue("keep my question");
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveFocus());
+  });
+
+  it("allows Enter to send a reply quote without prompt text", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    renderComposer({
+      replyQuote: { source_message_id: "assistant-1", excerpt: "quoted answer" },
+      onSend,
+      canSend: true,
+    });
+
+    await user.click(screen.getByRole("textbox"));
+    await user.keyboard("{Enter}");
+
+    expect(onSend).toHaveBeenCalledOnce();
+  });
   it("uses the assistant content width for horizontal alignment", () => {
     renderComposer();
 

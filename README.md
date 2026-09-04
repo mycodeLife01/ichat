@@ -54,7 +54,7 @@ docker compose up -d
 # 4. 启动前端
 cd frontend
 pnpm install
-echo "VITE_API_BASE_URL=http://localhost:8000/api/v1" > .env.local
+echo "VITE_API_BASE_URL=/api/v1" > .env.local
 pnpm dev
 ```
 
@@ -65,6 +65,10 @@ pnpm dev
 - 存活检查：<http://localhost:8000/healthz>
 - 就绪检查：<http://localhost:8000/readyz>
 - 模型管理：<http://localhost:5173/model-admin>（需配置 `MODEL_ADMIN_ACCESS_KEY`）
+
+本地开发时，Vite 将同源 `/api/*` 请求代理到 Mac/PC 上的 `http://127.0.0.1:8000`。同一局域网
+内的手机可直接打开 `http://<电脑局域网 IP>:5173`，无需把 API 地址改成电脑 IP，也无需为每个
+局域网地址额外配置 CORS。
 
 `.env.example` 默认使用 console 邮件 provider，并关闭 Web Search 与头像存储，因此本地启动
 不需要邮件服务、Tavily 或 R2 凭据。启用这些集成前，请填写对应配置。
@@ -205,11 +209,13 @@ compose.prod.yml        # 生产服务拓扑
 | 邮件与认证 | `EMAIL_PROVIDER`、`EMAIL_*`、`POSTMARK_*`、`RESEND_*`、`AUTH_*` |
 | 头像/R2 | `AVATAR_*`、`CLOUDFLARE_*` |
 
-前端只有一个必需的构建变量：
+前端只有一个必需的构建变量。本地开发使用同源 Vite 代理：
 
 ```dotenv
-VITE_API_BASE_URL=http://localhost:8000/api/v1
+VITE_API_BASE_URL=/api/v1
 ```
+
+生产构建继续注入完整 API 地址，例如 `VITE_API_BASE_URL=https://feslia.com/api/v1`。
 
 ## 开发与验证
 

@@ -22,10 +22,24 @@ import {
   type PendingSubmissionState,
 } from "../conversations/submission";
 import { initialUiState, uiReducer, type UiAction, type UiState } from "../ui/state";
+import type { ReplyQuoteDraft } from "../api/types";
 
-export type ComposerState = { input: string; isComposing: boolean };
+export type ComposerState = {
+  input: string;
+  isComposing: boolean;
+  replyQuote: ReplyQuoteDraft | null;
+};
 
-const initialComposerState: ComposerState = { input: "", isComposing: false };
+const initialComposerState: ComposerState = {
+  input: "",
+  isComposing: false,
+  replyQuote: null,
+};
+
+export type ComposerAction =
+  | { type: "composer/replyQuoteSet"; replyQuote: ReplyQuoteDraft }
+  | { type: "composer/replyQuoteCleared" }
+  | { type: "composer/replyQuoteRestored"; replyQuote: ReplyQuoteDraft | null };
 
 export type AppState = {
   auth: AuthState;
@@ -45,6 +59,7 @@ export type AppAction =
   | PendingSubmissionAction
   | UiAction
   | ActiveRunAction
+  | ComposerAction
   | AppResetAction;
 
 export const initialState: AppState = {
@@ -58,8 +73,18 @@ export const initialState: AppState = {
 };
 
 function composerReducer(state: ComposerState, action: AppAction): ComposerState {
-  if (action.type === "app/reset") return initialComposerState;
-  return state;
+  switch (action.type) {
+    case "composer/replyQuoteSet":
+      return { ...state, replyQuote: action.replyQuote };
+    case "composer/replyQuoteCleared":
+      return { ...state, replyQuote: null };
+    case "composer/replyQuoteRestored":
+      return { ...state, replyQuote: action.replyQuote };
+    case "app/reset":
+      return initialComposerState;
+    default:
+      return state;
+  }
 }
 
 export function rootReducer(state: AppState, action: AppAction): AppState {

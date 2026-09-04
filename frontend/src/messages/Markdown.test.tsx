@@ -5,6 +5,62 @@ import { describe, expect, it, vi } from "vitest";
 import { Markdown } from "./Markdown";
 
 describe("Markdown", () => {
+  it("projects stable Markdown source offsets onto selectable semantic nodes", () => {
+    const content = "前缀 **good enough to trust** 后缀";
+    const { container } = render(<Markdown content={content} replyQuoteAnchors />);
+
+    expect(container.querySelector("p")).toMatchObject({
+      dataset: { replyQuoteStart: "0", replyQuoteEnd: "30" },
+    });
+    expect(container.querySelector("strong")).toMatchObject({
+      dataset: { replyQuoteStart: "3", replyQuoteEnd: "27" },
+    });
+  });
+
+  it("gives repeated inline text distinct source anchors", () => {
+    const content = "**good enough to trust** / **good enough to trust**";
+    const { container } = render(<Markdown content={content} replyQuoteAnchors />);
+    const matches = container.querySelectorAll("strong");
+
+    expect(matches[0]).toMatchObject({
+      dataset: { replyQuoteStart: "0", replyQuoteEnd: "24" },
+    });
+    expect(matches[1]).toMatchObject({
+      dataset: { replyQuoteStart: "27", replyQuoteEnd: "51" },
+    });
+  });
+
+  it("does not publish stable reply-quote anchors while Markdown is streaming", () => {
+    const { container } = render(
+      <Markdown content="**still streaming**" replyQuoteAnchors streaming />,
+    );
+
+    expect(container.querySelector("[data-reply-quote-start]")).toBeNull();
+  });
+
+  it("keeps source anchors on custom link, code, and table surfaces", () => {
+    const content = [
+      "[链接](https://example.com)",
+      "",
+      "```ts",
+      "const answer = 42;",
+      "```",
+      "",
+      "| 名称 | 值 |",
+      "| --- | --- |",
+      "| 答案 | 42 |",
+    ].join("\n");
+    const { container } = render(<Markdown content={content} replyQuoteAnchors />);
+
+    expect(container.querySelector("a")).toHaveAttribute("data-reply-quote-start");
+    expect(container.querySelector("[data-code-block]")).toHaveAttribute(
+      "data-reply-quote-start",
+    );
+    expect(container.querySelector("[data-table-block]")).toHaveAttribute(
+      "data-reply-quote-start",
+    );
+  });
+
   it("keeps the legacy hooks inside the assistant typography scope", () => {
     const { container } = render(<Markdown content="正文" />);
 

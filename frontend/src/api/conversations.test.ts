@@ -121,6 +121,24 @@ describe("conversationApi", () => {
     );
   });
 
+  it("sends a reply quote only from the existing-conversation endpoint", async () => {
+    const client = mockClient();
+    vi.mocked(client.request).mockResolvedValue(sendMessageResponse);
+    const api = createConversationApi(client);
+    const replyQuote = {
+      source_message_id: "assistant-1",
+      excerpt: "quoted answer",
+      source_anchor: { version: 1 as const, start: 12, end: 30 },
+    };
+
+    await api.sendMessage("10", "", undefined, undefined, replyQuote);
+
+    expect(client.request).toHaveBeenCalledWith("/conversations/10/messages", {
+      method: "POST",
+      body: { content: "", reply_quote: replyQuote },
+    });
+  });
+
   it("merges thinking options into request bodies when provided", async () => {
     const client = mockClient();
     vi.mocked(client.request).mockResolvedValue(sendMessageResponse);

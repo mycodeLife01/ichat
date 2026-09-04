@@ -77,6 +77,28 @@ const parityMessage: MessageResponse = {
   metadata: {},
 };
 
+const replyQuoteParityExcerpt = Array.from(
+  { length: 8 },
+  (_, index) =>
+    `这是用于核对会话页和公开分享页回复引用一致性的第 ${index + 1} 段固定文本。`,
+).join("\n\n");
+
+const replyQuoteParityMessage: MessageResponse = {
+  id: "visual-reply-quote-message",
+  conversation_id: "visual-conversation-1",
+  run_id: "visual-reply-quote-run",
+  role: "user",
+  content: "请说明这段内容的关键限制。",
+  reasoning: null,
+  metadata: null,
+  reply_quote: {
+    source_message_id: parityMessage.id,
+    excerpt: replyQuoteParityExcerpt,
+  },
+  position: 2,
+  created_at: "2026-08-15T00:00:01Z",
+};
+
 type ConcreteRunState = NonNullable<ActiveRunState>;
 
 function runState(
@@ -124,6 +146,13 @@ const shareServices = createFakeServices(
           content: parityMarkdown,
           reasoning: null,
           sources: [],
+        },
+        {
+          role: "user",
+          content: replyQuoteParityMessage.content,
+          reasoning: null,
+          sources: [],
+          reply_quote: { excerpt: replyQuoteParityExcerpt, source_message_index: 0 },
         },
       ],
       created_at: "2026-08-15T00:00:00Z",
@@ -280,7 +309,11 @@ export function AssistantRenderingFixture() {
                 description="生产 MessageThread → Message → Markdown。"
               />
               <div className="fixture-live-shell">
-                <MessageThread messages={[parityMessage]} isMobile={isMobile} />
+                <MessageThread
+                  messages={[parityMessage, replyQuoteParityMessage]}
+                  isMobile={isMobile}
+                  onRevealReplyQuote={() => undefined}
+                />
               </div>
             </article>
             <article className="fixture-entry" data-render-entry="streaming">
