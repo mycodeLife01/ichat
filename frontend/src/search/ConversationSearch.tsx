@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Search, MessageCircle, CircleAlert } from "lucide-react";
 
@@ -80,6 +80,7 @@ export function ConversationSearch({
   const [pageError, setPageError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [active, setActive] = useState(-1);
+  const activeSource = useRef<"keyboard" | "pointer" | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +90,7 @@ export function ConversationSearch({
   const moreLock = useRef(false);
   const revalidating = useRef(false);
   const cachedPage = useRef(page);
+  const recentPage = useRef<SearchPage | null>(null);
   cachedPage.current = page;
   const selectedRow = useRef<string | null>(null);
   selectedRow.current = page.items[active]?.conversation_id ?? null;
@@ -100,6 +102,21 @@ export function ConversationSearch({
   const composing = useRef(false);
   const [compositionDone, setCompositionDone] = useState(0);
 
+  useLayoutEffect(() => {
+    if (open && !normalized) setActive(-1);
+  }, [open, normalized]);
+
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!open || !element) return;
+    element.scrollTop = scrollTop.current;
+    const anchor = scrollAnchor.current;
+    const row = anchor && [...element.querySelectorAll<HTMLElement>("[data-search-row]")]
+      .find((node) => node.dataset.conversationId === anchor.id);
+    if (row && anchor) element.scrollTop +=
+      row.getBoundingClientRect().top - element.getBoundingClientRect().top + anchor.offset;
+  }, [open, page]);
+
   useEffect(() => {
     if (!open || composing.current) return;
     const request = ++seq.current;
@@ -107,16 +124,17 @@ export function ConversationSearch({
     const controller = new AbortController();
     abort.current = controller;
     const changed = lastQuery.current !== normalized;
+    const recent = !normalized ? recentPage.current : null;
     if (changed) {
       scrollTop.current = 0;
       scrollAnchor.current = null;
-      setPage({ items: [], next_cursor: null });
+      setPage(recent ?? { items: [], next_cursor: null });
       setActive(-1);
     }
     setLoadingMore(false);
     moreLock.current = false;
     setPageError(false);
-    if (changed) setStatus("loading");
+    if (changed) setStatus(recent ? "ready" : "loading");
     if (tooLong) return () => controller.abort();
     revalidating.current = true;
     const previousCount = changed ? 0 : cachedPage.current.items.length;
@@ -148,10 +166,11 @@ export function ConversationSearch({
               };
             }
             if (controller.signal.aborted || request !== seq.current) return;
+            if (!normalized) recentPage.current = result;
             setActive(
               result.items.length
                 ? Math.max(
-                    0,
+                    normalized ? 0 : -1,
                     result.items.findIndex(
                       (row) => row.conversation_id === selectedRow.current,
                     ),
@@ -161,26 +180,10 @@ export function ConversationSearch({
             setPage(result);
             lastQuery.current = normalized;
             setStatus("ready");
-            requestAnimationFrame(() => {
-              const element = list.current;
-              if (!element || controller.signal.aborted) return;
-              element.scrollTop = scrollTop.current;
-              const anchor = scrollAnchor.current;
-              const row =
-                anchor &&
-                [
-                  ...element.querySelectorAll<HTMLElement>("[data-search-row]"),
-                ].find((node) => node.dataset.conversationId === anchor.id);
-              if (row && anchor)
-                element.scrollTop +=
-                  row.getBoundingClientRect().top -
-                  element.getBoundingClientRect().top +
-                  anchor.offset;
-            });
           })
           .catch(() => {
             if (!controller.signal.aborted && request === seq.current)
-              setStatus("error");
+              setStatus(!normalized && recentPage.current ? "ready" : "error");
           })
           .finally(() => {
             if (request === seq.current) revalidating.current = false;
@@ -275,6 +278,7 @@ export function ConversationSearch({
 
   const updateQuery = (value: string) => {
     setQuery(value);
+    if (!value) setActive(-1);
     const isTooLong = [...value].length > 200;
     if (
       value.replace(/\s+/g, " ").trim() === normalized &&
@@ -285,7 +289,15 @@ export function ConversationSearch({
     choiceAbort.current?.abort();
     setOpening(null);
     setActive(-1);
-    setStatus("loading");
+    const recent = !value.trim() && !isTooLong ? recentPage.current : null;
+    if (recent) {
+      scrollTop.current = 0;
+      scrollAnchor.current = null;
+      setPage(recent);
+      setLoadingMore(false);
+      setPageError(false);
+    }
+    setStatus(recent ? "ready" : "loading");
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -304,6 +316,7 @@ export function ConversationSearch({
           active + (event.key === "ArrowDown" ? 1 : -1),
         ),
       );
+      activeSource.current = "keyboard";
       setActive(next);
       const rows =
         list.current?.querySelectorAll<HTMLElement>("[data-search-row]");
@@ -368,25 +381,30 @@ export function ConversationSearch({
             setCompositionDone((value) => value + 1);
           }}
         />
-        {query && (
+        <div className="flex shrink-0 items-center gap-2">
+          {query && (
+            <>
+              <button
+                className={`${interactiveItem} h-9 shrink-0 px-3 text-[14px] text-text-muted hover:text-text-primary max-[760px]:h-11`}
+                aria-label="清除搜索"
+                onClick={() => {
+                  updateQuery("");
+                  searchInputRef.current?.focus();
+                }}
+              >
+                清除
+              </button>
+              <span className="h-5 w-px bg-border" aria-hidden="true" />
+            </>
+          )}
           <button
-            className={`${iconControl} h-8 w-8`}
-            aria-label="清空搜索"
-            onClick={() => {
-              updateQuery("");
-              searchInputRef.current?.focus();
-            }}
+            className={`${iconControl} h-9 w-9 max-[760px]:h-11 max-[760px]:w-11`}
+            aria-label="关闭搜索"
+            onClick={onClose}
           >
-            <Icons.Close size={18} />
+            <Icons.Close size={20} />
           </button>
-        )}
-        <button
-          className={`${iconControl} h-8 w-8`}
-          aria-label="关闭搜索"
-          onClick={onClose}
-        >
-          <Icons.Close size={20} />
-        </button>
+        </div>
       </div>
       <div
         ref={list}
@@ -439,6 +457,10 @@ export function ConversationSearch({
               </button>
             )}
           </div>
+        ) : status === "loading" && !normalized ? (
+          <span role="status" aria-label="正在加载最近对话" className="sr-only">
+            正在加载最近对话
+          </span>
         ) : status === "loading" ? (
           <div
             role="status"
@@ -484,8 +506,20 @@ export function ConversationSearch({
                   aria-selected={active === index}
                   aria-busy={opening === item.conversation_id}
                   className={`search-result flex w-full items-start gap-3 rounded-item px-3 py-3 text-left ${focusRing} ${active === index ? "bg-hover" : "hover:bg-hover"}`}
-                  onMouseMove={() => setActive(index)}
-                  onFocus={() => setActive(index)}
+                  onMouseMove={() => {
+                    activeSource.current = "pointer";
+                    setActive(index);
+                  }}
+                  onMouseLeave={() => {
+                    if (activeSource.current === "pointer") {
+                      activeSource.current = null;
+                      setActive(-1);
+                    }
+                  }}
+                  onFocus={() => {
+                    activeSource.current = "keyboard";
+                    setActive(index);
+                  }}
                   onClick={() => void choose(item)}
                 >
                   <Icons.Chats
