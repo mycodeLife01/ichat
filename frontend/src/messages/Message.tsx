@@ -1,3 +1,5 @@
+import { useContext } from "react";
+import { SearchRevealContext } from "../search/revealSearchResult";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { MessageResponse, MessageSource, ReplyQuote as ReplyQuoteData } from "../api/types";
@@ -76,6 +78,7 @@ export function Message({
   onShowSources,
   onRevealReplyQuote,
 }: MessageProps) {
+  const searchExpanded = useContext(SearchRevealContext) === message.id;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -346,7 +349,7 @@ export function Message({
   }
 
   if (isUser) {
-    const collapsed = overflowing && !expanded;
+    const collapsed = overflowing && !expanded && !searchExpanded;
     return (
       <div
         className={`${msgBase} user items-end`}
@@ -397,9 +400,10 @@ export function Message({
             />
           )}
           {message.reply_quote && (
-            <div className="flex w-full justify-end">
+            <div className="flex w-full justify-end" data-search-expanded={searchExpanded || undefined}>
               <ReplyQuote
                 excerpt={message.reply_quote.excerpt}
+                searchMessageId={message.id}
                 variant="message"
                 onReveal={
                   message.reply_quote.source_message_id && onRevealReplyQuote
@@ -427,6 +431,8 @@ export function Message({
               <div className="relative">
                 <div
                   ref={contentRef}
+                  data-search-message-id={message.id}
+                  data-search-field="body"
                   className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
                   style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
                 >
@@ -471,13 +477,15 @@ export function Message({
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders
             (a fresh [] each render would bust it). */}
-        <div data-reply-quote-message-id={message.id} className="reply-quote-surface">
+        <div data-search-message-id={message.id} data-search-field="body" data-reply-quote-message-id={message.id} className="reply-quote-surface">
+          <SearchRevealContext.Provider value={searchExpanded ? message.id : null}>
           <Markdown
             content={message.content}
             sources={message.metadata?.sources}
             isMobile={isMobile}
             replyQuoteAnchors
           />
+          </SearchRevealContext.Provider>
         </div>
         {messageAttachments.length > 0 && (
           <MessageAttachments

@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     auto_title_max_output_tokens: int = 40
     log_level: str
     cors_allowed_origins: str = ""
+    conversation_search_enabled: bool = False
     web_search_enabled: bool = False
     web_search_provider: str = "tavily"
     tavily_api_key: str = ""

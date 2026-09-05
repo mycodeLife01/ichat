@@ -32,6 +32,7 @@ export function useStickToBottom<T extends HTMLElement>(
   const ref = useRef<T>(null);
   const lastForceKey = useRef(forceKey);
   const pinned = useRef(true);
+  const searchPaused = useRef(false);
   const scrollingToBottom = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   // Distinguishes user scrolls from the hook's own programmatic ones inside
@@ -50,7 +51,7 @@ export function useStickToBottom<T extends HTMLElement>(
     if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
-      if (top !== lastSetTop.current) {
+      if (!searchPaused.current && top !== lastSetTop.current) {
         if (scrollingToBottom.current) {
           if (top < prevTop.current) {
             // An upward gesture interrupts the smooth return-to-latest motion.
@@ -70,8 +71,13 @@ export function useStickToBottom<T extends HTMLElement>(
       else syncScrollFromBottom(el);
       prevTop.current = top;
     };
+    const onUserIntent = () => { searchPaused.current = false; };
     el.addEventListener("scroll", onScroll);
-    return () => el.removeEventListener("scroll", onScroll);
+    for (const name of ["wheel", "touchstart", "pointerdown", "keydown"]) el.addEventListener(name, onUserIntent);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      for (const name of ["wheel", "touchstart", "pointerdown", "keydown"]) el.removeEventListener(name, onUserIntent);
+    };
     // The ref is populated by the same commit that runs this effect; re-running
     // on every dep change re-attaches to the current element if it was swapped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,7 +88,7 @@ export function useStickToBottom<T extends HTMLElement>(
     if (!el) return;
     const force = forceKey !== lastForceKey.current;
     lastForceKey.current = forceKey;
-    if (force) {
+    if (force && !searchPaused.current) {
       pinned.current = true;
       scrollingToBottom.current = false;
     }
@@ -103,6 +109,7 @@ export function useStickToBottom<T extends HTMLElement>(
     const el = ref.current;
     if (!el) return;
 
+    searchPaused.current = false;
     pinned.current = true;
     setShowScrollToBottom(false);
 
@@ -140,5 +147,10 @@ export function useStickToBottom<T extends HTMLElement>(
     prevTop.current = el.scrollTop;
   }, []);
 
-  return { ref, showScrollToBottom, scrollToBottom };
+  const pauseFollowing = useCallback((paused: boolean) => {
+    searchPaused.current = paused;
+    if (paused) { pinned.current = false; scrollingToBottom.current = false; }
+  }, []);
+
+  return { ref, showScrollToBottom, scrollToBottom, pauseFollowing };
 }

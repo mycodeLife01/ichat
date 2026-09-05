@@ -33,6 +33,7 @@ class ChatModelResponse(BaseModel):
 
 
 class CapabilitiesResponse(BaseModel):
+    conversation_search: WebSearchCapabilityResponse
     web_search: WebSearchCapabilityResponse
     files: FileUploadCapabilityResponse
     models: list[ChatModelResponse]

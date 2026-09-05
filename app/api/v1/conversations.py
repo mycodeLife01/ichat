@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -10,6 +10,7 @@ from app.core.logging import logger
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
+from app.schemas.conversation_search import ConversationSearchResponse
 from app.schemas.conversations import (
     ConversationCreateRequest,
     ConversationCreateWithMessageRequest,
@@ -25,6 +26,7 @@ from app.schemas.conversations import (
 from app.schemas.responses import SuccessResponse
 from app.schemas.shares import ShareCreateRequest, ShareLinkResponse
 from app.services.auth.dependencies import get_current_user
+from app.services.conversations.search import search_conversations
 from app.services.conversations.service import (
     create_conversation,
     create_conversation_with_message,
@@ -149,6 +151,25 @@ def resolve_provider_options(
     }
 
 
+@router.get("/search", response_model=SuccessResponse[ConversationSearchResponse])
+async def search_conversations_route(
+    response: Response,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    q: str = "",
+    cursor: str | None = None,
+    limit: int = 30,
+) -> SuccessResponse[ConversationSearchResponse]:
+    response.headers["Cache-Control"] = "no-store"
+    if not settings.conversation_search_enabled:
+        raise AppError(404, "Conversation search is unavailable.")
+    result = await search_conversations(
+        session, user=current_user, query=q, limit=limit, cursor=cursor, secret=settings.jwt_secret
+    )
+    return SuccessResponse(data=result)
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -233,9 +254,7 @@ async def list_deleted_conversations_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[list[ConversationResponse]]:
-    return SuccessResponse(
-        data=await list_deleted_conversations(session, user=current_user)
-    )
+    return SuccessResponse(data=await list_deleted_conversations(session, user=current_user))
 
 
 @router.get(

@@ -19,6 +19,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
+| History conversation search, search results, or navigation to matching message text | `docs/specs/2026-09-05-conversation-search.md` + `docs/plans/2026-09-05-conversation-search.md` + `docs/handover/2026-09-05-conversation-search.md` + `docs/architecture/frontend.md` + `docs/architecture/module-boundaries.md`; also follow the sidebar and reply-quote rows when touching those surfaces |
 | Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Modifying `ThinkingBlock`, the thinking/tool status header, the reasoning preview, or any layout class toggled by stream state | `docs/handover/2026-08-31-thinking-header-geometry-shift.md` + `docs/handover/2026-07-31-reasoning-preview-not-showing.md` |
 | Reply quotes, assistant text selection, quote-only messages, source navigation, or reply quote drafts/shares | `docs/handover/2026-08-31-reply-quote.md` + `docs/plans/2026-09-05-reply-quote-source-navigation.md` + `docs/plans/2026-09-04-reply-quote-ui-parity.md` + `docs/architecture/frontend.md` + `docs/architecture/overview.md` |
@@ -64,6 +65,7 @@ Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching yo
 
 Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what was built and why". Each file includes verification commands (pytest, ruff, mypy, docker compose) — re-run them after your changes.
 
+- `2026-09-05-conversation-search.md` — account-scoped history search, backfill and index rollout, cursors, exact navigation, benchmarks, and local startup.
 - `2026-05-16-project-foundation.md` — project scaffolding, dependencies, Docker Compose setup
 - `2026-05-16-mvp-infra.md` — config loading, Loguru logging, error types, Alembic initialization
 - `2026-05-16-db-models.md` — 7-table ORM schema, indexes, migration strategy
@@ -124,6 +126,19 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 ### `docs/goals/`
 
 Goal documents for goal-driven development runs (success criteria + verification). Paired with same-dated handover docs.
+
+### `docs/specs/`
+
+Current feature requirement and design specifications. A design status does not imply implementation or verification is complete.
+
+- `2026-09-05-conversation-search.md` — planned history search: title/body scope, conversation-update ordering, modal/mobile interactions, snippets, navigation and transient match highlighting, implementation validation gates, and acceptance criteria.
+- `2026-08-31-reply-quote.md` — reply quote requirements and implemented behavior, including the later source-navigation extension.
+
+### `docs/plans/`
+
+Executable implementation plans. Planned steps and performance targets are not evidence of completion.
+
+- `2026-09-05-conversation-search.md` — server-side history search, bounded responses and cursor pagination, searchable text projection, index benchmarks, transactional writes and backfill, frontend integration, verification, and rollout.
 
 ### `docs/superpowers/specs/`
 

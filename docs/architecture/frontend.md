@@ -90,6 +90,14 @@
 - 模型管理请求同样显式设置 `auth: false` 与 `retryOnUnauthorized: false`，只发送
   `X-Model-Admin-Key`；用户 token 刷新、登出和角色状态不得参与管理授权。
 
+## 历史会话搜索
+
+`src/search/` 管理搜索状态、卡片和精确文字定位。展开侧栏、rail 与移动抽屉共用入口，位于新建对话之后，由 `conversation_search.enabled` 控制。搜索使用独立分页 API，不扩大普通侧栏列表，不拉取全历史详情。
+
+`AppShell` 装配详情、会话路由、Run 恢复与短期定位意图。同会话也能再次定位；查询、结果和定位信息不进入 URL 或持久存储。BrowserRouter 的路由提交可能晚于详情，不能因一帧旧路径与新意图不一致而提前清理。
+
+UTF-16 区间先校验版本与 hash，再用真实 Markdown DOM Range 和 CSS Custom Highlight API 标记，不替换 React 管理的节点。React context 控制目标消息的临时展开，`useStickToBottom.pauseFollowing` 协调定位与持续输出。详见[实施交接](../handover/2026-09-05-conversation-search.md)。
+
 ## API 与认证会话
 
 - JSON 成功响应统一读取 `{"data": ...}`；非 2xx 和网络错误统一转换为 `ApiError`。功能层

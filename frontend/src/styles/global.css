@@ -1105,3 +1105,16 @@ body {
   width: 0;
   height: 0;
 }
+
+/* Search is positioned against the viewport, independent of the app header. */
+.search-backdrop { background: transparent; }
+.conversation-search { width: min(720px, calc(100vw - 40px)); height: min(460px, calc(100dvh - 80px)); display: flex; flex-direction: column; overflow: hidden; transform: translateY(-10%); padding: 0; }
+.search-results { scrollbar-width: thin; scrollbar-color: var(--color-hover) transparent; }
+.search-results::-webkit-scrollbar { width: 6px; }
+.search-results::-webkit-scrollbar-thumb { background: var(--color-hover); border-radius: 3px; }
+.search-match { background: transparent; color: inherit; font-weight: 650; }
+::highlight(conversation-search-hit) { background-color: rgba(255, 235, 140, var(--search-hit-alpha, .6)); color: inherit; }
+[data-search-expanded] blockquote { -webkit-line-clamp: unset; }
+@media (max-width: 760px) {
+  .conversation-search { width: 100%; height: 100dvh; max-width: none; transform: none; border-radius: 0; border: 0; }
+}

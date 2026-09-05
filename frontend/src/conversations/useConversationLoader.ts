@@ -1,3 +1,4 @@
+import type { ConversationDetailResponse } from "../api/types";
 import { useCallback, useRef } from "react";
 
 import { ApiError } from "../api/errors";
@@ -9,7 +10,7 @@ const INVALID_SELECTION_STATUSES = new Set([403, 404, 422]);
 
 export function useConversationLoader() {
   const { conversationIndex, conversationDetail } = useAppState();
-  const { dispatch, services } = useAppActions();
+  const { dispatch, services, stateRef } = useAppActions();
   const { conversationApi } = services;
   const loadingMoreRef = useRef(false);
 
@@ -74,19 +75,20 @@ export function useConversationLoader() {
   }, [dispatch]);
 
   const selectConversation = useCallback(
-    async (id: string) => {
+    async (id: string, prepared?: ConversationDetailResponse) => {
       // Re-clicking the active conversation is a no-op: avoid a redundant refetch.
       // Users who want to reload the current conversation should refresh the page.
-      if (id === conversationIndex.selectedId) {
+      if (id === conversationIndex.selectedId && !prepared) {
         dispatch({ type: "ui/setMobileSidebar", open: false });
         return;
       }
-      dispatch({ type: "run/cleared" });
+      if (id !== stateRef.current.conversationIndex.selectedId) dispatch({ type: "run/cleared" });
       dispatch({ type: "conversations/selected", id });
       dispatch({ type: "conversations/detailLoading" });
       dispatch({ type: "ui/setMobileSidebar", open: false });
       try {
-        const detail = await conversationApi.detail(id);
+        const detail = prepared ?? await conversationApi.detail(id);
+        if (stateRef.current.conversationIndex.selectedId !== id) return;
         const { messages, image_context: imageContext, ...conversation } = detail;
         dispatch({
           type: "conversations/detailLoaded",
@@ -96,6 +98,7 @@ export function useConversationLoader() {
         });
         selectionStore.save(id);
       } catch (error) {
+        if (stateRef.current.conversationIndex.selectedId !== id) return;
         // 403/404/422: invalid or inaccessible URL selection; clear back to blank.
         // Other errors still use the simplified forbidden detail state.
         dispatch({ type: "conversations/detailForbidden" });
@@ -110,7 +113,7 @@ export function useConversationLoader() {
         }
       }
     },
-    [dispatch, conversationApi, conversationIndex.selectedId],
+    [dispatch, conversationApi, conversationIndex.selectedId, stateRef],
   );
 
   const renameConversation = useCallback(

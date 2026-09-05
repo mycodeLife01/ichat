@@ -1,0 +1,40 @@
+{
+  "user_search_False": {
+    "p50_ms": 0.426,
+    "p95_ms": 0.845
+  },
+  "user_search_True": {
+    "p50_ms": 0.481,
+    "p95_ms": 0.881
+  },
+  "assistant_search_False": {
+    "p50_ms": 0.358,
+    "p95_ms": 0.603
+  },
+  "assistant_search_True": {
+    "p50_ms": 0.776,
+    "p95_ms": 1.14
+  },
+  "storage": [
+    {
+      "relname": "messages",
+      "bytes": 862511104
+    },
+    {
+      "relname": "ix_conversations_search_title",
+      "bytes": 4775936
+    },
+    {
+      "relname": "ix_messages_search_body",
+      "bytes": 47915008
+    },
+    {
+      "relname": "ix_messages_search_quote",
+      "bytes": 8200192
+    },
+    {
+      "relname": "ix_conversations_search_order",
+      "bytes": 868352
+    }
+  ]
+}

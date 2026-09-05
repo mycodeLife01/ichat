@@ -34,6 +34,8 @@ from app.services.conversations.image_context import (
     MessageImageFacts,
     derive_image_context,
 )
+from app.services.conversations.search_text import SEARCH_TEXT_VERSION, build_title_search_text
+from app.services.conversations.search_writes import populate_message_search_text
 from app.services.files.bindings import (
     ATTACHMENT_INVALID,
     bind_attachment_plan,
@@ -242,6 +244,8 @@ async def _create_conversation_model(
     title: str | None,
 ) -> Conversation:
     conversation = Conversation(user_id=user.id, title=normalize_optional_title(title))
+    conversation.search_title = build_title_search_text(conversation.title)
+    conversation.search_text_version = SEARCH_TEXT_VERSION
     session.add(conversation)
     await session.flush()
     return conversation
@@ -337,6 +341,8 @@ async def rename_conversation(
         public_id=conversation_public_id,
     )
     conversation.title = title.strip()
+    conversation.search_title = build_title_search_text(conversation.title)
+    conversation.search_text_version = SEARCH_TEXT_VERSION
     conversation.updated_at = await get_database_now(session)
     await session.flush()
     await session.refresh(conversation)
@@ -575,6 +581,7 @@ async def _submit_user_message_to_conversation(
         ),
         position=next_position,
     )
+    populate_message_search_text(message)
     session.add(message)
     await session.flush()
 
@@ -742,6 +749,7 @@ async def edit_user_message_and_regenerate(
         reply_quote_source_anchor_end=inherited_quote_anchor_end,
         position=next_position,
     )
+    populate_message_search_text(new_message)
     session.add(new_message)
     await session.flush()
 
@@ -1059,6 +1067,7 @@ async def materialize_assistant_message(
         metadata_=metadata,
         position=next_position,
     )
+    populate_message_search_text(message)
     session.add(message)
     await session.flush()
 

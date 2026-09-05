@@ -187,6 +187,7 @@ export type ChatModelCapability = {
 };
 
 export type CapabilitiesResponse = {
+  conversation_search?: { enabled: boolean };
   web_search: {
     enabled: boolean;
   };

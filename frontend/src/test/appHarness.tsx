@@ -43,6 +43,7 @@ export function createFakeConversationApi(
   overrides: Partial<ConversationApi> = {},
 ): ConversationApi {
   return {
+    search: async () => ({ items: [], next_cursor: null }),
     list: async () => [],
     create: async () => conversationResponse,
     createWithMessage: async () => ({
