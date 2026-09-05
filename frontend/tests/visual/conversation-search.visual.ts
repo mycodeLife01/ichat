@@ -82,6 +82,77 @@ test("search placement, neutral states, paging and exact navigation", async ({
   });
 });
 
+test("recent history stays unselected and clearing restores it without intermediate frames", async ({ page }) => {
+  await page.goto("/tests/visual/conversation-search.html");
+  await page.evaluate(() => {
+    const observation = { skeletonSeen: false };
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('.search-results [aria-label="正在搜索"]')) observation.skeletonSeen = true;
+    });
+    observer.observe(document.body, { subtree: true, childList: true });
+    Object.assign(window, { initialRecentLoad: { observation, observer } });
+  });
+  await openSearch(page);
+  const input = page.getByRole("combobox", { name: "搜索历史对话" });
+  await expect(page.locator("[data-search-row]")).toHaveCount(10);
+  expect(await page.evaluate(() => {
+    const { observation, observer } = (window as unknown as {
+      initialRecentLoad: { observation: { skeletonSeen: boolean }; observer: MutationObserver };
+    }).initialRecentLoad;
+    observer.disconnect();
+    return observation.skeletonSeen;
+  })).toBe(false);
+  await expect(page.locator("[data-search-row][aria-selected=true]")).toHaveCount(0);
+  await input.press("Enter");
+  await expect(page.getByRole("dialog", { name: "搜索历史对话" })).toBeVisible();
+  const hovered = page.locator("[data-search-row]").nth(2);
+  await hovered.hover();
+  await expect(hovered).toHaveAttribute("aria-selected", "true");
+  await input.hover();
+  await expect(page.locator("[data-search-row][aria-selected=true]")).toHaveCount(0);
+  expect(await hovered.evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await input.press("ArrowDown");
+  await input.hover();
+  await expect(page.locator("[data-search-row]").first()).toHaveAttribute("aria-selected", "true");
+  await input.fill("重点");
+  await expect(page.locator("[data-search-row]")).toHaveCount(30);
+  await page.locator(".search-results").evaluate(el => { el.scrollTop = 400; });
+  await page.evaluate(() => {
+    const clear = document.querySelector('[aria-label="清除搜索"]')!;
+    const frames: { count: number; loading: boolean; selected: number; scroll: number; top: number; height: number }[] = [];
+    Object.assign(window, { clearSearchFrames: frames });
+    clear.addEventListener("click", () => {
+      const start = performance.now();
+      const sample = () => {
+        const list = document.querySelector(".search-results")!;
+        const row = list.querySelector("[data-search-row]");
+        frames.push({
+          count: list.querySelectorAll("[data-search-row]").length,
+          loading: !!list.querySelector('[role=status][aria-label="正在搜索"]'),
+          selected: list.querySelectorAll('[aria-selected=true]').length,
+          scroll: list.scrollTop,
+          top: row?.getBoundingClientRect().top ?? -1,
+          height: document.querySelector(".conversation-search")!.getBoundingClientRect().height,
+        });
+        if (performance.now() - start < 350) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }, { once: true });
+  });
+  await page.getByRole("button", { name: "清除搜索" }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("");
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { clearSearchFrames: unknown[] }).clearSearchFrames.length,
+  )).toBeGreaterThan(8);
+  const frames = await page.evaluate(() => (window as unknown as {
+    clearSearchFrames: { count: number; loading: boolean; selected: number; scroll: number; top: number; height: number }[];
+  }).clearSearchFrames);
+  expect(frames.every(frame => frame.count === 10 && !frame.loading && frame.selected === 0 && frame.scroll === 0)).toBe(true);
+  expect(new Set(frames.map(frame => frame.top)).size).toBe(1);
+  expect(new Set(frames.map(frame => frame.height)).size).toBe(1);
+});
+
 test("rail entry, keyboard close and stale-result error toast", async ({
   page,
 }, info) => {
