@@ -1,6 +1,6 @@
 # 历史会话搜索实施与验收
 
-日期：2026-09-05。工作位置：当前分支与工作区，未提交、未部署生产。
+日期：2026-09-05。实现提交：`25bd82d`。本地验收与生产存量迁移分别记录如下；生产应用仍为旧版本。
 
 需求依据：[规格](../specs/2026-09-05-conversation-search.md)、[执行计划](../plans/2026-09-05-conversation-search.md)、[批准的 UI 原型](../specs/designs/conversation-search.prototype.html)。原型仅约束搜索 UI；生产组件、样式 token 和原有交互优先，未移植演示工具栏或周边一次性界面。
 
@@ -93,3 +93,26 @@ uv run python -m tests.performance.conversation_search bench --account baseline 
 - 没有调用真实模型生成新内容作为验收，也没有修改用户原始会话标题/正文、删除数据或发送外部邮件。
 
 浏览器验收覆盖 Chrome 桌面和移动尺寸，并不等同于实体手机软键盘或所有浏览器版本兼容性验收。精确绘制依赖 CSS Custom Highlight API。后续修改投影语义必须同步共享 fixture、版本/hash 和存量回填，不能只修改一端。
+
+## 生产存量迁移（2026-09-05）
+
+按用户授权，在生产部署目录 `/home/elliot/apps/ichat` 执行了数据库迁移与回填。没有替换运行中的 API、Worker、Celery 或前端，没有开启生产搜索能力。
+
+- 生产应用当时仍是 `9c27bea`，不包含搜索脚本。将提交 `25bd82d` 的归档构建为独立镜像 `ichat-search-migration:25bd82d`，通过一次性 Compose override 执行；正常 `compose.prod.yml` 未修改。
+- 迁移前生成 PostgreSQL custom-format 备份，并通过 `pg_restore --list` 检查可读。备份：`backups/search-25bd82d/before-search.dump`，18,989,591 字节，权限 `600`，仅保存在服务器。
+- 数据库由 `20260905_0022` 升级到 `20260905_0024`；按每批 100 行回填 **794 段会话、4,289 条消息**，随后执行 `ANALYZE conversations/messages`。
+- 全量 verify：`missing_titles=0`、`missing_messages=0`、`inconsistent_rows=0`、`invalid_indexes=0`。再次补缺更新 0 行，verify 仍全部为 0。
+- 迁移前后原始标题、正文、引用快照、会话时间及删除/归档状态的聚合指纹一致；记录数量不变。
+- 使用新版一次性容器直连生产数据库验证搜索 service：81 个活跃账户、123 段抽样会话、246 次标题/正文/引用检索全部成功。此检查没有代表线上旧 API 已支持搜索。
+- 运行中的 API `/healthz` 返回 `{"status":"ok"}`。迁移、回填、重复校验和搜索抽检日志位于服务器 `backups/search-25bd82d/`。
+
+**后续应用发布仍需补缺回填**：旧版在线写入进程不会生成搜索字段，且修改标题后不会同步派生标题。应先发布并替换 API、全部 LLM Worker 和标题 Celery Worker，再执行回填和 verify；若旧进程在本次回填后修改过已有标题，verify 会发现文本不一致，需要显式 `--rebuild` 重建派生字段。全部校验通过后才开启搜索能力。
+
+本次执行命令（相对于生产部署目录）：
+
+```bash
+docker compose -f compose.prod.yml -f source-search-25bd82d/migration.override.yml run --rm --no-deps migrate python -m alembic upgrade 20260905_0024
+docker compose -f compose.prod.yml -f source-search-25bd82d/migration.override.yml run --rm --no-deps -e CONVERSATION_SEARCH_ENABLED=false api python -m app.conversation_search_admin backfill --batch-size 100 --version 1
+```
+
+CLI 的 `backfill` 会在结束时自动运行完整 verify；任一缺失、不一致或无效索引会使进程返回非零状态。
