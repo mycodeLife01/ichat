@@ -26,6 +26,7 @@ def create_engine(
     return create_async_engine(
         database_url,
         pool_pre_ping=True,
+        hide_parameters=True,
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout,

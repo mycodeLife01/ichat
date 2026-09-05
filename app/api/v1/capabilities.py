@@ -32,6 +32,9 @@ async def get_capabilities_route(
     models = await available_chat_models(session, settings=settings)
     return SuccessResponse(
         data=CapabilitiesResponse(
+            conversation_search=WebSearchCapabilityResponse(
+                enabled=settings.conversation_search_enabled
+            ),
             web_search=WebSearchCapabilityResponse(enabled=settings.web_search_available),
             files=FileUploadCapabilityResponse(
                 enabled=settings.file_upload_enabled,

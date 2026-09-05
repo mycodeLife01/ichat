@@ -1,0 +1,10 @@
+{
+  "messages": 1000,
+  "long_messages": 10,
+  "long_message_bytes": 60018,
+  "search_ms": 12.95,
+  "search_bytes": 645,
+  "detail_ms": 30.32,
+  "detail_bytes": 1632050,
+  "render_ms": 395.5
+}

@@ -1,3 +1,4 @@
+import { Search } from "lucide-react";
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 /* Hallmark · component: sidebar · genre: modern-minimal · system: existing warm-neutral tokens */
 import {
@@ -47,6 +48,7 @@ type SidebarProps = {
   isLoadingMore: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onSearch?: () => void;
   onLoadMore: () => void;
   onRename: (id: string, title: string) => void;
   onRequestShare: (id: string) => void;
@@ -96,6 +98,7 @@ export function Sidebar({
   isLoadingMore,
   onSelect,
   onNew,
+  onSearch,
   onLoadMore,
   onRename,
   onRequestShare,
@@ -530,6 +533,7 @@ export function Sidebar({
                     <Icons.NewChat size={20} />
                     新建对话
                   </button>
+                  {onSearch && <button className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`} onClick={() => { onSearch(); if (isMobile) onCloseMobile(); }}><Search size={20} strokeWidth={1.6} />搜索对话</button>}
                 </div>
 
                 <div className="mt-5 flex flex-col">
@@ -578,6 +582,7 @@ export function Sidebar({
             >
               <Icons.NewChat size={20} />
             </button>
+            {onSearch && <button className={`${railIconControl} h-9 w-9`} aria-label="搜索对话" title="搜索对话" onClick={onSearch}><Search size={20} strokeWidth={1.6} /></button>}
             <button
               ref={recentTriggerRef}
               className={`${railIconControl} h-9 w-9`}

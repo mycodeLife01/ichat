@@ -1,3 +1,6 @@
+import { ConversationSearch } from "../search/ConversationSearch";
+import { SearchRevealContext, revealSearchResult } from "../search/revealSearchResult";
+import type { SearchItem } from "../search/types";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -86,6 +89,10 @@ export function AppShell() {
   const navigate = useNavigate();
   const publicId = location.pathname.match(/^\/c\/([^/]+)/)?.[1];
   const [routerReady, setRouterReady] = useState(false);
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchIntent, setSearchIntent] = useState<{ item: SearchItem; key: number; query: string } | null>(null);
+
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
@@ -245,6 +252,7 @@ export function AppShell() {
     ref: threadRef,
     showScrollToBottom,
     scrollToBottom,
+    pauseFollowing,
   } = useStickToBottom<HTMLDivElement>(
     [
       detail.messages.length,
@@ -258,6 +266,23 @@ export function AppShell() {
     // and the server-materialized message move the viewport after rendering.
     `${detail.conversation?.id}:${lastUserMessageId}:${pendingSubmission?.clientId ?? ""}`,
   );
+  useEffect(() => {
+    if (!searchIntent?.item.target || detail.conversation?.id !== searchIntent.item.conversation_id || !threadRef.current) return;
+    return revealSearchResult(threadRef.current, searchIntent.item.target, () => {
+      dispatch({ type: "ui/showToast", message: "原搜索内容已变化，已打开对应对话。", tone: "error" });
+    }, () => setSearchIntent(null));
+  }, [searchIntent, detail.conversation?.id, dispatch, threadRef]);
+  const previousSearchRoute = useRef(publicId);
+  useEffect(() => {
+    const changed = previousSearchRoute.current !== publicId;
+    previousSearchRoute.current = publicId;
+    // BrowserRouter may commit the navigation after the detail and reveal intent.
+    if (changed && searchIntent?.item.conversation_id !== publicId) {
+      setSearchIntent(null);
+      pauseFollowing(false);
+    }
+  }, [publicId, pauseFollowing, searchIntent]);
+
   const replyQuoteRevealRef = useRef<ReplyQuoteRevealHandle | null>(null);
   const revealLiveReplyQuote = useCallback(
     (replyQuote: ReplyQuote) => {
@@ -297,6 +322,8 @@ export function AppShell() {
   );
 
   const onSend = () => {
+    setSearchIntent(null);
+    pauseFollowing(false);
     const text = composerValue;
     const readyImagesAllowed =
       !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
@@ -392,14 +419,32 @@ export function AppShell() {
   // below performs the actual load + run recovery. The sources panel belongs to a
   // message in the previous thread, so it closes too.
   const onSelectConversation = (id: string) => {
+    setSearchIntent(null);
+    pauseFollowing(false);
     setAnimateComposer(false);
     closeSources();
     if (id !== selectedId) navigate(`/c/${id}`);
   };
   const onNewConversation = () => {
+    setSearchIntent(null);
+    pauseFollowing(false);
     setAnimateComposer(false);
     closeSources();
     navigate("/");
+  };
+
+  const chooseSearchResult = async (item: SearchItem, signal: AbortSignal, query: string) => {
+    const fresh = await services.conversationApi.detail(item.conversation_id, signal);
+    if (signal.aborted) return;
+    const different = item.conversation_id !== stateRef.current.conversationIndex.selectedId;
+    closeSources();
+    setAnimateComposer(false);
+    pauseFollowing(Boolean(item.target));
+    await selectConversation(item.conversation_id, fresh);
+    if (signal.aborted) return;
+    navigate(`/c/${item.conversation_id}`);
+    setSearchIntent({ item, key: Date.now(), query });
+    if (different) void recover(item.conversation_id);
   };
 
   // Keep the pre-Run HTTP phase distinct from streaming: the submit action is
@@ -430,6 +475,7 @@ export function AppShell() {
         const capabilities = await services.capabilitiesApi.get();
         webSearchPreferenceStore.setCapability(capabilities.web_search.enabled);
         setWebSearchAvailable(capabilities.web_search.enabled);
+        setSearchEnabled(capabilities.conversation_search?.enabled === true);
         modelPreferenceStore.setAvailable(capabilities.models);
         setModels(capabilities.models);
         setModelId(modelPreferenceStore.resolve()?.id ?? null);
@@ -592,6 +638,9 @@ export function AppShell() {
 
   return (
     <div className="app flex h-full bg-bg">
+      {searchEnabled && <ConversationSearch key={user?.id ?? "anonymous"} open={searchOpen} onClose={() => setSearchOpen(false)}
+        search={services.conversationApi.search} onChoose={chooseSearchResult}
+        onStale={() => dispatch({ type: "ui/showToast", message: "无法打开这段对话，请重新搜索后再试。", tone: "error" })} />}
       <Sidebar
         items={items}
         selectedId={selectedId}
@@ -614,6 +663,7 @@ export function AppShell() {
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
         onNew={onNewConversation}
+        onSearch={searchEnabled ? () => { setSearchIntent(null); setSearchOpen(true); } : undefined}
         onLoadMore={() => void loadMore()}
         onRename={(id, title) => void renameConversation(id, title)}
         onRequestShare={(id) =>
@@ -699,7 +749,7 @@ export function AppShell() {
           >
             <div className="thread-stage flex flex-auto flex-col [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]">
               {!showWelcome && (
-                <MessageThread
+                <SearchRevealContext.Provider value={searchIntent?.item.target?.message_id ?? null}><MessageThread
                   messages={messages}
                   pendingMessage={pendingMessage}
                   pendingMessageKey={visiblePendingSubmission?.clientId}
@@ -707,9 +757,11 @@ export function AppShell() {
                   isMobile={isMobile}
                   mutateDisabledReason={mutationDisabledReason}
                   onEditAndRegenerate={(id, content, attachmentIds) => {
+                    setSearchIntent(null);
+                    pauseFollowing(false);
                     void editAndRegenerate(id, content, attachmentIds);
                   }}
-                  onRegenerate={(id) => void regenerate(id)}
+                  onRegenerate={(id) => { setSearchIntent(null); pauseFollowing(false); void regenerate(id); }}
                   legacyMessageId={imageContext.legacy_message_id}
                   onUpgradeLegacy={(messageId) => {
                     const visual = models.find((entry) => entry.supports_image_input);
@@ -760,7 +812,7 @@ export function AppShell() {
                       run={visiblePendingSubmission !== null ? null : activeRun}
                     />
                   ) : null}
-                </MessageThread>
+                </MessageThread></SearchRevealContext.Provider>
               )}
             </div>
 

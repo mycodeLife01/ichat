@@ -822,6 +822,7 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"] == {
+        "conversation_search": {"enabled": False},
         "web_search": {"enabled": True},
         "files": {
             "enabled": False,

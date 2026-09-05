@@ -15,6 +15,7 @@ from app.models.conversation import Conversation, Message
 from app.models.files import MessageAttachment
 from app.models.run import Run
 from app.services.agents import build_title_agent
+from app.services.conversations.search_text import SEARCH_TEXT_VERSION, build_title_search_text
 from app.services.conversations.title_jobs import (
     claim_title_job,
     complete_title_job,
@@ -85,7 +86,12 @@ def generate_conversation_title(
                         Conversation.id == inputs.conversation_id,
                         Conversation.title.is_(None),
                     )
-                    .values(title=title, updated_at=func.now())
+                    .values(
+                        title=title,
+                        updated_at=func.now(),
+                        search_title=build_title_search_text(title),
+                        search_text_version=SEARCH_TEXT_VERSION,
+                    )
                     .returning(Conversation.id)
                 )
             complete_title_job(session, run_id=run_id)

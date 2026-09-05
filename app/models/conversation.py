@@ -44,6 +44,10 @@ class Conversation(Base):
         nullable=False,
         index=True,
     )
+    search_title: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    search_text_version: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True, deferred=True
+    )
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deletion_due_at: Mapped[datetime | None] = mapped_column(
@@ -126,6 +130,13 @@ class Message(Base):
         index=True,
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
+    search_text: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    search_quote_text: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    search_text_version: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True, deferred=True
+    )
+    search_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, deferred=True)
+    search_quote_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, deferred=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning_summary: Mapped[str | None] = mapped_column(Text, nullable=True)

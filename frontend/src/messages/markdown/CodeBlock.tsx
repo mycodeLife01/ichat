@@ -1,5 +1,6 @@
+import { SearchRevealContext } from "../../search/revealSearchResult";
 import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
-import { Fragment, isValidElement, useEffect, useRef, useState } from "react";
+import { Fragment, isValidElement, useContext, useEffect, useRef, useState } from "react";
 
 import { focusRing } from "../../ui/classes";
 import { Icons } from "../../ui/icons";
@@ -81,7 +82,9 @@ export function CodeBlock({ children, node, ...props }: CodeBlockProps) {
   const highlightKey = `${language.highlighterLanguage}\0${source}`;
   const [highlightResult, setHighlightResult] = useState<HighlightResult | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "success" | "failure">("idle");
-  const [view, setView] = useState<"code" | "preview">("code");
+  const [selectedView, setView] = useState<"code" | "preview">("code");
+  const revealingSearch = useContext(SearchRevealContext) !== null;
+  const view = revealingSearch ? "code" : selectedView;
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyAttempt = useRef(0);
   const previewRef = useRef<HTMLDivElement | null>(null);

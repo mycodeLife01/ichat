@@ -90,6 +90,8 @@ def create_app(
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         with logger.contextualize(request_id=request_id):
             response = await call_next(request)
+        if request.url.path.rstrip("/") == "/api/v1/conversations/search":
+            response.headers["Cache-Control"] = "no-store"
         response.headers["X-Request-ID"] = request_id
         return response
 

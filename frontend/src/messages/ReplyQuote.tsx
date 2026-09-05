@@ -5,8 +5,10 @@ export function ReplyQuote({
   variant,
   onRemove,
   onReveal,
+  searchMessageId,
 }: {
   excerpt: string;
+  searchMessageId?: string;
   variant: "composer" | "message";
   onRemove?: () => void;
   onReveal?: () => void;
@@ -58,7 +60,7 @@ export function ReplyQuote({
   const content = (
     <>
       <Icons.ReplyArrow className="shrink-0" size={20} />
-      <blockquote className="min-w-0 max-w-full overflow-hidden [overflow-wrap:break-word] text-center whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+      <blockquote data-search-message-id={searchMessageId} data-search-field={searchMessageId ? "reply_quote" : undefined} className="min-w-0 max-w-full overflow-hidden [overflow-wrap:break-word] text-center whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
         {excerpt}
       </blockquote>
     </>

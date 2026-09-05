@@ -1,0 +1,216 @@
+{
+  "host": "macOS-15.7.1-arm64-arm-64bit",
+  "postgres": "PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "global_messages": 20000,
+  "mean_message_bytes": 813.006,
+  "max_message_bytes": 825,
+  "message_table_and_indexes_bytes": 53411840,
+  "account": "baseline",
+  "samples": 100,
+  "queries": {
+    "single": {
+      "first_request_ms": 14.91,
+      "1": {
+        "p50": 3.86,
+        "p95": 9.55,
+        "p99": 11.38,
+        "errors": 0,
+        "max_bytes": 21043
+      },
+      "10": {
+        "p50": 17.96,
+        "p95": 121.05,
+        "p99": 121.94,
+        "errors": 0,
+        "max_bytes": 21043
+      }
+    },
+    "double": {
+      "first_request_ms": 4.58,
+      "1": {
+        "p50": 5.22,
+        "p95": 11.59,
+        "p99": 13.78,
+        "errors": 0,
+        "max_bytes": 21253
+      },
+      "10": {
+        "p50": 16.85,
+        "p95": 28.97,
+        "p99": 31.81,
+        "errors": 0,
+        "max_bytes": 21253
+      }
+    },
+    "phrase": {
+      "first_request_ms": 4.26,
+      "1": {
+        "p50": 4.5,
+        "p95": 5.52,
+        "p99": 7.05,
+        "errors": 0,
+        "max_bytes": 21913
+      },
+      "10": {
+        "p50": 16.94,
+        "p95": 80.39,
+        "p99": 87.13,
+        "errors": 0,
+        "max_bytes": 21913
+      }
+    },
+    "common": {
+      "first_request_ms": 8.44,
+      "1": {
+        "p50": 4.61,
+        "p95": 11.26,
+        "p99": 12.33,
+        "errors": 0,
+        "max_bytes": 21253
+      },
+      "10": {
+        "p50": 18.93,
+        "p95": 26.43,
+        "p99": 27.9,
+        "errors": 0,
+        "max_bytes": 21253
+      }
+    },
+    "rare": {
+      "first_request_ms": 60.92,
+      "1": {
+        "p50": 40.96,
+        "p95": 46.27,
+        "p99": 57.8,
+        "errors": 0,
+        "max_bytes": 5270
+      },
+      "10": {
+        "p50": 65.34,
+        "p95": 82.9,
+        "p99": 99.51,
+        "errors": 0,
+        "max_bytes": 5270
+      }
+    },
+    "absent": {
+      "first_request_ms": 42.2,
+      "1": {
+        "p50": 40.34,
+        "p95": 43.67,
+        "p99": 48.15,
+        "errors": 0,
+        "max_bytes": 52
+      },
+      "10": {
+        "p50": 65.16,
+        "p95": 84.99,
+        "p99": 102.97,
+        "errors": 0,
+        "max_bytes": 52
+      }
+    },
+    "percent": {
+      "first_request_ms": 4.81,
+      "1": {
+        "p50": 4.34,
+        "p95": 4.99,
+        "p99": 8.24,
+        "errors": 0,
+        "max_bytes": 17293
+      },
+      "10": {
+        "p50": 14.39,
+        "p95": 15.58,
+        "p99": 16.36,
+        "errors": 0,
+        "max_bytes": 17293
+      }
+    },
+    "underscore": {
+      "first_request_ms": 4.36,
+      "1": {
+        "p50": 4.22,
+        "p95": 4.53,
+        "p99": 4.81,
+        "errors": 0,
+        "max_bytes": 16843
+      },
+      "10": {
+        "p50": 14.29,
+        "p95": 15.18,
+        "p99": 15.62,
+        "errors": 0,
+        "max_bytes": 16843
+      }
+    },
+    "backslash": {
+      "first_request_ms": 4.67,
+      "1": {
+        "p50": 4.39,
+        "p95": 4.64,
+        "p99": 4.91,
+        "errors": 0,
+        "max_bytes": 16213
+      },
+      "10": {
+        "p50": 14.54,
+        "p95": 15.51,
+        "p99": 15.74,
+        "errors": 0,
+        "max_bytes": 16213
+      }
+    },
+    "emoji": {
+      "first_request_ms": 4.93,
+      "1": {
+        "p50": 4.51,
+        "p95": 4.71,
+        "p99": 4.85,
+        "errors": 0,
+        "max_bytes": 17743
+      },
+      "10": {
+        "p50": 14.6,
+        "p95": 15.63,
+        "p99": 16.76,
+        "errors": 0,
+        "max_bytes": 17743
+      }
+    },
+    "title_only": {
+      "first_request_ms": 4.38,
+      "1": {
+        "p50": 3.95,
+        "p95": 4.16,
+        "p99": 4.32,
+        "errors": 0,
+        "max_bytes": 6133
+      },
+      "10": {
+        "p50": 12.97,
+        "p95": 14.12,
+        "p99": 14.61,
+        "errors": 0,
+        "max_bytes": 6133
+      }
+    },
+    "english": {
+      "first_request_ms": 4.75,
+      "1": {
+        "p50": 4.35,
+        "p95": 5.38,
+        "p99": 10.6,
+        "errors": 0,
+        "max_bytes": 18673
+      },
+      "10": {
+        "p50": 14.4,
+        "p95": 15.45,
+        "p99": 15.91,
+        "errors": 0,
+        "max_bytes": 18673
+      }
+    }
+  }
+}

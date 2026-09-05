@@ -1,3 +1,4 @@
+import type { SearchPage } from "../search/types";
 import { getDefaultApiClient, type ApiClient } from "./client";
 import type { RunOptionsRequest } from "../runs/thinkingLevel";
 import type {
@@ -22,6 +23,9 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
   const resolveClient = () => client ?? getDefaultApiClient();
 
   return {
+    search(params: { q: string; cursor?: string }, signal?: AbortSignal): Promise<SearchPage> {
+      return resolveClient().request<SearchPage>("/conversations/search", { query: params, signal });
+    },
     list(params?: ConversationListParams): Promise<ConversationResponse[]> {
       if (params === undefined) {
         return resolveClient().request<ConversationResponse[]>("/conversations");
@@ -55,9 +59,9 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         },
       );
     },
-    detail(conversationId: string): Promise<ConversationDetailResponse> {
+    detail(conversationId: string, signal?: AbortSignal): Promise<ConversationDetailResponse> {
       return resolveClient().request<ConversationDetailResponse>(
-        `/conversations/${conversationId}`,
+        `/conversations/${conversationId}`, ...(signal ? [{ signal }] : []),
       );
     },
     rename(conversationId: string, title: string): Promise<ConversationResponse> {
