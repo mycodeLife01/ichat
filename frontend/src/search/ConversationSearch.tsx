@@ -523,17 +523,22 @@ export function ConversationSearch({
         )}
         {status === "ready" && page.next_cursor && (
           <div className="flex justify-center p-2">
-            <button
-              className={`${interactiveItem} px-4 py-2 text-xs text-text-muted`}
-              disabled={loadingMore}
-              onClick={() => void more()}
-            >
-              {loadingMore
-                ? "正在加载…"
-                : pageError
-                  ? "加载失败，点击重试"
-                  : "加载更多"}
-            </button>
+            {loadingMore ? (
+              <div
+                role="status"
+                aria-label="正在加载更多结果"
+                className="flex items-center justify-center px-4 py-2 text-text-muted"
+              >
+                <Icons.Loading size={16} className="animate-spin" aria-hidden="true" />
+              </div>
+            ) : (
+              <button
+                className={`${interactiveItem} px-4 py-2 text-xs text-text-muted`}
+                onClick={() => void more()}
+              >
+                {pageError ? "加载失败，点击重试" : "加载更多"}
+              </button>
+            )}
           </div>
         )}
       </div>
