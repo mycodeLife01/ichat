@@ -1,0 +1,1072 @@
+{
+  "scope": "页面场景映射；render 不代表该页面所有交互都已配对。连续操作见 tests/visual，真实平台限制见 references/README.md。",
+  "scenes": [
+    {
+      "id": "chat",
+      "name": "已有对话",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/app/AppShell.tsx",
+      "design": "src/canvas/ChatPage.tsx",
+      "scene": "chat",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=chat&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "welcome",
+      "name": "空白会话",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/app/AppShell.tsx",
+      "design": "src/canvas/ChatPage.tsx",
+      "scene": "welcome",
+      "route": "/",
+      "entry": "/canvas.html?scene=welcome&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "long",
+      "name": "长对话与滚动",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/MessageThread.tsx",
+      "design": "src/messages/MessageThread.tsx",
+      "scene": "long",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=long&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "rail",
+      "name": "收起侧栏",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/Sidebar.tsx",
+      "design": "src/conversations/Sidebar.tsx",
+      "scene": "rail",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=rail&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "rail",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "unverified",
+      "name": "邮箱未验证",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/VerifyEmailBanner.tsx",
+      "design": "src/ui/VerifyEmailBanner.tsx",
+      "scene": "unverified",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=unverified&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "sources",
+      "name": "网页来源",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/SourcesPanel.tsx",
+      "design": "src/messages/SourcesPanel.tsx",
+      "scene": "sources",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=sources&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "sources",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "quote",
+      "name": "回复引用草稿",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/ReplyQuote.tsx",
+      "design": "src/messages/ReplyQuote.tsx",
+      "scene": "quote",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=quote&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "quote",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "attachments",
+      "name": "附件与图片",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/files/AttachmentCard.tsx",
+      "design": "src/files/AttachmentCard.tsx",
+      "scene": "attachments",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=attachments&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "attachments",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "upload-error",
+      "name": "附件失败与重试",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/files/AttachmentCard.tsx",
+      "design": "src/files/AttachmentCard.tsx",
+      "scene": "upload-error",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=upload-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "upload-error",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "send-error",
+      "name": "发送失败与恢复",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/Composer.tsx",
+      "design": "src/ui/Composer.tsx",
+      "scene": "send-error",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=send-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "error",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "thinking",
+      "name": "思考中",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/ThinkingBlock.tsx",
+      "design": "src/messages/ThinkingBlock.tsx",
+      "scene": "thinking",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=thinking&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "thinking",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "tool",
+      "name": "工具调用中",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/StreamingMessage.tsx",
+      "design": "src/messages/StreamingMessage.tsx",
+      "scene": "tool",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=tool&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "tool",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "streaming",
+      "name": "正文生成中",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/StreamingMessage.tsx",
+      "design": "src/messages/StreamingMessage.tsx",
+      "scene": "streaming",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=streaming&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "streaming",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "failed",
+      "name": "生成失败",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/StreamingMessage.tsx",
+      "design": "src/messages/StreamingMessage.tsx",
+      "scene": "failed",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=failed&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "failed",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "cancelled",
+      "name": "已停止生成",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/StreamingMessage.tsx",
+      "design": "src/messages/StreamingMessage.tsx",
+      "scene": "cancelled",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=cancelled&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "cancelled",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "search",
+      "name": "搜索最近对话",
+      "group": "搜索",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/search/ConversationSearch.tsx",
+      "design": "src/search/ConversationSearch.tsx",
+      "scene": "search",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=search&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "search",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "search-error",
+      "name": "搜索失败与重试",
+      "group": "搜索",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/search/ConversationSearch.tsx",
+      "design": "src/search/ConversationSearch.tsx",
+      "scene": "search-error",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=search-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "search",
+      "outcome": "error",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "search-loading",
+      "name": "搜索加载",
+      "group": "搜索",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/search/ConversationSearch.tsx",
+      "design": "src/search/ConversationSearch.tsx",
+      "scene": "search-loading",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=search-loading&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "search",
+      "outcome": "loading",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "share-dialog",
+      "name": "分享对话框",
+      "group": "分享",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/ShareDialog.tsx",
+      "design": "src/ui/ShareDialog.tsx",
+      "scene": "share-dialog",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=share-dialog&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "share",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "my-shares",
+      "name": "我的分享",
+      "group": "分享",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/MySharesCard.tsx",
+      "design": "src/conversations/MySharesCard.tsx",
+      "scene": "my-shares",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=my-shares&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "my-shares",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "share",
+      "name": "公开分享",
+      "group": "分享",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/SharePage.tsx",
+      "design": "src/messages/SharePage.tsx",
+      "scene": "share",
+      "route": "/share/design-share",
+      "entry": "/canvas.html?scene=share&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "share-invalid",
+      "name": "分享失效",
+      "group": "分享",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/SharePage.tsx",
+      "design": "src/messages/SharePage.tsx",
+      "scene": "share-invalid",
+      "route": "/share/missing",
+      "entry": "/canvas.html?scene=share-invalid&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "share-loading",
+      "name": "分享加载",
+      "group": "分享",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/messages/SharePage.tsx",
+      "design": "src/messages/SharePage.tsx",
+      "scene": "share-loading",
+      "route": "/share/design-share",
+      "entry": "/canvas.html?scene=share-loading&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "loading",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "account",
+      "name": "账号信息",
+      "group": "账号",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/AccountCard.tsx",
+      "design": "src/conversations/AccountCard.tsx",
+      "scene": "account",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=account&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "account",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "account-error",
+      "name": "账号保存失败",
+      "group": "账号",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/AccountCard.tsx",
+      "design": "src/conversations/AccountCard.tsx",
+      "scene": "account-error",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=account-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "account",
+      "outcome": "error",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "login",
+      "name": "登录",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/AuthScreen.tsx",
+      "design": "src/auth/AuthScreen.tsx",
+      "scene": "login",
+      "route": "/login",
+      "entry": "/canvas.html?scene=login&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "register",
+      "name": "注册",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/AuthScreen.tsx",
+      "design": "src/auth/AuthScreen.tsx",
+      "scene": "register",
+      "route": "/register",
+      "entry": "/canvas.html?scene=register&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "forgot",
+      "name": "忘记密码",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/AuthScreen.tsx",
+      "design": "src/auth/AuthScreen.tsx",
+      "scene": "forgot",
+      "route": "/forgot",
+      "entry": "/canvas.html?scene=forgot&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "login-error",
+      "name": "登录失败",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/AuthScreen.tsx",
+      "design": "src/auth/AuthScreen.tsx",
+      "scene": "login-error",
+      "route": "/login",
+      "entry": "/canvas.html?scene=login-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "error",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "verify",
+      "name": "验证邮箱成功",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/VerifyEmailPage.tsx",
+      "design": "src/auth/VerifyEmailPage.tsx",
+      "scene": "verify",
+      "route": "/verify-email?token=design",
+      "entry": "/canvas.html?scene=verify&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "verify-invalid",
+      "name": "验证链接失效",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/VerifyEmailPage.tsx",
+      "design": "src/auth/VerifyEmailPage.tsx",
+      "scene": "verify-invalid",
+      "route": "/verify-email?token=invalid",
+      "entry": "/canvas.html?scene=verify-invalid&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "verify-loading",
+      "name": "验证处理中",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/VerifyEmailPage.tsx",
+      "design": "src/auth/VerifyEmailPage.tsx",
+      "scene": "verify-loading",
+      "route": "/verify-email?token=design",
+      "entry": "/canvas.html?scene=verify-loading&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "loading",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "reset",
+      "name": "重置密码",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/ResetPasswordPage.tsx",
+      "design": "src/auth/ResetPasswordPage.tsx",
+      "scene": "reset",
+      "route": "/reset-password?token=design",
+      "entry": "/canvas.html?scene=reset&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "reset-invalid",
+      "name": "重置链接无效",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/ResetPasswordPage.tsx",
+      "design": "src/auth/ResetPasswordPage.tsx",
+      "scene": "reset-invalid",
+      "route": "/reset-password",
+      "entry": "/canvas.html?scene=reset-invalid&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "delete-account",
+      "name": "注销确认成功",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/ConfirmAccountDeletionPage.tsx",
+      "design": "src/auth/ConfirmAccountDeletionPage.tsx",
+      "scene": "delete-account",
+      "route": "/confirm-account-deletion?token=design",
+      "entry": "/canvas.html?scene=delete-account&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "delete-invalid",
+      "name": "注销链接无效",
+      "group": "认证",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/auth/ConfirmAccountDeletionPage.tsx",
+      "design": "src/auth/ConfirmAccountDeletionPage.tsx",
+      "scene": "delete-invalid",
+      "route": "/confirm-account-deletion",
+      "entry": "/canvas.html?scene=delete-invalid&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "admin",
+      "name": "模型与路由",
+      "group": "模型管理",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/model-admin/ModelAdminPage.tsx",
+      "design": "src/model-admin/ModelAdminPage.tsx",
+      "scene": "admin",
+      "route": "/model-admin",
+      "entry": "/canvas.html?scene=admin&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "unlocked",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "admin-gate",
+      "name": "管理访问入口",
+      "group": "模型管理",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/model-admin/ModelAdminPage.tsx",
+      "design": "src/model-admin/ModelAdminPage.tsx",
+      "scene": "admin-gate",
+      "route": "/model-admin",
+      "entry": "/canvas.html?scene=admin-gate&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
+      "id": "admin-error",
+      "name": "管理保存失败",
+      "group": "模型管理",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/model-admin/ModelAdminPage.tsx",
+      "design": "src/model-admin/ModelAdminPage.tsx",
+      "scene": "admin-error",
+      "route": "/model-admin",
+      "entry": "/canvas.html?scene=admin-error&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "unlocked",
+      "outcome": "error",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "components",
+      "name": "组件与样式",
+      "group": "基础组件",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/classes.ts",
+      "design": "src/ui/classes.ts",
+      "scene": "components",
+      "route": "/components",
+      "entry": "/canvas.html?scene=components&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    }
+  ]
+}

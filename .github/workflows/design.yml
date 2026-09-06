@@ -1,0 +1,51 @@
+name: Design workbench
+
+on:
+  push:
+    branches: [main]
+    paths: ['design/**', 'frontend/**', '.github/workflows/design.yml']
+  pull_request:
+    branches: [main]
+    paths: ['design/**', 'frontend/**', '.github/workflows/design.yml']
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: design/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: |
+            design/pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
+      - name: Install standalone and reference dependencies
+        run: |
+          pnpm --dir design install --frozen-lockfile
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir design exec playwright install --with-deps chromium
+      - name: Static checks and unit tests
+        run: |
+          pnpm --dir design check:boundaries
+          pnpm --dir design lint
+          pnpm --dir design typecheck
+          pnpm --dir frontend exec tsc -p tsconfig.design-reference.json
+          pnpm --dir design test --run
+      - name: Scene, interaction, and geometry checks
+        run: pnpm --dir design test:visual
+      - name: Original frontend and Design paired comparison
+        run: pnpm --dir design test:parity
+      - name: Build standalone workbench
+        run: pnpm --dir design build
+      - name: Retain screenshots, differences, geometry, and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-evidence-${{ github.sha }}
+          path: design/output/
+          retention-days: 14

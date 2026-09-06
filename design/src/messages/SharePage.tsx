@@ -1,0 +1,328 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { CircleAlert } from "lucide-react";
+
+import { ApiError } from "../api/errors";
+import type {
+  MessageSource,
+  PublicShareResponse,
+  SharedMessage,
+  SharedReplyQuote,
+} from "../api/types";
+import { useDesignActions } from "../runtime/context";
+import {
+  assistantContentColumn,
+  buttonControl,
+  messageBubble,
+  primaryButton,
+} from "../ui/classes";
+import { Icons } from "../ui/icons";
+import { Wordmark } from "../ui/Wordmark";
+import { Markdown } from "./Markdown";
+import type { FileReadRole } from "../files/types";
+import { MessageAttachments } from "./MessageAttachments";
+import { SourcesTrigger } from "./Message";
+import { SourcesPanel } from "./SourcesPanel";
+import { ReplyQuote } from "./ReplyQuote";
+import {
+  revealReplyQuoteSource,
+  type ReplyQuoteRevealHandle,
+} from "./replyQuoteSourceNavigation";
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; share: PublicShareResponse };
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 760,
+  );
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 760);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
+
+// Public, read-only view of a shared conversation snapshot. Renders without a
+// login: anyone with the token can read it. Reuses the same Markdown/thinking/
+// sources rendering as the live thread, but deliberately NOT the <Message>
+// component — that one carries edit/regenerate/copy affordances with no place
+// on a public page.
+export function SharePage() {
+  const { token } = useParams<{ token: string }>();
+  const { services } = useDesignActions();
+  const isMobile = useIsMobile();
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [sourcesPanel, setSourcesPanel] = useState<{
+    sources: MessageSource[];
+    open: boolean;
+  }>({ sources: [], open: false });
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const replyQuoteRevealRef = useRef<ReplyQuoteRevealHandle | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!token) {
+      setState({ status: "error" });
+      return;
+    }
+    setState({ status: "loading" });
+    void services.shareApi
+      .getPublic(token)
+      .then((share) => {
+        if (active) setState({ status: "ready", share });
+      })
+      .catch((error: unknown) => {
+        // Unknown / revoked / expired all surface as a 404 from the API.
+        if (active) setState({ status: "error" });
+        if (!(error instanceof ApiError)) throw error;
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, services]);
+
+  // Bound to this share token: the attachment `ref` from the snapshot is the
+  // only handle a public reader has, and the server resolves it. AttachmentCard
+  // caches per (handle, role) against this function identity, so it must stay
+  // stable across renders.
+  const readAttachment = useCallback(
+    (ref: string, role: FileReadRole) =>
+      token
+        ? services.shareApi.readAttachment(token, ref, role)
+        : Promise.reject(new Error("Missing share token")),
+    [token, services],
+  );
+  const revealSharedReplyQuote = useCallback((replyQuote: SharedReplyQuote) => {
+    replyQuoteRevealRef.current?.cancel();
+    replyQuoteRevealRef.current = null;
+    const scrollRoot = scrollRootRef.current;
+    const sourceIndex = replyQuote.source_message_index;
+    const sourceRoot = scrollRoot
+      ? Array.from(
+          scrollRoot.querySelectorAll<HTMLElement>("[data-reply-quote-share-index]"),
+        ).find((element) => element.dataset.replyQuoteShareIndex === String(sourceIndex))
+      : undefined;
+    if (!scrollRoot || sourceIndex == null || !sourceRoot) return;
+    replyQuoteRevealRef.current = revealReplyQuoteSource({
+      scrollRoot,
+      sourceRoot,
+      sourceAnchor: replyQuote.source_anchor,
+      excerpt: replyQuote.excerpt,
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      replyQuoteRevealRef.current?.cancel();
+      replyQuoteRevealRef.current = null;
+    },
+    [token],
+  );
+
+  return (
+    <div className="flex h-full flex-col bg-bg">
+      <header className="flex h-[52px] shrink-0 items-center border-b border-border bg-bg">
+        {/* Inner row matches the message column below (centered reading width)
+            so the wordmark and login button line up with the conversation, not
+            the viewport edges. */}
+        <div className="mx-auto flex w-full max-w-[var(--reading-width)] items-center gap-3 px-8 max-[760px]:px-[18px]">
+          <Link to="/" className="flex items-center" aria-label="Piko 首页">
+            <Wordmark size={isMobile ? 20 : 18} />
+          </Link>
+          <span className="text-[13px] text-fg-subtle">只读分享</span>
+          <Link
+            to="/"
+            className={`${buttonControl} ml-auto h-8 border border-border bg-surface px-3 text-[13px] font-medium hover:border-border-strong`}
+          >
+            登录 Piko
+          </Link>
+        </div>
+      </header>
+
+      {/* Header stays full-width and fixed above; the scrollable thread and the
+          SourcesPanel are flex-row siblings (matching AppShell) so the panel
+          slides in from the right and the content column shrinks to make room
+          without disturbing the header. */}
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={scrollRootRef}
+          data-share-scroll-root
+          className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+        >
+          {state.status === "loading" && (
+            <div
+              className="flex justify-center px-8 pt-16 text-text-muted"
+              role="status"
+              aria-label="加载中"
+            >
+              <Icons.Loading className="animate-spin" size={20} aria-hidden="true" />
+            </div>
+          )}
+          {state.status === "error" && (
+            <div
+              className="mx-auto max-w-[var(--reading-width)] px-8 pt-16 text-center"
+              role="alert"
+              aria-atomic="true"
+            >
+              <CircleAlert
+                className="mx-auto text-error-foreground"
+                size={22}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+              <h1 className="mt-3 mb-2 text-lg font-medium text-fg">分享不存在或已失效</h1>
+              <p className="text-[14px] leading-[1.6] text-fg-muted">
+                该分享链接可能已被撤销、已过期，或从未存在。
+              </p>
+              <Link
+                to="/"
+                className={`${primaryButton} mt-5 h-9 px-3.5 text-[13.5px] font-medium`}
+              >
+                前往 Piko
+              </Link>
+            </div>
+          )}
+          {state.status === "ready" && (
+            <SharedThread
+              share={state.share}
+              isMobile={isMobile}
+              onReadAttachment={readAttachment}
+              onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
+              onRevealReplyQuote={revealSharedReplyQuote}
+            />
+          )}
+        </div>
+
+        <SourcesPanel
+          sources={sourcesPanel.sources}
+          open={sourcesPanel.open}
+          isMobile={isMobile}
+          onClose={() =>
+            setSourcesPanel((prev) => (prev.open ? { ...prev, open: false } : prev))
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function SharedThread({
+  share,
+  isMobile,
+  onReadAttachment,
+  onShowSources,
+  onRevealReplyQuote,
+}: {
+  share: PublicShareResponse;
+  isMobile: boolean;
+  onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
+  onShowSources: (sources: MessageSource[]) => void;
+  onRevealReplyQuote: (replyQuote: SharedReplyQuote) => void;
+}) {
+  return (
+    <>
+      {share.title && (
+        <h1 className="mx-auto mt-8 max-w-[var(--reading-width)] px-8 text-xl font-medium text-fg max-[760px]:px-[18px]">
+          {share.title}
+        </h1>
+      )}
+      {/* Same reading column as the live MessageThread. */}
+      <div className="thread-inner mx-auto flex w-full max-w-[calc(var(--assistant-content-width)+64px)] flex-1 flex-col gap-[35.2px] px-8 pt-10 pb-16 max-[760px]:px-4 max-[760px]:pt-6">
+        {share.messages.map((message, index) => (
+          <SharedMessageView
+            key={index}
+            message={message}
+            messageIndex={index}
+            isMobile={isMobile}
+            onReadAttachment={onReadAttachment}
+            onShowSources={onShowSources}
+            onRevealReplyQuote={onRevealReplyQuote}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function SharedMessageView({
+  message,
+  messageIndex,
+  isMobile,
+  onReadAttachment,
+  onShowSources,
+  onRevealReplyQuote,
+}: {
+  message: SharedMessage;
+  messageIndex: number;
+  isMobile: boolean;
+  onReadAttachment: (ref: string, role: FileReadRole) => Promise<{ url: string }>;
+  onShowSources: (sources: MessageSource[]) => void;
+  onRevealReplyQuote: (replyQuote: SharedReplyQuote) => void;
+}) {
+  const attachments = message.attachments ?? [];
+  if (message.role === "user") {
+    return (
+      <div className="msg user flex scroll-mt-[60px] flex-col items-end gap-1.5">
+        {/* Attachments sit above the bubble, matching the live thread rather
+            than nesting inside it. */}
+        <div className="flex w-full flex-col items-end gap-1">
+          {attachments.length > 0 && (
+            <MessageAttachments
+              attachments={attachments}
+              onReadAttachment={onReadAttachment}
+              align="end"
+            />
+          )}
+          {message.reply_quote && (
+            <ReplyQuote
+              excerpt={message.reply_quote.excerpt}
+              variant="message"
+              onReveal={
+                message.reply_quote.source_message_index == null
+                  ? undefined
+                  : () => onRevealReplyQuote(message.reply_quote!)
+              }
+            />
+          )}
+          {message.content.trim() !== "" && (
+            <div className={`max-w-[70%] max-[760px]:max-w-[92%] ${messageBubble}`}>
+              <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere">
+                {message.content}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const sources = message.sources ?? [];
+  return (
+    <div className="msg assistant flex scroll-mt-[60px] flex-col items-stretch gap-1.5">
+      <div className={assistantContentColumn}>
+        <div
+          data-reply-quote-share-index={messageIndex}
+          className="reply-quote-surface"
+        >
+          <Markdown
+            content={message.content}
+            sources={sources.length > 0 ? sources : undefined}
+            isMobile={isMobile}
+            replyQuoteAnchors
+          />
+        </div>
+        {attachments.length > 0 && (
+          <MessageAttachments attachments={attachments} onReadAttachment={onReadAttachment} />
+        )}
+        {sources.length > 0 && (
+          <SourcesTrigger sources={sources} onClick={() => onShowSources(sources)} />
+        )}
+      </div>
+    </div>
+  );
+}

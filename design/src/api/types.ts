@@ -1,0 +1,244 @@
+import type { FileAttachment, FilesCapability, SharedAttachmentPlaceholder } from "../files/types";
+
+export type SuccessEnvelope<T> = {
+  data: T;
+  meta?: Record<string, unknown> | null;
+};
+
+export type AuthUserResponse = {
+  id: number;
+  username: string;
+  nickname: string;
+  email: string;
+  email_verified: boolean;
+  avatar_url?: string | null;
+};
+
+export type AuthTokenResponse = {
+  user: AuthUserResponse;
+  access_token: string;
+  refresh_token: string;
+  token_type: "bearer" | string;
+  expires_in: number;
+};
+
+export type CommandStatusResponse = {
+  status: string;
+};
+
+export type ConversationResponse = {
+  id: string;
+  title: string | null;
+  activated_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+  deletion_due_at?: string | null;
+};
+
+export type ImageContextState = "none" | "vision_required" | "legacy_upgrade_required";
+
+export type ImageContext = {
+  state: ImageContextState;
+  legacy_message_id?: string | null;
+  recommended_model?: string | null;
+};
+
+export type MessageRole = "user" | "assistant";
+
+export type MessageSource = {
+  id: number;
+  title: string;
+  url: string;
+  snippet?: string | null;
+  published_at?: string | null;
+  provider?: string | null;
+};
+
+export type MessageMetadata = {
+  sources?: MessageSource[];
+};
+
+export type ReplyQuoteSourceAnchor = {
+  version: 1;
+  start: number;
+  end: number;
+};
+
+export type ReplyQuote = {
+  source_message_id: string | null;
+  excerpt: string;
+  source_anchor?: ReplyQuoteSourceAnchor | null;
+};
+
+export type ReplyQuoteDraft = ReplyQuote & {
+  source_message_id: string;
+};
+
+export type MessageResponse = {
+  id: string;
+  conversation_id: string;
+  run_id: string | null;
+  role: MessageRole;
+  content: string;
+  reasoning: string | null;
+  reasoning_summary?: string | null;
+  metadata?: MessageMetadata | null;
+  attachments?: FileAttachment[];
+  reply_quote?: ReplyQuote | null;
+  position: number;
+  created_at: string;
+};
+
+export type RunStatus =
+  | "queued"
+  | "started"
+  | "streaming"
+  | "succeeded"
+  | "failed"
+  | "cancelling"
+  | "cancelled";
+
+export type RunResponse = {
+  id: string;
+  conversation_id: string;
+  user_message_id: string;
+  status: RunStatus;
+  provider_name: string;
+  provider_model: string;
+  created_at: string;
+};
+
+export type ConversationDetailResponse = ConversationResponse & {
+  messages: MessageResponse[];
+  image_context?: ImageContext;
+};
+
+export type SendMessageResponse = {
+  message: MessageResponse;
+  run: RunResponse;
+  image_context?: ImageContext;
+};
+
+export type ConversationCreateWithMessageResponse = SendMessageResponse & {
+  conversation: ConversationResponse;
+};
+
+export type RunEventType =
+  | "run_started"
+  | "text_delta"
+  | "reasoning_delta"
+  | "tool_call_started"
+  | "tool_call_succeeded"
+  | "tool_call_failed"
+  | "run_succeeded"
+  | "run_failed"
+  | "run_cancelled";
+
+export type RunEventResponse = {
+  seq: number;
+  type: RunEventType;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type RunStateResponse = {
+  run_id: string;
+  provider_name: string;
+  status: RunStatus;
+  latest_seq: number;
+  draft_text: string;
+  draft_reasoning: string;
+  draft_reasoning_summary?: string;
+  tool_state?: RunToolState | null;
+  terminal_event: RunEventResponse | null;
+};
+
+export type RunStreamEvent = {
+  seq: number;
+  type: RunEventType;
+  data: RunEventResponse;
+};
+
+export type RunToolSource = {
+  id: number;
+  title: string;
+  url: string;
+};
+
+export type RunToolState = {
+  status: "running" | "succeeded" | "failed";
+  tool_name: string;
+  query: string | null;
+  message: string | null;
+  result_count: number | null;
+  sources: RunToolSource[];
+};
+
+export type ChatModelCapability = {
+  id: string;
+  provider: string;
+  label: string;
+  thinking_levels: string[];
+  reasoning_outputs?: ("raw" | "summary")[];
+  supports_reasoning_summary?: boolean;
+  default: boolean;
+  supports_image_input: boolean;
+};
+
+export type CapabilitiesResponse = {
+  conversation_search?: { enabled: boolean };
+  web_search: {
+    enabled: boolean;
+  };
+  models: ChatModelCapability[];
+  files?: FilesCapability;
+};
+
+// --- Conversation sharing (read-only snapshots) ---
+
+// Owner-only management view of a share link. Carries the full token so the UI
+// can re-copy an existing link; the share URL is built client-side.
+export type ShareLinkResponse = {
+  token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type UserShareResponse = ShareLinkResponse & {
+  conversation_id: string;
+  conversation_title: string | null;
+};
+
+// A source kept in a snapshot. Mirrors MessageSource.
+export type SharedSource = {
+  id: number;
+  title: string;
+  url: string;
+  snippet?: string | null;
+  published_at?: string | null;
+  provider?: string | null;
+};
+
+export type SharedReplyQuote = {
+  excerpt: string;
+  source_message_index?: number | null;
+  source_anchor?: ReplyQuoteSourceAnchor | null;
+};
+
+export type SharedMessage = {
+  role: MessageRole;
+  content: string;
+  reasoning?: string | null;
+  sources: SharedSource[];
+  attachments?: SharedAttachmentPlaceholder[];
+  reply_quote?: SharedReplyQuote | null;
+};
+
+// Anonymous read payload — the frozen snapshot, no internal ids or user.
+export type PublicShareResponse = {
+  title: string | null;
+  messages: SharedMessage[];
+  created_at: string;
+};
