@@ -3,6 +3,7 @@ transport (the SDK accepts a custom ``http_client``), so no network is touched.
 """
 
 import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -22,6 +23,7 @@ from app.agent.provider import (
     ProviderError,
     ReasoningConfig,
     ReasoningDelta,
+    ResolvedImageInput,
     StreamDone,
     TextDelta,
     ToolCallDone,
@@ -133,13 +135,31 @@ async def test_stream_text_and_finish_with_usage() -> None:
     assert done.provider_request_id == "req-77"
 
 
-async def test_image_input_fails_closed_before_deepseek_sdk_request() -> None:
-    requests = 0
+class ImageResolver:
+    """Stand-in for the Worker's preview signer."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.requested: list[str] = []
+
+    async def resolve(
+        self, images: Sequence[ImageBlock]
+    ) -> Mapping[str, ResolvedImageInput]:
+        self.requested.extend(block.file_id for block in images)
+        return {
+            block.file_id: ResolvedImageInput(file_id=block.file_id, url=self.url)
+            for block in images
+        }
+
+
+async def test_image_input_reaches_deepseek_as_openai_image_url() -> None:
+    # Vision is a per-model catalog flag, not an adapter capability: a route
+    # declared as vision-capable must reach DeepSeek as a standard image_url.
+    captured: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal requests
-        requests += 1
-        return stream_response([chunk({}, finish="stop")])
+        captured.update(json.loads(request.content))
+        return stream_response([chunk({"content": "a chart"}), chunk({}, finish="stop")])
 
     image = ImageBlock(
         file_id="file-1",
@@ -150,16 +170,32 @@ async def test_image_input_fails_closed_before_deepseek_sdk_request() -> None:
         height=480,
         processor_version="image-v1",
     )
+    resolver = ImageResolver("https://preview.test/signed/chart.webp")
     provider = streaming_provider(handler)
-    with pytest.raises(ProviderError) as exc_info:
-        async for _ in provider.stream(
-            model="deepseek-test",
+    events = [
+        event
+        async for event in provider.stream(
+            model="deepseek-v4-flash-vision-exp",
             messages=[Message(role="user", blocks=[image])],
-        ):
-            pass
+            image_resolver=resolver,
+        )
+    ]
 
-    assert requests == 0
-    assert exc_info.value.code == "deepseek_image_input_not_supported"
+    assert resolver.requested == ["file-1"]
+    user_message = captured["messages"][-1]
+    assert user_message["role"] == "user"
+    assert [part["type"] for part in user_message["content"]] == [
+        "text",
+        "image_url",
+        "text",
+    ]
+    assert user_message["content"][1]["image_url"] == {
+        "url": "https://preview.test/signed/chart.webp",
+        "detail": "high",
+    }
+    assert [event for event in events if isinstance(event, TextDelta)] == [
+        TextDelta(text="a chart")
+    ]
 
 
 async def test_stream_reasoning_then_text() -> None:

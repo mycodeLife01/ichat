@@ -133,22 +133,6 @@ async def upsert_chat_model(
     if model is None:
         model = ChatModel(key=normalized_key, enabled=False)
         session.add(model)
-    elif supports_image_input:
-        active_deepseek_route = await session.scalar(
-            select(ModelRoute.id)
-            .join(ModelUpstream, ModelUpstream.id == ModelRoute.upstream_id)
-            .where(
-                ModelRoute.chat_model_id == model.id,
-                ModelRoute.enabled.is_(True),
-                ModelUpstream.enabled.is_(True),
-                ModelUpstream.adapter == "deepseek",
-            )
-            .limit(1)
-        )
-        if active_deepseek_route is not None:
-            raise ModelCatalogError(
-                "Disable active DeepSeek routes before enabling vision on a chat model"
-            )
     model.label = normalized_label
     model.thinking_levels = normalized_levels
     model.supports_image_input = supports_image_input
@@ -185,23 +169,6 @@ async def upsert_model_upstream(
             raise ModelCatalogError("A new model upstream requires an API key")
         upstream = ModelUpstream(key=normalized_key, enabled=False)
         session.add(upstream)
-    target_enabled = enabled if enabled is not None else upstream.enabled
-    if adapter == "deepseek" and target_enabled and upstream.id is not None:
-        active_vision_route = await session.scalar(
-            select(ModelRoute.id)
-            .join(ChatModel, ChatModel.id == ModelRoute.chat_model_id)
-            .where(
-                ModelRoute.upstream_id == upstream.id,
-                ModelRoute.enabled.is_(True),
-                ChatModel.enabled.is_(True),
-                ChatModel.supports_image_input.is_(True),
-            )
-            .limit(1)
-        )
-        if active_vision_route is not None:
-            raise ModelCatalogError(
-                "Disable active vision routes before using the DeepSeek adapter"
-            )
     if upstream.id is not None:
         routes = (
             await session.scalars(
@@ -242,8 +209,6 @@ async def upsert_model_route(
         field="Upstream model id",
         max_length=256,
     )
-    if model.supports_image_input and upstream.adapter == "deepseek":
-        raise ModelCatalogError("The DeepSeek adapter does not support image input")
     route = await session.scalar(
         select(ModelRoute).where(
             ModelRoute.chat_model_id == model.id,
@@ -286,20 +251,6 @@ async def set_chat_model_enabled(
     enabled: bool,
 ) -> ChatModel:
     model = await _chat_model_by_key(session, key)
-    if enabled and model.supports_image_input:
-        active_deepseek_route = await session.scalar(
-            select(ModelRoute.id)
-            .join(ModelUpstream, ModelUpstream.id == ModelRoute.upstream_id)
-            .where(
-                ModelRoute.chat_model_id == model.id,
-                ModelRoute.enabled.is_(True),
-                ModelUpstream.enabled.is_(True),
-                ModelUpstream.adapter == "deepseek",
-            )
-            .limit(1)
-        )
-        if active_deepseek_route is not None:
-            raise ModelCatalogError("The DeepSeek adapter does not support image input")
     model.enabled = enabled
     await session.flush()
     return model
@@ -312,20 +263,6 @@ async def set_model_upstream_enabled(
     enabled: bool,
 ) -> ModelUpstream:
     upstream = await _upstream_by_key(session, key)
-    if enabled and upstream.adapter == "deepseek":
-        active_vision_route = await session.scalar(
-            select(ModelRoute.id)
-            .join(ChatModel, ChatModel.id == ModelRoute.chat_model_id)
-            .where(
-                ModelRoute.upstream_id == upstream.id,
-                ModelRoute.enabled.is_(True),
-                ChatModel.enabled.is_(True),
-                ChatModel.supports_image_input.is_(True),
-            )
-            .limit(1)
-        )
-        if active_vision_route is not None:
-            raise ModelCatalogError("The DeepSeek adapter does not support image input")
     if enabled:
         routes = (
             await session.scalars(
@@ -366,8 +303,6 @@ async def set_model_route_enabled(
     )
     if route is None:
         raise ModelCatalogError("Model route does not exist")
-    if enabled and model.supports_image_input and upstream.adapter == "deepseek":
-        raise ModelCatalogError("The DeepSeek adapter does not support image input")
     if enabled:
         _validate_reasoning_outputs(
             route.reasoning_outputs,
@@ -553,8 +488,8 @@ def _validate_base_url(value: str) -> str:
 async def _validate_active_routes(session: AsyncSession, *, settings: Settings) -> None:
     rows = (
         await session.execute(
-            select(ChatModel, ModelRoute, ModelUpstream)
-            .join(ModelRoute, ModelRoute.chat_model_id == ChatModel.id)
+            select(ModelRoute, ModelUpstream)
+            .join(ChatModel, ChatModel.id == ModelRoute.chat_model_id)
             .join(ModelUpstream, ModelUpstream.id == ModelRoute.upstream_id)
             .where(
                 ChatModel.enabled.is_(True),
@@ -564,15 +499,13 @@ async def _validate_active_routes(session: AsyncSession, *, settings: Settings) 
         )
     ).all()
     cipher = ModelCredentialCipher(settings.model_catalog_encryption_key)
-    for model, route, upstream in rows:
+    for route, upstream in rows:
         _validate_base_url(upstream.base_url)
         cipher.decrypt(upstream.api_key_ciphertext)
         _validate_reasoning_outputs(
             route.reasoning_outputs,
             adapter=upstream.adapter,
         )
-        if model.supports_image_input and upstream.adapter == "deepseek":
-            raise ModelCatalogError("The DeepSeek adapter does not support image input")
 
 
 def _validate_vision_runtime(settings: Settings) -> None:

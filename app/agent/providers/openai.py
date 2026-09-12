@@ -24,7 +24,6 @@ from app.agent.providers.openai_compat import OpenAIChatCompletionsProvider
 _CAPABILITIES = ProviderCapabilities(
     supports_tool_history=True,
     supports_reasoning=True,
-    supports_image_input=True,
 )
 
 # Model families that accept the `reasoning_effort` request parameter.

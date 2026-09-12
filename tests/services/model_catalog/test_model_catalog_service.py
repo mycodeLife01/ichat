@@ -154,6 +154,64 @@ async def test_database_catalog_switches_same_model_upstream_without_restart(
     assert edited[0].label == "DeepSeek V4 Updated"
 
 
+async def test_deepseek_route_serves_a_vision_model_declared_by_the_catalog(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    # Vision is a chat-model property, not an adapter one: a DeepSeek route is
+    # served when the model declares image input, and vice versa.
+    settings = settings.model_copy(
+        update={
+            "files_r2_endpoint_url": "https://account.r2.cloudflarestorage.com",
+            "files_staging_bucket": "staging",
+            "files_canonical_bucket": "canonical",
+            "files_preview_bucket": "preview",
+            "files_preview_api_access_key_id": "preview-api-key",
+            "files_preview_api_secret_access_key": "preview-api-secret",
+        }
+    )
+    await upsert_chat_model(
+        session,
+        key="deepseek-vision",
+        label="DeepSeek Vision",
+        thinking_levels=["low", "high", "max"],
+        supports_image_input=True,
+        image_token_reserve=8192,
+        token_profile="deepseek",
+        sort_order=0,
+        enabled=True,
+        settings=settings,
+    )
+    await upsert_model_upstream(
+        session,
+        key="deepseek-vision-upstream",
+        label="DeepSeek Official",
+        adapter="deepseek",
+        base_url="https://api.deepseek.test/v1",
+        api_key="sk-deepseek-secret",
+        enabled=True,
+        settings=settings,
+    )
+    await upsert_model_route(
+        session,
+        model_key="deepseek-vision",
+        upstream_key="deepseek-vision-upstream",
+        upstream_model="deepseek-v4-flash-vision-exp",
+        priority=10,
+        reasoning_outputs=["raw"],
+        enabled=True,
+    )
+    await set_database_catalog_enabled(session, enabled=True, settings=settings)
+
+    models = await available_chat_models(session, settings=settings)
+
+    assert [(model.key, model.upstream_key) for model in models] == [
+        ("deepseek-vision", "deepseek-vision-upstream")
+    ]
+    assert models[0].supports_image_input is True
+    assert models[0].image_token_reserve == 8192
+
+
 async def test_run_snapshot_keeps_selected_route_after_catalog_edits(
     session: AsyncSession,
     settings: Settings,

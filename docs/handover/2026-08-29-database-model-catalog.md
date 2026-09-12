@@ -44,7 +44,7 @@ Web 与 CLI 都不提供 hard delete。下线使用 disable，避免删除仍被
 
 | 适配器 | 可配置推理输出 | 关键行为 |
 |---|---|---|
-| `deepseek` | `raw` | `thinking` 与 `reasoning_effort` 扩展；`reasoning_content` 固定归类为 raw 并在工具续接历史中回放；未注册 tools 时剥离旧 tool 历史；不接收图像块 |
+| `deepseek` | `raw` | `thinking` 与 `reasoning_effort` 扩展；`reasoning_content` 固定归类为 raw 并在工具续接历史中回放；未注册 tools 时剥离旧 tool 历史；图像按标准 `image_url` 编码，是否接收由聊天模型的视觉声明决定 |
 | `openai` | 无 | reasoning model 使用顶层 `reasoning_effort`；同步生成使用 `max_completion_tokens` 且不固定 temperature；当前 Chat Completions 路径不声明可见推理输出，也不回放 reasoning 字段 |
 | `openrouter` | `raw`, `summary` | reasoning 使用 `reasoning: {effort}`；同步生成使用 `max_tokens`；结构化 `reasoning.summary` → summary，`reasoning.text` 默认 → raw，但 `format=google-gemini-v1` → summary；实际返回的 typed detail 全部保存，并完整保存/回放 `reasoning_details`；无结构化 detail 时按路由契约分类 plaintext reasoning |
 
@@ -79,7 +79,7 @@ OpenAI”就直接启用。参考 [DeepSeek thinking mode](https://api-docs.deep
 `messages.reasoning_summary`；失败或取消不物化 assistant message，但保留已产生的 partial
 transcript。前端默认 summary 优先、raw fallback，正文开始后也不丢弃 thinking surface。
 
-视觉能力属于聊天模型。声明视觉能力时必须配置正数 `image_token_reserve` 和现有 preview 凭据；`deepseek` 适配器路由会被拒绝。OpenRouter/OpenAI 路由仍需对实际远端模型做图片 smoke。LLM Worker 启动时会读取当前生效目录：数据库目录包含视觉模型时，即使旧 `OPENAI_VISION_MODELS` 已清空，也必须具备 `FILES_PREVIEW_LLM_ACCESS_KEY_ID` 与 `FILES_PREVIEW_LLM_SECRET_ACCESS_KEY`。这两项属于对象存储基础设施，不能随 provider API key 和旧模型列表一起删除。运行中若配置异常，resolver 会在访问 R2 前以内部分类 `preview_signer_unconfigured` 失败，不再使用占位凭据发送无效请求。
+视觉能力属于聊天模型，且只由模型自身声明：`chat_models.supports_image_input` 是唯一事实来源，适配器不持有任何视觉能力判定。同一适配器下既有支持视觉的模型（例如 `deepseek-v4-flash-vision-exp`）也有纯文本模型，因此「DeepSeek 不能收图」不再是适配器级约束。声明视觉能力时必须配置正数 `image_token_reserve` 和现有 preview 凭据。任何路由在启用前仍需对实际远端模型做图片 smoke；`deepseek` 之外的适配器同样不能只凭「兼容 OpenAI」就假定支持视觉。LLM Worker 启动时会读取当前生效目录：数据库目录包含视觉模型时，即使旧 `OPENAI_VISION_MODELS` 已清空，也必须具备 `FILES_PREVIEW_LLM_ACCESS_KEY_ID` 与 `FILES_PREVIEW_LLM_SECRET_ACCESS_KEY`。这两项属于对象存储基础设施，不能随 provider API key 和旧模型列表一起删除。运行中若配置异常，resolver 会在访问 R2 前以内部分类 `preview_signer_unconfigured` 失败，不再使用占位凭据发送无效请求。
 
 对话标题是独立的内部 Celery workload，仍由 `SUMMARY_PROVIDER_NAME` / `SUMMARY_MODEL` 与旧 provider ENV 配置；本目录只管理用户可选的流式聊天模型。
 

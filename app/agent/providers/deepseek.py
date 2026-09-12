@@ -6,6 +6,11 @@ This is the single place DeepSeek's quirks live: non-standard request fields
 inability to replay tool history without tools registered (declared as a
 ``ProviderCapabilities`` flag), and DeepSeek's token ratios. Everything
 protocol-standard lives in ``openai_compat``.
+
+Image input is *not* a capability here. Only some DeepSeek models accept
+images, so the catalog's ``ChatModel.supports_image_input`` decides whether a
+route may receive them, and this adapter only supplies the standard
+``image_url`` encoding it already inherits.
 """
 
 import math
@@ -31,7 +36,6 @@ from app.agent.providers.openai_compat import (
 _CAPABILITIES = ProviderCapabilities(
     supports_tool_history=False,
     supports_reasoning=True,
-    supports_image_input=False,
 )
 
 
