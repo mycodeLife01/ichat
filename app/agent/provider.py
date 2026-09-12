@@ -27,7 +27,6 @@ class ProviderCapabilities:
 
     supports_tool_history: bool
     supports_reasoning: bool
-    supports_image_input: bool = False
 
 
 @dataclass(frozen=True)

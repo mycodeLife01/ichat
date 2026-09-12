@@ -301,8 +301,6 @@ async def _database_chat_models(session: AsyncSession) -> list[ChatModel]:
     for model, route, upstream in rows:
         if model.id in seen_models:
             continue
-        if model.supports_image_input and upstream.adapter == "deepseek":
-            continue
         selected.append(_database_model(model, route, upstream))
         seen_models.add(model.id)
     return selected

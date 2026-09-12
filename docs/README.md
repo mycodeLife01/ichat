@@ -19,6 +19,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Adding a background task, or deciding whether it belongs in the async runtime or Celery | `docs/architecture/background-tasks.md` |
 | Implementing/modifying an existing feature | The newest matching `docs/handover/*.md` for that topic |
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
+| Building the independent Design workbench, establishing UI parity, or preparing reusable UI design references | `docs/specs/2026-09-06-design-workbench.md` + `docs/architecture/frontend.md`, then the feature-specific rows for every surface being migrated; `design/README.md` + `docs/handover/frontend/2026-09-06-design-workbench.md`; distinguish paired visual checks, scene smoke tests, and user approval |
 | History conversation search, search results, or navigation to matching message text | `docs/specs/2026-09-05-conversation-search.md` + `docs/plans/2026-09-05-conversation-search.md` + `docs/handover/2026-09-05-conversation-search.md` + `docs/architecture/frontend.md` + `docs/architecture/module-boundaries.md`; also follow the sidebar and reply-quote rows when touching those surfaces |
 | Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Modifying `ThinkingBlock`, the thinking/tool status header, the reasoning preview, or any layout class toggled by stream state | `docs/handover/2026-08-31-thinking-header-geometry-shift.md` + `docs/handover/2026-07-31-reasoning-preview-not-showing.md` |
@@ -94,6 +95,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-08-09-file-upload-performance.md` — measured upload phase baseline and the adaptive multipart, server-side promotion, fresh-client, worker recycling, telemetry, rollout, and real-R2 verification changes.
 - `2026-08-13-clamav-startup-readiness.md` — ClamAV startup refresh ordering, signature-aware readiness, the persisted-database race, and local/production verification.
 - `2026-08-29-database-model-catalog.md` — database-backed chat-model management, fixed-key Web console, multiple upstream routes, encrypted credential operations, raw/summary reasoning and continuation behavior, rollout/rollback, and hot-switch commands.
+- `2026-09-12-deepseek-vision-route.md` — vision capability moved off the adapter: the six hardcoded DeepSeek image rejections removed, `chat_models.supports_image_input` as the single source of truth, the silent-route-drop root cause, and the real-upstream image smoke still required before rollout.
 - `2026-08-31-provider-continuation-route-affinity.md` — Grok→Gemini encrypted-reasoning 404 root cause and fix, route-affinity continuation stages, DeepSeek official/OpenRouter switching semantics, local Docker rollout, and regression coverage.
 - `2026-08-31-thinking-header-geometry-shift.md` — why the 正在思考 label shifted mid-stream (a `hasContent`-toggled dual vertical geometry), the fix that made header geometry unconditional, the anchor-row rule for any delta-toggled class, the test that had enshrined the bug, and the real-Chrome measurement method jsdom cannot replace.
 - `2026-08-31-reply-quote.md` — reply quote persistence and API contract, low-trust Run transcript projection, immutable edit/share behavior, frontend draft/Selection ownership, desktop/mobile Chrome evidence, rollout, and compatibility rollback.
@@ -131,6 +133,7 @@ Goal documents for goal-driven development runs (success criteria + verification
 
 Current feature requirement and design specifications. A design status does not imply implementation or verification is complete.
 
+- `2026-09-06-design-workbench.md` — independent React UI design workbench: full frontend coverage, isolated presentation and simulated outcomes, source-version parity evidence, candidate/approval workflow, implementation phases, and readiness gates; pending implementation.
 - `2026-09-05-conversation-search.md` — planned history search: title/body scope, conversation-update ordering, modal/mobile interactions, snippets, navigation and transient match highlighting, implementation validation gates, and acceptance criteria.
 - `2026-08-31-reply-quote.md` — reply quote requirements and implemented behavior, including the later source-navigation extension.
 

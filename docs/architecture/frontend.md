@@ -260,3 +260,9 @@ pnpm run build
   overflow 和 reduced-motion；这些行为依赖真实滚动与 CSS 几何，不能只用 jsdom 验证。
 - 文档或代码声称任务完成前，相关测试、lint、类型检查和构建必须通过；无法执行的检查要明确
   记录缺口、风险与待运行命令。
+
+## 独立 Design 设计参照
+
+仓库根目录 `design/` 提供长期维护的完整 UI 设计参照，使用方式见 [Design README](../../design/README.md)，实现与验证边界见 [初版交接](../handover/frontend/2026-09-06-design-workbench.md)。新增 UI 需求先在完整页面中迭代候选，用户确认固定版本后再实施到本工程，并回补 current。候选与批准记录不替代 API、领域模型或后端 ADR。
+
+Design 与本前端运行时互不引用。`tests/design-reference/` 只为配对测试运行本前端原组件，不属于生产构建入口。不得把工作台控制器、合成样本或模拟结果迁入生产代码。

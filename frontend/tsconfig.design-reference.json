@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": { "composite": false, "incremental": true, "tsBuildInfoFile": "./node_modules/.tmp/design-reference.tsbuildinfo" },
+  "include": ["src", "tests/design-reference"]
+}

@@ -157,10 +157,6 @@ class OpenAIChatCompletionsProvider(Provider):
             ),
         )
 
-    @property
-    def _supports_image_input(self) -> bool:
-        return self.capabilities.supports_image_input
-
     # Whether replayed assistant turns carry reasoning back as DeepSeek's
     # ``reasoning_content`` field. Strict APIs (OpenAI) reject unknown message
     # fields, so this defaults off.
@@ -202,8 +198,6 @@ class OpenAIChatCompletionsProvider(Provider):
         resolved_images = await _resolve_image_inputs(
             messages,
             resolver=image_resolver,
-            supports_image_input=self._supports_image_input,
-            provider_name=self.name,
         )
         wire_messages = messages_to_wire(
             messages,
@@ -587,10 +581,13 @@ async def _resolve_image_inputs(
     messages: Sequence[Message],
     *,
     resolver: ImageInputResolver | None,
-    supports_image_input: bool,
-    provider_name: str,
 ) -> Mapping[str, ResolvedImageInput] | None:
-    """Resolve and validate all image snapshots before touching the SDK."""
+    """Resolve and validate all image snapshots before touching the SDK.
+
+    Whether the *model* accepts image input is decided upstream by the catalog
+    (``ChatModel.supports_image_input``) and already enforced by ``ChatAgent``;
+    the adapter only owns how a wire format carries images.
+    """
 
     unique: list[ImageBlock] = []
     by_file_id: dict[str, ImageBlock] = {}
@@ -611,11 +608,6 @@ async def _resolve_image_inputs(
 
     if not unique:
         return None
-    if not supports_image_input:
-        raise ProviderError(
-            code=f"{provider_name}_image_input_not_supported",
-            message="This provider does not support image input",
-        )
     if resolver is None:
         raise ProviderError(
             code="image_input_resolver_unavailable",

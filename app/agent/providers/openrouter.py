@@ -33,7 +33,6 @@ from app.agent.providers.openai_compat import OpenAIChatCompletionsProvider
 _CAPABILITIES = ProviderCapabilities(
     supports_tool_history=True,
     supports_reasoning=True,
-    supports_image_input=True,
 )
 _KNOWN_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 _SUMMARY_TEXT_FORMATS = frozenset({"google-gemini-v1"})
