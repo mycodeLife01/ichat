@@ -1,7 +1,7 @@
 import "katex/dist/katex.min.css";
 
 import type { ComponentProps } from "react";
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -44,10 +44,38 @@ const remarkPlugins: PluggableList = [
   [remarkMath, { singleDollarTextMath: false }],
 ];
 
+// Sources and layout for citation chips. Delivered through context so the
+// `citation` renderer below keeps one component identity: a renderer recreated
+// per render would remount every chip (re-fetching its favicon and closing an
+// open card) on each streaming delta.
+type CitationSurface = { sources: MessageSource[]; isMobile: boolean };
+const CitationSurfaceContext = createContext<CitationSurface>({
+  sources: [],
+  isMobile: false,
+});
+
+function CitationElement({ node }: { node?: { properties?: Record<string, unknown> } }) {
+  const { sources, isMobile } = useContext(CitationSurfaceContext);
+  return <Citation node={node} sources={sources} isMobile={isMobile} />;
+}
+
+// `citation` is a custom tag injected by rehypeCitations; react-markdown's
+// Components type only knows standard tags, so widen via the typed object.
+const components: Components = {
+  a: MarkdownLink,
+  pre: CodeBlock,
+  table: TableBlock,
+  citation: CitationElement,
+} as Components;
+
+// While streaming, an unclosed trailing marker (`[`, `[1`) would flash as plain
+// text before its `]` arrives and turns it into a chip; hold it back instead.
+const TRAILING_PARTIAL_CITATION = /\[\d*$/;
+
 type MarkdownProps = {
   content: string;
-  // When provided (final assistant message), inline `[n]` markers become
-  // citation chips. Omitted while streaming, so markers stay plain text.
+  // When provided, inline `[n]` markers whose id resolves become citation
+  // chips — on final messages and live while a reply streams.
   sources?: MessageSource[];
   isMobile?: boolean;
   // True while the reply is still streaming: an unterminated display-math block
@@ -85,26 +113,13 @@ export function Markdown({
       : [[rehypeSanitize, mathSchema], rehypeKatex];
     if (replyQuoteAnchors && !streaming) rehypePlugins.push(rehypeReplyQuoteAnchors);
 
-    // `citation` is a custom tag injected by the plugin; react-markdown's
-    // Components type only knows standard tags, so widen via the typed object.
-    const components: Components = {
-      a: MarkdownLink,
-      pre: CodeBlock,
-      table: TableBlock,
-      ...(hasCitations
-        ? {
-            citation: (props: { node?: { properties?: Record<string, unknown> } }) => (
-              <Citation node={props.node} sources={sources!} isMobile={isMobile} />
-            ),
-          }
-        : {}),
-    } as Components;
-
     // While streaming, clamp an unterminated display-math block so a
     // half-written formula never reaches KaTeX (it would render as a red error
     // and swallow the trailing prose). The final render is never clamped.
     const normalized = normalizeMathDelimiters(content);
-    const prepared = streaming ? clampStreamingMath(normalized) : normalized;
+    const clamped = streaming ? clampStreamingMath(normalized) : normalized;
+    const prepared =
+      streaming && hasCitations ? clamped.replace(TRAILING_PARTIAL_CITATION, "") : clamped;
 
     return (
       <ReactMarkdown
@@ -115,11 +130,17 @@ export function Markdown({
         {prepared}
       </ReactMarkdown>
     );
-  }, [content, sources, isMobile, streaming, replyQuoteAnchors]);
+  }, [content, sources, streaming, replyQuoteAnchors]);
+  const citationSurface = useMemo(
+    () => ({ sources: sources ?? [], isMobile: isMobile ?? false }),
+    [sources, isMobile],
+  );
 
   return (
     <div className="assistant-markdown body md">
-      {rendered}
+      <CitationSurfaceContext.Provider value={citationSurface}>
+        {rendered}
+      </CitationSurfaceContext.Provider>
     </div>
   );
 }

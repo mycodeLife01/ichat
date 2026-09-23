@@ -533,6 +533,23 @@ describe("Markdown", () => {
     rerender(<Markdown content={"看[1]"} sources={sources} />);
     expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
   });
+
+  it("keeps an existing citation chip mounted while streaming text grows", () => {
+    const sources = [
+      {
+        id: 1,
+        title: "Doc",
+        url: "https://www.example.com/a",
+        snippet: "s",
+        published_at: null,
+      },
+    ];
+    const { rerender } = render(<Markdown content={"看[1]"} sources={sources} streaming />);
+    const chip = screen.getByRole("button", { name: "查看 1 个引用来源" });
+
+    rerender(<Markdown content={"看[1] 接着写"} sources={sources} streaming />);
+    expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBe(chip);
+  });
 });
 
 describe("Markdown math", () => {

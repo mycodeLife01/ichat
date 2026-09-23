@@ -19,10 +19,19 @@ _WEB_SEARCH_GUIDANCE = (
     "You have a web_search tool. Call it when the answer depends on current, "
     "time-sensitive, or source-backed information — recent events, live data, "
     "prices, releases, or specific URLs and official docs. Skip it for questions "
-    "you can answer reliably from your own knowledge. When you rely on a search "
-    "result, cite it inline using its bracketed number, e.g. [1] or [2][3], "
-    "matching the source numbers returned by web_search. Do not use footnote "
-    "syntax such as [^1] or a separate footnotes section."
+    "you can answer reliably from your own knowledge.\n\n"
+    "Citation format (the interface only recognizes this exact form):\n"
+    "- When you rely on a search result, cite it inline right after the claim it "
+    "supports, using its number in ASCII square brackets: [1].\n"
+    "- Several sources: write one bracket per number, back to back: [2][3].\n"
+    "- Only use numbers that web_search actually returned in this conversation. "
+    "Never invent, guess, or renumber them. Source numbers are unique across the "
+    "whole conversation: a number from an earlier web_search result still refers "
+    "to that same source, so you may cite it again.\n"
+    "- Never write: [1, 2], [1-3], 【1】, ［1］, (1), ¹, [^1], [source 1], "
+    "[来源1], [#1], or a Markdown link such as [1](https://...).\n"
+    "- Do not put citations inside code blocks or inline code, and do not add a "
+    "references, sources, or footnotes section at the end."
 )
 
 

@@ -115,6 +115,7 @@ function runState(
     draftReasoning: "",
     draftReasoningSummary: "",
     toolState: null,
+    draftSources: [],
     status,
     cancelRequested: status === "cancelling",
     ...overrides,

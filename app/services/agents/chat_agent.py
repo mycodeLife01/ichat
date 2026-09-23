@@ -14,7 +14,7 @@ instance holds only the immutable assembly result and each ``stream()`` call is
 an independent, re-entrant loop.
 """
 
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -84,7 +84,7 @@ class ChatAgent:
         max_tool_calls: int,
         retry_policy: RetryPolicy,
         tool_backend_names: Mapping[str, str],
-        assistant_metadata: Callable[[], dict[str, Any] | None],
+        assistant_metadata: Callable[[str], dict[str, Any] | None],
         system_prompt: str,
         image_resolver: ImageInputResolver | None = None,
         image_token_reserve: int = 0,
@@ -135,8 +135,9 @@ class ChatAgent:
     def image_token_reserve(self) -> int:
         return self._image_token_reserve
 
-    def assistant_metadata(self) -> dict[str, Any] | None:
-        return self._assistant_metadata()
+    def assistant_metadata(self, text: str) -> dict[str, Any] | None:
+        """Metadata for the materialized answer; ``text`` is its final content."""
+        return self._assistant_metadata(text)
 
     def count_tokens(self, text: str) -> int:
         return self._provider.count_tokens(text)
@@ -219,6 +220,7 @@ def build_chat_agent(
     resolve_provider: ProviderResolver = default_resolve_provider,
     now: datetime | None = None,
     image_resolver: ImageInputResolver | None = None,
+    prior_sources: Sequence[Mapping[str, Any]] = (),
 ) -> ChatAgent:
     """Assemble a ready-to-run ``ChatAgent`` from settings + conversation history.
 
@@ -267,7 +269,9 @@ def build_chat_agent(
 
     tools = ToolRegistry()
     tool_backend_names: dict[str, str] = {}
-    sources = SourceRegistry()
+    # Seeded with earlier turns' sources so citation ids stay unique across the
+    # conversation and an answer can re-cite a source from a previous turn.
+    sources = SourceRegistry(prior_sources)
     if web_search_enabled:
         search_client = resolve_search_client(settings.web_search_provider, settings=settings)
         web_search = WebSearchTool(
@@ -278,8 +282,8 @@ def build_chat_agent(
         tools.register(web_search)
         tool_backend_names[web_search.name] = search_client.name
 
-    def assistant_metadata() -> dict[str, Any] | None:
-        collected = sources.all_metadata()
+    def assistant_metadata(text: str) -> dict[str, Any] | None:
+        collected = sources.assistant_sources(text)
         return {"sources": collected} if collected else None
 
     return ChatAgent(

@@ -204,8 +204,61 @@ async def test_get_run_state_returns_current_draft(
         "draft_reasoning": "",
         "draft_reasoning_summary": "",
         "tool_state": None,
+        "sources": [],
         "terminal_event": None,
     }
+
+
+async def test_get_run_state_aggregates_succeeded_tool_sources(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-state-sources-api",
+        email=f"alice-state-sources@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+    first = {"id": 3, "title": "A", "url": "https://a.test", "snippet": "a"}
+    second = {"id": 4, "title": "B", "url": "https://b.test"}
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="tool_call_succeeded",
+            payload={"tool_name": "web_search", "sources": [first]},
+        )
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="tool_call_succeeded",
+            payload={"tool_name": "web_search", "sources": [first, second]},
+        )
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="tool_call_started",
+            payload={"tool_name": "web_search", "query": "more"},
+        )
+        run_public_id = str(run.public_id)
+        await session.commit()
+
+    response = await client.get(f"/api/v1/runs/{run_public_id}/state", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()["data"]
+    assert data["tool_state"]["status"] == "running"
+    assert data["sources"] == [
+        {**first, "published_at": None},
+        {**second, "snippet": None, "published_at": None},
+    ]
 
 
 async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
@@ -256,6 +309,7 @@ async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(
         "draft_reasoning": "Think",
         "draft_reasoning_summary": "Summary",
         "tool_state": None,
+        "sources": [],
         "terminal_event": None,
     }
 

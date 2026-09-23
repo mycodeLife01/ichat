@@ -1,13 +1,23 @@
+import { useMemo } from "react";
+
+import type { MessageResponse, MessageSource } from "../api/types";
 import type { ActiveRunState } from "../runs/state";
 import { assistantContentColumn } from "../ui/classes";
 import { InlineStatus } from "../ui/InlineStatus";
 import { Markdown } from "./Markdown";
 import { reasoningPreview } from "./reasoningPreview";
+import { conversationSources } from "./sourceUtils";
 import { ThinkingBlock } from "./ThinkingBlock";
 
-type StreamingMessageProps = { run: ActiveRunState };
+type StreamingMessageProps = {
+  run: ActiveRunState;
+  // The thread the Run answers; its earlier sources stay citable by id.
+  messages?: readonly MessageResponse[];
+};
 
-export function StreamingMessage({ run }: StreamingMessageProps) {
+const NO_MESSAGES: readonly MessageResponse[] = [];
+
+export function StreamingMessage({ run, messages = NO_MESSAGES }: StreamingMessageProps) {
   const isStreaming =
     run === null ||
     run.status === "queued" ||
@@ -15,6 +25,16 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
     run.status === "streaming" ||
     run.status === "cancelling";
   const draftText = run?.draftText ?? "";
+  const draftSources = run?.draftSources;
+  const priorSources = useMemo(() => conversationSources(messages), [messages]);
+  // This Run's sources win; earlier turns fill ids the Run did not return.
+  // Undefined while nothing is citable keeps Markdown on its plain pipeline.
+  const sources = useMemo<MessageSource[] | undefined>(() => {
+    const current = draftSources ?? [];
+    const ids = new Set(current.map((source) => source.id));
+    const merged = [...current, ...priorSources.filter((source) => !ids.has(source.id))];
+    return merged.length > 0 ? merged : undefined;
+  }, [draftSources, priorSources]);
   // Providers may emit a leading newline when switching from reasoning to
   // the formal answer. Keep the thinking block mounted until there is visible
   // answer text; otherwise the message briefly collapses to an empty Markdown
@@ -59,7 +79,7 @@ export function StreamingMessage({ run }: StreamingMessageProps) {
             label={label}
           />
         )}
-        <Markdown content={draftText} streaming />
+        <Markdown content={draftText} sources={sources} streaming />
         {/* Failures remain in message context as a persistent alert. Cancelled
             runs keep any partial formal answer without an extra status block. */}
         {run?.status === "failed" && (

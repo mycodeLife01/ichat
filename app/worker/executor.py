@@ -32,7 +32,7 @@ from app.services.conversations.title_jobs import create_title_job
 from app.services.model_catalog import resolve_run_model_runtime
 from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.events import RunEvent
-from app.services.runs.history import load_conversation_history
+from app.services.runs.history import load_conversation_history, load_prior_sources
 from app.services.runs.lifecycle import (
     is_cancelling,
     mark_run_cancelled,
@@ -96,6 +96,7 @@ async def execute_run(
         initial_seq = await get_next_run_event_seq(session, run_id=run_id) - 1
         try:
             history = await load_conversation_history(session, run_id=run_id)
+            prior_sources = await load_prior_sources(session, run_id=run_id)
             model_runtime = await resolve_run_model_runtime(
                 session,
                 run=run,
@@ -116,6 +117,7 @@ async def execute_run(
                 ),
                 provider=model_runtime.provider,
                 image_resolver=image_resolver,
+                prior_sources=prior_sources,
             )
             run.system_prompt_snapshot = agent.system_prompt
         except Exception as exc:
@@ -529,16 +531,17 @@ async def _finalize_result(
                 )
 
             final = _final_assistant_message(outcome.transcript)
+            final_text = final.text()
             materialized = await materialize_assistant_message(
                 session,
                 run_id=run_id,
-                content=final.text(),
+                content=final_text,
                 reasoning=_aggregate_reasoning(outcome.transcript, kind="raw"),
                 reasoning_summary=_aggregate_reasoning(
                     outcome.transcript,
                     kind="summary",
                 ),
-                metadata=agent.assistant_metadata(),
+                metadata=agent.assistant_metadata(final_text),
             )
             await _persist_transcript(
                 session,
