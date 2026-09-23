@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent.messages import (
@@ -17,7 +17,7 @@ from app.agent.messages import (
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
-from app.services.runs.history import load_conversation_history
+from app.services.runs.history import load_conversation_history, load_prior_sources
 
 TEST_DATABASE_URL = os.environ.get(
     "CONTEXT_TEST_DATABASE_URL",
@@ -267,6 +267,43 @@ async def test_load_turns_up_to_target(
         flat = await load_conversation_history(session, run_id=run.id)
     assert [m.role for m in flat] == ["user", "assistant", "user"]
     assert [m.text() for m in flat] == ["first user", "first assistant", "second user"]
+
+
+async def test_load_prior_sources_reads_visible_earlier_assistants(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "hist-sources")
+        conversation = Conversation(user_id=user.id, title="Chat")
+        session.add(conversation)
+        await session.flush()
+
+        await add_message(
+            session, conversation_id=conversation.id, role="user", content="q1", position=1
+        )
+        first = await add_message(
+            session, conversation_id=conversation.id, role="assistant", content="a1", position=2
+        )
+        first.metadata_ = {"sources": [{"id": 1, "url": "https://a.test"}]}
+        archived = await add_message(
+            session, conversation_id=conversation.id, role="assistant", content="old", position=3
+        )
+        archived.metadata_ = {"sources": [{"id": 9, "url": "https://archived.test"}]}
+        archived.archived_at = func.now()
+        target_user = await add_message(
+            session, conversation_id=conversation.id, role="user", content="q2", position=4
+        )
+        future = await add_message(
+            session, conversation_id=conversation.id, role="assistant", content="a2", position=5
+        )
+        future.metadata_ = {"sources": [{"id": 2, "url": "https://future.test"}]}
+        run = await create_run_for_message(
+            session, conversation_id=conversation.id, user_message_id=target_user.id
+        )
+        await session.commit()
+
+        sources = await load_prior_sources(session, run_id=run.id)
+    assert sources == [{"id": 1, "url": "https://a.test"}]
 
 
 async def test_load_turns_raises_when_run_missing(

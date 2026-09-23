@@ -189,6 +189,7 @@ async def get_owned_run_state(
     draft_reasoning_summary = ""
     terminal_event: RunEventResponse | None = None
     tool_state: RunToolStateResponse | None = None
+    sources: dict[int, RunToolSourceResponse] = {}
 
     for event in events:
         latest_seq = max(latest_seq, event.seq)
@@ -209,6 +210,9 @@ async def get_owned_run_state(
             terminal_event = run_event_response(event)
         if event.type in {"tool_call_started", "tool_call_succeeded", "tool_call_failed"}:
             tool_state = _tool_state_from_event(event)
+            if event.type == "tool_call_succeeded":
+                for source in tool_state.sources:
+                    sources.setdefault(source.id, source)
 
     draft = await get_run_draft(session, run_id=run.id)
     stream_after_seq = latest_persisted_delta_seq
@@ -247,6 +251,7 @@ async def get_owned_run_state(
         draft_reasoning=draft_reasoning,
         draft_reasoning_summary=draft_reasoning_summary,
         tool_state=tool_state,
+        sources=list(sources.values()),
         terminal_event=terminal_event,
     )
 
@@ -279,11 +284,15 @@ def _tool_state_from_event(event: RunEvent) -> RunToolStateResponse:
         for item in raw_sources:
             if not isinstance(item, dict):
                 continue
+            snippet = item.get("snippet")
+            published_at = item.get("published_at")
             sources.append(
                 RunToolSourceResponse(
                     id=int(item.get("id", 0)),
                     title=str(item.get("title", "")),
                     url=str(item.get("url", "")),
+                    snippet=snippet if isinstance(snippet, str) else None,
+                    published_at=published_at if isinstance(published_at, str) else None,
                 )
             )
     if event.type == "tool_call_started":

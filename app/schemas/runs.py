@@ -40,6 +40,8 @@ class RunToolSourceResponse(BaseModel):
     id: int
     title: str
     url: str
+    snippet: str | None = None
+    published_at: str | None = None
 
 
 class RunToolStateResponse(BaseModel):
@@ -60,4 +62,7 @@ class RunStateResponse(BaseModel):
     draft_reasoning: str = ""
     draft_reasoning_summary: str = ""
     tool_state: RunToolStateResponse | None = None
+    # Every source the run's succeeded tool calls returned so far, deduplicated
+    # by citation id, so a recovered draft can render live citation chips.
+    sources: list[RunToolSourceResponse] = Field(default_factory=list)
     terminal_event: RunEventResponse | None = None

@@ -1294,7 +1294,13 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         "provider": "tavily",
     }
     assert replay[3].payload["sources"] == [
-        {"id": 1, "title": "Piko release notes", "url": "https://example.com/releases"}
+        {
+            "id": 1,
+            "title": "Piko release notes",
+            "url": "https://example.com/releases",
+            "snippet": "Version 1.2 shipped today.",
+            "published_at": None,
+        }
     ]
 
     async with session_factory() as session:
@@ -1313,7 +1319,13 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             (9, "run_succeeded"),
         ]
         assert events[2].payload["sources"] == [
-            {"id": 1, "title": "Piko release notes", "url": "https://example.com/releases"}
+            {
+            "id": 1,
+            "title": "Piko release notes",
+            "url": "https://example.com/releases",
+            "snippet": "Version 1.2 shipped today.",
+            "published_at": None,
+        }
         ]
 
         assistant = await session.scalar(
@@ -1385,6 +1397,78 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
             and row.payload is None
             for row in transcript
         )
+
+
+async def test_execute_run_carries_cited_sources_from_earlier_turns(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        run_id = await queue_run(session)
+        run = await session.get(Run, run_id)
+        assert run is not None
+        target = await session.get(Message, run.user_message_id)
+        assert target is not None
+        target.position = 3
+        session.add_all(
+            [
+                Message(
+                    conversation_id=run.conversation_id,
+                    role="user",
+                    content="Earlier question",
+                    position=1,
+                ),
+                Message(
+                    conversation_id=run.conversation_id,
+                    role="assistant",
+                    content="Earlier answer [1][2].",
+                    position=2,
+                    metadata_={
+                        "sources": [
+                            {"id": 1, "title": "One", "url": "https://one.test"},
+                            {"id": 2, "title": "Two", "url": "https://two.test"},
+                        ]
+                    },
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        await claim_next_queued_run(
+            session, worker_id="worker-x", lease_seconds=settings.run_lease_seconds
+        )
+        await session.commit()
+
+    await execute_run(
+        session_factory=session_factory,
+        run_id=run_id,
+        worker_id="worker-x",
+        settings=settings,
+        resolve_provider=make_resolver(
+            FakeProvider(
+                script=[TextDelta(text="Still true [2]."), StreamDone(finish_reason="stop")]
+            )
+        ),
+    )
+
+    async with session_factory() as session:
+        assistant = await session.scalar(
+            select(Message).where(Message.run_id == run_id, Message.role == "assistant")
+        )
+        assert assistant is not None
+        assert assistant.metadata_ == {
+            "sources": [
+                {
+                    "id": 2,
+                    "title": "Two",
+                    "url": "https://two.test",
+                    "snippet": "",
+                    "published_at": None,
+                    "provider": "",
+                }
+            ]
+        }
 
 
 async def test_web_search_final_answer_streams_incremental_deltas(

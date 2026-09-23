@@ -151,6 +151,8 @@ export type RunStateResponse = {
   draft_reasoning: string;
   draft_reasoning_summary?: string;
   tool_state?: RunToolState | null;
+  // Every source the Run's succeeded tool calls returned so far.
+  sources?: RunToolSource[];
   terminal_event: RunEventResponse | null;
 };
 
@@ -164,6 +166,8 @@ export type RunToolSource = {
   id: number;
   title: string;
   url: string;
+  snippet?: string | null;
+  published_at?: string | null;
 };
 
 export type RunToolState = {

@@ -810,6 +810,7 @@ export function AppShell() {
                   (activeRun && activeRun.conversationId === selectedId) ? (
                     <StreamingMessage
                       run={visiblePendingSubmission !== null ? null : activeRun}
+                      messages={messages}
                     />
                   ) : null}
                 </MessageThread></SearchRevealContext.Provider>

@@ -1,3 +1,5 @@
+import type { MessageResponse, MessageSource } from "../api/types";
+
 // Hostname of a source URL, without the leading www. Shared by the sources
 // panel and inline citation chips. Kept in its own module so the component
 // files only export components (react-refresh).
@@ -28,4 +30,22 @@ export function siteName(url: string): string {
   if (parts.length <= 2) return parts[0];
   const tldParts = MULTI_TLDS.has(parts.slice(-2).join(".")) ? 2 : 1;
   return parts[parts.length - 1 - tldParts] ?? parts[0];
+}
+
+// Citation ids are unique across a conversation (the backend continues its
+// numbering from earlier turns), so an answer may cite a source first returned
+// in a previous turn. Collect the thread's sources by id for resolving those.
+// Legacy messages numbered each Run from 1: an id bound to different URLs is
+// ambiguous and left unresolved, mirroring the backend's SourceRegistry.
+export function conversationSources(messages: readonly MessageResponse[]): MessageSource[] {
+  const byId = new Map<number, MessageSource>();
+  const ambiguous = new Set<number>();
+  for (const message of messages) {
+    for (const source of message.metadata?.sources ?? []) {
+      const existing = byId.get(source.id);
+      if (existing === undefined) byId.set(source.id, source);
+      else if (existing.url !== source.url) ambiguous.add(source.id);
+    }
+  }
+  return [...byId.values()].filter((source) => !ambiguous.has(source.id));
 }

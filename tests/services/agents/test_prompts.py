@@ -55,6 +55,8 @@ def test_web_search_appends_date_and_guidance() -> None:
     assert "Today's date is 2026-06-17 (UTC)." in prompt
     assert "web_search tool" in prompt
     assert "[1]" in prompt
+    assert "[2][3]" in prompt
+    assert "Never write: [1, 2]" in prompt
 
 
 def test_no_web_search_omits_date_and_guidance() -> None:

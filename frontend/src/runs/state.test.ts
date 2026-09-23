@@ -12,6 +12,7 @@ const started: ActiveRunState = {
   draftReasoningSummary: "",
   streamPhase: "waiting",
   toolState: null,
+  draftSources: [],
   status: "started",
   cancelRequested: false,
 };
@@ -190,6 +191,7 @@ describe("activeRunReducer", () => {
       draftReasoningSummary: "摘要",
       streamPhase: "text",
       toolState: null,
+      draftSources: [],
       status: "streaming",
       cancelRequested: false,
     });
@@ -279,5 +281,60 @@ describe("activeRunReducer", () => {
     const cancelled = activeRunReducer(started, { type: "run/terminal", status: "cancelled" });
     expect(activeRunReducer(cancelled, { type: "run/cancelFailed" })).toBe(cancelled);
     expect(activeRunReducer(null, { type: "run/cancelFailed" })).toBeNull();
+  });
+
+  it("accumulates succeeded tool sources across calls and text deltas", () => {
+    const a = { id: 1, title: "A", url: "https://a.test" };
+    const b = { id: 2, title: "B", url: "https://b.test" };
+    const succeeded = (seq: number, sources: (typeof a)[]) => ({
+      type: "run/toolState" as const,
+      seq,
+      toolState: {
+        status: "succeeded" as const,
+        tool_name: "web_search",
+        query: "q",
+        message: null,
+        result_count: sources.length,
+        sources,
+      },
+    });
+    const first = activeRunReducer(started, succeeded(2, [a]));
+    const text = activeRunReducer(first, { type: "run/textDelta", seq: 3, text: "正文 [1]" });
+    expect(text?.toolState).toBeNull();
+    expect(text?.draftSources).toEqual([a]);
+
+    const second = activeRunReducer(text, succeeded(4, [a, b]));
+    expect(second?.draftSources).toEqual([a, b]);
+    // Nothing new keeps the same array for memoized consumers.
+    const repeat = activeRunReducer(second, succeeded(5, [b]));
+    expect(repeat?.draftSources).toBe(second?.draftSources);
+
+    const failed = activeRunReducer(repeat, {
+      type: "run/toolState",
+      seq: 6,
+      toolState: {
+        status: "failed",
+        tool_name: "web_search",
+        query: "q",
+        message: "搜索失败",
+        result_count: null,
+        sources: [{ id: 9, title: "X", url: "https://x.test" }],
+      },
+    });
+    expect(failed?.draftSources).toEqual([a, b]);
+  });
+
+  it("restores the Run's aggregated sources", () => {
+    const next = activeRunReducer(null, {
+      type: "run/restored",
+      runId: "100",
+      conversationId: "10",
+      latestSeq: 5,
+      draftText: "Hel [3]",
+      draftReasoning: "",
+      sources: [{ id: 3, title: "C", url: "https://c.test" }],
+      status: "streaming",
+    });
+    expect(next?.draftSources).toEqual([{ id: 3, title: "C", url: "https://c.test" }]);
   });
 });
