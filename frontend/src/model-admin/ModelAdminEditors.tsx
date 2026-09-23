@@ -63,6 +63,7 @@ const adapterReasoningOutputs: Record<
   deepseek: ["raw"],
   openai: [],
   openrouter: ["raw", "summary"],
+  glm: ["raw"],
 };
 
 function ModelEditorDialog({
@@ -286,6 +287,7 @@ function UpstreamEditorDialog({
             <option value="deepseek">deepseek</option>
             <option value="openai">openai</option>
             <option value="openrouter">openrouter</option>
+            <option value="glm">glm</option>
           </select>
         </Field>
         <Field
@@ -352,7 +354,9 @@ function RouteEditorDialog({
     ModelReasoningOutput[]
   >(
     route?.reasoning_outputs ??
-      (initialAdapter === "deepseek" || initialAdapter === "openrouter" ? ["raw"] : []),
+      (initialAdapter === "deepseek" || initialAdapter === "openrouter" || initialAdapter === "glm"
+        ? ["raw"]
+        : []),
   );
   const selectedAdapter =
     upstreams.find((upstream) => upstream.key === upstreamKey)?.adapter ?? "openai";

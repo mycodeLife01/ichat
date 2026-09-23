@@ -108,7 +108,7 @@ class ModelUpstream(Base):
     __tablename__ = "model_upstreams"
     __table_args__ = (
         CheckConstraint(
-            "adapter IN ('deepseek', 'openai', 'openrouter')",
+            "adapter IN ('deepseek', 'openai', 'openrouter', 'glm')",
             name="adapter_valid",
         ),
         Index("ix_model_upstreams_enabled", "enabled"),

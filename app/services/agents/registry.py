@@ -12,11 +12,12 @@ from typing import Literal
 from app.agent.messages import ReasoningKind
 from app.agent.provider import Provider
 from app.agent.providers.deepseek import DeepSeekProvider
+from app.agent.providers.glm import GLMProvider
 from app.agent.providers.openai import OpenAIProvider
 from app.agent.providers.openrouter import OpenRouterProvider
 from app.core.config import Settings
 
-ProviderAdapter = Literal["deepseek", "openai", "openrouter"]
+ProviderAdapter = Literal["deepseek", "openai", "openrouter", "glm"]
 
 
 @dataclass(frozen=True)
@@ -83,5 +84,10 @@ def build_provider(connection: ProviderConnection) -> Provider:
             base_url=connection.base_url,
             token_profile=connection.token_profile,
             reasoning_outputs=connection.reasoning_outputs,
+        )
+    if connection.adapter == "glm":
+        return GLMProvider(
+            api_key=connection.api_key,
+            base_url=connection.base_url,
         )
     raise UnknownProviderError(connection.adapter)
