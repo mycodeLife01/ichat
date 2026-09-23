@@ -58,7 +58,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     upstream.add_argument("--key", required=True)
     upstream.add_argument("--label", required=True)
-    upstream.add_argument("--adapter", choices=("deepseek", "openai", "openrouter"), required=True)
+    upstream.add_argument(
+        "--adapter", choices=("deepseek", "openai", "openrouter", "glm"), required=True
+    )
     upstream.add_argument("--base-url", required=True)
     api_key_source = upstream.add_mutually_exclusive_group()
     api_key_source.add_argument(
