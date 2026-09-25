@@ -30,13 +30,13 @@
 - `messages.reasoning` / `messages.reasoning_summary`：成功 Run 全部 raw/summary block 的有序聚合；
   它们是读取投影，不替代 transcript。
 
-新 Run 每次直接查询数据库，不使用目录缓存。已经排队的 Run 按快照执行，不会因后续上下线或优先级修改悄悄换供应商；它按上游稳定 key 读取当前密文，因此同一上游的 API key 轮换可立即生效。一次 Run 内不做跨上游自动 failover，故障切换由 operator 启用低优先级备用路由或停用当前路由完成，影响随后创建的 Run。
+新 Run 每次直接查询数据库，不使用目录缓存。已经排队的 Run 按快照执行，不会因后续上下线或优先级修改悄悄换供应商；它按快照中的 `route_id` 找到当时那一行上游并读取其当前密文（ADR 0014 起，此前按上游 key），因此同一上游的 API key 轮换可立即生效，归档或同名重建也不影响它。一次 Run 内不做跨上游自动 failover，故障切换由 operator 启用低优先级备用路由或停用当前路由完成，影响随后创建的 Run。
 
 上游稳定 key 应代表同一调用入口。只轮换该入口的 API key 可以原地更新；若要更换 adapter、endpoint 或账号归属，优先创建一个新的上游并切换路由。否则，更新前已经排队的 Run 会继续使用快照中的旧 adapter/endpoint，却读取该 key 的新凭据，可能因凭据与入口不匹配而失败。确需原地改 endpoint 时，应先排空 queued Run。
 
 后端提交接口会实时复核模型，所以已下线模型即使仍显示在旧页面中也不能创建新 Run。React SPA 当前只在启动时获取 capabilities；已打开的标签页需要刷新才能看到新增模型或更新后的展示信息。
 
-Web 与 CLI 都不提供 hard delete。下线使用 disable，避免删除仍被排队 Run 快照引用的上游；数据库外直接删除上游可能使旧 Run 无法恢复凭据。
+Web 与 CLI 都不提供 hard delete。下线使用 disable，避免删除仍被排队 Run 快照引用的上游；数据库外直接删除上游可能使旧 Run 无法恢复凭据。移除目录项使用可逆的归档，见 ADR `0014-archive-catalog-rows-instead-of-hard-delete.md` 与 `docs/handover/2026-09-25-model-catalog-archive.md`。
 
 ## Provider 差异
 
