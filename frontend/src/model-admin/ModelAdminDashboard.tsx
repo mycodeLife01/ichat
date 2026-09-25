@@ -1,4 +1,6 @@
 import {
+  Archive,
+  ArrowLeft,
   BrainCircuit,
   Database,
   Download,
@@ -12,7 +14,7 @@ import {
   Route as RouteIcon,
   Server,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import type {
   ModelAdminCatalog,
@@ -31,12 +33,23 @@ import {
 } from "../ui/classes";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { InlineStatus } from "../ui/InlineStatus";
+import { useArchiveFlow, type ArchiveHandlers } from "./archiveActions";
+import { ArchivedList } from "./ArchivedList";
+import {
+  activeCatalog,
+  archivedEntries,
+  matchesQuery,
+  routesOfModel,
+  routesOfUpstream,
+  routeStatusText,
+} from "./catalogView";
+import { SearchField, SegmentedControl } from "./ModelAdminControls";
 import {
   ModelAdminEditorDialog,
   type ModelAdminEditor,
 } from "./ModelAdminEditors";
 
-type ModelAdminDashboardProps = {
+export type ModelAdminDashboardProps = {
   catalog: ModelAdminCatalog;
   busyAction: string | null;
   notice: { tone: "success" | "error"; text: string } | null;
@@ -53,34 +66,504 @@ type ModelAdminDashboardProps = {
   onSetRouteEnabled: (route: ModelAdminRoute, enabled: boolean) => Promise<boolean>;
   onSetCatalogEnabled: (enabled: boolean) => Promise<boolean>;
   onImportEnvironment: () => Promise<boolean>;
-};
+} & ArchiveHandlers;
+
+type Pane = "models" | "upstreams" | "archived";
+
+// A searchable list on the left and one selected item's full detail on the
+// right; narrow screens drill down from list to detail.
+export function ModelAdminDashboard(props: ModelAdminDashboardProps) {
+  const { catalog: fullCatalog, busyAction } = props;
+  const catalog = useMemo(() => activeCatalog(fullCatalog), [fullCatalog]);
+  const busy = busyAction !== null;
+  const [pane, setPane] = useState<Pane>("models");
+  const [query, setQuery] = useState("");
+  const [selectedRef, setSelectedRef] = useState<string | null>(null);
+  const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
+  const [editor, setEditor] = useState<ModelAdminEditor | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const flow = useArchiveFlow(fullCatalog, props);
+  const upstreamByKey = useMemo(
+    () => new Map(catalog.upstreams.map((upstream) => [upstream.key, upstream])),
+    [catalog.upstreams],
+  );
+
+  const models = catalog.models.filter((model) => matchesQuery(model, query));
+  const upstreams = catalog.upstreams.filter((upstream) => matchesQuery(upstream, query));
+  const archivedCount = archivedEntries(fullCatalog).length;
+  const selectedModel =
+    pane === "models"
+      ? (catalog.models.find((model) => model.ref === selectedRef) ?? models[0])
+      : undefined;
+  const selectedUpstream =
+    pane === "upstreams"
+      ? (catalog.upstreams.find((upstream) => upstream.ref === selectedRef) ?? upstreams[0])
+      : undefined;
+
+  const select = (ref: string) => {
+    setSelectedRef(ref);
+    setShowDetailOnMobile(true);
+    // Narrow screens swap the list for the detail; bring its top into view.
+    if (window.matchMedia("(max-width: 1023px)").matches)
+      requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" }));
+  };
+  const switchPane = (next: Pane) => {
+    setPane(next);
+    setQuery("");
+    setSelectedRef(null);
+    setShowDetailOnMobile(next === "archived");
+  };
+
+  return (
+    <ConsoleChrome
+      {...props}
+      catalog={catalog}
+      overlays={
+        <>
+          {editor ? (
+            <ModelAdminEditorDialog
+              editor={editor}
+              models={catalog.models}
+              upstreams={catalog.upstreams}
+              onClose={() => setEditor(null)}
+              onSaveModel={props.onSaveModel}
+              onSaveUpstream={props.onSaveUpstream}
+              onSaveRoute={props.onSaveRoute}
+            />
+          ) : null}
+          {flow.dialog}
+        </>
+      }
+    >
+      <section
+        className="mt-8 grid gap-4 pb-10 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start"
+        aria-label="模型目录"
+      >
+        <aside
+          className={`${cardSurface} flex min-w-0 flex-col overflow-hidden lg:sticky lg:top-4 lg:max-h-[calc(100dvh-32px)] ${
+            showDetailOnMobile ? "hidden lg:flex" : ""
+          }`}
+        >
+          <div className="space-y-2.5 border-b border-border p-3">
+            <SegmentedControl
+              label="目录分段"
+              className="flex w-full"
+              value={pane === "archived" ? "models" : pane}
+              options={[
+                { value: "models", label: "模型", count: catalog.models.length },
+                { value: "upstreams", label: "上游", count: catalog.upstreams.length },
+              ]}
+              onChange={switchPane}
+            />
+            <div className="flex gap-2">
+              <SearchField
+                className="flex-1"
+                label={pane === "upstreams" ? "搜索上游" : "搜索模型"}
+                value={query}
+                onChange={setQuery}
+              />
+              <button
+                type="button"
+                className={`${iconControl} h-9 w-9 shrink-0 border border-border-strong`}
+                aria-label={pane === "upstreams" ? "添加上游" : "添加模型"}
+                disabled={busy}
+                onClick={() =>
+                  setEditor({ kind: pane === "upstreams" ? "upstream" : "model" })
+                }
+              >
+                <Plus size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <ul className="min-h-0 flex-1 overflow-y-auto p-1.5" aria-label="目录项">
+            {pane !== "upstreams"
+              ? models.map((model) => (
+                  <ListRow
+                    key={model.ref}
+                    current={pane === "models" && selectedModel?.ref === model.ref}
+                    enabled={model.enabled}
+                    title={model.label}
+                    detail={model.key}
+                    count={routesOfModel(catalog, model).length}
+                    onSelect={() => {
+                      setPane("models");
+                      select(model.ref);
+                    }}
+                  />
+                ))
+              : upstreams.map((upstream) => (
+                  <ListRow
+                    key={upstream.ref}
+                    current={selectedUpstream?.ref === upstream.ref}
+                    enabled={upstream.enabled}
+                    title={upstream.label}
+                    detail={`${upstream.key} · ${upstream.adapter}`}
+                    count={routesOfUpstream(catalog, upstream).length}
+                    onSelect={() => select(upstream.ref)}
+                  />
+                ))}
+            {(pane === "upstreams" ? upstreams : models).length === 0 ? (
+              <li className="px-3 py-6 text-center text-[11.5px] text-text-muted">No matches.</li>
+            ) : null}
+          </ul>
+
+          <button
+            type="button"
+            aria-current={pane === "archived" ? "true" : undefined}
+            className="flex items-center justify-between gap-2 border-t border-border px-4 py-3 text-left text-[12px] text-text-muted transition-[background,color] duration-[120ms] hover:bg-hover hover:text-text-primary aria-current:bg-selected aria-current:text-text-primary"
+            onClick={() => switchPane("archived")}
+          >
+            <span className="flex items-center gap-2">
+              <Archive size={13} aria-hidden="true" />
+              已归档
+            </span>
+            <span className="font-mono text-[10px] text-text-faint">{archivedCount}</span>
+          </button>
+        </aside>
+
+        <div
+          ref={detailRef}
+          className={`min-w-0 scroll-mt-4 ${showDetailOnMobile ? "" : "hidden lg:block"}`}
+        >
+          <button
+            type="button"
+            className={`${buttonControl} mb-3 h-9 gap-1.5 px-2 text-[12px] lg:hidden`}
+            onClick={() => setShowDetailOnMobile(false)}
+          >
+            <ArrowLeft size={15} aria-hidden="true" />
+            返回列表
+          </button>
+
+          {pane === "archived" ? (
+            <div className={`${cardSurface} p-5`}>
+              <DetailEyebrow>Archived</DetailEyebrow>
+              <h2 className="mt-1 text-[18px] font-semibold tracking-[-0.02em]">已归档</h2>
+              <p className="mt-1 text-[12px] leading-[1.6] text-text-muted">
+                Archived items stay out of the catalog. Routes archived with a model return
+                when the model is restored.
+              </p>
+              <ArchivedList
+                className="mt-4"
+                catalog={fullCatalog}
+                busy={busy}
+                onRestore={flow.restore}
+              />
+            </div>
+          ) : selectedModel ? (
+            <ModelDetail
+              catalog={catalog}
+              model={selectedModel}
+              upstreamByKey={upstreamByKey}
+              busy={busy}
+              onEdit={() => {
+                // Pin the selection so a reordered catalog keeps showing this model.
+                setSelectedRef(selectedModel.ref);
+                setEditor({ kind: "model", model: selectedModel });
+              }}
+              onToggle={(enabled) => void props.onSetModelEnabled(selectedModel.key, enabled)}
+              onArchive={() => flow.archiveModel(selectedModel)}
+              onAddRoute={() => setEditor({ kind: "route", modelKey: selectedModel.key })}
+              onEditRoute={(route) => setEditor({ kind: "route", route })}
+              onToggleRoute={(route, enabled) => void props.onSetRouteEnabled(route, enabled)}
+              onArchiveRoute={flow.archiveRoute}
+            />
+          ) : selectedUpstream ? (
+            <UpstreamDetail
+              catalog={catalog}
+              upstream={selectedUpstream}
+              busy={busy}
+              onEdit={() => {
+                setSelectedRef(selectedUpstream.ref);
+                setEditor({ kind: "upstream", upstream: selectedUpstream });
+              }}
+              onToggle={(enabled) =>
+                void props.onSetUpstreamEnabled(selectedUpstream.key, enabled)
+              }
+              onArchive={() => flow.archiveUpstream(selectedUpstream)}
+            />
+          ) : (
+            <p className={`${cardSurface} px-5 py-10 text-center text-[12px] text-text-muted`}>
+              Nothing to show. Add a model or an upstream to begin.
+            </p>
+          )}
+        </div>
+      </section>
+    </ConsoleChrome>
+  );
+}
+
+function ListRow({
+  current,
+  enabled,
+  title,
+  detail,
+  count,
+  onSelect,
+}: {
+  current: boolean;
+  enabled: boolean;
+  title: string;
+  detail: string;
+  count: number;
+  onSelect: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        aria-current={current ? "true" : undefined}
+        className="flex w-full items-center gap-3 rounded-item px-3 py-2.5 text-left transition-[background] duration-[120ms] hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring aria-current:bg-selected"
+        onClick={onSelect}
+      >
+        <span
+          aria-hidden="true"
+          className={`h-2 w-2 shrink-0 rounded-full ${enabled ? "bg-success-foreground" : "bg-text-faint"}`}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12.5px] font-medium">{title}</span>
+          <span className="block truncate font-mono text-[10px] text-text-muted">{detail}</span>
+        </span>
+        <span className="font-mono text-[10px] text-text-faint" aria-label={`${count} 条路由`}>
+          {count}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function DetailEyebrow({ children }: { children: string }) {
+  return (
+    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">{children}</p>
+  );
+}
+
+type RouteHandlers = Pick<
+  Parameters<typeof RouteTrack>[0],
+  "onAddRoute" | "onEditRoute" | "onToggleRoute" | "onArchiveRoute"
+>;
+
+function ModelDetail({
+  catalog,
+  model,
+  upstreamByKey,
+  busy,
+  onEdit,
+  onToggle,
+  onArchive,
+  ...routeHandlers
+}: {
+  catalog: ModelAdminCatalog;
+  model: ModelAdminChatModel;
+  upstreamByKey: Map<string, ModelAdminUpstream>;
+  busy: boolean;
+  onEdit: () => void;
+  onToggle: (enabled: boolean) => void;
+  onArchive: () => void;
+} & RouteHandlers) {
+  return (
+    <article className={`${cardSurface} overflow-hidden`}>
+      <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+        <div className="min-w-0">
+          <DetailEyebrow>Chat model</DetailEyebrow>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <h2 className="text-[18px] font-semibold tracking-[-0.02em]">{model.label}</h2>
+            <StatusBadge enabled={model.enabled} onLabel="模型上线" offLabel="模型下线" />
+          </div>
+          <p className="mt-1 break-all font-mono text-[11px] text-text-muted">{model.key}</p>
+          <ModelCapabilities model={model} />
+        </div>
+        <DetailActions
+          kind="模型"
+          name={model.label}
+          enabled={model.enabled}
+          busy={busy}
+          onArchive={onArchive}
+          onEdit={onEdit}
+          onToggle={onToggle}
+        />
+      </div>
+      <RouteTrack
+        model={model}
+        routes={routesOfModel(catalog, model)}
+        upstreamByKey={upstreamByKey}
+        databaseEnabled={catalog.database_enabled}
+        busy={busy}
+        {...routeHandlers}
+      />
+    </article>
+  );
+}
+
+function UpstreamDetail({
+  catalog,
+  upstream,
+  busy,
+  onEdit,
+  onToggle,
+  onArchive,
+}: {
+  catalog: ModelAdminCatalog;
+  upstream: ModelAdminUpstream;
+  busy: boolean;
+  onEdit: () => void;
+  onToggle: (enabled: boolean) => void;
+  onArchive: () => void;
+}) {
+  const routes = routesOfUpstream(catalog, upstream);
+  const models = new Map(catalog.models.map((model) => [model.ref, model]));
+  return (
+    <article className={`${cardSurface} overflow-hidden`}>
+      <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-sunken text-text-muted">
+            <Server size={18} strokeWidth={1.8} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <DetailEyebrow>Model upstream</DetailEyebrow>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h2 className="text-[18px] font-semibold tracking-[-0.02em]">{upstream.label}</h2>
+              <StatusBadge enabled={upstream.enabled} onLabel="上游上线" offLabel="上游下线" />
+            </div>
+            <p className="mt-1 break-all font-mono text-[11px] text-text-muted">{upstream.key}</p>
+          </div>
+        </div>
+        <DetailActions
+          kind="上游"
+          name={upstream.label}
+          enabled={upstream.enabled}
+          busy={busy}
+          onArchive={onArchive}
+          onEdit={onEdit}
+          onToggle={onToggle}
+        />
+      </div>
+      <div className="mx-5 mb-5 min-w-0 rounded-control border border-border bg-sunken px-3 py-2.5 sm:mx-6">
+        <p className="break-all font-mono text-[10.5px] text-text-primary">{upstream.base_url}</p>
+        <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[9.5px] text-text-muted">
+          <span className="rounded-pill bg-surface px-2 py-0.5">{upstream.adapter}</span>
+          <span className="flex items-center gap-1">
+            <KeyRound size={10} aria-hidden="true" />
+            {upstream.api_key_hint}
+          </span>
+        </div>
+      </div>
+      <div className="border-t border-border bg-sunken/60 px-5 py-4 sm:px-6">
+        <h3 className="mb-2 text-[12px] font-medium">
+          引用该上游的路由
+          <span className="ml-2 font-mono text-[10px] text-text-faint">{routes.length}</span>
+        </h3>
+        {routes.length ? (
+          <ul className="divide-y divide-border">
+            {routes.map((route) => {
+              const model = models.get(route.model_ref);
+              return (
+                <li key={route.ref} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-medium">{model?.label ?? route.model_key}</p>
+                    <p className="break-all font-mono text-[10px] text-text-muted">
+                      {route.upstream_model} · P{route.priority}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] ${
+                      route.selected
+                        ? "bg-[#e8efff] text-[#2557d6]"
+                        : "bg-neutral-soft text-neutral-foreground"
+                    }`}
+                  >
+                    {model
+                      ? routeStatusText(route, model, upstream, catalog.database_enabled)
+                      : "—"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-[11.5px] text-text-muted">
+            No unarchived route uses this upstream, so it can be archived.
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function DetailActions({
+  kind,
+  name,
+  enabled,
+  busy,
+  onArchive,
+  onEdit,
+  onToggle,
+}: {
+  kind: string;
+  name: string;
+  enabled: boolean;
+  busy: boolean;
+  onArchive: () => void;
+  onEdit: () => void;
+  onToggle: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        className={`${iconControl} h-9 w-9 border border-border`}
+        aria-label={`归档${kind} ${name}`}
+        disabled={busy}
+        onClick={onArchive}
+      >
+        <Archive size={14} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className={`${iconControl} h-9 w-9 border border-border`}
+        aria-label={`编辑${kind} ${name}`}
+        disabled={busy}
+        onClick={onEdit}
+      >
+        <Pencil size={14} aria-hidden="true" />
+      </button>
+      <StatusSwitch checked={enabled} disabled={busy} label={name} onChange={onToggle} />
+    </div>
+  );
+}
 
 type Confirmation = "catalog" | "import-environment" | null;
 
-export function ModelAdminDashboard({
+type ConsoleChromeProps = Pick<
+  ModelAdminDashboardProps,
+  | "catalog"
+  | "busyAction"
+  | "notice"
+  | "onLock"
+  | "onRefresh"
+  | "onSetCatalogEnabled"
+  | "onImportEnvironment"
+> & {
+  children: ReactNode;
+  overlays?: ReactNode;
+};
+
+// Header, notice, and runtime-source card shared by every console layout.
+function ConsoleChrome({
   catalog,
   busyAction,
   notice,
   onLock,
   onRefresh,
-  onSaveModel,
-  onSetModelEnabled,
-  onSaveUpstream,
-  onSetUpstreamEnabled,
-  onSaveRoute,
-  onSetRouteEnabled,
   onSetCatalogEnabled,
   onImportEnvironment,
-}: ModelAdminDashboardProps) {
-  const [editor, setEditor] = useState<ModelAdminEditor | null>(null);
+  children,
+  overlays,
+}: ConsoleChromeProps) {
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const busy = busyAction !== null;
   const activeRouteCount = catalog.routes.filter((route) => route.enabled).length;
   const selectedRouteCount = catalog.routes.filter((route) => route.selected).length;
-  const upstreamByKey = useMemo(
-    () => new Map(catalog.upstreams.map((upstream) => [upstream.key, upstream])),
-    [catalog.upstreams],
-  );
 
   const confirmAction = () => {
     const current = confirmation;
@@ -205,97 +688,10 @@ export function ModelAdminDashboard({
           </div>
         </section>
 
-        <section className="mt-9" aria-labelledby="models-title">
-          <SectionHeading
-            id="models-title"
-            eyebrow="Logical catalog"
-            title="聊天模型与路由"
-            actionLabel="添加模型"
-            disabled={busy}
-            onAction={() => setEditor({ kind: "model" })}
-          />
-
-          {catalog.models.length ? (
-            <div className="mt-4 space-y-4">
-              {catalog.models.map((model) => (
-                <ModelCard
-                  key={model.key}
-                  model={model}
-                  routes={catalog.routes
-                    .filter((route) => route.model_key === model.key)
-                    .sort(compareRoutes)}
-                  upstreamByKey={upstreamByKey}
-                  databaseEnabled={catalog.database_enabled}
-                  busy={busy}
-                  onEdit={() => setEditor({ kind: "model", model })}
-                  onToggle={(enabled) => void onSetModelEnabled(model.key, enabled)}
-                  onAddRoute={() => setEditor({ kind: "route", modelKey: model.key })}
-                  onEditRoute={(route) => setEditor({ kind: "route", route })}
-                  onToggleRoute={(route, enabled) => void onSetRouteEnabled(route, enabled)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<BrainCircuit size={20} aria-hidden="true" />}
-              title="尚未配置聊天模型"
-              body="Create a logical model first, then connect it to one or more upstream routes."
-              action="添加第一个模型"
-              onAction={() => setEditor({ kind: "model" })}
-            />
-          )}
-        </section>
-
-        <section className="mt-10 pb-10" aria-labelledby="upstreams-title">
-          <SectionHeading
-            id="upstreams-title"
-            eyebrow="Provider connections"
-            title="模型上游"
-            actionLabel="添加上游"
-            disabled={busy}
-            onAction={() => setEditor({ kind: "upstream" })}
-          />
-
-          {catalog.upstreams.length ? (
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {catalog.upstreams.map((upstream) => (
-                <UpstreamCard
-                  key={upstream.key}
-                  upstream={upstream}
-                  routeCount={catalog.routes.filter(
-                    (route) => route.upstream_key === upstream.key,
-                  ).length}
-                  busy={busy}
-                  onEdit={() => setEditor({ kind: "upstream", upstream })}
-                  onToggle={(enabled) =>
-                    void onSetUpstreamEnabled(upstream.key, enabled)
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Server size={20} aria-hidden="true" />}
-              title="尚未配置模型上游"
-              body="Add an encrypted provider connection before creating routes."
-              action="添加第一个上游"
-              onAction={() => setEditor({ kind: "upstream" })}
-            />
-          )}
-        </section>
+        {children}
       </div>
 
-      {editor ? (
-        <ModelAdminEditorDialog
-          editor={editor}
-          models={catalog.models}
-          upstreams={catalog.upstreams}
-          onClose={() => setEditor(null)}
-          onSaveModel={onSaveModel}
-          onSaveUpstream={onSaveUpstream}
-          onSaveRoute={onSaveRoute}
-        />
-      ) : null}
+      {overlays}
 
       {confirmation ? (
         <ConfirmDialog
@@ -331,294 +727,160 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-type SectionHeadingProps = {
-  id: string;
-  eyebrow: string;
-  title: string;
-  actionLabel: string;
-  disabled: boolean;
-  onAction: () => void;
-};
-
-function SectionHeading({
-  id,
-  eyebrow,
-  title,
-  actionLabel,
-  disabled,
-  onAction,
-}: SectionHeadingProps) {
+function ModelCapabilities({ model }: { model: ModelAdminChatModel }) {
   return (
-    <div className="flex items-end justify-between gap-4">
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-          {eyebrow}
-        </p>
-        <h2 id={id} className="mt-1 text-[19px] font-semibold tracking-[-0.02em]">
-          {title}
-        </h2>
-      </div>
-      <button
-        type="button"
-        className={`${buttonControl} h-9 gap-1.5 border border-border-strong bg-surface px-3 text-[12px]`}
-        disabled={disabled}
-        onClick={onAction}
-      >
-        <Plus size={14} aria-hidden="true" />
-        {actionLabel}
-      </button>
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      <CapabilityPill icon={<BrainCircuit size={12} aria-hidden="true" />}>
+        {model.thinking_levels.length
+          ? model.thinking_levels.join(" · ")
+          : "no reasoning control"}
+      </CapabilityPill>
+      {model.supports_image_input ? (
+        <CapabilityPill icon={<ImageIcon size={12} aria-hidden="true" />}>
+          vision · {model.image_token_reserve} tokens
+        </CapabilityPill>
+      ) : null}
+      <CapabilityPill>{model.token_profile} tokens</CapabilityPill>
+      <CapabilityPill>order {model.sort_order}</CapabilityPill>
     </div>
   );
 }
 
-type ModelCardProps = {
+type RouteTrackProps = {
   model: ModelAdminChatModel;
   routes: ModelAdminRoute[];
   upstreamByKey: Map<string, ModelAdminUpstream>;
   databaseEnabled: boolean;
   busy: boolean;
-  onEdit: () => void;
-  onToggle: (enabled: boolean) => void;
   onAddRoute: () => void;
   onEditRoute: (route: ModelAdminRoute) => void;
   onToggleRoute: (route: ModelAdminRoute, enabled: boolean) => void;
+  onArchiveRoute?: (route: ModelAdminRoute) => void;
 };
 
-function ModelCard({
+function RouteTrack({
   model,
   routes,
   upstreamByKey,
   databaseEnabled,
   busy,
-  onEdit,
-  onToggle,
   onAddRoute,
   onEditRoute,
   onToggleRoute,
-}: ModelCardProps) {
+  onArchiveRoute,
+}: RouteTrackProps) {
   return (
-    <article className={`${cardSurface} overflow-hidden`}>
-      <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[16px] font-semibold tracking-[-0.015em]">{model.label}</h3>
-            <StatusBadge enabled={model.enabled} onLabel="模型上线" offLabel="模型下线" />
-          </div>
-          <p className="mt-1 break-all font-mono text-[11px] text-text-muted">{model.key}</p>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <CapabilityPill icon={<BrainCircuit size={12} aria-hidden="true" />}>
-              {model.thinking_levels.length
-                ? model.thinking_levels.join(" · ")
-                : "no reasoning control"}
-            </CapabilityPill>
-            {model.supports_image_input ? (
-              <CapabilityPill icon={<ImageIcon size={12} aria-hidden="true" />}>
-                vision · {model.image_token_reserve} tokens
-              </CapabilityPill>
-            ) : null}
-            <CapabilityPill>{model.token_profile} tokens</CapabilityPill>
-            <CapabilityPill>order {model.sort_order}</CapabilityPill>
-          </div>
-        </div>
+    <div className="border-t border-border bg-sunken/60 px-5 py-4 sm:px-6">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={`${iconControl} h-9 w-9 border border-border`}
-            aria-label={`编辑模型 ${model.label}`}
-            disabled={busy}
-            onClick={onEdit}
-          >
-            <Pencil size={14} aria-hidden="true" />
-          </button>
-          <StatusSwitch
-            checked={model.enabled}
-            disabled={busy}
-            label={model.label}
-            onChange={onToggle}
-          />
+          <RouteIcon size={14} className="text-text-muted" aria-hidden="true" />
+          <h4 className="text-[12px] font-medium">路由轨道</h4>
+          <span className="font-mono text-[10px] text-text-faint">{routes.length}</span>
         </div>
+        <button
+          type="button"
+          className={`${buttonControl} h-8 gap-1.5 px-2.5 text-[11.5px]`}
+          disabled={busy || !upstreamByKey.size}
+          onClick={onAddRoute}
+        >
+          <Plus size={13} aria-hidden="true" />
+          添加路由
+        </button>
       </div>
 
-      <div className="border-t border-border bg-sunken/60 px-5 py-4 sm:px-6">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <RouteIcon size={14} className="text-text-muted" aria-hidden="true" />
-            <h4 className="text-[12px] font-medium">路由轨道</h4>
-            <span className="font-mono text-[10px] text-text-faint">{routes.length}</span>
-          </div>
-          <button
-            type="button"
-            className={`${buttonControl} h-8 gap-1.5 px-2.5 text-[11.5px]`}
-            disabled={busy || !upstreamByKey.size}
-            onClick={onAddRoute}
-          >
-            <Plus size={13} aria-hidden="true" />
-            添加路由
-          </button>
-        </div>
-
-        {routes.length ? (
-          <div className="relative ml-1 border-l border-[#cfd7e9] pl-5">
-            {routes.map((route) => {
-              const upstream = upstreamByKey.get(route.upstream_key);
-              const routeAvailable = model.enabled && route.enabled && Boolean(upstream?.enabled);
-              const statusText = route.selected
-                ? databaseEnabled
-                  ? "当前路由"
-                  : "目录首选"
-                : !route.enabled
-                  ? "路由下线"
-                  : !upstream?.enabled
-                    ? "上游下线"
-                    : !model.enabled
-                      ? "模型下线"
-                      : "候选路由";
-              return (
-                <div
-                  key={`${route.upstream_key}:${route.upstream_model}`}
-                  className="relative border-b border-border py-3 last:border-b-0"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`absolute -left-[25px] top-[19px] h-2.5 w-2.5 rounded-full border-2 border-sunken ${
-                      route.selected
-                        ? "bg-[#2557d6] shadow-[0_0_0_3px_rgba(37,87,214,0.14)]"
-                        : routeAvailable
-                          ? "bg-success-foreground"
-                          : "bg-text-faint"
-                    }`}
-                  />
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-[12.5px] font-medium">
-                          {upstream?.label ?? route.upstream_key}
-                        </p>
-                        <span
-                          className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] ${
-                            route.selected
-                              ? "bg-[#e8efff] text-[#2557d6]"
-                              : "bg-neutral-soft text-neutral-foreground"
-                          }`}
-                        >
-                          {statusText}
-                        </span>
-                        <span className="font-mono text-[9.5px] text-text-faint">
-                          P{route.priority}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-[10.5px] text-text-muted">
-                        {route.upstream_model}
+      {routes.length ? (
+        <div className="relative ml-1 border-l border-[#cfd7e9] pl-5">
+          {routes.map((route) => {
+            const upstream = upstreamByKey.get(route.upstream_key);
+            const routeAvailable = model.enabled && route.enabled && Boolean(upstream?.enabled);
+            const statusText = routeStatusText(route, model, upstream, databaseEnabled);
+            return (
+              <div
+                key={`${route.upstream_key}:${route.upstream_model}`}
+                className="relative border-b border-border py-3 last:border-b-0"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`absolute -left-[25px] top-[19px] h-2.5 w-2.5 rounded-full border-2 border-sunken ${
+                    route.selected
+                      ? "bg-[#2557d6] shadow-[0_0_0_3px_rgba(37,87,214,0.14)]"
+                      : routeAvailable
+                        ? "bg-success-foreground"
+                        : "bg-text-faint"
+                  }`}
+                />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[12.5px] font-medium">
+                        {upstream?.label ?? route.upstream_key}
                       </p>
-                      <p className="mt-0.5 font-mono text-[9.5px] text-text-faint">
-                        {route.upstream_key} · {upstream?.adapter ?? "missing upstream"}
-                      </p>
-                      <p className="mt-1 font-mono text-[9.5px] text-text-muted">
-                        推理输出：
-                        {route.reasoning_outputs?.length
-                          ? route.reasoning_outputs.join(" · ")
-                          : "none"}
-                      </p>
+                      <span
+                        className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] ${
+                          route.selected
+                            ? "bg-[#e8efff] text-[#2557d6]"
+                            : "bg-neutral-soft text-neutral-foreground"
+                        }`}
+                      >
+                        {statusText}
+                      </span>
+                      <span className="font-mono text-[9.5px] text-text-faint">
+                        P{route.priority}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <p className="mt-1 break-all font-mono text-[10.5px] text-text-muted">
+                      {route.upstream_model}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[9.5px] text-text-faint">
+                      {route.upstream_key} · {upstream?.adapter ?? "missing upstream"}
+                    </p>
+                    <p className="mt-1 font-mono text-[9.5px] text-text-muted">
+                      推理输出：
+                      {route.reasoning_outputs?.length
+                        ? route.reasoning_outputs.join(" · ")
+                        : "none"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {onArchiveRoute ? (
                       <button
                         type="button"
                         className={`${iconControl} h-8 w-8`}
-                        aria-label={`编辑路由 ${route.upstream_model}`}
+                        aria-label={`归档路由 ${route.upstream_model}`}
                         disabled={busy}
-                        onClick={() => onEditRoute(route)}
+                        onClick={() => onArchiveRoute(route)}
                       >
-                        <Pencil size={13} aria-hidden="true" />
+                        <Archive size={13} aria-hidden="true" />
                       </button>
-                      <StatusSwitch
-                        compact
-                        checked={route.enabled}
-                        disabled={busy}
-                        label={`${model.label} 到 ${upstream?.label ?? route.upstream_key} 的路由`}
-                        onChange={(enabled) => onToggleRoute(route, enabled)}
-                      />
-                    </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`${iconControl} h-8 w-8`}
+                      aria-label={`编辑路由 ${route.upstream_model}`}
+                      disabled={busy}
+                      onClick={() => onEditRoute(route)}
+                    >
+                      <Pencil size={13} aria-hidden="true" />
+                    </button>
+                    <StatusSwitch
+                      compact
+                      checked={route.enabled}
+                      disabled={busy}
+                      label={`${model.label} 到 ${upstream?.label ?? route.upstream_key} 的路由`}
+                      onChange={(enabled) => onToggleRoute(route, enabled)}
+                    />
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="rounded-control border border-dashed border-border-strong bg-surface px-3 py-4 text-center text-[11.5px] text-text-muted">
-            No route configured. This model cannot serve requests from the database catalog.
-          </p>
-        )}
-      </div>
-    </article>
-  );
-}
-
-type UpstreamCardProps = {
-  upstream: ModelAdminUpstream;
-  routeCount: number;
-  busy: boolean;
-  onEdit: () => void;
-  onToggle: (enabled: boolean) => void;
-};
-
-function UpstreamCard({
-  upstream,
-  routeCount,
-  busy,
-  onEdit,
-  onToggle,
-}: UpstreamCardProps) {
-  return (
-    <article className={`${cardSurface} flex min-h-[220px] flex-col p-5`}>
-      <div className="flex items-start justify-between gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-control bg-sunken text-text-muted">
-          <Server size={17} strokeWidth={1.8} aria-hidden="true" />
-        </span>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            className={`${iconControl} h-8 w-8`}
-            aria-label={`编辑上游 ${upstream.label}`}
-            disabled={busy}
-            onClick={onEdit}
-          >
-            <Pencil size={13} aria-hidden="true" />
-          </button>
-          <StatusSwitch
-            compact
-            checked={upstream.enabled}
-            disabled={busy}
-            label={upstream.label}
-            onChange={onToggle}
-          />
+              </div>
+            );
+          })}
         </div>
-      </div>
-
-      <div className="mt-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-[14px] font-semibold">{upstream.label}</h3>
-          <StatusBadge enabled={upstream.enabled} onLabel="上游上线" offLabel="上游下线" />
-        </div>
-        <p className="mt-1 font-mono text-[10.5px] text-text-muted">{upstream.key}</p>
-      </div>
-
-      <div className="mt-4 min-w-0 rounded-control border border-border bg-sunken px-3 py-2.5">
-        <p className="truncate font-mono text-[10.5px] text-text-primary" title={upstream.base_url}>
-          {upstream.base_url}
+      ) : (
+        <p className="rounded-control border border-dashed border-border-strong bg-surface px-3 py-4 text-center text-[11.5px] text-text-muted">
+          No route configured. This model cannot serve requests from the database catalog.
         </p>
-        <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[9.5px] text-text-muted">
-          <span className="rounded-pill bg-surface px-2 py-0.5">{upstream.adapter}</span>
-          <span className="flex items-center gap-1">
-            <KeyRound size={10} aria-hidden="true" />
-            {upstream.api_key_hint}
-          </span>
-        </div>
-      </div>
-
-      <p className="mt-auto pt-4 text-[10.5px] text-text-faint">
-        {routeCount} {routeCount === 1 ? "route" : "routes"}
-      </p>
-    </article>
+      )}
+    </div>
   );
 }
 
@@ -690,45 +952,5 @@ function CapabilityPill({ children, icon }: { children: ReactNode; icon?: ReactN
       {icon}
       {children}
     </span>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  body,
-  action,
-  onAction,
-}: {
-  icon: ReactNode;
-  title: string;
-  body: string;
-  action: string;
-  onAction: () => void;
-}) {
-  return (
-    <div className={`${cardSurface} mt-4 flex flex-col items-center px-5 py-10 text-center`}>
-      <span className="flex h-10 w-10 items-center justify-center rounded-card bg-sunken text-text-muted">
-        {icon}
-      </span>
-      <h3 className="mt-3 text-[14px] font-semibold">{title}</h3>
-      <p className="mt-1 max-w-[420px] text-[11.5px] leading-[1.6] text-text-muted">{body}</p>
-      <button
-        type="button"
-        className={`${buttonControl} mt-4 h-9 gap-1.5 border border-border-strong px-3 text-[12px]`}
-        onClick={onAction}
-      >
-        <Plus size={14} aria-hidden="true" />
-        {action}
-      </button>
-    </div>
-  );
-}
-
-function compareRoutes(left: ModelAdminRoute, right: ModelAdminRoute): number {
-  return (
-    left.priority - right.priority ||
-    left.upstream_key.localeCompare(right.upstream_key) ||
-    left.upstream_model.localeCompare(right.upstream_model)
   );
 }

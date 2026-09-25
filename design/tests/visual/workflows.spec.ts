@@ -52,8 +52,14 @@ test("share snapshot can be created, opened, and revoked", async ({
 
 test("model editor saves local catalog and lock returns to access gate", async ({
   page,
-}) => {
+}, info) => {
   await page.goto("/canvas.html?scene=admin");
+  // Narrow screens show the list first; open the model's detail.
+  if (info.project.name === "mobile")
+    await page
+      .getByRole("list", { name: "目录项" })
+      .getByRole("button", { name: /^DeepSeek/ })
+      .click();
   await page
     .getByRole("button", { name: "编辑模型 DeepSeek", exact: true })
     .click();

@@ -10,7 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -61,10 +61,17 @@ class ChatModel(Base):
             name="image_capability_valid",
         ),
         Index("ix_chat_models_enabled_sort", "enabled", "sort_order", "id"),
+        # Archived rows release their key so the same key can be recreated.
+        Index(
+            "ux_chat_models_key_active",
+            "key",
+            unique=True,
+            postgresql_where=text("archived_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(
         Boolean,
@@ -91,6 +98,10 @@ class ChatModel(Base):
         nullable=False,
         server_default="default",
     )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -112,10 +123,16 @@ class ModelUpstream(Base):
             name="adapter_valid",
         ),
         Index("ix_model_upstreams_enabled", "enabled"),
+        Index(
+            "ux_model_upstreams_key_active",
+            "key",
+            unique=True,
+            postgresql_where=text("archived_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     adapter: Mapped[str] = mapped_column(String(32), nullable=False)
     base_url: Mapped[str] = mapped_column(String(2048), nullable=False)
@@ -126,6 +143,10 @@ class ModelUpstream(Base):
         nullable=False,
         default=False,
         server_default="false",
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -152,11 +173,13 @@ class ModelRoute(Base):
             ")",
             name="reasoning_outputs_valid",
         ),
-        UniqueConstraint(
+        Index(
+            "ux_model_routes_model_upstream_remote_model_active",
             "chat_model_id",
             "upstream_id",
             "upstream_model",
-            name="uq_model_routes_model_upstream_remote_model",
+            unique=True,
+            postgresql_where=text("archived_at IS NULL"),
         ),
         Index(
             "ix_model_routes_model_enabled_priority",
@@ -191,6 +214,10 @@ class ModelRoute(Base):
         nullable=False,
         default=False,
         server_default="false",
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

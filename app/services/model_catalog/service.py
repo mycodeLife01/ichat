@@ -51,6 +51,10 @@ class ModelCatalogError(Exception):
     """A stable, secret-free catalog or route configuration failure."""
 
 
+class ModelCatalogConflictError(ModelCatalogError):
+    """A catalog change conflicts with the current state of other catalog rows."""
+
+
 @dataclass(frozen=True)
 class ChatModel:
     key: str
@@ -200,11 +204,19 @@ async def resolve_run_model_runtime(
     snapshot = _parse_snapshot(raw)
     if snapshot["adapter"] != run.provider_name or snapshot["provider_model"] != run.provider_model:
         raise ModelCatalogError("Run model route snapshot does not match persisted provider fields")
+    # Resolve the credential through the snapshotted route, never by upstream key:
+    # archived keys can be recreated, so a key may match several rows. Catalog rows
+    # are never deleted and a route's upstream_id is immutable, so route_id always
+    # reaches the exact upstream row the Run was created against, archived or not.
     upstream = await session.scalar(
-        select(ModelUpstream).where(ModelUpstream.key == snapshot["upstream"])
+        select(ModelUpstream)
+        .join(ModelRoute, ModelRoute.upstream_id == ModelUpstream.id)
+        .where(ModelRoute.id == snapshot["route_id"])
     )
     if upstream is None:
-        raise ModelCatalogError("Run model upstream no longer exists")
+        raise ModelCatalogError("Run model route no longer exists")
+    if upstream.key != snapshot["upstream"]:
+        raise ModelCatalogError("Run model route snapshot does not match its upstream")
     cipher = ModelCredentialCipher(settings.model_catalog_encryption_key)
     provider = build_provider(
         ProviderConnection(
@@ -288,6 +300,9 @@ async def _database_chat_models(session: AsyncSession) -> list[ChatModel]:
                 ChatModelRow.enabled.is_(True),
                 ModelRoute.enabled.is_(True),
                 ModelUpstream.enabled.is_(True),
+                ChatModelRow.archived_at.is_(None),
+                ModelRoute.archived_at.is_(None),
+                ModelUpstream.archived_at.is_(None),
             )
             .order_by(
                 ChatModelRow.sort_order.asc(),

@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from app.services.model_catalog.credentials import (
     api_key_hint,
 )
 from app.services.model_catalog.service import (
+    ModelCatalogConflictError,
     ModelCatalogError,
     _database_chat_models,
     legacy_chat_models,
@@ -29,6 +31,9 @@ _ADAPTER_REASONING_OUTPUTS = {
     "openrouter": _REASONING_OUTPUTS,
     "glm": frozenset({"raw"}),
 }
+_REF_PATTERN = re.compile(r"^(model|upstream|route)-([1-9][0-9]{0,18})$")
+
+CatalogRow = ChatModel | ModelUpstream | ModelRoute
 
 
 @dataclass(frozen=True)
@@ -130,7 +135,12 @@ async def upsert_chat_model(
     else:
         image_token_reserve = None
 
-    model = await session.scalar(select(ChatModel).where(ChatModel.key == normalized_key))
+    model = await session.scalar(
+        select(ChatModel).where(
+            ChatModel.key == normalized_key,
+            ChatModel.archived_at.is_(None),
+        )
+    )
     if model is None:
         model = ChatModel(key=normalized_key, enabled=False)
         session.add(model)
@@ -163,7 +173,10 @@ async def upsert_model_upstream(
         raise ModelCatalogError("Model upstream adapter is unsupported")
     normalized_base_url = _validate_base_url(base_url)
     upstream = await session.scalar(
-        select(ModelUpstream).where(ModelUpstream.key == normalized_key)
+        select(ModelUpstream).where(
+            ModelUpstream.key == normalized_key,
+            ModelUpstream.archived_at.is_(None),
+        )
     )
     if upstream is None:
         if api_key is None:
@@ -173,7 +186,10 @@ async def upsert_model_upstream(
     if upstream.id is not None:
         routes = (
             await session.scalars(
-                select(ModelRoute).where(ModelRoute.upstream_id == upstream.id)
+                select(ModelRoute).where(
+                    ModelRoute.upstream_id == upstream.id,
+                    ModelRoute.archived_at.is_(None),
+                )
             )
         ).all()
         for route in routes:
@@ -215,6 +231,7 @@ async def upsert_model_route(
             ModelRoute.chat_model_id == model.id,
             ModelRoute.upstream_id == upstream.id,
             ModelRoute.upstream_model == remote_model,
+            ModelRoute.archived_at.is_(None),
         )
     )
     if route is None:
@@ -267,7 +284,10 @@ async def set_model_upstream_enabled(
     if enabled:
         routes = (
             await session.scalars(
-                select(ModelRoute).where(ModelRoute.upstream_id == upstream.id)
+                select(ModelRoute).where(
+                    ModelRoute.upstream_id == upstream.id,
+                    ModelRoute.archived_at.is_(None),
+                )
             )
         ).all()
         for route in routes:
@@ -300,6 +320,7 @@ async def set_model_route_enabled(
             ModelRoute.chat_model_id == model.id,
             ModelRoute.upstream_id == upstream.id,
             ModelRoute.upstream_model == remote_model,
+            ModelRoute.archived_at.is_(None),
         )
     )
     if route is None:
@@ -312,6 +333,172 @@ async def set_model_route_enabled(
     route.enabled = enabled
     await session.flush()
     return route
+
+
+def catalog_ref(row: CatalogRow) -> str:
+    """Return the stable row handle; keys stop being unique once rows are archived."""
+    if isinstance(row, ChatModel):
+        return f"model-{row.id}"
+    if isinstance(row, ModelUpstream):
+        return f"upstream-{row.id}"
+    return f"route-{row.id}"
+
+
+async def archive_chat_model(session: AsyncSession, *, key: str) -> ChatModel:
+    model = await _chat_model_by_key(session, key)
+    # Cascaded routes share the model's timestamp so a restore can bring back
+    # exactly this batch and leave separately archived routes alone.
+    archived_at = datetime.now(UTC)
+    routes = (
+        await session.scalars(
+            select(ModelRoute).where(
+                ModelRoute.chat_model_id == model.id,
+                ModelRoute.archived_at.is_(None),
+            )
+        )
+    ).all()
+    for route in routes:
+        route.archived_at = archived_at
+    model.archived_at = archived_at
+    await session.flush()
+    return model
+
+
+async def archive_model_upstream(session: AsyncSession, *, key: str) -> ModelUpstream:
+    upstream = await _upstream_by_key(session, key)
+    blocking = (
+        await session.execute(
+            select(ChatModel.key, ModelRoute.upstream_model)
+            .join(ChatModel, ChatModel.id == ModelRoute.chat_model_id)
+            .where(
+                ModelRoute.upstream_id == upstream.id,
+                ModelRoute.archived_at.is_(None),
+            )
+            .order_by(ChatModel.key, ModelRoute.upstream_model)
+        )
+    ).all()
+    if blocking:
+        routes = ", ".join(
+            f"{model_key} -> {upstream.key} -> {remote_model}"
+            for model_key, remote_model in blocking
+        )
+        raise ModelCatalogConflictError(
+            f"Model upstream is still used by unarchived routes: {routes}"
+        )
+    upstream.archived_at = datetime.now(UTC)
+    await session.flush()
+    return upstream
+
+
+async def archive_model_route(
+    session: AsyncSession,
+    *,
+    model_key: str,
+    upstream_key: str,
+    upstream_model: str,
+) -> ModelRoute:
+    route = await _active_route(
+        session,
+        model_key=model_key,
+        upstream_key=upstream_key,
+        upstream_model=upstream_model,
+    )
+    route.archived_at = datetime.now(UTC)
+    await session.flush()
+    return route
+
+
+async def restore_archived(session: AsyncSession, *, ref: str) -> CatalogRow:
+    match = _REF_PATTERN.fullmatch(ref.strip())
+    if match is None:
+        raise ModelCatalogError("Catalog item reference is invalid")
+    kind, row_id = match.group(1), int(match.group(2))
+    if kind == "model":
+        model = await session.get(ChatModel, row_id)
+        if model is None:
+            raise ModelCatalogError("Catalog item does not exist")
+        await _restore_chat_model(session, model)
+        return model
+    if kind == "upstream":
+        upstream = await session.get(ModelUpstream, row_id)
+        if upstream is None:
+            raise ModelCatalogError("Catalog item does not exist")
+        _require_archived(upstream)
+        active = await session.scalar(
+            select(ModelUpstream.id).where(
+                ModelUpstream.key == upstream.key,
+                ModelUpstream.archived_at.is_(None),
+            )
+        )
+        if active is not None:
+            raise ModelCatalogConflictError(
+                "An active model upstream with the same key already exists"
+            )
+        upstream.archived_at = None
+        await session.flush()
+        return upstream
+    route = await session.get(ModelRoute, row_id)
+    if route is None:
+        raise ModelCatalogError("Catalog item does not exist")
+    _require_archived(route)
+    model = await session.get(ChatModel, route.chat_model_id)
+    route_upstream = await session.get(ModelUpstream, route.upstream_id)
+    assert model is not None and route_upstream is not None
+    if model.archived_at is not None or route_upstream.archived_at is not None:
+        raise ModelCatalogConflictError(
+            "Restore the route's chat model and upstream before the route"
+        )
+    duplicate = await session.scalar(
+        select(ModelRoute.id).where(
+            ModelRoute.chat_model_id == route.chat_model_id,
+            ModelRoute.upstream_id == route.upstream_id,
+            ModelRoute.upstream_model == route.upstream_model,
+            ModelRoute.archived_at.is_(None),
+        )
+    )
+    if duplicate is not None:
+        raise ModelCatalogConflictError("An active model route with the same target already exists")
+    _validate_reasoning_outputs(route.reasoning_outputs, adapter=route_upstream.adapter)
+    route.archived_at = None
+    await session.flush()
+    return route
+
+
+async def _restore_chat_model(session: AsyncSession, model: ChatModel) -> None:
+    archived_at = _require_archived(model)
+    active = await session.scalar(
+        select(ChatModel.id).where(
+            ChatModel.key == model.key,
+            ChatModel.archived_at.is_(None),
+        )
+    )
+    if active is not None:
+        raise ModelCatalogConflictError("An active chat model with the same key already exists")
+    # Only the cascaded batch returns, and only routes whose upstream is active,
+    # so every active route keeps active parents. No active route can share this
+    # model id, so the partial unique index cannot conflict here.
+    rows = (
+        await session.execute(
+            select(ModelRoute, ModelUpstream)
+            .join(ModelUpstream, ModelUpstream.id == ModelRoute.upstream_id)
+            .where(
+                ModelRoute.chat_model_id == model.id,
+                ModelRoute.archived_at == archived_at,
+                ModelUpstream.archived_at.is_(None),
+            )
+        )
+    ).all()
+    for route, upstream in rows:
+        _validate_reasoning_outputs(route.reasoning_outputs, adapter=upstream.adapter)
+        route.archived_at = None
+    model.archived_at = None
+    await session.flush()
+
+
+def _require_archived(row: CatalogRow) -> datetime:
+    if row.archived_at is None:
+        raise ModelCatalogConflictError("Catalog item is not archived")
+    return row.archived_at
 
 
 async def import_environment_catalog(
@@ -407,7 +594,10 @@ async def import_environment_catalog(
 
 async def _chat_model_by_key(session: AsyncSession, key: str) -> ChatModel:
     model = await session.scalar(
-        select(ChatModel).where(ChatModel.key == _validate_key(key, field="Chat model key"))
+        select(ChatModel).where(
+            ChatModel.key == _validate_key(key, field="Chat model key"),
+            ChatModel.archived_at.is_(None),
+        )
     )
     if model is None:
         raise ModelCatalogError("Chat model does not exist")
@@ -417,12 +607,40 @@ async def _chat_model_by_key(session: AsyncSession, key: str) -> ChatModel:
 async def _upstream_by_key(session: AsyncSession, key: str) -> ModelUpstream:
     upstream = await session.scalar(
         select(ModelUpstream).where(
-            ModelUpstream.key == _validate_key(key, field="Model upstream key")
+            ModelUpstream.key == _validate_key(key, field="Model upstream key"),
+            ModelUpstream.archived_at.is_(None),
         )
     )
     if upstream is None:
         raise ModelCatalogError("Model upstream does not exist")
     return upstream
+
+
+async def _active_route(
+    session: AsyncSession,
+    *,
+    model_key: str,
+    upstream_key: str,
+    upstream_model: str,
+) -> ModelRoute:
+    model = await _chat_model_by_key(session, model_key)
+    upstream = await _upstream_by_key(session, upstream_key)
+    remote_model = _required_text(
+        upstream_model,
+        field="Upstream model id",
+        max_length=256,
+    )
+    route = await session.scalar(
+        select(ModelRoute).where(
+            ModelRoute.chat_model_id == model.id,
+            ModelRoute.upstream_id == upstream.id,
+            ModelRoute.upstream_model == remote_model,
+            ModelRoute.archived_at.is_(None),
+        )
+    )
+    if route is None:
+        raise ModelCatalogError("Model route does not exist")
+    return route
 
 
 def _validate_key(value: str, *, field: str) -> str:
@@ -496,6 +714,9 @@ async def _validate_active_routes(session: AsyncSession, *, settings: Settings) 
                 ChatModel.enabled.is_(True),
                 ModelRoute.enabled.is_(True),
                 ModelUpstream.enabled.is_(True),
+                ChatModel.archived_at.is_(None),
+                ModelRoute.archived_at.is_(None),
+                ModelUpstream.archived_at.is_(None),
             )
         )
     ).all()

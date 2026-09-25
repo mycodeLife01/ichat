@@ -220,8 +220,26 @@ def test_model_catalog_separates_models_upstreams_and_routes() -> None:
         for constraint in state.constraints
     )
     assert isinstance(models.c.thinking_levels.type, JSONB)
-    assert models.c.key.unique is True
-    assert upstreams.c.key.unique is True
+    # Keys are unique only among unarchived rows so archived keys can be recreated.
+    for table, index_name, columns in (
+        (models, "ux_chat_models_key_active", ["key"]),
+        (upstreams, "ux_model_upstreams_key_active", ["key"]),
+        (
+            routes,
+            "ux_model_routes_model_upstream_remote_model_active",
+            ["chat_model_id", "upstream_id", "upstream_model"],
+        ),
+    ):
+        assert table.c.archived_at.nullable is True
+        assert not any(
+            isinstance(constraint, UniqueConstraint) for constraint in table.constraints
+        )
+        index = next(index for index in table.indexes if index.name == index_name)
+        assert index.unique is True
+        assert [column.name for column in index.columns] == columns
+        assert str(index.dialect_options["postgresql"]["where"]) == "archived_at IS NULL"
+    assert not models.c.key.unique
+    assert not upstreams.c.key.unique
     assert upstreams.c.api_key_ciphertext.nullable is False
     assert "api_key" not in upstreams.c
     assert any(

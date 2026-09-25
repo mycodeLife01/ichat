@@ -25,6 +25,7 @@ const ids = [
   "delete-account",
   "delete-invalid",
   "admin",
+  "admin-dense",
   "admin-gate",
   "thinking",
   "streaming",

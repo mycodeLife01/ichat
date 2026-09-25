@@ -990,6 +990,33 @@
       ]
     },
     {
+      "id": "admin-dense",
+      "name": "密集目录与归档",
+      "group": "模型管理",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/model-admin/ModelAdminPage.tsx",
+      "design": "src/model-admin/ModelAdminPage.tsx",
+      "scene": "admin-dense",
+      "route": "/model-admin",
+      "entry": "/canvas.html?scene=admin-dense&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "unlocked",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": "tests/parity/pages.spec.ts"
+      },
+      "evidence": [
+        "output/visual-report.json",
+        "output/parity-report.json"
+      ]
+    },
+    {
       "id": "admin-gate",
       "name": "管理访问入口",
       "group": "模型管理",

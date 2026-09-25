@@ -14,8 +14,13 @@ from app.services.model_catalog.credentials import (
 )
 from app.services.model_catalog.management import (
     CatalogInventory,
+    archive_chat_model,
+    archive_model_route,
+    archive_model_upstream,
     catalog_inventory,
+    catalog_ref,
     import_environment_catalog,
+    restore_archived,
     set_chat_model_enabled,
     set_database_catalog_enabled,
     set_model_route_enabled,
@@ -95,6 +100,22 @@ def _parser() -> argparse.ArgumentParser:
     set_route = commands.add_parser("set-route", help="Enable or disable a route")
     _route_identity_args(set_route)
     _required_enabled_flags(set_route)
+
+    archive = commands.add_parser(
+        "archive",
+        help="Archive an active model (with its routes), upstream, or route",
+    )
+    target = archive.add_mutually_exclusive_group(required=True)
+    target.add_argument("--model", metavar="KEY")
+    target.add_argument("--upstream", metavar="KEY")
+    target.add_argument(
+        "--route",
+        nargs=3,
+        metavar=("MODEL", "UPSTREAM", "UPSTREAM_MODEL"),
+    )
+    restore = commands.add_parser("restore", help="Restore an archived catalog item")
+    restore.add_argument("--ref", required=True, help="For example model-12 or route-31")
+    commands.add_parser("archived", help="List archived catalog items and their refs")
     return parser
 
 
@@ -123,6 +144,9 @@ async def _run(args: argparse.Namespace) -> None:
     async with factory() as session:
         if args.command == "status":
             _print_inventory(await catalog_inventory(session))
+            return
+        if args.command == "archived":
+            _print_archived(await catalog_inventory(session))
             return
         if args.command == "import-env":
             await import_environment_catalog(session, settings=settings)
@@ -182,6 +206,21 @@ async def _run(args: argparse.Namespace) -> None:
                 upstream_model=args.upstream_model,
                 enabled=args.enabled,
             )
+        elif args.command == "archive":
+            if args.model is not None:
+                await archive_chat_model(session, key=args.model)
+            elif args.upstream is not None:
+                await archive_model_upstream(session, key=args.upstream)
+            else:
+                model_key, upstream_key, upstream_model = args.route
+                await archive_model_route(
+                    session,
+                    model_key=model_key,
+                    upstream_key=upstream_key,
+                    upstream_model=upstream_model,
+                )
+        elif args.command == "restore":
+            await restore_archived(session, ref=args.ref)
         else:  # pragma: no cover - argparse owns the command set.
             raise AssertionError(f"Unsupported command: {args.command}")
         await session.commit()
@@ -203,9 +242,9 @@ def _comma_list(raw: str) -> list[str]:
 
 
 def _print_inventory(inventory: CatalogInventory) -> None:
-    models = inventory.models
-    upstreams = inventory.upstreams
-    routes = inventory.routes
+    models = [model for model in inventory.models if model.archived_at is None]
+    upstreams = [upstream for upstream in inventory.upstreams if upstream.archived_at is None]
+    routes = [route for route in inventory.routes if route.archived_at is None]
     print(f"catalog\t{'database' if inventory.database_enabled else 'environment'}")
     print("models")
     for model in models:
@@ -231,6 +270,25 @@ def _print_inventory(inventory: CatalogInventory) -> None:
             f"\t{route.upstream_model}\t{'on' if route.enabled else 'off'}"
             f"\t{route.priority}\t{','.join(route.reasoning_outputs) or '-'}"
         )
+
+
+def _print_archived(inventory: CatalogInventory) -> None:
+    model_keys = {model.id: model.key for model in inventory.models}
+    upstream_keys = {upstream.id: upstream.key for upstream in inventory.upstreams}
+    print("ref\tarchived_at\titem")
+    for model in inventory.models:
+        if model.archived_at is not None:
+            print(f"{catalog_ref(model)}\t{model.archived_at.isoformat()}\t{model.key}")
+    for upstream in inventory.upstreams:
+        if upstream.archived_at is not None:
+            print(f"{catalog_ref(upstream)}\t{upstream.archived_at.isoformat()}\t{upstream.key}")
+    for route in inventory.routes:
+        if route.archived_at is not None:
+            print(
+                f"{catalog_ref(route)}\t{route.archived_at.isoformat()}"
+                f"\t{model_keys[route.chat_model_id]} -> {upstream_keys[route.upstream_id]}"
+                f" -> {route.upstream_model}"
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

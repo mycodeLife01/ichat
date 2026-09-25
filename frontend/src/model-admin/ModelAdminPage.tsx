@@ -160,6 +160,26 @@ export function ModelAdminPage() {
           services.modelAdminApi.importEnvironment(accessKey),
         )
       }
+      onArchiveModel={(modelKey) =>
+        runMutation("archive-model", "模型已归档。", () =>
+          services.modelAdminApi.archiveModel(accessKey, modelKey),
+        )
+      }
+      onArchiveUpstream={(upstreamKey) =>
+        runMutation("archive-upstream", "上游已归档。", () =>
+          services.modelAdminApi.archiveUpstream(accessKey, upstreamKey),
+        )
+      }
+      onArchiveRoute={(route) =>
+        runMutation("archive-route", "模型路由已归档。", () =>
+          services.modelAdminApi.archiveRoute(accessKey, route),
+        )
+      }
+      onRestore={(ref) =>
+        runMutation("restore", "已恢复。", () =>
+          services.modelAdminApi.restoreArchived(accessKey, ref),
+        )
+      }
     />
   );
 }

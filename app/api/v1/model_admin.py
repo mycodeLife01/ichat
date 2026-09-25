@@ -4,12 +4,14 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Header, Request, status
 from redis.asyncio import Redis
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.db.session import get_session
 from app.schemas.model_admin import (
+    ArchivedRequest,
     EnabledRequest,
     ImportEnvironmentCatalogRequest,
     ModelAdminCatalogResponse,
@@ -19,6 +21,7 @@ from app.schemas.model_admin import (
     ProviderAdapter,
     ReasoningOutput,
     SetCatalogStateRequest,
+    SetModelRouteArchivedRequest,
     SetModelRouteEnabledRequest,
     ThinkingLevel,
     TokenProfile,
@@ -30,7 +33,7 @@ from app.schemas.responses import SuccessResponse
 from app.services.auth import rate_limit
 from app.services.model_catalog import management
 from app.services.model_catalog.credentials import ModelCredentialError
-from app.services.model_catalog.service import ModelCatalogError
+from app.services.model_catalog.service import ModelCatalogConflictError, ModelCatalogError
 
 MODEL_ADMIN_KEY_HEADER = "X-Model-Admin-Key"
 _INVALID_KEY_MESSAGE = "Invalid model management access key"
@@ -145,6 +148,19 @@ async def patch_chat_model_enabled(
     )
 
 
+@router.patch(
+    "/models/{model_key}/archived",
+    response_model=SuccessResponse[ModelAdminCatalogResponse],
+    response_model_exclude={"meta"},
+)
+async def patch_chat_model_archived(
+    model_key: str,
+    body: ArchivedRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ModelAdminCatalogResponse]:
+    return await _mutate(session, management.archive_chat_model(session, key=model_key))
+
+
 @router.put(
     "/upstreams/{upstream_key}",
     response_model=SuccessResponse[ModelAdminCatalogResponse],
@@ -192,6 +208,19 @@ async def patch_model_upstream_enabled(
     )
 
 
+@router.patch(
+    "/upstreams/{upstream_key}/archived",
+    response_model=SuccessResponse[ModelAdminCatalogResponse],
+    response_model_exclude={"meta"},
+)
+async def patch_model_upstream_archived(
+    upstream_key: str,
+    body: ArchivedRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ModelAdminCatalogResponse]:
+    return await _mutate(session, management.archive_model_upstream(session, key=upstream_key))
+
+
 @router.put(
     "/routes",
     response_model=SuccessResponse[ModelAdminCatalogResponse],
@@ -234,6 +263,38 @@ async def patch_model_route_enabled(
             enabled=body.enabled,
         ),
     )
+
+
+@router.patch(
+    "/routes/archived",
+    response_model=SuccessResponse[ModelAdminCatalogResponse],
+    response_model_exclude={"meta"},
+)
+async def patch_model_route_archived(
+    body: SetModelRouteArchivedRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ModelAdminCatalogResponse]:
+    return await _mutate(
+        session,
+        management.archive_model_route(
+            session,
+            model_key=body.model_key,
+            upstream_key=body.upstream_key,
+            upstream_model=body.upstream_model,
+        ),
+    )
+
+
+@router.post(
+    "/archive/{ref}/restore",
+    response_model=SuccessResponse[ModelAdminCatalogResponse],
+    response_model_exclude={"meta"},
+)
+async def post_restore_archived(
+    ref: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ModelAdminCatalogResponse]:
+    return await _mutate(session, management.restore_archived(session, ref=ref))
 
 
 @router.patch(
@@ -287,6 +348,16 @@ async def _mutate(
         response = SuccessResponse(data=await _catalog_response(session))
         await session.commit()
         return response
+    except ModelCatalogConflictError as exc:
+        await session.rollback()
+        raise AppError(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except IntegrityError as exc:
+        # A concurrent write took the same active key or route target.
+        await session.rollback()
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "Another active catalog item with the same identity already exists",
+        ) from exc
     except (ModelCatalogError, ModelCredentialError) as exc:
         await session.rollback()
         raise AppError(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
@@ -297,12 +368,13 @@ async def _catalog_response(session: AsyncSession) -> ModelAdminCatalogResponse:
         inventory = await management.catalog_inventory(session)
     except (ModelCatalogError, ModelCredentialError) as exc:
         raise AppError(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    model_keys = {model.id: model.key for model in inventory.models}
-    upstream_keys = {upstream.id: upstream.key for upstream in inventory.upstreams}
+    models = {model.id: model for model in inventory.models}
+    upstreams = {upstream.id: upstream for upstream in inventory.upstreams}
     return ModelAdminCatalogResponse(
         database_enabled=inventory.database_enabled,
         models=[
             ModelAdminChatModelResponse(
+                ref=management.catalog_ref(model),
                 key=model.key,
                 label=model.label,
                 thinking_levels=cast(list[ThinkingLevel], model.thinking_levels),
@@ -311,30 +383,40 @@ async def _catalog_response(session: AsyncSession) -> ModelAdminCatalogResponse:
                 token_profile=cast(TokenProfile, model.token_profile),
                 sort_order=model.sort_order,
                 enabled=model.enabled,
+                archived=model.archived_at is not None,
+                archived_at=model.archived_at,
             )
             for model in inventory.models
         ],
         upstreams=[
             ModelAdminUpstreamResponse(
+                ref=management.catalog_ref(upstream),
                 key=upstream.key,
                 label=upstream.label,
                 adapter=cast(ProviderAdapter, upstream.adapter),
                 base_url=upstream.base_url,
                 api_key_hint=upstream.api_key_hint,
                 enabled=upstream.enabled,
+                archived=upstream.archived_at is not None,
+                archived_at=upstream.archived_at,
             )
             for upstream in inventory.upstreams
         ],
         routes=[
             ModelAdminRouteResponse(
-                model_key=model_keys[route.chat_model_id],
-                upstream_key=upstream_keys[route.upstream_id],
+                ref=management.catalog_ref(route),
+                model_ref=management.catalog_ref(models[route.chat_model_id]),
+                upstream_ref=management.catalog_ref(upstreams[route.upstream_id]),
+                model_key=models[route.chat_model_id].key,
+                upstream_key=upstreams[route.upstream_id].key,
                 upstream_model=route.upstream_model,
                 reasoning_outputs=cast(
                     list[ReasoningOutput], route.reasoning_outputs or []
                 ),
                 priority=route.priority,
                 enabled=route.enabled,
+                archived=route.archived_at is not None,
+                archived_at=route.archived_at,
                 selected=route.id in inventory.selected_route_ids,
             )
             for route in inventory.routes
