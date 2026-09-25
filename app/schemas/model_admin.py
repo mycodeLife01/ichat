@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 ThinkingLevel = Literal["low", "medium", "high", "xhigh", "max"]
 TokenProfile = Literal["default", "deepseek", "openai"]
@@ -13,6 +14,7 @@ class ModelAdminRequest(BaseModel):
 
 
 class ModelAdminChatModelResponse(BaseModel):
+    ref: str
     key: str
     label: str
     thinking_levels: list[ThinkingLevel]
@@ -21,24 +23,35 @@ class ModelAdminChatModelResponse(BaseModel):
     token_profile: TokenProfile
     sort_order: int
     enabled: bool
+    archived: bool
+    archived_at: datetime | None
 
 
 class ModelAdminUpstreamResponse(BaseModel):
+    ref: str
     key: str
     label: str
     adapter: ProviderAdapter
     base_url: str
     api_key_hint: str
     enabled: bool
+    archived: bool
+    archived_at: datetime | None
 
 
 class ModelAdminRouteResponse(BaseModel):
+    ref: str
+    # Parent refs disambiguate archived routes whose parent key was recreated.
+    model_ref: str
+    upstream_ref: str
     model_key: str
     upstream_key: str
     upstream_model: str
     reasoning_outputs: list[ReasoningOutput]
     priority: int
     enabled: bool
+    archived: bool
+    archived_at: datetime | None
     selected: bool
 
 
@@ -93,6 +106,23 @@ class SetModelRouteEnabledRequest(ModelAdminRequest):
     upstream_key: str = Field(min_length=1, max_length=128)
     upstream_model: str = Field(min_length=1, max_length=256)
     enabled: bool
+
+
+class ArchivedRequest(ModelAdminRequest):
+    archived: bool
+
+    @field_validator("archived")
+    @classmethod
+    def require_archive(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Use POST /api/v1/model-admin/archive/{ref}/restore to restore")
+        return value
+
+
+class SetModelRouteArchivedRequest(ArchivedRequest):
+    model_key: str = Field(min_length=1, max_length=128)
+    upstream_key: str = Field(min_length=1, max_length=128)
+    upstream_model: str = Field(min_length=1, max_length=256)
 
 
 class SetCatalogStateRequest(ModelAdminRequest):

@@ -2,6 +2,7 @@
 
 from app.services.model_catalog.service import (
     ChatModel,
+    ModelCatalogConflictError,
     ModelCatalogError,
     RunModelRuntime,
     available_chat_models,
@@ -15,6 +16,7 @@ from app.services.model_catalog.service import (
 
 __all__ = [
     "ChatModel",
+    "ModelCatalogConflictError",
     "ModelCatalogError",
     "RunModelRuntime",
     "available_chat_models",

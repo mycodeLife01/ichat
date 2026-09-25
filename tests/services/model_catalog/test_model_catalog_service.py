@@ -2,7 +2,7 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.agent.providers.openrouter import OpenRouterProvider
@@ -10,12 +10,18 @@ from app.core.config import Settings, get_settings
 from app.models.model_catalog import ChatModel, ModelCatalogState, ModelRoute, ModelUpstream
 from app.models.run import Run
 from app.services.model_catalog import (
+    ModelCatalogConflictError,
     ModelCatalogError,
     available_chat_models,
     resolve_run_model_runtime,
 )
 from app.services.model_catalog.credentials import ModelCredentialCipher
 from app.services.model_catalog.management import (
+    archive_chat_model,
+    archive_model_route,
+    archive_model_upstream,
+    catalog_ref,
+    restore_archived,
     set_database_catalog_enabled,
     set_model_route_enabled,
     upsert_chat_model,
@@ -307,3 +313,291 @@ async def test_upstream_credentials_are_encrypted_at_rest(
     assert upstream.api_key_ciphertext.startswith("fernet:v1:")
     assert "sk-openrouter-secret" not in upstream.api_key_ciphertext
     assert upstream.api_key_hint == "…cret"
+
+
+async def _selected_run(session: AsyncSession, settings: Settings) -> Run:
+    selected = (await available_chat_models(session, settings=settings))[0]
+    return Run(
+        provider_name=selected.provider_name,
+        provider_model=selected.provider_model,
+        model_config_snapshot=selected.snapshot(),
+    )
+
+
+async def _archive_openrouter_route(session: AsyncSession) -> None:
+    await archive_model_route(
+        session,
+        model_key="deepseek-v4",
+        upstream_key="openrouter-test",
+        upstream_model="deepseek/deepseek-chat",
+    )
+
+
+async def _chat_model_row(session: AsyncSession, key: str) -> ChatModel:
+    model = await session.scalar(
+        select(ChatModel).where(ChatModel.key == key, ChatModel.archived_at.is_(None))
+    )
+    assert model is not None
+    return model
+
+
+async def _routes_of(session: AsyncSession, model: ChatModel) -> dict[str, ModelRoute]:
+    routes = (
+        await session.scalars(select(ModelRoute).where(ModelRoute.chat_model_id == model.id))
+    ).all()
+    return {route.upstream_model: route for route in routes}
+
+
+async def test_archived_items_leave_the_available_catalog(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    await set_database_catalog_enabled(session, enabled=True, settings=settings)
+
+    await _archive_openrouter_route(session)
+    after_route = await available_chat_models(session, settings=settings)
+    assert [(model.key, model.upstream_key) for model in after_route] == [
+        ("deepseek-v4", "deepseek-official-test")
+    ]
+
+    await archive_chat_model(session, key="deepseek-v4")
+    assert await available_chat_models(session, settings=settings) == []
+
+
+async def test_old_run_keeps_archived_upstream_credentials_after_key_is_recreated(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    await set_database_catalog_enabled(session, enabled=True, settings=settings)
+    old_run = await _selected_run(session, settings)
+    assert old_run.model_config_snapshot is not None
+    assert old_run.model_config_snapshot["upstream"] == "openrouter-test"
+
+    await _archive_openrouter_route(session)
+    await archive_model_upstream(session, key="openrouter-test")
+    await upsert_model_upstream(
+        session,
+        key="openrouter-test",
+        label="OpenRouter Rebuilt",
+        adapter="openrouter",
+        base_url="https://openrouter.test/api/v1",
+        api_key="sk-rebuilt-secret",
+        enabled=True,
+        settings=settings,
+    )
+    await upsert_model_route(
+        session,
+        model_key="deepseek-v4",
+        upstream_key="openrouter-test",
+        upstream_model="deepseek/deepseek-chat",
+        priority=10,
+        reasoning_outputs=["raw", "summary"],
+        enabled=True,
+    )
+    rows = await session.scalar(
+        select(func.count()).where(ModelUpstream.key == "openrouter-test")
+    )
+    assert rows == 2
+
+    old_runtime = await resolve_run_model_runtime(session, run=old_run, settings=settings)
+    new_runtime = await resolve_run_model_runtime(
+        session,
+        run=await _selected_run(session, settings),
+        settings=settings,
+    )
+
+    assert isinstance(old_runtime.provider, OpenRouterProvider)
+    assert old_runtime.provider._api_key == "sk-openrouter-secret"
+    assert isinstance(new_runtime.provider, OpenRouterProvider)
+    assert new_runtime.provider._api_key == "sk-rebuilt-secret"
+
+
+async def test_run_snapshot_rejects_route_that_reaches_a_different_upstream(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    await set_database_catalog_enabled(session, enabled=True, settings=settings)
+    run = await _selected_run(session, settings)
+    assert run.model_config_snapshot is not None
+    run.model_config_snapshot = {**run.model_config_snapshot, "upstream": "deepseek-official-test"}
+
+    with pytest.raises(ModelCatalogError, match="does not match its upstream"):
+        await resolve_run_model_runtime(session, run=run, settings=settings)
+
+
+async def test_upstream_archive_is_blocked_by_unarchived_routes_even_when_disabled(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    await set_model_route_enabled(
+        session,
+        model_key="deepseek-v4",
+        upstream_key="openrouter-test",
+        upstream_model="deepseek/deepseek-chat",
+        enabled=False,
+    )
+
+    with pytest.raises(ModelCatalogConflictError) as exc:
+        await archive_model_upstream(session, key="openrouter-test")
+
+    assert "deepseek-v4 -> openrouter-test -> deepseek/deepseek-chat" in str(exc.value)
+
+
+async def test_model_archive_cascades_and_restore_returns_only_that_batch(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    model = await _chat_model_row(session, "deepseek-v4")
+    await archive_model_route(
+        session,
+        model_key="deepseek-v4",
+        upstream_key="deepseek-official-test",
+        upstream_model="deepseek-chat",
+    )
+
+    await archive_chat_model(session, key="deepseek-v4")
+    routes = await _routes_of(session, model)
+    assert model.archived_at is not None
+    assert routes["deepseek/deepseek-chat"].archived_at == model.archived_at
+    assert routes["deepseek-chat"].archived_at is not None
+    assert routes["deepseek-chat"].archived_at != model.archived_at
+
+    await restore_archived(session, ref=catalog_ref(model))
+
+    assert model.archived_at is None
+    assert routes["deepseek/deepseek-chat"].archived_at is None
+    assert routes["deepseek-chat"].archived_at is not None
+
+
+async def test_model_restore_keeps_routes_of_archived_upstreams_archived(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    model = await _chat_model_row(session, "deepseek-v4")
+    await archive_chat_model(session, key="deepseek-v4")
+    await archive_model_upstream(session, key="openrouter-test")
+
+    await restore_archived(session, ref=catalog_ref(model))
+
+    routes = await _routes_of(session, model)
+    assert routes["deepseek-chat"].archived_at is None
+    assert routes["deepseek/deepseek-chat"].archived_at is not None
+
+
+async def test_upsert_creates_a_new_row_instead_of_resurrecting_an_archived_one(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    archived = await _chat_model_row(session, "deepseek-v4")
+    await archive_chat_model(session, key="deepseek-v4")
+
+    await upsert_chat_model(
+        session,
+        key="deepseek-v4",
+        label="DeepSeek V4 Rebuilt",
+        thinking_levels=[],
+        supports_image_input=False,
+        image_token_reserve=None,
+        token_profile="deepseek",
+        sort_order=0,
+        settings=settings,
+    )
+
+    active = await _chat_model_row(session, "deepseek-v4")
+    assert active.id != archived.id
+    assert archived.archived_at is not None
+    assert archived.label == "DeepSeek V4"
+
+
+async def test_upstream_edits_ignore_archived_routes(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    await _archive_openrouter_route(session)
+
+    # The archived route declares raw+summary, which the openai adapter rejects.
+    upstream = await upsert_model_upstream(
+        session,
+        key="openrouter-test",
+        label="OpenAI Compatible",
+        adapter="openai",
+        base_url="https://api.openai.test/v1",
+        api_key=None,
+        settings=settings,
+    )
+
+    assert upstream.adapter == "openai"
+
+
+async def test_restore_rejects_conflicting_or_unarchived_items(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _configure_two_routes(session, settings)
+    model = await _chat_model_row(session, "deepseek-v4")
+    routes = await _routes_of(session, model)
+    openrouter_route = routes["deepseek/deepseek-chat"]
+
+    with pytest.raises(ModelCatalogConflictError, match="not archived"):
+        await restore_archived(session, ref=catalog_ref(model))
+
+    # Same route target recreated while the old route is archived.
+    await _archive_openrouter_route(session)
+    await upsert_model_route(
+        session,
+        model_key="deepseek-v4",
+        upstream_key="openrouter-test",
+        upstream_model="deepseek/deepseek-chat",
+        priority=10,
+        reasoning_outputs=["raw"],
+    )
+    with pytest.raises(ModelCatalogConflictError, match="same target"):
+        await restore_archived(session, ref=catalog_ref(openrouter_route))
+
+    # A route cannot come back under an archived parent.
+    await archive_chat_model(session, key="deepseek-v4")
+    with pytest.raises(ModelCatalogConflictError, match="chat model and upstream"):
+        await restore_archived(session, ref=catalog_ref(openrouter_route))
+
+    # The same model key recreated while the old model is archived.
+    await upsert_chat_model(
+        session,
+        key="deepseek-v4",
+        label="DeepSeek V4 Rebuilt",
+        thinking_levels=[],
+        supports_image_input=False,
+        image_token_reserve=None,
+        token_profile="deepseek",
+        sort_order=0,
+        settings=settings,
+    )
+    with pytest.raises(ModelCatalogConflictError, match="same key"):
+        await restore_archived(session, ref=catalog_ref(model))
+
+    upstream = await session.scalar(
+        select(ModelUpstream).where(ModelUpstream.key == "openrouter-test")
+    )
+    assert upstream is not None
+    await archive_model_upstream(session, key="openrouter-test")
+    await upsert_model_upstream(
+        session,
+        key="openrouter-test",
+        label="OpenRouter Rebuilt",
+        adapter="openrouter",
+        base_url="https://openrouter.test/api/v1",
+        api_key="sk-rebuilt-secret",
+        settings=settings,
+    )
+    with pytest.raises(ModelCatalogConflictError, match="same key"):
+        await restore_archived(session, ref=catalog_ref(upstream))
+
+    with pytest.raises(ModelCatalogError, match="reference is invalid"):
+        await restore_archived(session, ref="model-abc")

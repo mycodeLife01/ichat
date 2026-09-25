@@ -5,6 +5,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.db.session import get_session
@@ -13,7 +14,7 @@ from app.models.model_catalog import ChatModel, ModelRoute, ModelUpstream
 from app.services.auth import rate_limit
 from app.services.model_catalog import management
 from app.services.model_catalog.management import CatalogInventory
-from app.services.model_catalog.service import ModelCatalogError
+from app.services.model_catalog.service import ModelCatalogConflictError, ModelCatalogError
 
 ACCESS_KEY = "model-management-test-key-with-32-characters"
 
@@ -128,6 +129,7 @@ def test_model_admin_returns_inventory_without_credentials(
             "database_enabled": True,
             "models": [
                 {
+                    "ref": "model-1",
                     "key": "deepseek-v4",
                     "label": "DeepSeek V4",
                     "thinking_levels": ["low", "high", "max"],
@@ -136,26 +138,36 @@ def test_model_admin_returns_inventory_without_credentials(
                     "token_profile": "deepseek",
                     "sort_order": 0,
                     "enabled": True,
+                    "archived": False,
+                    "archived_at": None,
                 }
             ],
             "upstreams": [
                 {
+                    "ref": "upstream-2",
                     "key": "openrouter",
                     "label": "OpenRouter",
                     "adapter": "openrouter",
                     "base_url": "https://openrouter.example/api/v1",
                     "api_key_hint": "…cret",
                     "enabled": True,
+                    "archived": False,
+                    "archived_at": None,
                 }
             ],
             "routes": [
                 {
+                    "ref": "route-3",
+                    "model_ref": "model-1",
+                    "upstream_ref": "upstream-2",
                     "model_key": "deepseek-v4",
                     "upstream_key": "openrouter",
                     "upstream_model": "deepseek/deepseek-v4",
                     "reasoning_outputs": ["raw", "summary"],
                     "priority": 10,
                     "enabled": True,
+                    "archived": False,
+                    "archived_at": None,
                     "selected": True,
                 }
             ],
@@ -277,3 +289,137 @@ def test_model_admin_rate_limits_repeated_invalid_keys(
     assert all(response.status_code == status.HTTP_401_UNAUTHORIZED for response in responses[:10])
     assert responses[10].status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert int(responses[10].headers["Retry-After"]) > 0
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "operation", "expected"),
+    [
+        (
+            "/api/v1/model-admin/models/deepseek-v4/archived",
+            {"archived": True},
+            "archive_chat_model",
+            {"key": "deepseek-v4"},
+        ),
+        (
+            "/api/v1/model-admin/upstreams/openrouter/archived",
+            {"archived": True},
+            "archive_model_upstream",
+            {"key": "openrouter"},
+        ),
+        (
+            "/api/v1/model-admin/routes/archived",
+            {
+                "model_key": "deepseek-v4",
+                "upstream_key": "openrouter",
+                "upstream_model": "deepseek/deepseek-v4",
+                "archived": True,
+            },
+            "archive_model_route",
+            {
+                "model_key": "deepseek-v4",
+                "upstream_key": "openrouter",
+                "upstream_model": "deepseek/deepseek-v4",
+            },
+        ),
+    ],
+)
+def test_model_admin_archives_active_items_and_commits(
+    admin_client: tuple[TestClient, FakeSession],
+    monkeypatch: MonkeyPatch,
+    path: str,
+    body: dict[str, object],
+    operation: str,
+    expected: dict[str, object],
+) -> None:
+    client, session = admin_client
+    captured: dict[str, object] = {}
+
+    async def archive(_session: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(management, operation, archive)
+
+    response = client.patch(path, headers={"X-Model-Admin-Key": ACCESS_KEY}, json=body)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"]["models"][0]["ref"] == "model-1"
+    assert captured == expected
+    assert session.commits == 1
+
+
+def test_model_admin_rejects_unarchive_through_the_archive_endpoint(
+    admin_client: tuple[TestClient, FakeSession],
+) -> None:
+    client, session = admin_client
+
+    response = client.patch(
+        "/api/v1/model-admin/models/deepseek-v4/archived",
+        headers={"X-Model-Admin-Key": ACCESS_KEY},
+        json={"archived": False},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "restore" in response.text
+    assert session.commits == 0
+
+
+def test_model_admin_restores_by_ref(
+    admin_client: tuple[TestClient, FakeSession],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    client, session = admin_client
+    captured: dict[str, object] = {}
+
+    async def restore(_session: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(management, "restore_archived", restore)
+
+    response = client.post(
+        "/api/v1/model-admin/archive/upstream-2/restore",
+        headers={"X-Model-Admin-Key": ACCESS_KEY},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert captured == {"ref": "upstream-2"}
+    assert session.commits == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "detail"),
+    [
+        (
+            ModelCatalogConflictError("Model upstream is still used by unarchived routes: x"),
+            "Model upstream is still used by unarchived routes: x",
+        ),
+        (
+            IntegrityError("INSERT", {}, Exception("duplicate key")),
+            "Another active catalog item with the same identity already exists",
+        ),
+    ],
+)
+def test_model_admin_maps_catalog_conflicts_to_409_and_rolls_back(
+    admin_client: tuple[TestClient, FakeSession],
+    monkeypatch: MonkeyPatch,
+    error: Exception,
+    detail: str,
+) -> None:
+    client, session = admin_client
+
+    async def reject(_session: object, **_kwargs: object) -> object:
+        raise error
+
+    monkeypatch.setattr(management, "archive_model_upstream", reject)
+
+    response = client.patch(
+        "/api/v1/model-admin/upstreams/openrouter/archived",
+        headers={"X-Model-Admin-Key": ACCESS_KEY},
+        json={"archived": True},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json() == {"detail": detail}
+    assert session.commits == 0
+    assert session.rollbacks == 1
