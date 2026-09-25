@@ -12,6 +12,7 @@ const catalog: ModelAdminCatalog = {
   database_enabled: true,
   models: [
     {
+      ref: "model-1",
       key: "deepseek-v4",
       label: "DeepSeek V4",
       thinking_levels: ["low", "high", "max"],
@@ -20,33 +21,52 @@ const catalog: ModelAdminCatalog = {
       token_profile: "deepseek",
       sort_order: 0,
       enabled: true,
+      archived: false,
+      archived_at: null,
     },
   ],
   upstreams: [
     {
+      ref: "upstream-2",
       key: "openrouter",
       label: "OpenRouter",
       adapter: "openrouter",
       base_url: "https://openrouter.example/api/v1",
       api_key_hint: "…cret",
       enabled: true,
+      archived: false,
+      archived_at: null,
     },
   ],
   routes: [
     {
+      ref: "route-3",
+      model_ref: "model-1",
+      upstream_ref: "upstream-2",
       model_key: "deepseek-v4",
       upstream_key: "openrouter",
       upstream_model: "deepseek/deepseek-v4",
       reasoning_outputs: ["raw", "summary"],
       priority: 10,
       enabled: true,
+      archived: false,
+      archived_at: null,
       selected: true,
     },
   ],
 };
 
+const archivedAt = "2026-09-20T08:00:00Z";
+
 function servicesWithModelAdmin(overrides: Parameters<typeof createFakeServices>[6]) {
   return createFakeServices({}, {}, {}, {}, {}, {}, overrides);
+}
+
+async function unlock(services: ReturnType<typeof servicesWithModelAdmin>) {
+  const user = userEvent.setup();
+  renderWithApp(<App />, services, undefined, ["/model-admin"]);
+  await user.type(screen.getByLabelText("固定访问密钥"), "fixed-secret");
+  await user.click(screen.getByRole("button", { name: "进入控制台" }));
 }
 
 describe("ModelAdminPage", () => {
@@ -69,7 +89,7 @@ describe("ModelAdminPage", () => {
     await user.type(screen.getByLabelText("固定访问密钥"), "fixed-secret");
     await user.click(screen.getByRole("button", { name: "进入控制台" }));
 
-    expect(await screen.findByText("DeepSeek V4")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "DeepSeek V4" })).toBeInTheDocument();
     expect(screen.getByText("当前路由")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "从 ENV 导入模型配置" }),
@@ -88,7 +108,7 @@ describe("ModelAdminPage", () => {
       ["/model-admin"],
     );
 
-    await screen.findByText("DeepSeek V4");
+    await screen.findByRole("heading", { name: "DeepSeek V4" });
     await user.click(screen.getByRole("button", { name: "锁定模型管理控制台" }));
 
     expect(screen.getByLabelText("固定访问密钥")).toHaveValue("");
@@ -184,6 +204,105 @@ describe("ModelAdminPage", () => {
       priority: 100,
       enabled: true,
     });
+  });
+
+  it("archives the selected model after confirming its cascaded routes", async () => {
+    const user = userEvent.setup();
+    const archiveModel = vi.fn(async () => ({
+      ...catalog,
+      models: [{ ...catalog.models[0], archived: true, archived_at: archivedAt }],
+      routes: [{ ...catalog.routes[0], archived: true, archived_at: archivedAt, selected: false }],
+    }));
+    await unlock(servicesWithModelAdmin({ getCatalog: async () => catalog, archiveModel }));
+
+    await user.click(await screen.findByRole("button", { name: "归档模型 DeepSeek V4" }));
+    const dialog = screen.getByRole("alertdialog", { name: "归档模型「DeepSeek V4」？" });
+    expect(dialog).toHaveTextContent("its 1 route leave the catalog");
+    await user.click(within(dialog).getByRole("button", { name: "归档模型" }));
+
+    expect(archiveModel).toHaveBeenCalledWith("fixed-secret", "deepseek-v4");
+    expect(await screen.findByText("模型已归档。")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "DeepSeek V4" })).toBeNull();
+  });
+
+  it("restores the archived row by ref even when an active row shares its key", async () => {
+    const user = userEvent.setup();
+    const withArchivedTwin: ModelAdminCatalog = {
+      ...catalog,
+      models: [
+        ...catalog.models,
+        {
+          ...catalog.models[0],
+          ref: "model-9",
+          label: "DeepSeek V4（旧）",
+          archived: true,
+          archived_at: archivedAt,
+        },
+      ],
+    };
+    const restoreArchived = vi.fn(async () => {
+      throw new ApiError({
+        status: 409,
+        detail: "An active chat model with the same key already exists",
+      });
+    });
+    await unlock(
+      servicesWithModelAdmin({ getCatalog: async () => withArchivedTwin, restoreArchived }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: /已归档/ }));
+    const archived = screen.getByRole("listitem", { name: "DeepSeek V4（旧）" });
+    await user.click(within(archived).getByRole("button", { name: "恢复" }));
+    const dialog = screen.getByRole("dialog", { name: "恢复模型「DeepSeek V4（旧）」？" });
+    expect(dialog).toHaveTextContent("An active model already uses the key deepseek-v4");
+    await user.click(within(dialog).getByRole("button", { name: "恢复" }));
+
+    expect(restoreArchived).toHaveBeenCalledWith("fixed-secret", "model-9");
+    expect(
+      await screen.findByText("An active chat model with the same key already exists"),
+    ).toBeInTheDocument();
+  });
+
+  it("filters the list and shows upstream detail with the routes that use it", async () => {
+    const user = userEvent.setup();
+    await unlock(servicesWithModelAdmin({ getCatalog: async () => catalog }));
+
+    await user.type(await screen.findByRole("searchbox", { name: "搜索模型" }), "gpt");
+    expect(screen.getByText("No matches.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /上游/ }));
+    const list = screen.getByRole("list", { name: "目录项" });
+    await user.click(within(list).getByRole("button", { name: /OpenRouter/ }));
+
+    expect(screen.getByRole("heading", { name: "OpenRouter" })).toBeInTheDocument();
+    expect(screen.getByText("引用该上游的路由")).toBeInTheDocument();
+    expect(screen.getByText("deepseek/deepseek-v4 · P10")).toBeInTheDocument();
+  });
+
+  it("keeps showing the edited model after the saved catalog reorders", async () => {
+    const user = userEvent.setup();
+    const other = {
+      ...catalog.models[0],
+      ref: "model-5",
+      key: "gpt-5",
+      label: "GPT-5",
+      sort_order: 5,
+    };
+    const edited = { ...catalog.models[0], label: "DeepSeek V4 Late", sort_order: 9 };
+    const upsertModel = vi.fn(async () => ({ ...catalog, models: [other, edited] }));
+    await unlock(
+      servicesWithModelAdmin({
+        getCatalog: async () => ({ ...catalog, models: [catalog.models[0], other] }),
+        upsertModel,
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "编辑模型 DeepSeek V4" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "保存配置" }));
+
+    expect(await screen.findByRole("heading", { name: "DeepSeek V4 Late" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "GPT-5" })).toBeNull();
   });
 
   it("rejects an invalid fixed key without starting user-token recovery", async () => {

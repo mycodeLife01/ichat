@@ -67,10 +67,6 @@ describe("modelAdminApi", () => {
         model_key: "deepseek-v4",
         upstream_key: "openrouter",
         upstream_model: "deepseek/deepseek-v4",
-        reasoning_outputs: ["raw"],
-        priority: 10,
-        enabled: true,
-        selected: true,
       },
       false,
     );
@@ -86,6 +82,50 @@ describe("modelAdminApi", () => {
       headers: { "X-Model-Admin-Key": "fixed-secret" },
       auth: false,
       retryOnUnauthorized: false,
+    });
+  });
+
+  it("archives items with an explicit archived flag and restores by ref", async () => {
+    const client = mockClient();
+    const api = createModelAdminApi(client);
+    const management = {
+      headers: { "X-Model-Admin-Key": "fixed-secret" },
+      auth: false,
+      retryOnUnauthorized: false,
+    };
+
+    await api.archiveModel("fixed-secret", "deepseek/v4");
+    await api.archiveUpstream("fixed-secret", "openrouter");
+    await api.archiveRoute("fixed-secret", {
+      model_key: "deepseek-v4",
+      upstream_key: "openrouter",
+      upstream_model: "deepseek/deepseek-v4",
+    });
+    await api.restoreArchived("fixed-secret", "upstream-4");
+
+    expect(client.request).toHaveBeenNthCalledWith(1, "/model-admin/models/deepseek%2Fv4/archived", {
+      method: "PATCH",
+      body: { archived: true },
+      ...management,
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, "/model-admin/upstreams/openrouter/archived", {
+      method: "PATCH",
+      body: { archived: true },
+      ...management,
+    });
+    expect(client.request).toHaveBeenNthCalledWith(3, "/model-admin/routes/archived", {
+      method: "PATCH",
+      body: {
+        model_key: "deepseek-v4",
+        upstream_key: "openrouter",
+        upstream_model: "deepseek/deepseek-v4",
+        archived: true,
+      },
+      ...management,
+    });
+    expect(client.request).toHaveBeenNthCalledWith(4, "/model-admin/archive/upstream-4/restore", {
+      method: "POST",
+      ...management,
     });
   });
 });

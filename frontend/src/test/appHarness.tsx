@@ -182,6 +182,10 @@ export function createFakeModelAdminApi(
     setRouteEnabled: async () => emptyCatalog,
     setCatalogEnabled: async () => emptyCatalog,
     importEnvironment: async () => emptyCatalog,
+    archiveModel: async () => emptyCatalog,
+    archiveUpstream: async () => emptyCatalog,
+    archiveRoute: async () => emptyCatalog,
+    restoreArchived: async () => emptyCatalog,
     ...overrides,
   };
 }
