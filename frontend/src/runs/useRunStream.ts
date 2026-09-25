@@ -154,6 +154,8 @@ function toolStateFromEvent(event: RunEventResponse): RunToolState {
           id: typeof item.id === "number" ? item.id : Number(item.id ?? 0),
           title: typeof item.title === "string" ? item.title : "",
           url: typeof item.url === "string" ? item.url : "",
+          snippet: typeof item.snippet === "string" ? item.snippet : null,
+          published_at: typeof item.published_at === "string" ? item.published_at : null,
         }))
     : [];
   const status =

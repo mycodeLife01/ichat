@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.agent.providers.glm import GLMProvider
 from app.agent.providers.openrouter import OpenRouterProvider
 from app.core.config import Settings, get_settings
 from app.models.model_catalog import ChatModel, ModelCatalogState, ModelRoute, ModelUpstream
@@ -13,6 +14,7 @@ from app.services.model_catalog import (
     ModelCatalogConflictError,
     ModelCatalogError,
     available_chat_models,
+    provider_for_chat_model,
     resolve_run_model_runtime,
 )
 from app.services.model_catalog.credentials import ModelCredentialCipher
@@ -298,6 +300,84 @@ async def test_upstream_adapter_change_revalidates_existing_route_outputs(
         )
 
     assert "unsupported by the upstream adapter" in str(exc.value)
+
+
+async def test_glm_route_defaults_to_raw_outputs_and_resolves_glm_provider(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await upsert_chat_model(
+        session,
+        key="glm-5.3",
+        label="GLM 5.3",
+        thinking_levels=["low", "high", "max"],
+        supports_image_input=False,
+        image_token_reserve=None,
+        token_profile="default",
+        sort_order=30,
+        enabled=True,
+        settings=settings,
+    )
+    await upsert_model_upstream(
+        session,
+        key="glm-test",
+        label="GLM Official",
+        adapter="glm",
+        base_url="https://open.bigmodel.test/api/paas/v4",
+        api_key="sk-glm-secret",
+        enabled=True,
+        settings=settings,
+    )
+    await upsert_model_route(
+        session,
+        model_key="glm-5.3",
+        upstream_key="glm-test",
+        upstream_model="glm-5.3",
+        priority=10,
+        enabled=True,
+    )
+    await set_database_catalog_enabled(session, enabled=True, settings=settings)
+
+    models = await available_chat_models(session, settings=settings)
+    assert [model.key for model in models] == ["glm-5.3"]
+    assert models[0].reasoning_outputs == ("raw",)
+    assert isinstance(provider_for_chat_model(models[0], settings=settings), GLMProvider)
+
+
+async def test_glm_route_rejects_summary_reasoning_outputs(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await upsert_chat_model(
+        session,
+        key="glm-5.3",
+        label="GLM 5.3",
+        thinking_levels=["low", "high", "max"],
+        supports_image_input=False,
+        image_token_reserve=None,
+        token_profile="default",
+        sort_order=30,
+        settings=settings,
+    )
+    await upsert_model_upstream(
+        session,
+        key="glm-test",
+        label="GLM Official",
+        adapter="glm",
+        base_url="https://open.bigmodel.test/api/paas/v4",
+        api_key="sk-glm-secret",
+        settings=settings,
+    )
+
+    with pytest.raises(ModelCatalogError):
+        await upsert_model_route(
+            session,
+            model_key="glm-5.3",
+            upstream_key="glm-test",
+            upstream_model="glm-5.3",
+            priority=10,
+            reasoning_outputs=["summary"],
+        )
 
 
 async def test_upstream_credentials_are_encrypted_at_rest(

@@ -2,7 +2,7 @@ import { getDefaultApiClient, type ApiClient, type ApiRequestOptions } from "./c
 
 export type ModelThinkingLevel = "low" | "medium" | "high" | "xhigh" | "max";
 export type ModelTokenProfile = "default" | "deepseek" | "openai";
-export type ModelProviderAdapter = "deepseek" | "openai" | "openrouter";
+export type ModelProviderAdapter = "deepseek" | "openai" | "openrouter" | "glm";
 export type ModelReasoningOutput = "raw" | "summary";
 
 export type ModelAdminChatModel = {

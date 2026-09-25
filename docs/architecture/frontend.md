@@ -194,6 +194,10 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   不启用原始 HTML；renderer 只
   消费 sanitize 后的 parsed node，不恢复被移除的危险 href，也不使用
   `dangerouslySetInnerHTML`。代码和表格复制只读取各自 parsed surface。
+- citation 在 streaming 与 final 上同样渲染：streaming 来源为 `activeRun.draftSources` 合并会话历史
+  中无歧义的来源（引用编号会话级唯一，见 `docs/handover/2026-06-11-web-search-tool.md`）。
+  citation 组件与 `components` 映射保持模块级稳定，来源经 context 传入，delta 追加时已渲染的
+  chip 不重挂载；streaming 末尾未闭合的 `[n` 暂不显示。
 - final assistant 的 Markdown 正文根节点是唯一可建立回复引用的选择 surface；思考、来源、
   附件、动作和 `StreamingMessage` 不在该根节点内。选择协调器要求选区两端属于同一根节点，
   用浏览器可见文本生成 excerpt，并从 `Range.startContainer` 最近的语义节点捕获版本化

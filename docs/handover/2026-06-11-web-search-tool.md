@@ -59,6 +59,22 @@ DATABASE_URL="postgresql+asyncpg://ichat:ichat_password@localhost:5432/ichat" uv
 - 若成功 sources 存在但最终文本没有合法 `[n]` 引用，worker 在物化前追加 `Sources:` / `来源：` 段；第一版只检查引用存在，不做语义校验。
 - 历史 context 只 replay succeeded run；failed/cancelled transcript 只用于审计。
 
+### 2026-09-23 引用编号会话级唯一与流式引用
+
+- 引用编号在整个会话内唯一：worker 用 `load_prior_sources` 读取目标 user message 之前可见
+  assistant 消息的 `metadata.sources` 作为 `SourceRegistry(prior)` 种子；新来源从历史最大编号
+  +1 继续，已出现过的 URL（归一化后）沿用旧编号。系统提示词明确告知模型旧编号仍指向同一来源、可再次引用。
+- 旧数据每个 Run 从 1 编号：同一编号对应不同 URL 视为歧义，既不复用也不解析（前端
+  `conversationSources` 同样排除），这类 `[n]` 保持纯文本。
+- 物化时 `metadata.sources` = 本 Run 来源 + 最终正文中引用到的历史来源（按 `[n]` 解析，忽略
+  fenced/inline code），因此 final 消息只依赖自身 metadata 即可渲染跨轮引用。
+- `tool_call_succeeded` 事件的 sources 增加 `snippet`（压缩至 300 字符）与 `published_at`；
+  `GET /runs/{id}/state` 新增聚合后的 `sources`，刷新恢复时可重建流式引用。
+- 前端 reducer 以 `draftSources` 累积成功工具调用的来源；`StreamingMessage` 合并
+  `draftSources` 与会话历史来源传给 `Markdown`，流式阶段即渲染引用 chip。`Markdown` 使用
+  模块级稳定 `components` + context 提供来源，避免每个 delta 重挂载 chip；流式末尾未闭合的
+  `[\d*` 暂不显示。
+
 ## 验证
 
 已执行：

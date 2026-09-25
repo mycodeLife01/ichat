@@ -33,12 +33,13 @@ _DEEPSEEK_PRO_LEVELS = ("high", "max")
 _OPENAI_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _THINKING_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 _TOKEN_PROFILES = frozenset({"default", "deepseek", "openai"})
-_ADAPTERS = frozenset({"deepseek", "openai", "openrouter"})
+_ADAPTERS = frozenset({"deepseek", "openai", "openrouter", "glm"})
 _REASONING_OUTPUTS = frozenset({"raw", "summary"})
 _ADAPTER_REASONING_OUTPUTS = {
     "deepseek": frozenset({"raw"}),
     "openai": frozenset(),
     "openrouter": _REASONING_OUTPUTS,
+    "glm": frozenset({"raw"}),
 }
 
 CatalogSource = Literal["environment", "database"]

@@ -1,4 +1,4 @@
-import type { RunStatus, RunToolState } from "../api/types";
+import type { RunStatus, RunToolSource, RunToolState } from "../api/types";
 import type { AppAction } from "../app/store";
 
 export type RunStreamPhase = "waiting" | "reasoning" | "text" | "tool";
@@ -15,6 +15,10 @@ export type ActiveRunState = {
   draftReasoningSummary: string;
   streamPhase: RunStreamPhase;
   toolState: RunToolState | null;
+  // All sources returned by this Run's succeeded tool calls, deduplicated by
+  // citation id. Unlike toolState it survives text deltas, so the streaming
+  // answer can render citation chips live.
+  draftSources: RunToolSource[];
   status: RunStatus;
   cancelRequested: boolean;
 } | null;
@@ -38,6 +42,7 @@ export type ActiveRunAction =
       draftReasoning: string;
       draftReasoningSummary?: string;
       toolState?: RunToolState | null;
+      sources?: RunToolSource[];
       status: RunStatus;
     }
   | {
@@ -69,6 +74,7 @@ export function activeRunReducer(
         draftReasoningSummary: "",
         streamPhase: "waiting",
         toolState: null,
+        draftSources: [],
         status: "started",
         cancelRequested: false,
       };
@@ -115,6 +121,10 @@ export function activeRunReducer(
         // Tool calls may happen after an intermediate text segment. Preserve
         // the current call instead of treating any prior text as final output.
         toolState: action.toolState,
+        draftSources:
+          action.toolState.status === "succeeded"
+            ? mergeSources(state.draftSources, action.toolState.sources)
+            : state.draftSources,
         status: state.status === "cancelling" ? state.status : "streaming",
       };
     case "run/terminal":
@@ -157,6 +167,7 @@ export function activeRunReducer(
         draftReasoningSummary: action.draftReasoningSummary ?? "",
         streamPhase,
         toolState: keepToolState ? restoredToolState : null,
+        draftSources: mergeSources([], action.sources ?? []),
         status: action.status,
         cancelRequested: action.status === "cancelling",
       };
@@ -176,4 +187,19 @@ export function activeRunReducer(
     default:
       return state;
   }
+}
+
+// Append sources whose citation id is new. Returns the existing array when
+// nothing is added so memoized consumers keep a stable reference.
+function mergeSources(
+  existing: RunToolSource[],
+  incoming: RunToolSource[],
+): RunToolSource[] {
+  const seen = new Set(existing.map((source) => source.id));
+  const added = incoming.filter((source) => {
+    if (seen.has(source.id)) return false;
+    seen.add(source.id);
+    return true;
+  });
+  return added.length > 0 ? [...existing, ...added] : existing;
 }

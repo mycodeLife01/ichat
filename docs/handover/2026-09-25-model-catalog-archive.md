@@ -18,7 +18,7 @@
 
 ### 数据
 
-迁移 `20260925_0025`：三表加 `archived_at timestamptz NULL`；`uq_chat_models_key`、`uq_model_upstreams_key`、`uq_model_routes_model_upstream_remote_model` 替换为 `ux_*_active` 部分唯一索引（`WHERE archived_at IS NULL`）。downgrade 在存在同 key 多行时直接报错，不丢数据。
+迁移 `20260925_0026`（接在 GLM 适配器迁移 `20260921_0025` 之后）：三表加 `archived_at timestamptz NULL`；`uq_chat_models_key`、`uq_model_upstreams_key`、`uq_model_routes_model_upstream_remote_model` 替换为 `ux_*_active` 部分唯一索引（`WHERE archived_at IS NULL`）。downgrade 在存在同 key 多行时直接报错，不丢数据。
 
 ### 规则
 

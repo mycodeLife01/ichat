@@ -87,7 +87,7 @@ def make_agent(
         max_tool_calls=max_tool_calls,
         retry_policy=RetryPolicy(max_attempts=1),
         tool_backend_names={},
-        assistant_metadata=lambda: None,
+        assistant_metadata=lambda _text: None,
         system_prompt="sys",
     )
 

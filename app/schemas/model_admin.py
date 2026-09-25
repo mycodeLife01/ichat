@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 ThinkingLevel = Literal["low", "medium", "high", "xhigh", "max"]
 TokenProfile = Literal["default", "deepseek", "openai"]
-ProviderAdapter = Literal["deepseek", "openai", "openrouter"]
+ProviderAdapter = Literal["deepseek", "openai", "openrouter", "glm"]
 ReasoningOutput = Literal["raw", "summary"]
 
 

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import type { MessageResponse } from "../api/types";
 import type { ActiveRunState } from "../runs/state";
 import { StreamingMessage } from "./StreamingMessage";
 
@@ -21,6 +22,7 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
     draftReasoning: "",
     draftReasoningSummary: "",
     toolState: null,
+    draftSources: [],
     status: "streaming",
     cancelRequested: false,
     ...overrides,
@@ -319,5 +321,70 @@ describe("StreamingMessage", () => {
     render(<StreamingMessage run={run({ draftText: "部分", status: "cancelled" })} />);
     expect(screen.getByText("部分")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("StreamingMessage citations", () => {
+  const liveSource = {
+    id: 3,
+    title: "Live",
+    url: "https://live.example.com/a",
+    snippet: "live snippet",
+    published_at: null,
+  };
+
+  function assistant(id: string, sources: { id: number; url: string }[]): MessageResponse {
+    return {
+      id,
+      conversation_id: "10",
+      run_id: null,
+      role: "assistant",
+      content: "earlier",
+      reasoning: null,
+      metadata: {
+        sources: sources.map((source) => ({
+          ...source,
+          title: source.url,
+          snippet: "",
+          published_at: null,
+          provider: "tavily",
+        })),
+      },
+      position: Number(id),
+      created_at: "2026-05-24T10:00:00Z",
+    };
+  }
+
+  it("renders a citation chip live from the run's draft sources", () => {
+    render(<StreamingMessage run={run({ draftText: "新结果[3]", draftSources: [liveSource] })} />);
+    expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
+    expect(screen.queryByText(/\[3\]/)).toBeNull();
+  });
+
+  it("resolves a citation to a source from an earlier turn", () => {
+    const messages = [assistant("2", [{ id: 1, url: "https://old.example.com/a" }])];
+    render(<StreamingMessage run={run({ draftText: "仍然成立[1]" })} messages={messages} />);
+    expect(screen.getByRole("button", { name: "查看 1 个引用来源" })).toBeInTheDocument();
+  });
+
+  it("leaves a legacy id bound to different URLs as plain text", () => {
+    const messages = [
+      assistant("2", [{ id: 1, url: "https://a.example.com/" }]),
+      assistant("4", [{ id: 1, url: "https://b.example.com/" }]),
+    ];
+    render(
+      <StreamingMessage
+        run={run({ draftText: "歧义[1]", draftSources: [liveSource] })}
+        messages={messages}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /引用来源/ })).toBeNull();
+    expect(screen.getByText(/歧义\[1\]/)).toBeInTheDocument();
+  });
+
+  it("hides a half-streamed citation marker at the end of the draft", () => {
+    render(<StreamingMessage run={run({ draftText: "正在写[1", draftSources: [liveSource] })} />);
+    expect(screen.getByText("正在写")).toBeInTheDocument();
+    expect(screen.queryByText(/\[1/)).toBeNull();
   });
 });

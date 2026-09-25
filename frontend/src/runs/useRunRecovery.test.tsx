@@ -97,6 +97,7 @@ describe("useRunRecovery", () => {
       draftReasoningSummary: "摘要",
       streamPhase: "text",
       toolState: null,
+      draftSources: [],
       status: "streaming",
       cancelRequested: false,
     });

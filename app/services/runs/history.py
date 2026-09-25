@@ -74,6 +74,41 @@ async def load_conversation_history(
     )
 
 
+async def load_prior_sources(
+    session: AsyncSession,
+    *,
+    run_id: int,
+) -> list[dict[str, object]]:
+    """Return the web sources stored on visible assistant messages before the
+    run's target user message, in conversation order. They seed the run's
+    ``SourceRegistry`` so citation ids stay unique across the conversation."""
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise LookupError(f"Run {run_id} not found")
+    target = await session.get(MessageRow, run.user_message_id)
+    if target is None:
+        raise LookupError(f"Target user message {run.user_message_id} not found")
+
+    rows = (
+        await session.scalars(
+            select(MessageRow)
+            .where(
+                MessageRow.conversation_id == run.conversation_id,
+                MessageRow.archived_at.is_(None),
+                MessageRow.position < target.position,
+                MessageRow.role == "assistant",
+            )
+            .order_by(MessageRow.position.asc())
+        )
+    ).all()
+    sources: list[dict[str, object]] = []
+    for row in rows:
+        raw = (row.metadata_ or {}).get("sources")
+        if isinstance(raw, list):
+            sources.extend(item for item in raw if isinstance(item, dict))
+    return sources
+
+
 async def _build_history(
     session: AsyncSession,
     *,

@@ -21,7 +21,7 @@ from app.services.model_catalog.service import (
 )
 
 _KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
-_ADAPTERS = frozenset({"deepseek", "openai", "openrouter"})
+_ADAPTERS = frozenset({"deepseek", "openai", "openrouter", "glm"})
 _TOKEN_PROFILES = frozenset({"default", "deepseek", "openai"})
 _THINKING_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 _REASONING_OUTPUTS = frozenset({"raw", "summary"})
@@ -29,6 +29,7 @@ _ADAPTER_REASONING_OUTPUTS = {
     "deepseek": frozenset({"raw"}),
     "openai": frozenset(),
     "openrouter": _REASONING_OUTPUTS,
+    "glm": frozenset({"raw"}),
 }
 _REF_PATTERN = re.compile(r"^(model|upstream|route)-([1-9][0-9]{0,18})$")
 
@@ -248,7 +249,7 @@ async def upsert_model_route(
             else route.reasoning_outputs
             if route.id is not None
             else ["raw"]
-            if upstream.adapter == "deepseek"
+            if upstream.adapter in {"deepseek", "glm"}
             else []
         ),
         adapter=upstream.adapter,
