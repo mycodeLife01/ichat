@@ -287,6 +287,14 @@ export const scenes: Scene[] = [
   ),
   scene(
     "模型管理",
+    "admin-dense",
+    "密集目录与归档",
+    "/model-admin",
+    "model-admin/ModelAdminPage.tsx",
+    "unlocked",
+  ),
+  scene(
+    "模型管理",
     "admin-gate",
     "管理访问入口",
     "/model-admin",

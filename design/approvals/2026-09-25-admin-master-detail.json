@@ -1,0 +1,29 @@
+{
+  "proposalId": "admin-master-detail",
+  "requirement": "docs/plans/2026-09-12-model-admin-archive-and-layout.md",
+  "designStatus": "approved",
+  "implementationStatus": "verified",
+  "sceneIds": ["admin", "admin-dense", "admin-gate", "admin-error"],
+  "viewport": [
+    { "width": 1440, "height": 900 },
+    { "width": 390, "height": 844 }
+  ],
+  "sourceCommit": "63aa959975688b5c4563fde9b76f83e3716186b2",
+  "designCommit": null,
+  "designFingerprint": "47993917606f6a59b57a9af09a0422f04377217943efc49242332c25163df88b",
+  "implementationCommit": null,
+  "evidence": {
+    "comparedCandidates": ["admin-master-detail", "admin-segmented", "admin-minimal"],
+    "parity": "pnpm --dir design test:parity: 56 passed, including admin and admin-dense on desktop and mobile",
+    "visual": "pnpm --dir design test:visual: 116 passed",
+    "realChrome": "Headless Chromium against the real API and an isolated database at 1440x900 and 390x844: no horizontal overflow; lock, edit, archive, and status controls present; archive/restore with cascaded routes, same-key restore 409, and in-use upstream 409 verified. See docs/handover/2026-09-25-model-catalog-archive.md."
+  },
+  "scope": "Model management console: searchable model/upstream list with an archived entry on the left, selected item detail on the right (status switch, edit, archive, capabilities, full route track, routes using an upstream); narrow screens drill down from list to detail with a back button. Archive and restore confirmations state cascade counts and same-key conflicts.",
+  "exceptions": [
+    "Screenshots were captured during review and verification but are not archived in the repository; regenerate them with the commands in the handover.",
+    "designCommit and implementationCommit stay null until the change is committed."
+  ],
+  "approvedBy": "jackey",
+  "approvedAt": "2026-09-25",
+  "notes": "Promoted to current. The admin-segmented and admin-minimal candidates were removed from design/src/proposals/registry.ts."
+}
