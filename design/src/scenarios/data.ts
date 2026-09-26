@@ -31,6 +31,35 @@ export const sources: MessageSource[] = [
   },
 ];
 export const answer = `## 从一个清晰的界面开始\n\n设计的价值，是让我们在实现之前**看见同一个结果**。这一段示例同时用于设计画布和原版对照。\n\n### 三个工作步骤\n\n1. 在完整页面里讨论布局。\n2. 点击体验关键交互，检查桌面与移动端。\n3. 固定确认版本，再开发真实功能。\n\n> 先把设计表达清楚，再让实现有据可依。\n\n| 阶段 | 产物 |\n| --- | --- |\n| 设计 | 页面与交互 |\n| 实现 | 可运行的产品 |\n\n\`\`\`typescript\nconst design = { status: "ready", version: 1 };\nconsole.log(design);\n\`\`\`\n\n行内公式 $E=mc^2$，以及 [设计说明](https://example.test/design)。\n\n- [x] 完整页面\n- [ ] 下一项设计需求\n`;
+// Long reasoning samples for the thinking-panel candidates. The raw sample
+// mimics an open-weight chain of thought; the summary sample mimics provider
+// summaries (`**Headline**` sections concatenated without separators).
+export const longRawReasoning = `用户想让我设计一个聊天界面的思考面板。先理清需求：模型会输出很长的思维链，面板不能无限变长。\n\n嗯，现在的做法是流式时自动展开全文。DeepSeek 这类模型一次可能思考几千字，页面会被一直往下推，用户其实跟不上。\n\n等一下，还要考虑摘要模型。GPT 只给摘要，Gemini 也类似，它们的内容短，但结构不同，有小标题。两种来源最好走同一套交互。\n\n那么核心约束有三个：第一，展示区域要有上限；第二，用户要能看出思考还在继续；第三，想看细节时可以自己展开。\n\n先想上限。固定高度大概三到四行比较合适，太少看不出内容，太多又占空间。移动端屏幕更窄，行数应该更少。\n\n然后是“还在继续”的感知。标题的流光动画已经有了，但如果下方文字也在更新，感知会更强。新内容从底部出现，旧内容向上移出，顶部做渐隐，避免硬切。\n\n再考虑展开。点击标题或者取景窗都应该能展开全文，展开后不再限制高度。用户主动操作之后，状态应该以用户为准，流结束时不要强行收起。\n\n还有几何问题。之前出现过标题在第一条增量到达时下移三像素的回归，所以标题行的内边距必须无条件，新加的内容只能出现在标题下方。\n\n最后检查一下无障碍：取景窗是逐字变化的，读屏软件不应该逐字播报，应当隐藏，标题保留展开状态。好，方案差不多清楚了，可以开始组织回答。`;
+export const longSummaryReasoning = `**Clarifying the panel requirements**\n\n我正在梳理思考面板需要解决的问题：长思维链会不断推高页面，而摘要模型只露出一个标题，两类模型体验不一致。**Comparing preview strategies**\n\n我在比较几种预览方式：固定高度的取景窗能保留上下文，单行状态更安静，抽屉最干净但交互成本更高。我倾向于取景窗，因为它在信息量和稳定性之间更平衡。**Checking geometry constraints**\n\n我在确认标题行几何必须保持不变，所有新增区域只能出现在标题下方，并且展开状态需要尊重用户的手动选择。**Drafting the final answer**\n\n我正在整理最终建议，包括取景窗高度、完成后的收起策略以及移动端的行数调整。`;
+// Raw chain of thought interleaved with web searches: each segment streams as
+// reasoning, then the model calls web_search before the next segment.
+export const toolReasoningSegments = [
+  `用户在问聊天界面里思考面板该怎么设计。先想清楚要解决什么：长思维链会把页面一直往下推，用户跟不上。\n\n我对主流产品现在的做法不太确定，先搜一下，看看别人怎么处理长思考的展示。`,
+  `搜到的资料里，常见做法有两种：一种是流式时只露一行状态，另一种是固定高度的滚动区域。前者安静但信息少，后者能看到上下文。\n\n不过这些资料没提到思考结束后的处理。还需要确认一下流式区域在结束时通常怎么收起，再搜一次。`,
+  `好，第二次搜索的结果比较一致：思考结束后普遍会收起成一行“已思考”，想看的时候再展开全文。\n\n结合两次搜索，方案可以定下来：思考中用固定高度的取景框，结束后收起，点击标题查看完整过程。开始组织回答。`,
+];
+export const toolSearchCalls = [
+  {
+    query: "AI 聊天 思考过程 展示 设计",
+    sources: [
+      { id: 1, title: "设计系统与界面一致性", url: "https://example.test/design" },
+      { id: 2, title: "流式界面的状态表达", url: "https://example.test/streaming" },
+      { id: 3, title: "渐进披露与信息密度", url: "https://example.test/disclosure" },
+    ],
+  },
+  {
+    query: "流式思考面板 结束后 收起",
+    sources: [
+      { id: 4, title: "完成态的界面收敛", url: "https://example.test/settle" },
+      { id: 5, title: "折叠面板的可访问性", url: "https://example.test/a11y" },
+    ],
+  },
+];
 export const imageAttachment: FileAttachment = {
   id: "image",
   name: "landscape.svg",

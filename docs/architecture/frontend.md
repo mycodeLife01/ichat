@@ -158,9 +158,12 @@ UTF-16 区间先校验版本与 hash，再用真实 Markdown DOM Range 和 CSS C
   cursor 续流。
 - 编辑并重新生成或重新生成会在服务端归档线程分支；成功创建新 Run 后必须重拉 detail 获取
   权威截断结果，再复用普通 Run 流程，不能在客户端自行裁剪消息。
-- 临时与最终 assistant message 都采用“summary 优先、raw fallback”的展示策略。raw 在流式
-  推理阶段自动展开，摘要可作为流式标题预览；正文开始后 thinking surface 保留并折叠，最终
-  消息仍可展开。公开分享继续不展示 reasoning。
+- 临时与最终 assistant message 都采用“summary 优先、raw fallback”的展示策略，raw 与 summary
+  共用同一套思考面板：思考中默认显示贴底的取景窗（最多 4 行，≤760px 为 3 行），点击标题在
+  取景窗与完整过程之间切换；思考结束（正文开始）时无论之前显示哪种都收起为「已思考」，之后
+  点击标题只在收起与完整过程之间切换。完整过程按 Markdown 渲染，摘要 `**小标题**` 提升为
+  小节标题。思考结束后的选择按 run id 跨流式→历史交接保留。公开分享继续不展示 reasoning。
+  详见 `docs/handover/frontend/2026-09-26-thinking-panel-viewport.md`。
 
 ## 附件与模型能力
 

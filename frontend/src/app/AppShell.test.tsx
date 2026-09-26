@@ -1102,7 +1102,7 @@ describe("AppShell", () => {
     expect(streamEvents).not.toHaveBeenCalled();
   });
 
-  it("expands restored DeepSeek reasoning below its generic label after refresh", async () => {
+  it("mirrors restored DeepSeek reasoning in the viewport after refresh", async () => {
     const services = createFakeServices(
       {},
       {
@@ -1128,9 +1128,11 @@ describe("AppShell", () => {
     );
 
     const header = await screen.findByRole("button", { name: /正在思考/ });
-    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).toHaveAttribute("aria-expanded", "false");
     expect(header).not.toHaveTextContent("刷新前已经生成的思考过程");
-    expect(screen.getByText("刷新前已经生成的思考过程")).not.toHaveClass("hidden");
+    expect(document.querySelector(".thinking-window")).toHaveTextContent(
+      "刷新前已经生成的思考过程",
+    );
   });
 
   it("resumes an in-progress run after refresh and replaces it with the reply", async () => {

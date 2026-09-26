@@ -251,9 +251,9 @@ describe("Message", () => {
     const user = userEvent.setup();
     render(<Message message={assistantMessage} />);
     expect(screen.getByText("回答")).toBeInTheDocument(); // bold rendered
-    expect(screen.getByText("我的推理")).toHaveClass("hidden");
+    expect(screen.queryByText("我的推理")).toBeNull();
     await user.click(screen.getByRole("button", { name: "已思考" }));
-    expect(screen.getByText("我的推理")).not.toHaveClass("hidden");
+    expect(screen.getByText("我的推理")).toBeInTheDocument();
   });
 
   it("prefers a reasoning summary over raw reasoning", async () => {

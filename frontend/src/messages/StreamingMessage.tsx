@@ -60,9 +60,9 @@ export function StreamingMessage({ run, messages = NO_MESSAGES }: StreamingMessa
     showingSummary && reasoningPreview(displayedReasoning) !== "";
   const label =
     toolState?.status === "running" || !hasReasoningPreview ? toolLabel : undefined;
-  // Once visible answer text arrives, keep the reasoning surface mounted and
-  // collapse it above the answer. Removing the expanded block outright makes
-  // a bottom-pinned message jump by roughly one or more lines at the handoff.
+  // Once visible answer text arrives, keep the reasoning surface mounted; it
+  // collapses to its header above the answer. Removing the block outright
+  // makes a bottom-pinned message jump by one or more lines at the handoff.
   const showThinking = thinking || hasReasoning;
 
   return (
@@ -72,11 +72,8 @@ export function StreamingMessage({ run, messages = NO_MESSAGES }: StreamingMessa
           <ThinkingBlock
             content={displayedReasoning}
             streaming={thinking}
-            showStreamingPreview={showingSummary}
-            autoExpandWhileStreaming={
-              !showingSummary && hasReasoning && run?.streamPhase !== "tool"
-            }
             label={label}
+            handoffKey={run?.runId}
           />
         )}
         <Markdown content={draftText} sources={sources} streaming />

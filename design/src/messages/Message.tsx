@@ -472,7 +472,11 @@ export function Message({
     <div className={`${msgBase} assistant items-stretch`}>
       <div className={assistantContentColumn}>
         {displayedReasoning?.trim() ? (
-          <ThinkingBlock content={displayedReasoning} streaming={false} />
+          <ThinkingBlock
+            content={displayedReasoning}
+            streaming={false}
+            handoffKey={message.run_id}
+          />
         ) : null}
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
             fallback, so Markdown's memo stays stable across unrelated re-renders

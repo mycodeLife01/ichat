@@ -428,14 +428,9 @@ export function AssistantRenderingFixture() {
               <h3>完成后折叠</h3>
               <ThinkingBlock content="这是已完成且默认折叠的 reasoning fixture。" streaming={false} />
             </article>
-            <article className="fixture-card" data-thinking-state="expanded">
-              <h3>流式时展开</h3>
-              <ThinkingBlock
-                content={"第一步检查输入。\n第二步组织回答。"}
-                streaming
-                showStreamingPreview={false}
-                autoExpandWhileStreaming
-              />
+            <article className="fixture-card" data-thinking-state="preview">
+              <h3>流式时取景框</h3>
+              <ThinkingBlock content={"第一步检查输入。\n第二步组织回答。"} streaming />
             </article>
           </div>
         </section>

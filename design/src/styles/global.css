@@ -936,6 +936,44 @@ body {
   .thinking-label.is-streaming { animation: none; }
 }
 
+/* Live reasoning viewport: a bottom-anchored window of at most four lines
+   (three on narrow screens). Older lines leave through the top edge, which
+   fades only once the content actually overflows. */
+.thinking-window {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  max-height: calc(1.6em * 4);
+}
+.thinking-window.is-overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.6em);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.6em);
+}
+@media (max-width: 760px) {
+  .thinking-window { max-height: calc(1.6em * 3); }
+}
+
+/* Full reasoning Markdown keeps the muted thinking typography; summary
+   headlines become compact section headings. */
+.thinking-md > * { margin: 0; }
+.thinking-md > * + * { margin-top: 0.5em; }
+.thinking-md h4 {
+  color: var(--color-text-primary);
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
+}
+.thinking-md > * + h4 { margin-top: 1em; }
+.thinking-md ul { list-style: disc; padding-left: 1.25em; }
+.thinking-md ol { list-style: decimal; padding-left: 1.25em; }
+.thinking-md strong { font-weight: 600; }
+.thinking-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.thinking-md pre { overflow-x: auto; white-space: pre; }
+
 @media (max-width: 760px) {
   .app { --assistant-thread-inline-size: 100vw; }
 

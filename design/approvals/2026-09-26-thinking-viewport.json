@@ -1,0 +1,37 @@
+{
+  "proposalId": "thinking-viewport",
+  "requirement": "docs/handover/frontend/2026-09-26-thinking-panel-viewport.md",
+  "designStatus": "approved",
+  "implementationStatus": "verified",
+  "sceneIds": [
+    "thinking",
+    "thinking-raw-long",
+    "thinking-summary-long",
+    "thinking-tool",
+    "tool",
+    "streaming"
+  ],
+  "viewport": [
+    { "width": 1440, "height": 900 },
+    { "width": 390, "height": 844 }
+  ],
+  "sourceCommit": "28dc7af46040540aec1661fc60649d3cac14fda5",
+  "designCommit": null,
+  "designFingerprint": "8089cdd548410a48c8598ca5563b4b9a37ab6cb18ddfd29bdbf661b69577855a",
+  "implementationCommit": null,
+  "evidence": {
+    "comparedCandidates": ["thinking-viewport", "thinking-ticker"],
+    "parity": "pnpm --dir design test:parity: 56 passed",
+    "visual": "pnpm --dir design test:visual: 122 passed",
+    "realChrome": "Headless Chromium on a temporary production StreamingMessage fixture at 1440x900 and 390x844: .thinking-label top stayed at 4px across waiting -> reasoning -> long reasoning -> tool running -> tool succeeded -> resumed reasoning -> text, for summary and raw paths, with and without switching to the full content mid-thinking; the viewport capped at 4 lines (89.6px) on desktop and 3 lines (72px) on mobile. See docs/handover/frontend/2026-09-26-thinking-panel-viewport.md."
+  },
+  "scope": "Unified reasoning panel for raw chains of thought and provider summaries. While thinking, the header toggles a bottom-anchored viewport preview (default, 4 lines / 3 on narrow screens, top fade when overflowing) and the full content. When thinking ends the panel collapses to its header regardless of the prior mode, and the header then toggles only collapsed and full content. The full content renders as Markdown with summary headlines promoted to headings; a choice made after thinking ends survives the streaming-to-history handoff.",
+  "exceptions": [
+    "The frontend win32 golden screenshot for assistant-rendering must be regenerated on Windows because the expanded-thinking card became a viewport preview card.",
+    "Tool calls are not marked inside the full content; the user declined that addition during review.",
+    "designCommit and implementationCommit stay null until the change is committed."
+  ],
+  "approvedBy": "jackey",
+  "approvedAt": "2026-09-26",
+  "notes": "Promoted to current. The thinking-viewport and thinking-ticker candidates, ThinkingPanel.tsx, and the candidate CSS injection were removed from design; the new long-reasoning and thinking-tool scenes stay."
+}
