@@ -2,7 +2,7 @@
 
 - 日期：2026-08-15
 - 分支：`refactor/ai-chat-render`
-- 范围：`.scratch/refactor-chat-render/` 的 ticket 01；下一步从 ticket 02 开始。
+- 范围：`docs/archive/scratch/refactor-chat-render/` 的 ticket 01；下一步从 ticket 02 开始。
 
 ## 当前结论
 
@@ -18,7 +18,7 @@
 ## 已完成
 
 - ticket 01 的范围、验收项和验证记录已收敛在
-  `.scratch/refactor-chat-render/issues/01-reference-fixture-and-visual-harness.md`。
+  `docs/archive/scratch/refactor-chat-render/issues/01-reference-fixture-and-visual-harness.md`。
 - 独立入口为 `frontend/tests/visual/assistant-rendering.html`，不依赖认证、API、SSE 或正式
   Router，也不会进入默认 `vite build` 的生产入口。
 - fixture 覆盖完整 GFM/KaTeX/citation 内容、六类未闭合流式 Markdown、Clipboard 成功与失败、
@@ -37,11 +37,11 @@
 
 fixture 的 smoke 能证明页面可加载、目标状态存在、关键交互可达且没有页面级水平溢出；它不能
 单独证明已经完成 ChatGPT 风格 1:1 对齐。目标样式及误差标准以
-`.scratch/refactor-chat-render/PRD.md` 为准。
+`docs/archive/scratch/refactor-chat-render/PRD.md` 为准。
 
 ## 下一步
 
-从 `.scratch/refactor-chat-render/issues/02-assistant-typography-and-markdown-seam.md` 开始：
+从 `docs/archive/scratch/refactor-chat-render/issues/02-assistant-typography-and-markdown-seam.md` 开始：
 
 - 保留现有 `MarkdownProps` 和 final、streaming、share 三个调用入口；不增加
   `AssistantRenderModel` 或后端展示契约。

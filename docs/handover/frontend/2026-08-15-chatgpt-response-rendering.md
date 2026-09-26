@@ -6,7 +6,7 @@
 
 分支：`refactor/ai-chat-render`
 
-范围：`.scratch/refactor-chat-render/` tickets 01–06
+范围：`docs/archive/scratch/refactor-chat-render/` tickets 01–06
 
 状态：已完成；2026-08-16 已用用户 Chrome 中的同内容双页签重新逐段复核并更新
 desktop/mobile golden

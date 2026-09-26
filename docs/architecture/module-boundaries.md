@@ -70,7 +70,7 @@
 
 ## `app/agent`
 
-agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型，含 typed `ReasoningBlock` 与 adapter-owned `ProviderContinuationBlock`）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek、OpenAI、OpenRouter 代码适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
+agent 内核包——**project-level agent building blocks**（04b 再分层后收敛，见 `docs/archive/scratch/agent-runtime-refactor/issues/04b-agent-layering.md`）。内容：`messages`（content-blocks 消息模型，含 typed `ReasoningBlock` 与 adapter-owned `ProviderContinuationBlock`）、`provider`（Provider 协议 + StreamEvent + capabilities）、`providers/`（DeepSeek、OpenAI、OpenRouter 代码适配器，构造用显式窄参不吃 Settings）、`tools/`（Tool 协议 + ToolRegistry + web_search）、单次模型调用原语 `stream_model_call`、工具执行原语 `execute_tool`、AgentEvent 事件词汇（TextDelta/ReasoningDelta/ToolCallStarted/ToolCallFinished/MessageDone/AgentFinal）。
 
 边界铁律：**内核不 import `app.core.config`、不读数据库、不 import ORM/`app/services`、不碰传输层**；词汇表中无 run、无 seq、无 sink、无取消（仅需对 asyncio 取消传播安全）。agent 循环与业务装配归 `app/services/agents`；provider 怪癖以 capabilities 声明收编在适配器内部，不能由数据库任意 wire 参数替代。Continuation payload 在内核中保持不透明，只有 owner adapter 可投影回 wire，不得被编排层解释。支持图像的 provider 只依赖注入的中立图像解析协议把稳定 `ImageBlock` 投影成临时 wire URL，协议实现及存储凭证仍在 files 服务；`ToolResult` 不设工具特例字段（工具专有产物走 `metadata`）。`search/` 留在包外作为基础设施被 agent 工具引用。
 

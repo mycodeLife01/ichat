@@ -4,7 +4,7 @@
 
 分支：`refactor/ai-chat-render`
 
-范围：`.scratch/refactor-chat-render/issues/05-streaming-prefix-and-performance.md`
+范围：`docs/archive/scratch/refactor-chat-render/issues/05-streaming-prefix-and-performance.md`
 
 下一步：ticket 06（三入口最终视觉验收与 golden baseline）
 

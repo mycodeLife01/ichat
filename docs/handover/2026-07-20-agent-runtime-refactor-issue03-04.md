@@ -16,9 +16,9 @@
 
 不在本文重复 PRD、决策和验收原文：
 
-- 总 PRD 与术语裁决：`.scratch/agent-runtime-refactor/PRD.md`
-- issue 03：`.scratch/agent-runtime-refactor/issues/03-transcript-blocks-persistence.md`
-- issue 04：`.scratch/agent-runtime-refactor/issues/04-agent-runner-extraction.md`
+- 总 PRD 与术语裁决：`docs/archive/scratch/agent-runtime-refactor/PRD.md`
+- issue 03：`docs/archive/scratch/agent-runtime-refactor/issues/03-transcript-blocks-persistence.md`
+- issue 04：`docs/archive/scratch/agent-runtime-refactor/issues/04-agent-runner-extraction.md`
 - issue 01+02 交接：`docs/handover/2026-07-17-agent-runtime-refactor-issue01-02.md`
 - 模块边界：`docs/architecture/module-boundaries.md`
 - 领域词汇：`CONTEXT.md`

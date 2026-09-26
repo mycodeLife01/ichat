@@ -1418,7 +1418,7 @@ html&gt;body{padding:0}&lt;/style&gt;
         contract: {
           title: &#x27;15 Contract（安全阻塞）&#x27;, subtitle: &#x27;必须先证明新路径稳定且旧事实排空，才能删除兼容层&#x27;, status: &#x27;blocked · ready-for-agent&#x27;,
           invariants: [&#x27;当前 handover 不授权删旧 avatar object-key、表、队列、任务或 fallback&#x27;, &#x27;必须核对生产 avatar 映射、旧积压归零与历史保留窗口&#x27;, &#x27;Ticket 14 灰度证据完成后，再单独执行 contract migration 与全量回归&#x27;],
-          paths: [&#x27;.scratch/file-upload/issues/15-avatar-contract-handover.md&#x27;, &#x27;app/services/files/avatar.py&#x27;, &#x27;app/services/avatars/lifecycle.py&#x27;],
+          paths: [&#x27;docs/archive/scratch/file-upload/issues/15-avatar-contract-handover.md&#x27;, &#x27;app/services/files/avatar.py&#x27;, &#x27;app/services/avatars/lifecycle.py&#x27;],
           checks: [&#x27;依赖 12 + 13 + 14&#x27;, &#x27;当前正确审查结论应是“保留兼容路径”&#x27;, &#x27;contract 完成后再更新模块边界与 handover&#x27;]
         }
       };

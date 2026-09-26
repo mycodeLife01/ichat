@@ -4,7 +4,7 @@
 
 分支：`refactor/ai-chat-render`
 
-范围：`.scratch/refactor-chat-render/issues/03-chatgpt-code-blocks.md`
+范围：`docs/archive/scratch/refactor-chat-render/issues/03-chatgpt-code-blocks.md`
 
 下一步：ticket 04（表格、链接与 GFM rich surface）
 
@@ -72,7 +72,7 @@ pnpm run build
 
 ## Ticket 04 注意事项
 
-下一张 ticket 是 `.scratch/refactor-chat-render/issues/04-tables-links-and-gfm-surfaces.md`。表格 wrapper、TSV 复制和外链策略继续作为 Markdown 私有 renderer 实现，并保持当前代码块 renderer 不变。可以复用 `copyText.ts` 的成功语义，但不要把表格状态或 props 塞进 `CodeBlock`，也不要改变现有 parser/security pipeline。
+下一张 ticket 是 `docs/archive/scratch/refactor-chat-render/issues/04-tables-links-and-gfm-surfaces.md`。表格 wrapper、TSV 复制和外链策略继续作为 Markdown 私有 renderer 实现，并保持当前代码块 renderer 不变。可以复用 `copyText.ts` 的成功语义，但不要把表格状态或 props 塞进 `CodeBlock`，也不要改变现有 parser/security pipeline。
 
 Ticket 06 才会批准并固化最终 golden baseline；当前 visual fixture 的截图仍是诊断证据，不应提前当成跨环境像素事实。
 

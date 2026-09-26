@@ -53,7 +53,7 @@ PG 永远是事实源」这一项目级约定在后台任务上的落地。
 
 判据是任务的**运行形态**，而非它「是不是 AI 任务」。标题生成同样调用 LLM，但它
 有限、非流式、可重试、不需要中途取消，因此归 Celery（见
-[ticket 05](../../.scratch/agent-runtime-refactor/issues/05-title-generation-celery.md)）；
+[ticket 05](../archive/scratch/agent-runtime-refactor/issues/05-title-generation-celery.md)）；
 而一次流式对话 run 虽然也是「一个后台任务」，却因为流式 + 可取消 + 长时租约而必须
 留在自研运行时。
 

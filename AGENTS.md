@@ -21,6 +21,10 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 - Prefix branch names with a change type or scope such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`; prefer this style over author or agent prefixes.
 - Use Conventional Commits, for example `fix(frontend): replace share loading text with icon`.
 
+### Subagents
+
+- When running on a Claude model, spawn read-only subagents (such as `Explore` and `Plan`) with the Sonnet 5 model, for example by passing `model: "sonnet"` to the Agent tool.
+
 ### Streaming surfaces
 
 - Streaming anchors that persist across deltas (thinking/tool status headers and their labels) must keep identical vertical geometry in every phase state. Never toggle `height`/`padding`/`margin-top` on an already-rendered row from a stream-derived boolean; conditional classes may only add space below the anchor. Regression timeline and rules: `docs/handover/2026-08-31-thinking-header-geometry-shift.md`.
@@ -33,7 +37,7 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 - Inspect the relevant entry points and existing implementation before editing.
 - For any non-trivial implementation, review, architecture, or deployment work, start at `docs/README.md` and read every document selected by its matching situation.
 - For frontend work, read `docs/architecture/frontend.md`, then use `docs/README.md` to select every additional feature-specific design, handover, and deployment document.
-- When exploring a new code area, changing domain terminology, or proposing a decision that may affect an ADR, follow `docs/agents/domain.md`.
+- When exploring a new code area or naming domain concepts, use the terms defined in `CONTEXT.md` instead of inventing synonyms. Read the `docs/adr/` records touching the area; if proposed work conflicts with an ADR, raise the conflict and the reason to revisit it explicitly instead of silently overriding it.
 - Define observable success criteria and the checks that will prove them before implementation. State assumptions when they materially affect behavior, compatibility, data, or external state.
 
 Definition is complete when the existing behavior, governing decisions, intended outcome, and verification method are all identified.
@@ -51,7 +55,3 @@ Implementation is complete when the requested behavior exists without unrelated 
 - Run checks proportional to the affected surface and risk, using the repository configuration, CI workflow, and routed documentation as the source of truth.
 - Diagnose and fix failures caused by the change.
 - Treat the task as complete only when every success criterion is met and the relevant checks pass. If verification is impossible, report the exact limitation, risk, and commands still required.
-
-## Task tracking
-
-When triaging work or creating, reading, updating, or selecting `.scratch/` PRDs and tickets, follow `docs/agents/issue-tracker.md`.

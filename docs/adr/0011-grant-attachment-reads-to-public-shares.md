@@ -1,6 +1,6 @@
 # 公开分享授予附件预览与下载能力
 
-分享页的附件必须与聊天页在视觉与交互上完全一致，因此持有分享 token 的匿名访问者可以换取附件的短时签名 URL：图片走派生 preview 对象并支持预览弹窗，非图片与预览弹窗内的下载按钮走 canonical 原件。该决定取代了此前「公开快照只展示脱敏占位、任何匿名许可请求均拒绝」的边界（见 `.scratch/file-upload/issues/10-share-title-privacy.md` 第 3 条与 `docs/architecture/frontend.md` 附件章节的旧表述）。
+分享页的附件必须与聊天页在视觉与交互上完全一致，因此持有分享 token 的匿名访问者可以换取附件的短时签名 URL：图片走派生 preview 对象并支持预览弹窗，非图片与预览弹窗内的下载按钮走 canonical 原件。该决定取代了此前「公开快照只展示脱敏占位、任何匿名许可请求均拒绝」的边界（见 `docs/archive/scratch/file-upload/issues/10-share-title-privacy.md` 第 3 条与 `docs/architecture/frontend.md` 附件章节的旧表述）。
 
 威胁模型随之改变：**分享 token 从「快照文本的凭证」升级为「附件内容的凭证」**，token 泄露等于对应附件的原件泄露。为把暴露面限制在可接受范围，边界由以下机制共同保护，任一缺失都视为回归：
 
