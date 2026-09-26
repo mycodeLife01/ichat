@@ -21,7 +21,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Working on the frontend (React SPA) | `docs/architecture/frontend.md`, then every other matching feature/deployment row in this table |
 | Building the independent Design workbench, establishing UI parity, or preparing reusable UI design references | `docs/specs/2026-09-06-design-workbench.md` + `docs/architecture/frontend.md`, then the feature-specific rows for every surface being migrated; `design/README.md` + `docs/handover/frontend/2026-09-06-design-workbench.md`; distinguish paired visual checks, scene smoke tests, and user approval |
 | History conversation search, search results, or navigation to matching message text | `docs/specs/2026-09-05-conversation-search.md` + `docs/plans/2026-09-05-conversation-search.md` + `docs/handover/2026-09-05-conversation-search.md` + `docs/architecture/frontend.md` + `docs/architecture/module-boundaries.md`; also follow the sidebar and reply-quote rows when touching those surfaces |
-| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `.scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
+| Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `docs/archive/scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Modifying `ThinkingBlock`, the thinking/tool status header, the reasoning preview, or any layout class toggled by stream state | `docs/handover/2026-08-31-thinking-header-geometry-shift.md` + `docs/handover/2026-07-31-reasoning-preview-not-showing.md` |
 | Reply quotes, assistant text selection, quote-only messages, source navigation, or reply quote drafts/shares | `docs/handover/2026-08-31-reply-quote.md` + `docs/plans/2026-09-05-reply-quote-source-navigation.md` + `docs/plans/2026-09-04-reply-quote-ui-parity.md` + `docs/architecture/frontend.md` + `docs/architecture/overview.md` |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
@@ -35,10 +35,11 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
 | File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
 | Public share pages, share snapshots, anonymous attachment reads | `docs/handover/2026-08-14-share-attachment-parity.md` + ADR `0011-grant-attachment-reads-to-public-shares.md` + `docs/handover/2026-06-18-conversation-sharing.md` |
-| GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `.scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
+| GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `docs/archive/scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Sidebar rail / collapsed navigation, chat-page floating actions, one-click share copy | `docs/handover/frontend/2026-09-05-mobile-quick-share-copy-failure.md` + `docs/handover/frontend/2026-08-14-sidebar-rail-and-chat-actions.md` + `docs/architecture/frontend.md` |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
+| Naming domain concepts, changing domain terminology, or writing tests/designs that use domain terms | `CONTEXT.md` (root domain glossary, maintained by the `domain-modeling` skill) |
 
 ## Directory guide
 
@@ -53,7 +54,7 @@ Authoritative architectural rules.
 
 ### `docs/adr/`
 
-Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching your area before proposing changes; conflicts with an ADR must be raised explicitly, never silently overridden (see `docs/agents/domain.md`).
+Architecture decision records (`YYYY-MM-DD-topic.md`). Read the ones touching your area before proposing changes; conflicts with an ADR must be raised explicitly, never silently overridden. Domain vocabulary lives in the root `CONTEXT.md`.
 
 - `2026-07-13-account-deletion-soft-deactivation.md` — account deletion = soft deactivation (`is_active=false` + full credential revocation), data retained; physical erasure (cooling-off period + periodic job) deferred to a later iteration.
 - `0002-unify-file-assets-and-avatar-uploads.md` — the later decision that replaces the former avatar-only-files boundary; implementation and the still-deferred legacy-avatar contract are recorded in `handover/2026-08-01-unified-file-upload.md`.
@@ -120,7 +121,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-06-10-frontend-tailwind-v4-styles.md` — Tailwind CSS v4 migration (CSS-first `@theme`, all hand-written CSS removed, pixel-parity verified)
 - `2026-08-14-sidebar-rail-and-chat-actions.md` — collapsed sidebar becomes a 52px rail (new chat / recent 10 / account), the chat header is removed in favor of floating share + three-dot actions, and chat-page sharing copies a permanent link without a dialog
 - `2026-09-05-mobile-quick-share-copy-failure.md` — iOS 18 Chrome quick-share failure on LAN HTTP: deferred clipboard writes for production HTTPS; LAN HTTP excluded by user decision, post-deploy iPhone paste verification remains pending
-- `2026-08-15-chatgpt-ai-response-rendering.md` — observed ChatGPT assistant-response rendering, the current iChat pipeline, a gap matrix, and the handoff into `.scratch/refactor-chat-render/`; the PRD owns the confirmed implementation scope
+- `2026-08-15-chatgpt-ai-response-rendering.md` — observed ChatGPT assistant-response rendering, the current iChat pipeline, a gap matrix, and the handoff into `docs/archive/scratch/refactor-chat-render/`; the PRD owns the confirmed implementation scope
 - `2026-08-15-assistant-rendering-visual-fixture.md` — ticket 01's isolated visual fixture, the point-in-time ChatGPT reference boundary, diagnostic screenshot semantics, and the constraints carried into ticket 02
 - `2026-08-15-assistant-typography-and-markdown-seam.md` — ticket 02's shared 768px assistant column, scoped Markdown typography, browser metric checks, reasoning freeze, and the handoff into ticket 03
 - `2026-08-15-chatgpt-code-blocks.md` — ticket 03's private code renderer, lazy syntax highlighting, source-faithful copy behavior, isolated overflow, bundle delta, and the handoff into ticket 04
@@ -162,6 +163,10 @@ Pre-implementation design specs. Consult for product/design rationale.
 ### `docs/superpowers/plans/`
 
 Historical implementation checklists, one per past sprint. **Not active reference.** Consult only when reconstructing how a past implementation was sequenced. For "what was built", prefer the matching handover doc.
+
+### `docs/archive/scratch/`
+
+Frozen PRDs and tickets from the retired `.scratch/` local issue tracker (moved here on 2026-09-26), plus that workflow's `issue-tracker.md` and `triage-labels.md` for reading the ticket `Status:` fields. **Not active reference and no longer a task tracker** — do not create or update tickets here. Consult a PRD or ticket only when a routed handover or plan links to it. Paths inside archived files still use the original `.scratch/` prefix.
 
 ### `docs/deployment.md`
 

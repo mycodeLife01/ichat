@@ -7,7 +7,7 @@
 
 日期：2026-07-13
 分支：`feat/email-verification`
-需求来源：`.scratch/password-reset-account-deletion/PRD.md`
+需求来源：`docs/archive/scratch/password-reset-account-deletion/PRD.md`
 基础设施：`docs/handover/2026-06-26-email-verification.md`（通用认证令牌表、email outbox、Redis 限流/冷却）
 决策记录：`docs/adr/2026-07-13-account-deletion-soft-deactivation.md`
 

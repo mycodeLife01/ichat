@@ -15,11 +15,11 @@ issue 04b（kernel 收敛为 building blocks、编排层独立、worker 纯工�
 
 ## 权威材料（不在本文重复）
 
-- **实施依据**：`.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`（目标分层表、AgentEvent 契约、重试/取消机制、验收标准）
+- **实施依据**：`docs/archive/scratch/agent-runtime-refactor/issues/04b-agent-layering.md`（目标分层表、AgentEvent 契约、重试/取消机制、验收标准）
 - **裁决脉络（为什么这么分）**：`docs/handover/2026-07-20-agent-runtime-refactor-04b-decisions.md`
 - **上游交接（本地验证流程、环境注意）**：`docs/handover/2026-07-20-agent-runtime-refactor-issue03-04.md`
 - 模块边界（已描述 04b 目标态）：`docs/architecture/module-boundaries.md`
-- 总 PRD：`.scratch/agent-runtime-refactor/PRD.md`
+- 总 PRD：`docs/archive/scratch/agent-runtime-refactor/PRD.md`
 
 ## 最终落地形态（与 04b issue 一致，仅记差异/要点）
 
@@ -36,7 +36,7 @@ issue 04b（kernel 收敛为 building blocks、编排层独立、worker 纯工�
 
 ## 连带产出
 
-- 新建 `.scratch/agent-runtime-refactor/issues/09-multi-call-usage-undercount.md`：记录既有「多 model call run usage 少计」限制（04b 不修，所有者已裁决保持口径）。
+- 新建 `docs/archive/scratch/agent-runtime-refactor/issues/09-multi-call-usage-undercount.md`：记录既有「多 model call run usage 少计」限制（04b 不修，所有者已裁决保持口径）。
 - 内核纯度**传递性**断言：`tests/agent/test_boundaries.py::test_kernel_does_not_transitively_import_config_db_or_services`（子进程内 import 内核，断言 `sys.modules` 无 config/services/models/db）。
 
 ## 环境状态（重要，与本地验证直接相关）

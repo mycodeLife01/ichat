@@ -8,7 +8,7 @@ PRD 交付一的前两张 ticket（后台任务约定文档、agent 内核类型
 
 ## 权威材料（不在此重复，先读）
 
-- PRD 与全部 ticket：`.scratch/agent-runtime-refactor/PRD.md`、`.scratch/agent-runtime-refactor/issues/01..08-*.md`
+- PRD 与全部 ticket：`docs/archive/scratch/agent-runtime-refactor/PRD.md`、`docs/archive/scratch/agent-runtime-refactor/issues/01..08-*.md`
   - PRD 含**术语表（命名裁决，实施时严格遵守）**与 14 条设计决策，是最高约束。
 - 两个提交的 message 记录了关键实现决策：`git show 06f1784 5505bc8 --stat`
 - 新文档：`docs/architecture/background-tasks.md`（issue 01 产物）

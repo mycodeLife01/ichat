@@ -8,7 +8,7 @@
 内的下载按钮可下载原件。
 
 隐私边界随之变更，已记录为 ADR `0011-grant-attachment-reads-to-public-shares.md`；
-`.scratch/file-upload/issues/10-share-title-privacy.md` 顶部加了修订说明，
+`docs/archive/scratch/file-upload/issues/10-share-title-privacy.md` 顶部加了修订说明，
 `docs/architecture/frontend.md` 附件章节同步更新。**分享 token 现在是附件内容的凭证**，
 泄露 token 等于泄露对应附件原件。
 

@@ -20,7 +20,7 @@
 - Run 执行时由 `resolve_run_model_runtime` 按 `snapshot["upstream"]` 这个 **key** 回查 `model_upstreams.api_key_ciphertext`（`app/services/model_catalog/service.py:202-206`）。
 - 上游行被删除后该查询落空，抛 `ModelCatalogError("Run model upstream no longer exists")`，所有引用它的在途 Run 直接失败。
 
-按 `docs/agents/domain.md` 的 ADR 冲突规则，本轮不静默覆盖该决策，而是以**归档**替代物理删除：行永不删除，凭据始终可解密；归档项从可用目录中消失，达到"从列表里拿掉"的产品目的。该结论记录为新 ADR，并回改上述两处文档。
+按 ADR 冲突规则（见 `AGENTS.md`），本轮不静默覆盖该决策，而是以**归档**替代物理删除：行永不删除，凭据始终可解密；归档项从可用目录中消失，达到"从列表里拿掉"的产品目的。该结论记录为新 ADR，并回改上述两处文档。
 
 已核实**历史** Run 不受影响：ADR 0013 的 Provider 续传亲缘性由 `runs.model_config_snapshot` 推导（`_route_affinity`，`app/services/runs/history.py:204-254`），不 join 实时目录表。
 

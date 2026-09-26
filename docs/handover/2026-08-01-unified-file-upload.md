@@ -1,7 +1,7 @@
 # 统一文件上传与消息附件（交接）
 
 日期：2026-08-01
-需求来源：`.scratch/file-upload/PRD.md`（tickets 01–14）
+需求来源：`docs/archive/scratch/file-upload/PRD.md`（tickets 01–14）
 相关决策：[ADR 0002](../adr/0002-unify-file-assets-and-avatar-uploads.md)、[账户软停用 ADR](../adr/2026-07-13-account-deletion-soft-deactivation.md)
 相关历史交接：[头像直传](2026-07-14-r2-avatar-upload.md)、[账户注销](2026-07-13-password-reset-account-deletion.md)
 

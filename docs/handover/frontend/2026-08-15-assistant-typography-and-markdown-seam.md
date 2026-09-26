@@ -2,13 +2,13 @@
 
 - 日期：2026-08-15
 - 分支：`refactor/ai-chat-render`
-- 范围：`.scratch/refactor-chat-render/` 的 ticket 02；下一步为 ticket 03。
+- 范围：`docs/archive/scratch/refactor-chat-render/` 的 ticket 02；下一步为 ticket 03。
 
 ## 当前状态
 
 Ticket 02 已完成，PRD frontier 已推进到 ticket 03。验收范围、设计决策和完成记录以
-`.scratch/refactor-chat-render/PRD.md` 与
-`.scratch/refactor-chat-render/issues/02-assistant-typography-and-markdown-seam.md` 为准；本交接只记录继续工作所需的上下文。
+`docs/archive/scratch/refactor-chat-render/PRD.md` 与
+`docs/archive/scratch/refactor-chat-render/issues/02-assistant-typography-and-markdown-seam.md` 为准；本交接只记录继续工作所需的上下文。
 
 最终消息、流式正文和公开分享仍共同调用 `frontend/src/messages/Markdown.tsx`。本次没有引入
 `AssistantRenderModel`、后端展示契约或新的调用方 props。
@@ -61,7 +61,7 @@ typecheck、lint 和 build 通过。Ticket 03 增加高亮依赖前的 productio
 
 ## 下一步
 
-从 `.scratch/refactor-chat-render/issues/03-chatgpt-code-blocks.md` 开始。先固定 Markdown 公共 seam
+从 `docs/archive/scratch/refactor-chat-render/issues/03-chatgpt-code-blocks.md` 开始。先固定 Markdown 公共 seam
 下的语言归一化、原始源码复制成功/失败和未知语言降级，再替换私有 code renderer；不要向三个
 调用入口增加 code-specific props，也不要提前实现 ticket 04 的表格/链接交互。
 

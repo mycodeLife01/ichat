@@ -8,11 +8,11 @@ issue 03+04 交付后，所有者评审判定分层不符预期（kernel 含工�
 
 ## 权威材料（不在本文重复）
 
-- **04b issue（本次核心产出，实施依据）**：`.scratch/agent-runtime-refactor/issues/04b-agent-layering.md`——目标分层表、kernel/编排层/worker 范围、AgentEvent 契约、重试/取消机制、验收标准全在其中。
+- **04b issue（本次核心产出，实施依据）**：`docs/archive/scratch/agent-runtime-refactor/issues/04b-agent-layering.md`——目标分层表、kernel/编排层/worker 范围、AgentEvent 契约、重试/取消机制、验收标准全在其中。
 - 领域词汇：`CONTEXT.md`（本次新增「模型调用 vs 轮」，修正「agent 内核」定义）
 - 模块边界：`docs/architecture/module-boundaries.md`（本次修订，**注意：描述的是 04b 目标态，超前于代码现状**，所有者知情认可）
 - 上游交接：`docs/handover/2026-07-20-agent-runtime-refactor-issue03-04.md`（含本地验证流程与环境注意事项，实施时必读）
-- 总 PRD：`.scratch/agent-runtime-refactor/PRD.md`
+- 总 PRD：`docs/archive/scratch/agent-runtime-refactor/PRD.md`
 
 ## 本次会话的关键裁决脉络（issue 里没有的"为什么"）
 

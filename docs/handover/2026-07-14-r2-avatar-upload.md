@@ -7,7 +7,7 @@
 > ticket 15 的 contract 前置生产验证尚未完成，不能据本文删表、撤销旧凭证或移除 fallback。
 
 日期：2026-07-14  
-需求来源：`.scratch/r2-avatar-upload/PRD.md`
+需求来源：`docs/archive/scratch/r2-avatar-upload/PRD.md`
 
 ## 概述
 

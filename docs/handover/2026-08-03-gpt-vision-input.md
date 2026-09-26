@@ -2,7 +2,7 @@
 
 ## 状态与边界
 
-本版本完成 GPT 安全图片输入的软件实现与普通 CI 门禁，但**尚未完成**真实 R2 权限、生产容量、`gpt-5-mini` 效果和灰度验收。真实资源操作属于 `.scratch/gpt-vision-input/issues/11-enable-vision-with-real-resources.md` 的人工步骤。在全部门禁留下可审计结果前，生产必须保持：
+本版本完成 GPT 安全图片输入的软件实现与普通 CI 门禁，但**尚未完成**真实 R2 权限、生产容量、`gpt-5-mini` 效果和灰度验收。真实资源操作属于 `docs/archive/scratch/gpt-vision-input/issues/11-enable-vision-with-real-resources.md` 的人工步骤。在全部门禁留下可审计结果前，生产必须保持：
 
 ```env
 OPENAI_VISION_MODELS=

@@ -4,7 +4,7 @@
 
 分支：`refactor/ai-chat-render`
 
-范围：`.scratch/refactor-chat-render/issues/04-tables-links-and-gfm-surfaces.md`
+范围：`docs/archive/scratch/refactor-chat-render/issues/04-tables-links-and-gfm-surfaces.md`
 
 下一步：ticket 05（流式 prefix 与长回复性能）
 
@@ -87,7 +87,7 @@ pnpm run build
 
 ## Ticket 05 注意事项
 
-下一张 ticket 是 `.scratch/refactor-chat-render/issues/05-streaming-prefix-and-performance.md`。先测量完整 prefix matrix 与 10k/20k/50k 浏览器成本；只有超过性能门时才引入最小视图 batching。
+下一张 ticket 是 `docs/archive/scratch/refactor-chat-render/issues/05-streaming-prefix-and-performance.md`。先测量完整 prefix matrix 与 10k/20k/50k 浏览器成本；只有超过性能门时才引入最小视图 batching。
 
 Ticket 05 不得改 Run reducer、SSE cursor、恢复语义或 `ThinkingBlock`，也不得按空行切 Markdown 或自研增量 AST。后续 delta 还需验证已闭合表格的横向滚动与复制状态不会无故重置。
 
