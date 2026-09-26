@@ -178,17 +178,21 @@ test("lifts with a short, clean animation when motion is allowed", async ({ page
   // Sample the new message's offset on every frame from before the send.
   const samples = page.evaluate(
     () =>
-      new Promise<{ t: number; top: number }[]>((resolve) => {
+      new Promise<{ t: number; top: number; scrollTop: number; earlier: number }[]>((resolve) => {
         const region = document.querySelector<HTMLElement>(".thread-region")!;
-        const out: { t: number; top: number }[] = [];
+        const out: { t: number; top: number; scrollTop: number; earlier: number }[] = [];
         const start = performance.now();
+        const previous = [...document.querySelectorAll<HTMLElement>(".thread-stage .msg")].pop()!;
         const frame = (now: number) => {
           const users = [...document.querySelectorAll<HTMLElement>(".thread-stage .msg.user")];
           const user = users.find((node) => node.textContent?.includes("动画问题"));
           if (user) {
+            const regionTop = region.getBoundingClientRect().top;
             out.push({
               t: now,
-              top: user.getBoundingClientRect().top - region.getBoundingClientRect().top,
+              top: user.getBoundingClientRect().top - regionTop,
+              scrollTop: region.scrollTop,
+              earlier: previous.getBoundingClientRect().top - regionTop,
             });
           }
           if (now - start < 1500) requestAnimationFrame(frame);
@@ -211,12 +215,17 @@ test("lifts with a short, clean animation when motion is allowed", async ({ page
   expect(duration).toBeGreaterThanOrEqual(350);
   expect(duration).toBeLessThanOrEqual(470);
 
-  // Monotonic travel with no overshoot, then it stays put.
+  // Monotonic travel with no overshoot, then it stays put; earlier messages
+  // travel with it.
   for (let index = moving; index < frames.length; index += 1) {
     expect(frames[index]!.top).toBeLessThanOrEqual(frames[index - 1]!.top + 0.5);
     expect(frames[index]!.top).toBeGreaterThanOrEqual(gap - 1);
+    expect(frames[index]!.earlier).toBeLessThanOrEqual(frames[index - 1]!.earlier + 0.5);
   }
   expect(Math.abs(frames[frames.length - 1]!.top - gap)).toBeLessThanOrEqual(1);
+  // The motion is a compositor transform: scrollTop is written once, not per
+  // frame, so main-thread load and pixel snapping cannot make it stutter.
+  expect(new Set(frames.slice(moving).map((frame) => frame.scrollTop)).size).toBe(1);
 });
 
 test("a follow-up send without scrolling only pushes the current turn upward", async ({ page }) => {
@@ -232,16 +241,18 @@ test("a follow-up send without scrolling only pushes the current turn upward", a
 
   const samples = page.evaluate(
     () =>
-      new Promise<{ scrollTop: number; top: number | null }[]>((resolve) => {
+      new Promise<{ earlier: number; top: number | null }[]>((resolve) => {
         const region = document.querySelector<HTMLElement>(".thread-region")!;
-        const out: { scrollTop: number; top: number | null }[] = [];
+        const out: { earlier: number; top: number | null }[] = [];
         const start = performance.now();
+        const previous = [...document.querySelectorAll<HTMLElement>(".thread-stage .msg.user")].pop()!;
         const frame = (now: number) => {
           const users = [...document.querySelectorAll<HTMLElement>(".thread-stage .msg.user")];
           const user = users.find((node) => node.textContent?.includes("第二问"));
+          const regionTop = region.getBoundingClientRect().top;
           out.push({
-            scrollTop: region.scrollTop,
-            top: user ? user.getBoundingClientRect().top - region.getBoundingClientRect().top : null,
+            earlier: previous.getBoundingClientRect().top - regionTop,
+            top: user ? user.getBoundingClientRect().top - regionTop : null,
           });
           if (now - start < 1200) requestAnimationFrame(frame);
           else resolve(out);
@@ -252,15 +263,16 @@ test("a follow-up send without scrolling only pushes the current turn upward", a
   await send(page, "第二问");
   const frames = await samples;
   console.log(
-    `[${test.info().project.name}] follow-up scrollTop`,
-    frames.filter((_, index) => index % 3 === 0).map((f) => `${Math.round(f.scrollTop)}/${f.top === null ? "-" : Math.round(f.top)}`).join(" "),
+    `[${test.info().project.name}] follow-up earlier/new top`,
+    frames.filter((_, index) => index % 3 === 0).map((f) => `${Math.round(f.earlier)}/${f.top === null ? "-" : Math.round(f.top)}`).join(" "),
   );
 
-  // The viewport never moves back into earlier content: it only travels down.
+  // The view never moves back into earlier content: the previous turn only
+  // travels up and off the top.
   for (let index = 1; index < frames.length; index += 1) {
-    expect(frames[index]!.scrollTop).toBeGreaterThanOrEqual(frames[index - 1]!.scrollTop - 0.5);
+    expect(frames[index]!.earlier).toBeLessThanOrEqual(frames[index - 1]!.earlier + 0.5);
   }
-  expect(frames[0]!.scrollTop).toBeGreaterThanOrEqual(before.scrollTop - 0.5);
+  expect(frames[0]!.earlier).toBeLessThanOrEqual(before.userTop + 0.5);
   const last = frames[frames.length - 1]!;
   expect(Math.abs(last.top! - anchorGap(page))).toBeLessThanOrEqual(2);
 });

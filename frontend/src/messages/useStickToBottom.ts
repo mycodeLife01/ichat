@@ -18,7 +18,7 @@ const MOBILE_QUERY = "(max-width: 760px)";
 // The lift to a new turn is a short, front-loaded ease-out so it reads as a
 // snap rather than the browser's distance-scaled smooth-scroll glide.
 const ANCHOR_ANIMATION_MS = 440;
-const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+const EASE_OUT_CUBIC = "cubic-bezier(0.33, 1, 0.68, 1)";
 
 export function distanceFromBottom(el: Metrics): number {
   return el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -52,8 +52,14 @@ function toScrollY(el: HTMLElement, y: number): number {
   return y - el.getBoundingClientRect().top + el.scrollTop;
 }
 
-function stageTop(el: HTMLElement, stage: HTMLElement): number {
-  return toScrollY(el, stage.getBoundingClientRect().top);
+function stageTop(el: HTMLElement, stage: HTMLElement, shift = 0): number {
+  return toScrollY(el, stage.getBoundingClientRect().top) - shift;
+}
+
+// Current translateY of an element, including a running animation.
+function translateY(node: HTMLElement): number {
+  const transform = getComputedStyle(node).transform;
+  return !transform || transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
 }
 
 function anchorGap(): number {
@@ -95,7 +101,7 @@ export function useStickToBottom<T extends HTMLElement>(
   const armedFrom = useRef<{ key: string | null } | null>(null);
   const reserve = useRef<number | null>(null);
   const animatingTo = useRef<number | null>(null);
-  const animationFrame = useRef<number | null>(null);
+  const lift = useRef<{ animation: Animation; start: number } | null>(null);
   const resizeObserver = useRef<ResizeObserver | null>(null);
   const searchPaused = useRef(false);
   const scrollingToBottom = useRef(false);
@@ -164,23 +170,47 @@ export function useStickToBottom<T extends HTMLElement>(
     prevTop.current = el.scrollTop;
   };
 
-  const anchorTop = (el: HTMLElement, current: Anchor): number => {
+  // Stage content measured mid-lift is displaced by the lift's translateY.
+  const liftShift = (): number =>
+    lift.current && stageRef.current ? translateY(stageRef.current) : 0;
+
+  const anchorTop = (el: HTMLElement, current: Anchor, shift = 0): number => {
     const rect = current.target.getBoundingClientRect();
     const gap = anchorGap();
     const visible = el.clientHeight - footerHeight();
     return Math.max(
       0,
-      current.fixedTop ?? toScrollY(el, rect.top) - gap,
-      toScrollY(el, rect.bottom) - (visible - REPLY_PEEK),
+      current.fixedTop ?? toScrollY(el, rect.top) - shift - gap,
+      toScrollY(el, rect.bottom) - shift - (visible - REPLY_PEEK),
     );
   };
 
-  // Stage height that lets the viewport rest at `top`. While a lift is in
-  // flight it also covers the current position, so the browser never clamps
-  // scrollTop back into earlier content mid-motion.
-  const reserveFor = (el: HTMLElement, stage: HTMLElement, top: number): number => {
-    const hold = animatingTo.current !== null ? Math.max(top, el.scrollTop) : top;
-    return Math.max(0, hold + el.clientHeight - footerHeight() - stageTop(el, stage));
+  // Stage height that lets the viewport rest at `top`.
+  const reserveFor = (el: HTMLElement, stage: HTMLElement, top: number, shift = 0): number =>
+    Math.max(0, top + el.clientHeight - footerHeight() - stageTop(el, stage, shift));
+
+  // The lift jumps scrollTop to its target once and eases the stage in with a
+  // compositor-driven transform. Per-frame scrollTop writes stutter on phones:
+  // they compete with streaming renders on the main thread and snap to device
+  // pixels, which shakes the text above the new turn.
+  const startLift = (el: HTMLElement, from: number, to: number, duration: number) => {
+    const stage = stageRef.current!;
+    lift.current?.animation.cancel();
+    animatingTo.current = to;
+    setTop(el, to);
+    const animation = stage.animate(
+      [{ transform: `translateY(${to - from}px)` }, { transform: "translateY(0)" }],
+      { duration, easing: EASE_OUT_CUBIC },
+    );
+    lift.current = { animation, start: performance.now() };
+    animation.onfinish = () => {
+      if (lift.current?.animation !== animation) return;
+      lift.current = null;
+      animatingTo.current = null;
+      // Trim the in-flight reserve to exactly what the landed anchor needs.
+      if (mode.current === "anchored") holdAnchor(el);
+      syncScrollFromBottom(el);
+    };
   };
 
   // Keeps the stage tall enough for the anchor and the viewport on it.
@@ -189,53 +219,46 @@ export function useStickToBottom<T extends HTMLElement>(
     const stage = stageRef.current;
     // A scrollport without layout (hidden, or jsdom) has nothing to align.
     if (!current || !stage || el.clientHeight === 0) return;
-    const top = anchorTop(el, current);
-    setReserve(reserveFor(el, stage, top));
-    if (animatingTo.current !== null) {
-      // The running lift picks up the new target on its next frame.
-      animatingTo.current = top;
+    const shift = liftShift();
+    const onScreen = el.scrollTop - shift;
+    const top = anchorTop(el, current, shift);
+    setReserve(reserveFor(el, stage, top, shift));
+    const running = lift.current;
+    if (running && animatingTo.current !== null) {
+      // Late layout moved the target mid-lift: continue from what is on
+      // screen now toward the new target over the remaining time.
+      if (Math.abs(animatingTo.current - top) >= 1) {
+        const elapsed = performance.now() - running.start;
+        startLift(el, onScreen, top, Math.max(1, ANCHOR_ANIMATION_MS - elapsed));
+      }
     } else if (Math.abs(el.scrollTop - top) >= 1) {
       setTop(el, top);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stopAnimation = () => {
+  // Ends a running lift. With a scrollport, whatever is on screen becomes the
+  // real scroll position so an interrupting gesture continues from there.
+  const stopAnimation = (el?: HTMLElement) => {
+    const running = lift.current;
+    if (running) {
+      const shift = liftShift();
+      lift.current = null;
+      running.animation.cancel();
+      if (el && Math.abs(shift) >= 0.5) setTop(el, el.scrollTop - shift);
+    }
     animatingTo.current = null;
-    if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
-    animationFrame.current = null;
   };
 
-  const animateTo = (el: HTMLElement, top: number) => {
-    const from = el.scrollTop;
-    const start = performance.now();
-    animatingTo.current = top;
-    const step = (now: number) => {
-      const target = animatingTo.current;
-      if (target === null) return;
-      const progress = Math.min(1, Math.max(0, (now - start) / ANCHOR_ANIMATION_MS));
-      setTop(el, from + (target - from) * easeOutCubic(progress));
-      if (progress < 1) {
-        animationFrame.current = requestAnimationFrame(step);
-        return;
-      }
-      stopAnimation();
-      // Trim the in-flight reserve to exactly what the landed anchor needs.
-      if (mode.current === "anchored") holdAnchor(el);
-      syncScrollFromBottom(el);
-    };
-    animationFrame.current = requestAnimationFrame(step);
-  };
-
-  const clearAnchor = () => {
-    stopAnimation();
+  const clearAnchor = (el?: HTMLElement) => {
+    stopAnimation(el);
     const target = anchor.current?.target;
     if (target) resizeObserver.current?.unobserve(target);
     anchor.current = null;
   };
 
   const leaveAnchor = (next: Mode, el: HTMLElement) => {
-    if (mode.current === "anchored") clearAnchor();
+    if (mode.current === "anchored") clearAnchor(el);
     mode.current = next;
     if (next !== "anchored") releaseReserve(el);
   };
@@ -251,7 +274,7 @@ export function useStickToBottom<T extends HTMLElement>(
     // The previous turn's reserve stays until the new one replaces it: dropping
     // it first would clamp scrollTop back into earlier content, and the lift
     // would then replay that content instead of just pushing this turn up.
-    clearAnchor();
+    clearAnchor(el);
     mode.current = "anchored";
     scrollingToBottom.current = false;
     setShowScrollToBottom(false);
@@ -267,16 +290,14 @@ export function useStickToBottom<T extends HTMLElement>(
     };
     resizeObserver.current?.observe(target);
     const top = anchorTop(el, anchor.current);
+    setReserve(reserveFor(el, stage, top));
     if (
       !prefersReducedMotion() &&
-      typeof requestAnimationFrame === "function" &&
+      typeof stage.animate === "function" &&
       Math.abs(el.scrollTop - top) >= 1
     ) {
-      animatingTo.current = top;
-      setReserve(reserveFor(el, stage, top));
-      animateTo(el, top);
+      startLift(el, el.scrollTop, top, ANCHOR_ANIMATION_MS);
     } else {
-      setReserve(reserveFor(el, stage, top));
       setTop(el, top);
     }
   };
@@ -315,7 +336,7 @@ export function useStickToBottom<T extends HTMLElement>(
     const onGesture = () => {
       onUserIntent();
       if (animatingTo.current === null) return;
-      stopAnimation();
+      stopAnimation(el);
       leaveAnchor("free", el);
     };
     el.addEventListener("scroll", onScroll);
@@ -336,8 +357,8 @@ export function useStickToBottom<T extends HTMLElement>(
   useEffect(
     () => () => {
       animatingTo.current = null;
-      const frame = animationFrame.current;
-      if (frame !== null) cancelAnimationFrame(frame);
+      lift.current?.animation.cancel();
+      lift.current = null;
     },
     [],
   );
