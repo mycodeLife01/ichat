@@ -30,7 +30,11 @@ import {
   fileCapability,
   fileAttachment,
   imageAttachment,
+  longRawReasoning,
+  longSummaryReasoning,
   message,
+  toolReasoningSegments,
+  toolSearchCalls,
   models,
   sources,
 } from "../scenarios/data";
@@ -143,7 +147,11 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     initialRun(scene.initial),
   );
   const [playing, setPlaying] = useState(false);
-  const [step, setStep] = useState(0);
+  const script = reasoningScript(scene.initial);
+  const reasoningSteps = script ? script.frames.length : 3;
+  const [step, setStep] = useState(() =>
+    script ? script.startStep : 0,
+  );
   const seq = useRef(0);
   const alive = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -260,7 +268,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
       setAttachments([]);
       setQuote(null);
       setStep(0);
-      setRun({ ...initialRun("thinking")!, conversationId: id });
+      setRun({ ...startRun(scene.initial), conversationId: id });
       setPlaying(true);
     } catch {
       if (!alive.current || ticket !== seq.current) return;
@@ -284,17 +292,25 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
   }, [playing, advance]);
   useEffect(() => {
     if (step === 0 || !run) return;
-    if (step < 4)
+    if (step <= reasoningSteps)
       setRun((r) =>
         r
           ? {
               ...r,
               streamPhase: "reasoning",
-              draftReasoning: "正在整理界面、状态和交互。".slice(0, step * 5),
+              toolState: null,
+              ...(script
+                ? scriptFrame(script, step)
+                : {
+                    draftReasoning: "正在整理界面、状态和交互。".slice(
+                      0,
+                      step * 5,
+                    ),
+                  }),
             }
           : r,
       );
-    else if (step < 28)
+    else if (step < reasoningSteps + 25)
       setRun((r) =>
         r
           ? {
@@ -302,7 +318,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
               streamPhase: "text",
               draftText: answer.slice(
                 0,
-                Math.ceil((answer.length * (step - 3)) / 24),
+                Math.ceil((answer.length * (step - reasoningSteps)) / 24),
               ),
             }
           : r,
@@ -321,7 +337,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
               c.messages.length + 1,
             ),
             conversation_id: c.id,
+            run_id: run.runId,
             reasoning: run.draftReasoning,
+            reasoning_summary: run.draftReasoningSummary || null,
           },
         ],
       }));
@@ -344,7 +362,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
             ++seq.current;
             setStep(0);
             setRun({
-              ...initialRun("thinking")!,
+              ...startRun(scene.initial),
               conversationId: selectedId ?? "design-chat",
             });
           }
@@ -356,7 +374,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         case "step":
           if (!run) {
             ++seq.current;
-            setRun(initialRun("thinking"));
+            setRun(startRun(scene.initial));
             setStep(0);
           } else advance();
           break;
@@ -367,7 +385,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     };
     window.addEventListener("message", control);
     return () => window.removeEventListener("message", control);
-  }, [advance, run, services, selectedId]);
+  }, [advance, run, services, selectedId, scene.initial]);
   const search: SearchCallback = useCallback(
     async (params, signal) => {
       await services.outcomes.run("search", null);
@@ -918,7 +936,122 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     </div>
   );
 }
+const REASONING_CHUNK = 14;
+// Long-reasoning scenes open mid-stream so the bounded preview is already
+// overflowing; play continues from there.
+const LONG_REASONING_START = 0.45;
+// Steps a web_search stays running, then shows its result, before the model
+// resumes reasoning.
+const TOOL_RUNNING_STEPS = 10;
+const TOOL_RESULT_STEPS = 6;
+type ScriptFrame = {
+  length: number;
+  toolState: NonNullable<ActiveRunState>["toolState"];
+};
+type ReasoningScript = {
+  kind: "raw" | "summary";
+  text: string;
+  frames: ScriptFrame[];
+  // Scenes that open mid-stream start at this step; others start at the top.
+  startStep: number;
+};
+function reasoningScript(phase?: string): ReasoningScript | null {
+  if (phase === "thinking-raw-long")
+    return chunkedScript("raw", longRawReasoning);
+  if (phase === "thinking-summary-long")
+    return chunkedScript("summary", longSummaryReasoning);
+  if (phase === "thinking-tool") return toolScript();
+  return null;
+}
+function reasoningFrames(from: number, to: number): ScriptFrame[] {
+  const frames: ScriptFrame[] = [];
+  for (let end = from + REASONING_CHUNK; end < to + REASONING_CHUNK; end += REASONING_CHUNK)
+    frames.push({ length: Math.min(end, to), toolState: null });
+  return frames;
+}
+function chunkedScript(kind: "raw" | "summary", text: string): ReasoningScript {
+  const frames = reasoningFrames(0, text.length);
+  return {
+    kind,
+    text,
+    frames,
+    startStep: Math.floor(frames.length * LONG_REASONING_START),
+  };
+}
+// Reasoning → web_search running → result → reasoning resumes, mirroring the
+// reducer: a tool event switches the phase to "tool" and the next reasoning
+// delta clears the tool state.
+function toolScript(): ReasoningScript {
+  const frames: ScriptFrame[] = [];
+  let length = 0;
+  toolReasoningSegments.forEach((segment, index) => {
+    const separator = index === 0 ? "" : "\n\n";
+    frames.push(...reasoningFrames(length, length + separator.length + segment.length));
+    length += separator.length + segment.length;
+    const call = toolSearchCalls[index];
+    if (!call) return;
+    const base = {
+      tool_name: "web_search",
+      query: call.query,
+      message: null,
+    };
+    for (let i = 0; i < TOOL_RUNNING_STEPS; i++)
+      frames.push({
+        length,
+        toolState: { ...base, status: "running", result_count: null, sources: [] },
+      });
+    for (let i = 0; i < TOOL_RESULT_STEPS; i++)
+      frames.push({
+        length,
+        toolState: {
+          ...base,
+          status: "succeeded",
+          result_count: call.sources.length,
+          sources: call.sources,
+        },
+      });
+  });
+  return {
+    kind: "raw",
+    text: toolReasoningSegments.join("\n\n"),
+    frames,
+    // Open on the first running search so the static scene shows the tool
+    // label over live reasoning; play continues through both searches.
+    startStep: frames.findIndex((frame) => frame.toolState) + 1 + 3,
+  };
+}
+function scriptFrame(script: ReasoningScript, step: number) {
+  const frame = script.frames[Math.min(step, script.frames.length) - 1];
+  return {
+    ...reasoningDraft(script, frame.length),
+    ...(frame.toolState
+      ? { streamPhase: "tool" as const, toolState: frame.toolState }
+      : {}),
+  };
+}
+function reasoningDraft(script: ReasoningScript, length: number) {
+  const text = script.text.slice(0, length);
+  return script.kind === "raw"
+    ? { draftReasoning: text, draftReasoningSummary: "" }
+    : { draftReasoning: "", draftReasoningSummary: text };
+}
+let designRunSeq = 0;
+function startRun(phase?: string): NonNullable<ActiveRunState> {
+  // Each played run gets its own id so per-run UI handoff never leaks into
+  // the next reply.
+  const run = { ...initialRun("thinking")!, runId: `design-run-${++designRunSeq}` };
+  return reasoningScript(phase)
+    ? { ...run, draftReasoning: "", draftReasoningSummary: "" }
+    : run;
+}
 function initialRun(phase?: string): ActiveRunState {
+  const script = reasoningScript(phase);
+  if (script) {
+    return {
+      ...initialRun("thinking")!,
+      ...scriptFrame(script, script.startStep),
+    };
+  }
   if (
     !["thinking", "tool", "streaming", "failed", "cancelled"].includes(
       phase ?? "",

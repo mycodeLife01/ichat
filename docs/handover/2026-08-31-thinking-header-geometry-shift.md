@@ -40,7 +40,7 @@
 ## 防再犯规则
 
 1. **锚定行几何无条件**:任何由流式 delta 翻转的布尔(`hasContent` / `hasVisibleText` / `toolState !== null` / `open` …)不得切换已渲染锚定元素(header / label / 行盒)自身的 `height` / `padding` / `margin-top`。条件类只允许作用于锚定行**下方**(`margin-bottom`)或内容 body。
-2. **接线变更后必测几何**:改 `StreamingMessage → ThinkingBlock` 的任何 props(`content` / `label` / `autoExpandWhileStreaming` / `showStreamingPreview`)、新增 `streamPhase`、或改 `reasoningPreview` 返回非空的时机后,跑下文「真实 Chrome 几何测量」,确认全 phase 标签 top 恒定。
+2. **接线变更后必测几何**:改 `StreamingMessage → ThinkingBlock` 的任何 props(`content` / `streaming` / `label` / `handoffKey`)、新增 `streamPhase`、或改 `reasoningPreview` 返回非空的时机后,跑下文「真实 Chrome 几何测量」,确认全 phase 标签 top 恒定。
 3. **不要用测试固化偶然布局**:修复前 `ThinkingBlock.test.tsx` 有一条断言空态含 `h-7` 的测试——它把有 bug 的双几何**编码成了预期行为**。断言应面向不变量(「跨状态切换几何不变」),而不是某个状态下的偶然 class。现在的测试 `"keeps the streaming header geometry stable across the first reasoning delta"` 就是这个写法(rerender 前后 header 行 className 逐字不变、根节点无 `h-7` 含 `py-0.5`)。
 4. **同类风险点**(改这些时同样要测):`open`/`autoExpand` 的展开收起(已有注释说明 `mb-3.5` 不影响 label)、`StreamingMessage` 中 thinking 块的挂载/卸载(已有 leading-whitespace handoff 注释)、`streamPhase` 新增取值。
 

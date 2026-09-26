@@ -30,6 +30,10 @@ function run(overrides: Partial<NonNullable<ActiveRunState>>): NonNullable<Activ
   };
 }
 
+function viewport(container: HTMLElement) {
+  return container.querySelector(".thinking-window");
+}
+
 describe("StreamingMessage", () => {
   it("shows 正在思考 before the first stream event arrives", () => {
     render(<StreamingMessage run={run({ status: "started" })} />);
@@ -71,13 +75,14 @@ describe("StreamingMessage", () => {
     );
   });
 
-  it("shows raw reasoning behind a generic thinking label", () => {
-    render(<StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />);
-    expect(screen.getByRole("button", { name: /正在思考/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
+  it("shows raw reasoning in the viewport behind a generic thinking label", () => {
+    const { container } = render(
+      <StreamingMessage run={run({ draftReasoning: "在想", status: "streaming" })} />,
     );
-    expect(screen.getByText("在想")).not.toHaveClass("hidden");
+    const header = screen.getByRole("button", { name: /正在思考/ });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).not.toHaveTextContent("在想");
+    expect(viewport(container)).toHaveTextContent("在想");
   });
 
   it("keeps a titleless reasoning summary behind the generic thinking label", () => {
@@ -92,15 +97,14 @@ describe("StreamingMessage", () => {
     );
 
     const header = screen.getByRole("button", { name: /正在思考/ });
-    const body = container.querySelector(".thinking-body");
     expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(header).not.toHaveTextContent(summary);
-    expect(body).toHaveClass("hidden");
-    expect(body?.textContent).toBe(summary);
+    expect(header).not.toHaveTextContent("军事体制");
+    expect(container.querySelector(".thinking-body")).toBeNull();
+    expect(viewport(container)).toHaveTextContent("分析内容。");
   });
 
-  it("auto-expands DeepSeek raw reasoning behind the generic thinking label", () => {
-    render(
+  it("mirrors DeepSeek raw reasoning in the viewport behind the generic thinking label", () => {
+    const { container } = render(
       <StreamingMessage
         run={run({
           providerName: "deepseek",
@@ -111,13 +115,13 @@ describe("StreamingMessage", () => {
     );
 
     const header = screen.getByRole("button", { name: /正在思考/ });
-    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).toHaveAttribute("aria-expanded", "false");
     expect(header).not.toHaveTextContent("正在逐步推导答案");
-    expect(screen.getByText("正在逐步推导答案")).not.toHaveClass("hidden");
+    expect(viewport(container)).toHaveTextContent("正在逐步推导答案");
   });
 
-  it("auto-expands recovered DeepSeek reasoning behind the thinking label", () => {
-    render(
+  it("mirrors recovered DeepSeek reasoning in the viewport behind the thinking label", () => {
+    const { container } = render(
       <StreamingMessage
         run={run({
           providerName: "deepseek",
@@ -128,9 +132,8 @@ describe("StreamingMessage", () => {
     );
 
     const header = screen.getByRole("button", { name: /正在思考/ });
-    expect(header).toHaveAttribute("aria-expanded", "true");
     expect(header).not.toHaveTextContent("刷新前已经生成的思考过程");
-    expect(screen.getByText("刷新前已经生成的思考过程")).not.toHaveClass("hidden");
+    expect(viewport(container)).toHaveTextContent("刷新前已经生成的思考过程");
   });
 
   it("collapses reasoning above the formal answer instead of removing it", () => {
@@ -145,7 +148,7 @@ describe("StreamingMessage", () => {
       />,
     );
     expect(screen.getByText("正式回答")).toBeInTheDocument();
-    expect(screen.getByText("收起的思考")).toHaveClass("hidden");
+    expect(screen.queryByText("收起的思考")).toBeNull();
     expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -153,7 +156,7 @@ describe("StreamingMessage", () => {
   });
 
   it("keeps reasoning visible while the first answer delta is only whitespace", () => {
-    render(
+    const { container } = render(
       <StreamingMessage
         run={run({
           providerName: "deepseek",
@@ -164,11 +167,8 @@ describe("StreamingMessage", () => {
       />,
     );
 
-    expect(screen.getByText("仍在展示的思考")).not.toHaveClass("hidden");
-    expect(screen.getByRole("button", { name: /正在思考/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(viewport(container)).toHaveTextContent("仍在展示的思考");
+    expect(screen.getByRole("button", { name: /正在思考/ })).toBeInTheDocument();
   });
 
   it("surfaces web search phases in the collapsible header and shows no preview box", () => {
@@ -230,9 +230,8 @@ describe("StreamingMessage", () => {
     );
     expect(screen.getByRole("button", { name: /分析来源/ })).toBeInTheDocument();
     expect(screen.queryByText("已找到 5 个来源")).toBeNull();
-    expect(container.querySelector(".thinking-body")).toHaveTextContent(
-      "**分析来源** 正在核对",
-    );
+    // The headline owns the header, so the viewport keeps only its prose.
+    expect(viewport(container)?.textContent).toBe("正在核对");
     expect(screen.queryByText("不应作为预览显示的完整过程")).toBeNull();
   });
 
@@ -280,9 +279,8 @@ describe("StreamingMessage", () => {
     );
     expect(screen.getByRole("button", { name: /正在思考/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /已思考/ })).toBeNull();
-    const body = container.querySelector(".thinking-body");
-    expect(body).toHaveClass("hidden");
-    expect(body?.textContent).toBe(resumedSummary);
+    expect(container.querySelector(".thinking-body")).toBeNull();
+    expect(viewport(container)?.textContent).toBe(resumedSummary);
   });
 
   it("keeps the running tool label above earlier reasoning", () => {

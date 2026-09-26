@@ -238,9 +238,12 @@ test("loads every assistant-rendering surface and writes diagnostic artifacts", 
     '[data-thinking-state="collapsed"] [role="button"]',
   );
   await expect(collapsedThinking).toHaveAttribute("aria-expanded", "false");
-  await expect(
-    page.locator('[data-thinking-state="expanded"] [role="button"]'),
-  ).toHaveAttribute("aria-expanded", "true");
+  const previewThinking = page.locator('[data-thinking-state="preview"]');
+  await expect(previewThinking.locator('[role="button"]')).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(previewThinking.locator(".thinking-window")).toContainText("第二步组织回答");
   await collapsedThinking.click();
   await expect(collapsedThinking).toHaveAttribute("aria-expanded", "true");
   await expect(
