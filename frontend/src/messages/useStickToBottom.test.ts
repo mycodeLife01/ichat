@@ -1,6 +1,6 @@
 import { useLayoutEffect } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   isNearBottom,
@@ -176,5 +176,254 @@ describe("useStickToBottom", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("send-anchored turns", () => {
+    const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+    // jsdom has no matchMedia; each test declares which queries match.
+    function mediaMatches(...queries: string[]) {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: (query: string) => ({ matches: queries.includes(query), media: query }) as MediaQueryList,
+      });
+    }
+    // Instant lifts keep the geometry assertions synchronous.
+    beforeEach(() => mediaMatches(REDUCED_MOTION));
+    afterEach(() => {
+      delete (window as { matchMedia?: unknown }).matchMedia;
+    });
+
+    // A minimal layout model for jsdom: the stage holds the thread content
+    // (natural height `content`) and grows to its inline min-height; the
+    // sticky footer follows it in flow. Rects are derived from scrollTop.
+    function layout({
+      content,
+      userTop,
+      userHeight = 40,
+      clientHeight = 800,
+      footer = 100,
+    }: {
+      content: number;
+      userTop: number;
+      userHeight?: number;
+      clientHeight?: number;
+      footer?: number;
+    }) {
+      const geometry = { content, userTop, userHeight, scrollTop: 0 };
+      const region = document.createElement("div");
+      const stage = document.createElement("div");
+      const inner = document.createElement("div");
+      inner.className = "thread-inner";
+      const userMessage = document.createElement("div");
+      userMessage.className = "msg user";
+      const reply = document.createElement("div");
+      inner.append(userMessage, reply);
+      stage.append(inner);
+      const footerEl = document.createElement("div");
+      region.append(stage, footerEl);
+      const stageHeight = () =>
+        Math.max(geometry.content, Number.parseFloat(stage.style.minHeight) || 0);
+      const scrollHeight = () => Math.max(clientHeight, stageHeight() + footer);
+      const rect = (top: number, bottom: number) =>
+        ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top }) as DOMRect;
+      Object.defineProperties(region, {
+        clientHeight: { get: () => clientHeight },
+        scrollHeight: { get: scrollHeight },
+        scrollTop: {
+          get: () => geometry.scrollTop,
+          set: (value: number) => {
+            geometry.scrollTop = Math.max(0, Math.min(value, scrollHeight() - clientHeight));
+          },
+        },
+      });
+      region.getBoundingClientRect = () => rect(0, clientHeight);
+      region.scrollTo = ((options: ScrollToOptions) => {
+        region.scrollTop = Number(options.top ?? region.scrollTop);
+        region.dispatchEvent(new Event("scroll"));
+      }) as HTMLElement["scrollTo"];
+      stage.getBoundingClientRect = () => rect(-geometry.scrollTop, stageHeight() - geometry.scrollTop);
+      userMessage.getBoundingClientRect = () =>
+        rect(
+          geometry.userTop - geometry.scrollTop,
+          geometry.userTop + geometry.userHeight - geometry.scrollTop,
+        );
+      reply.getBoundingClientRect = () =>
+        rect(geometry.userTop + geometry.userHeight, geometry.content - geometry.scrollTop);
+      Object.defineProperty(footerEl, "offsetHeight", { get: () => footer });
+      const userScroll = (top: number) => {
+        region.scrollTop = top;
+        region.dispatchEvent(new Event("scroll"));
+      };
+      return { geometry, region, stage, footerEl, userScroll, scrollHeight };
+    }
+
+    function mount(model: ReturnType<typeof layout>, forceKey: string | null = "c1") {
+      const hook = renderHook(
+        ({ deps, force, turn }) => useStickToBottom<HTMLElement>(deps, force, turn),
+        {
+          initialProps: {
+            deps: [1] as unknown[],
+            force: forceKey as string | null,
+            turn: "run-1" as string | null,
+          },
+        },
+      );
+      hook.result.current.ref.current = model.region;
+      hook.result.current.stageRef.current = model.stage as HTMLDivElement;
+      hook.result.current.footerRef.current = model.footerEl as HTMLDivElement;
+      hook.rerender({ deps: [2], force: forceKey, turn: "run-1" });
+      return hook;
+    }
+
+    it("lifts the newest user message to the top and holds it while the reply grows", () => {
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      expect(model.region.scrollTop).toBe(1300);
+
+      act(() => hook.result.current.anchorNextTurn());
+      model.geometry.content = 2020;
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(model.stage.style.minHeight).toBe("2560px");
+      expect(hook.result.current.showScrollToBottom).toBe(false);
+
+      // Streaming deltas within the reserve move neither the viewport nor the
+      // scroll height; the materialized Run does not re-anchor.
+      const heightBefore = model.scrollHeight();
+      model.geometry.content = 2400;
+      hook.rerender({ deps: [4], force: "c1", turn: "run-2" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(model.scrollHeight()).toBe(heightBefore);
+
+      // Past the reserve, the reply continues below the fold without following.
+      model.geometry.content = 3200;
+      hook.rerender({ deps: [5], force: "c1", turn: "run-2" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(hook.result.current.showScrollToBottom).toBe(true);
+    });
+
+    it("leaves a larger gap on mobile to clear the floating header controls", () => {
+      mediaMatches(REDUCED_MOTION, "(max-width: 760px)");
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - 60);
+    });
+
+    it("lifts with a short animation that hides the return control until it lands", async () => {
+      mediaMatches();
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      model.geometry.content = 2020;
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      expect(model.region.scrollTop).toBe(1300);
+      expect(hook.result.current.showScrollToBottom).toBe(false);
+      await waitFor(() => expect(model.region.scrollTop).toBe(1900 - 40), { timeout: 3000 });
+      // Its own frames never read as a user scroll leaving the anchor.
+      expect(model.stage.style.minHeight).toBe("2560px");
+
+      model.geometry.content = 3200;
+      hook.rerender({ deps: [4], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(hook.result.current.showScrollToBottom).toBe(true);
+    });
+
+    it("hands the viewport to a gesture during the lift", async () => {
+      mediaMatches();
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      act(() => {
+        model.region.dispatchEvent(new Event("wheel"));
+      });
+      const stopped = model.region.scrollTop;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(model.region.scrollTop).toBe(stopped);
+    });
+
+    it("keeps a turn that already sits in the upper third at its natural position", () => {
+      const model = layout({ content: 300, userTop: 200 });
+      const hook = mount(model);
+
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      expect(model.region.scrollTop).toBe(0);
+      model.geometry.content = 1500;
+      hook.rerender({ deps: [4], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(0);
+    });
+
+    it("keeps the end of an oversized message and the reply start in view", () => {
+      const model = layout({ content: 2700, userTop: 1900, userHeight: 800 });
+      const hook = mount(model);
+
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      // Visible reading area is 700px; the message bottom sits 120px above it.
+      expect(model.region.scrollTop).toBe(2700 - (700 - 120));
+    });
+
+    it("releases the reserve only as the reader scrolls away from it", () => {
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      model.geometry.content = 2100;
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+
+      // The Run finishing changes nothing on its own.
+      hook.rerender({ deps: [4], force: "c1", turn: "run-2" });
+      expect(model.stage.style.minHeight).toBe("2560px");
+
+      act(() => model.userScroll(1700));
+      expect(model.stage.style.minHeight).toBe("2400px");
+      act(() => model.userScroll(1000));
+      expect(model.stage.style.minHeight).toBe("");
+      act(() => model.userScroll(5000));
+      expect(model.region.scrollTop).toBe(2100 + 100 - 800);
+    });
+
+    it("drops the anchor and reserve when entering another conversation", () => {
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+      expect(model.stage.style.minHeight).toBe("2560px");
+
+      hook.rerender({ deps: [4], force: "c2", turn: null });
+      expect(model.stage.style.minHeight).toBe("");
+      expect(model.region.scrollTop).toBe(1300);
+    });
+
+    it("keeps the anchor when a draft conversation is created by its first send", () => {
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model, null);
+      act(() => hook.result.current.anchorNextTurn());
+      hook.rerender({ deps: [3], force: null, turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+
+      hook.rerender({ deps: [4], force: "c-new", turn: "run-2" });
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(model.stage.style.minHeight).toBe("2560px");
+    });
+
+    it("returns to the real end of the content rather than the reserve", () => {
+      const model = layout({ content: 2000, userTop: 1900 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      model.geometry.content = 3200;
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+
+      act(() => hook.result.current.scrollToBottom());
+      return waitFor(() => expect(model.region.scrollTop).toBe(3200 + 100 - 800));
+    });
   });
 });

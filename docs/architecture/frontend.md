@@ -232,8 +232,16 @@ handover 与 ADR；本文只描述前端如何消费这些契约。
   消息正文因此可以延伸到控件下方。底部层与 ChatGPT 一样使用 32px 渐变 mask 和 80% canvas，
   不添加 backdrop blur；离底距离超过 136px 时由 `useStickToBottom` 显示“滚动到底部”控件，
   该按钮自身保留参考中的 2px backdrop blur。
-  点击后恢复 pinned 状态并平滑返回最新消息。该控件必须支持键盘、`prefers-reduced-motion`
+  点击后恢复 bottom 跟随并平滑返回真实内容末尾。该控件必须支持键盘、`prefers-reduced-motion`
   和用户反向滚动中断，不得用单纯的“接近底部”判断覆盖用户阅读意图。
+- `useStickToBottom` 有 `bottom` / `anchored` / `free` 三种模式。发送、重新生成、编辑后重新生成前
+  AppShell 调用 `anchorNextTurn()`，新 Turn 出现时把最后一条用户消息置于可视区顶部（桌面 40px，
+  隐藏上一条回复的操作栏；移动端 60px，避开右上角浮动按钮；与 `.msg` 的 60px scroll-margin
+  相互独立），生成中不跟随流式文本。所需空间由 `.thread-stage` 的 inline `min-height`
+  预留，离开 anchored 后随滚动只缩不涨；按钮阈值、接近底部判断与一键到底都以真实内容末尾为准。
+  进入对话仍定位到底部。设计与验收见
+  [发送后消息置顶滚动](../specs/2026-09-26-send-anchored-scrolling.md)，真实几何由
+  `tests/visual/send-anchor.visual.ts` 覆盖。
 - Tailwind v4 使用 CSS-first 配置。设计 token 和动画放在 `@theme`；共享 utility 组合放在
   `src/ui/classes.ts`；只有 Markdown 产物、伪元素、滚动条、复杂背景等能力保留手写 CSS。
 - 部分语义 class 同时是测试或运行时钩子，样式迁移时先搜索消费者，不能把“无样式”误判为

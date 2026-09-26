@@ -242,17 +242,18 @@ export function AppShell() {
     setComposerValue(value);
     attachmentUploads.setDraftContent(value);
   };
-  // The id of the newest user message in the thread; advances on send and on
-  // edit-and-regenerate (the edited message is re-created with a new id).
-  const lastUserMessageId = detail.messages.filter((m) => m.role === "user").at(-1)?.id;
   // Reasoning/tool deltas intentionally do not drive bottom-sticking: expanding
   // that status block would move its header on every chunk. Formal answer text
-  // still follows the stream, and failures scroll their persistent alert in.
+  // still follows the stream in bottom mode, and failures scroll their
+  // persistent alert in.
   const {
     ref: threadRef,
+    stageRef: threadStageRef,
+    footerRef: threadFooterRef,
     showScrollToBottom,
     scrollToBottom,
     pauseFollowing,
+    anchorNextTurn,
   } = useStickToBottom<HTMLDivElement>(
     [
       detail.messages.length,
@@ -260,11 +261,11 @@ export function AppShell() {
       activeRun?.status === "failed",
       pendingSubmission?.clientId,
     ],
-    // Jump to the bottom unconditionally when entering a conversation or when
-    // the user submits a new message — even if they had scrolled up. Keyed on
-    // the loaded detail plus the pending content so both the optimistic turn
-    // and the server-materialized message move the viewport after rendering.
-    `${detail.conversation?.id}:${lastUserMessageId}:${pendingSubmission?.clientId ?? ""}`,
+    // Jump to the bottom unconditionally when entering a conversation.
+    detail.conversation?.id ?? null,
+    // A new turn appears as an optimistic submission (send) or a new Run
+    // (regenerate / edit); an armed anchor lifts it to the top of the thread.
+    pendingSubmission?.clientId ?? activeRun?.runId ?? null,
   );
   useEffect(() => {
     if (!searchIntent?.item.target || detail.conversation?.id !== searchIntent.item.conversation_id || !threadRef.current) return;
@@ -365,6 +366,7 @@ export function AppShell() {
       }
       setSentImagePreviews(new Map(sentImagePreviewUrlsRef.current));
     }
+    anchorNextTurn();
     void send(text, attachmentIds, optimisticAttachments, submittedReplyQuote).then((sent) => {
       // A rapid duplicate call is ignored while the original submission stays
       // pending; only a real failure clears that state and restores the draft.
@@ -747,7 +749,10 @@ export function AppShell() {
             data-scroll-from-end={showScrollToBottom ? "" : undefined}
             ref={threadRef}
           >
-            <div className="thread-stage flex flex-auto flex-col [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]">
+            <div
+              ref={threadStageRef}
+              className="thread-stage flex flex-auto flex-col [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)]"
+            >
               {!showWelcome && (
                 <SearchRevealContext.Provider value={searchIntent?.item.target?.message_id ?? null}><MessageThread
                   messages={messages}
@@ -759,9 +764,15 @@ export function AppShell() {
                   onEditAndRegenerate={(id, content, attachmentIds) => {
                     setSearchIntent(null);
                     pauseFollowing(false);
+                    anchorNextTurn();
                     void editAndRegenerate(id, content, attachmentIds);
                   }}
-                  onRegenerate={(id) => { setSearchIntent(null); pauseFollowing(false); void regenerate(id); }}
+                  onRegenerate={(id) => {
+                    setSearchIntent(null);
+                    pauseFollowing(false);
+                    anchorNextTurn();
+                    void regenerate(id);
+                  }}
                   legacyMessageId={imageContext.legacy_message_id}
                   onUpgradeLegacy={(messageId) => {
                     const visual = models.find((entry) => entry.supports_image_input);
@@ -774,6 +785,7 @@ export function AppShell() {
                       return;
                     }
                     onModelChange(visual.id);
+                    anchorNextTurn();
                     void regenerate(messageId);
                   }}
                   onEditUpgradeLegacy={() => {
@@ -818,6 +830,7 @@ export function AppShell() {
             </div>
 
             <div
+              ref={threadFooterRef}
               className="thread-bottom-container pointer-events-none sticky bottom-0 z-10 flex w-full shrink-0 flex-col max-[760px]:w-screen"
               data-welcome={showWelcome ? "true" : undefined}
             >

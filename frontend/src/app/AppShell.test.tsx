@@ -1369,7 +1369,7 @@ describe("AppShell", () => {
     expect(within(sentMsg).getByRole("button", { name: "编辑并重发" })).toBeEnabled();
   });
 
-  it("scrolls the thread to the bottom after sending into an existing conversation", async () => {
+  it("does not force the thread to the bottom after sending into an existing conversation", async () => {
     // Existing conversation (id unchanged on send): the scroll must be forced
     // by the new user message itself, not by the enter-conversation jump.
     const titled = { ...conversationResponse, title: "对话A" };
@@ -1419,10 +1419,14 @@ describe("AppShell", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     await screen.findByText("新问题");
-    await waitFor(() => expect(region.scrollTop).toBe(1000));
+    // Sending anchors the new turn instead of forcing the bottom. jsdom has no
+    // layout, so the anchor resolves to the parked position; the real geometry
+    // is covered by tests/visual/send-anchor.visual.ts.
+    await screen.findByText("正在思考");
+    expect(region.scrollTop).toBe(200);
   });
 
-  it("keeps scroll pinned while DeepSeek reasoning expands below the thinking header", async () => {
+  it("keeps the anchored scroll position while DeepSeek reasoning expands below the thinking header", async () => {
     const titled = { ...conversationResponse, title: "对话A" };
     const oldUser: MessageResponse = {
       id: "1", conversation_id: titled.id, run_id: "99", role: "user",
@@ -1485,7 +1489,7 @@ describe("AppShell", () => {
     await user.type(textarea, "新问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
     await screen.findByText("正在思考");
-    await waitFor(() => expect(region.scrollTop).toBe(1000));
+    const anchoredTop = region.scrollTop;
 
     scrollHeight = 1200;
     releaseReasoning();
@@ -1494,7 +1498,7 @@ describe("AppShell", () => {
     const thinkingHeader = screen.getByRole("button", { name: /正在思考/ });
     expect(thinkingHeader).not.toHaveTextContent("新增推理");
 
-    expect(region.scrollTop).toBe(1000);
+    expect(region.scrollTop).toBe(anchoredTop);
   });
 
   it("surfaces a toast when sending fails", async () => {
