@@ -21,6 +21,10 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 - Prefix branch names with a change type or scope such as `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, or `test/`; prefer this style over author or agent prefixes.
 - Use Conventional Commits, for example `fix(frontend): replace share loading text with icon`.
 
+### Subagents
+
+- When running on a Claude model, spawn read-only subagents (such as `Explore` and `Plan`) with the Sonnet 5 model, for example by passing `model: "sonnet"` to the Agent tool.
+
 ### Streaming surfaces
 
 - Streaming anchors that persist across deltas (thinking/tool status headers and their labels) must keep identical vertical geometry in every phase state. Never toggle `height`/`padding`/`margin-top` on an already-rendered row from a stream-derived boolean; conditional classes may only add space below the anchor. Regression timeline and rules: `docs/handover/2026-08-31-thinking-header-geometry-shift.md`.
