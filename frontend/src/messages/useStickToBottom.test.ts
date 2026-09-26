@@ -191,6 +191,8 @@ describe("useStickToBottom", () => {
     beforeEach(() => mediaMatches(REDUCED_MOTION));
     afterEach(() => {
       delete (window as { matchMedia?: unknown }).matchMedia;
+      vi.unstubAllGlobals();
+      document.body.replaceChildren();
     });
 
     // A minimal layout model for jsdom: the stage holds the thread content
@@ -312,39 +314,80 @@ describe("useStickToBottom", () => {
       expect(model.region.scrollTop).toBe(1900 - 60);
     });
 
-    it("lifts with a short animation that hides the return control until it lands", async () => {
+    // jsdom has no Web Animations: a fake lift that the test finishes by hand.
+    function stubLift(stage: HTMLElement) {
+      const lifts: { keyframes: Keyframe[]; duration: number; animation: Animation }[] = [];
+      stage.animate = ((keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
+        const animation = { cancel: vi.fn(), onfinish: null } as unknown as Animation;
+        lifts.push({ keyframes, duration: Number(options.duration), animation });
+        return animation;
+      }) as HTMLElement["animate"];
+      const finish = () => act(() => {
+        const animation = lifts[lifts.length - 1]!.animation;
+        animation.onfinish?.call(animation, {} as AnimationPlaybackEvent);
+      });
+      return { lifts, finish };
+    }
+
+    it("lifts with one scroll write and a transform that eases the stage in", () => {
       mediaMatches();
       const model = layout({ content: 2000, userTop: 1900 });
+      const { lifts, finish } = stubLift(model.stage);
       const hook = mount(model);
       act(() => hook.result.current.anchorNextTurn());
       model.geometry.content = 2020;
       hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
 
-      expect(model.region.scrollTop).toBe(1300);
-      expect(hook.result.current.showScrollToBottom).toBe(false);
-      await waitFor(() => expect(model.region.scrollTop).toBe(1900 - 40), { timeout: 3000 });
-      // Its own frames never read as a user scroll leaving the anchor.
+      // The scrollport lands at once; the stage starts where the old view was.
+      expect(model.region.scrollTop).toBe(1900 - 40);
+      expect(lifts).toHaveLength(1);
+      expect(lifts[0]!.keyframes).toEqual([
+        { transform: "translateY(560px)" },
+        { transform: "translateY(0)" },
+      ]);
+      expect(lifts[0]!.duration).toBe(440);
       expect(model.stage.style.minHeight).toBe("2560px");
 
+      // The return control stays hidden until the lift lands.
       model.geometry.content = 3200;
       hook.rerender({ deps: [4], force: "c1", turn: "pending-1" });
+      expect(hook.result.current.showScrollToBottom).toBe(false);
+      finish();
       expect(model.region.scrollTop).toBe(1900 - 40);
       expect(hook.result.current.showScrollToBottom).toBe(true);
     });
 
-    it("hands the viewport to a gesture during the lift", async () => {
+    it("hands the on-screen position to a gesture during the lift", () => {
       mediaMatches();
+      vi.stubGlobal(
+        "DOMMatrixReadOnly",
+        class {
+          m42: number;
+          constructor(transform: string) {
+            this.m42 = Number(/translateY\((-?[\d.]+)px\)/.exec(transform)?.[1] ?? 0);
+          }
+        },
+      );
       const model = layout({ content: 2000, userTop: 1900 });
+      // Computed styles need a connected tree.
+      document.body.append(model.region);
+      const { lifts } = stubLift(model.stage);
       const hook = mount(model);
       act(() => hook.result.current.anchorNextTurn());
       hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
 
+      // Mid-lift the stage still sits 200px below its landed position.
+      model.stage.style.transform = "translateY(200px)";
       act(() => {
         model.region.dispatchEvent(new Event("wheel"));
       });
-      const stopped = model.region.scrollTop;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(model.region.scrollTop).toBe(stopped);
+      model.stage.style.transform = "";
+      expect(lifts[0]!.animation.cancel).toHaveBeenCalled();
+      expect(model.region.scrollTop).toBe(1900 - 40 - 200);
+
+      model.geometry.content = 3200;
+      hook.rerender({ deps: [4], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - 40 - 200);
     });
 
     it("keeps a turn that already sits in the upper third at its natural position", () => {

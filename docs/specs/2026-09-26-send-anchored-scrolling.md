@@ -29,10 +29,13 @@
 - 移动端键盘、Composer 高度变化、窗口 resize、图片加载、长消息折叠测量（`Message` 在 effect
   中才应用 320px 折叠，首帧高度偏大）都必须在预留期内被重新计算，且画面不跳。
 - 搜索定位与回复引用跳转（`pauseFollowing`）优先级保持不变。
-- `prefers-reduced-motion` 下置顶为瞬时滚动；否则用 `requestAnimationFrame` 驱动 440ms
-  ease-out（cubic）动画，起步快、收尾干脆、无回弹，不使用浏览器原生 smooth scroll（Chromium
-  按距离缩放，约 800px 需 ~460ms，显得拖沓）。动画期间预留变化会让动画直接改向新目标；
-  wheel / touchstart / pointerdown 立即中断动画并交还给用户。
+- `prefers-reduced-motion` 下置顶为瞬时滚动；否则执行 440ms ease-out（cubic）动画，起步快、
+  收尾干脆、无回弹，不使用浏览器原生 smooth scroll（Chromium 按距离缩放，约 800px 需 ~460ms，
+  显得拖沓）。动画实现为：`scrollTop` 一次性写到目标，再对 `.thread-stage` 执行 Web Animations
+  `translateY(目标 - 起点) → 0` 的合成层动画。不要改回逐帧写 `scrollTop`：在真机上它与流式
+  渲染争抢主线程，并按设备像素取整，会让新消息之前的内容抽搐/抖动（模拟器复现不了）。
+  动画期间目标变化时，从当前屏幕位置出发、用剩余时长改向新目标；wheel / touchstart /
+  pointerdown 立即中断动画，把当前屏幕位置换算成真实 `scrollTop` 后交还给用户。
 
 ## 3. 设计
 
@@ -103,7 +106,8 @@ jsdom 只覆盖状态机；几何必须在真实 Chromium 中测（桌面 1440×
 5. 短对话发送：不置顶、无预留。
 6. 进入历史对话仍定位到底部。
 7. 超高用户消息：消息底部与回复开头可见。
-8. 允许动效时，置顶动画从开始移动到落定在 350–470ms 之间，位移单调、无越界回弹。
-9. 置顶后不滚动直接再次发送：整个过程 scrollTop 只增不减（不回滚到更早内容），新消息落在 gap 处。
+8. 允许动效时，置顶动画从开始移动到落定在 350–470ms 之间，新消息与之前的消息位移单调、无越界回弹；
+   动画期间 `scrollTop` 只写一次（合成层动画）。
+9. 置顶后不滚动直接再次发送：上一轮内容在屏幕上只向上移动（不回滚到更早内容），新消息落在 gap 处。
 
 自动化：`useStickToBottom.test.ts`（状态机）、`tests/visual/send-anchor.visual.ts`（真实几何）。
