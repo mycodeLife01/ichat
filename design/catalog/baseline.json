@@ -1,7 +1,7 @@
 {
   "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
   "designCommit": null,
-  "designFingerprint": "47993917606f6a59b57a9af09a0422f04377217943efc49242332c25163df88b",
+  "designFingerprint": "2e6ac8aa12f94f7c59ecf64f07796e6738c17451a2d3d8d930d4db57d1702419",
   "designStatus": "awaiting-user-review",
   "hashes": {
     "src/api/errors.ts": "e74764aa96edec7d6da555748a18701416b30907df85f7fd37385f643b64279f",
@@ -61,7 +61,7 @@
     "src/model-admin/ArchivedList.tsx": "71adaa823ab891d854f802d4d53900b0765f197683c990202b997172f5e3f95b",
     "src/model-admin/catalogView.ts": "e69ebd0f6cf1c7a2eb04c5c6af4e6798413fc30838646d2138d5671c8533d10f",
     "src/model-admin/ModelAdminControls.tsx": "01c2d4d4682ad0cd1580cc8f29f979f43a1a28f415d131b4eaa6322198967a73",
-    "src/model-admin/ModelAdminDashboard.tsx": "2456b5070141465db67d6f8330f55e8537aa40e778afea6472f061be60b1164e",
+    "src/model-admin/ModelAdminDashboard.tsx": "e2c11840f8454869e98de433d2f3df4197a6f750db613832a5ce39c7fee5ff85",
     "src/model-admin/ModelAdminEditors.tsx": "6fee78a52a5ca373ac3f6a8645638d17c70a0cbbc9d319e10eb60583e3d6f862",
     "src/model-admin/ModelAdminPage.tsx": "eaf86a290b95d2fec12c8eb89ac6998594a6fc715587eee725f7492d99eda5f5",
     "src/proposals/registry.ts": "3becd13c49e38b1fdc2d07b078a8254604da423a98672a2d551ddc000fe8343d",

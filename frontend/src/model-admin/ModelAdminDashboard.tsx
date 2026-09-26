@@ -104,7 +104,7 @@ export function ModelAdminDashboard(props: ModelAdminDashboardProps) {
     setSelectedRef(ref);
     setShowDetailOnMobile(true);
     // Narrow screens swap the list for the detail; bring its top into view.
-    if (window.matchMedia("(max-width: 1023px)").matches)
+    if (window.matchMedia?.("(max-width: 1023px)").matches)
       requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" }));
   };
   const switchPane = (next: Pane) => {
