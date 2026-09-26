@@ -23,6 +23,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | History conversation search, search results, or navigation to matching message text | `docs/specs/2026-09-05-conversation-search.md` + `docs/plans/2026-09-05-conversation-search.md` + `docs/handover/2026-09-05-conversation-search.md` + `docs/architecture/frontend.md` + `docs/architecture/module-boundaries.md`; also follow the sidebar and reply-quote rows when touching those surfaces |
 | Refactoring assistant-response rendering, Markdown, reasoning surfaces, or rich message content | `docs/handover/frontend/2026-08-15-chatgpt-response-rendering.md` + `docs/handover/frontend/2026-08-15-chatgpt-ai-response-rendering.md` + `docs/archive/scratch/refactor-chat-render/PRD.md` + `docs/architecture/frontend.md`; also read the matching streaming/search handovers below |
 | Modifying `ThinkingBlock`, the thinking/tool status header, the reasoning preview, or any layout class toggled by stream state | `docs/handover/frontend/2026-09-26-thinking-panel-viewport.md` + `docs/handover/2026-08-31-thinking-header-geometry-shift.md` + `docs/handover/2026-07-31-reasoning-preview-not-showing.md` |
+| Thread scrolling: send-anchored turns, bottom reserve, stick-to-bottom following, or the scroll-to-bottom control | `docs/specs/2026-09-26-send-anchored-scrolling.md` + `docs/architecture/frontend.md`; also follow the streaming-geometry rows when touching stream-derived layout |
 | Reply quotes, assistant text selection, quote-only messages, source navigation, or reply quote drafts/shares | `docs/handover/2026-08-31-reply-quote.md` + `docs/plans/2026-09-05-reply-quote-source-navigation.md` + `docs/plans/2026-09-04-reply-quote-ui-parity.md` + `docs/architecture/frontend.md` + `docs/architecture/overview.md` |
 | Need design rationale (e.g., "why PostgreSQL queue, not Redis?") | `docs/superpowers/specs/` |
 | Deploying or debugging CI/CD | `docs/deployment.md` + `docs/handover/2026-05-18-cicd-and-domain-deployment.md` |
@@ -138,6 +139,7 @@ Goal documents for goal-driven development runs (success criteria + verification
 
 Current feature requirement and design specifications. A design status does not imply implementation or verification is complete.
 
+- `2026-09-26-send-anchored-scrolling.md` — live thread send-anchored scrolling: three scroll modes, anchor position, collapsible bottom reserve, effective bottom, and real-Chromium acceptance; implemented.
 - `2026-09-06-design-workbench.md` — independent React UI design workbench: full frontend coverage, isolated presentation and simulated outcomes, source-version parity evidence, candidate/approval workflow, implementation phases, and readiness gates; pending implementation.
 - `2026-09-05-conversation-search.md` — planned history search: title/body scope, conversation-update ordering, modal/mobile interactions, snippets, navigation and transient match highlighting, implementation validation gates, and acceptance criteria.
 - `2026-08-31-reply-quote.md` — reply quote requirements and implemented behavior, including the later source-navigation extension.
