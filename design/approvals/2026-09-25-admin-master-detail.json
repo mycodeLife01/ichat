@@ -10,7 +10,7 @@
   ],
   "sourceCommit": "63aa959975688b5c4563fde9b76f83e3716186b2",
   "designCommit": null,
-  "designFingerprint": "47993917606f6a59b57a9af09a0422f04377217943efc49242332c25163df88b",
+  "designFingerprint": "2e6ac8aa12f94f7c59ecf64f07796e6738c17451a2d3d8d930d4db57d1702419",
   "implementationCommit": null,
   "evidence": {
     "comparedCandidates": ["admin-master-detail", "admin-segmented", "admin-minimal"],
