@@ -141,6 +141,50 @@ async def test_create_share_snapshot_excludes_internal_ids(
         assert snapshot["messages"][1]["sources"][0]["url"] == "https://x.test"
 
 
+async def test_share_never_exposes_run_timing(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        messages = (
+            await session.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.position.asc())
+            )
+        ).all()
+        run = Run(
+            conversation_id=conversation.id,
+            user_message_id=messages[0].id,
+            status="succeeded",
+            provider_name="fake",
+            provider_model="fake-model",
+            timing={"version": 1, "work_ms": 12_345, "execution_ms": 15_000},
+        )
+        session.add(run)
+        await session.flush()
+        messages[0].run_id = run.id
+        messages[1].run_id = run.id
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+        )
+        await session.commit()
+
+        share = await session.scalar(
+            select(ShareLink).where(ShareLink.conversation_id == conversation.id)
+        )
+        assert share is not None
+        public = await get_public_share(session, token=created.token)
+
+    for message in share.snapshot["messages"]:
+        assert "timing" not in message
+    assert "timing" not in public.model_dump_json()
+    assert "12345" not in public.model_dump_json()
+
+
 async def test_share_snapshot_freezes_reply_quote_with_snapshot_local_source(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

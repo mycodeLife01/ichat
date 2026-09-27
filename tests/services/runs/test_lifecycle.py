@@ -467,6 +467,8 @@ async def test_recover_expired_runs_marks_lease_expired_runs_failed(
         assert live_after is not None
         assert expired_after.status == "failed"
         assert expired_after.error_code == "lease_expired"
+        # No worker finished this run, so there is no measured timing.
+        assert expired_after.timing is None
         assert live_after.status == "streaming"
 
         events = (

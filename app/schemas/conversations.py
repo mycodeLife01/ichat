@@ -144,6 +144,11 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class MessageTimingResponse(BaseModel):
+    # Only the fields the product shows; full phase timing stays server-side.
+    work_ms: int
+
+
 class MessageResponse(BaseModel):
     id: uuid.UUID
     conversation_id: uuid.UUID
@@ -157,6 +162,7 @@ class MessageResponse(BaseModel):
     created_at: datetime
     attachments: list[MessageAttachmentResponse] = Field(default_factory=list)
     reply_quote: ReplyQuoteResponse | None = None
+    timing: MessageTimingResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

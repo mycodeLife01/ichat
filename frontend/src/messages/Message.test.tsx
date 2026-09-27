@@ -269,6 +269,11 @@ describe("Message", () => {
     expect(screen.getByText("我的推理")).toBeInTheDocument();
   });
 
+  it("shows the recorded work time on the completed reasoning header", () => {
+    render(<Message message={{ ...assistantMessage, timing: { work_ms: 83_000 } }} />);
+    expect(screen.getByRole("button", { name: "已思考 1 分 23 秒" })).toBeInTheDocument();
+  });
+
   it("prefers a reasoning summary over raw reasoning", async () => {
     const user = userEvent.setup();
     render(

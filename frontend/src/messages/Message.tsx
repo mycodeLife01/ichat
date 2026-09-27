@@ -479,6 +479,7 @@ export function Message({
             content={displayedReasoning}
             streaming={false}
             handoffKey={message.run_id}
+            workMs={message.timing?.work_ms}
           />
         ) : null}
         {/* Pass the raw (possibly undefined) sources ref, not the `?? []`
