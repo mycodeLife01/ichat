@@ -179,6 +179,10 @@ export type RunToolState = {
   message: string | null;
   result_count: number | null;
   sources: RunToolSource[];
+  // Calls in the current concurrent batch; absent means 1.
+  running_count?: number;
+  // Distinct sources found by the whole concurrent batch; absent for single calls.
+  batch_source_count?: number;
 };
 
 export type ChatModelCapability = {

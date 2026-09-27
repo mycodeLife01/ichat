@@ -93,10 +93,17 @@ function labelForToolState(
   toolState: NonNullable<NonNullable<ActiveRunState>["toolState"]>,
 ): string {
   if (toolState.status === "running") {
+    const count = toolState.running_count ?? 1;
+    if (count > 1) return `正在搜索 ${count} 项`;
     return toolState.query ? `正在搜索 ${toolState.query}` : "正在搜索";
   }
+  // A concurrent batch reports its total, whichever of its calls finished last;
+  // a failed call only shows its message when the batch found nothing.
+  const batchFound = toolState.batch_source_count;
+  if (batchFound !== undefined && batchFound > 0) return `已找到 ${batchFound} 个来源`;
   if (toolState.status === "succeeded") {
-    return `已找到 ${toolState.result_count ?? toolState.sources.length} 个来源`;
+    const found = batchFound ?? toolState.result_count ?? toolState.sources.length;
+    return `已找到 ${found} 个来源`;
   }
   return toolState.message ?? "搜索失败，继续生成";
 }
