@@ -15,11 +15,35 @@ from app.core.config import Settings
 
 _BASE_PROMPT_PATH = Path(__file__).with_name("base_system_prompt.md")
 
-_WEB_SEARCH_GUIDANCE = (
+_WEB_SEARCH_USAGE = (
     "You have a web_search tool. Call it when the answer depends on current, "
     "time-sensitive, or source-backed information — recent events, live data, "
     "prices, releases, or specific URLs and official docs. Skip it for questions "
-    "you can answer reliably from your own knowledge.\n\n"
+    "you can answer reliably from your own knowledge."
+)
+
+# The call budget is per response, so the model must know it before fanning
+# out; calls beyond it are rejected with a tool_call_limit error.
+_WEB_SEARCH_PARALLEL = (
+    "Calls issued in the same turn run in parallel, so when a question has "
+    "independent parts (comparing several products, versions, or entities; "
+    "several unrelated facts), issue one focused query per part in a single turn "
+    "instead of searching one after another. Give each entity or sub-question "
+    "its own query rather than packing several into one. Search sequentially "
+    "only when a query depends on what an earlier result says; when a result "
+    "reveals several items to look up, search them together in the next turn. "
+    "Do not split one question "
+    "into near-duplicate query variants."
+)
+
+# Extra model turns, not tool latency, dominate a searching run's wall time.
+_WEB_SEARCH_STOP = (
+    "The limit is a ceiling, not a target: stop searching as soon as the results "
+    "you have are enough to answer, and do not search again just to double-check "
+    "or to rephrase a query that already returned relevant results."
+)
+
+_CITATION_GUIDANCE = (
     "Citation format (the interface only recognizes this exact form):\n"
     "- When you rely on a search result, cite it inline right after the claim it "
     "supports, using its number in ASCII square brackets: [1].\n"
@@ -61,5 +85,15 @@ def build_system_prompt(
             "identify yourself with this code instead of an upstream model name."
         )
     if web_search_enabled:
-        blocks.append(f"Today's date is {now:%Y-%m-%d} (UTC). {_WEB_SEARCH_GUIDANCE}")
+        max_calls = settings.web_search_max_tool_calls
+        budget = (
+            f"You can make at most {max_calls} web_search calls in this response. "
+            f"{_WEB_SEARCH_STOP}"
+        )
+        if max_calls > 1:
+            budget = f"{budget} {_WEB_SEARCH_PARALLEL}"
+        blocks.append(
+            f"Today's date is {now:%Y-%m-%d} (UTC). {_WEB_SEARCH_USAGE}\n\n"
+            f"{budget}\n\n{_CITATION_GUIDANCE}"
+        )
     return "\n\n".join(blocks)
