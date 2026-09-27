@@ -255,10 +255,90 @@ async def test_get_run_state_aggregates_succeeded_tool_sources(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()["data"]
     assert data["tool_state"]["status"] == "running"
+    assert data["tool_state"]["running_count"] == 1
     assert data["sources"] == [
         {**first, "published_at": None},
         {**second, "snippet": None, "published_at": None},
     ]
+
+
+async def test_get_run_state_reports_concurrent_batch_size(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-run-state-batch-api",
+        email=f"alice-state-batch@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    async def state_after(run_public_id: str) -> dict:
+        response = await client.get(f"/api/v1/runs/{run_public_id}/state", headers=headers)
+        assert response.status_code == status.HTTP_200_OK
+        return response.json()["data"]["tool_state"]
+
+    async with session_factory() as session:
+        run = await create_run_for_user(
+            session,
+            user_id=alice["user"]["id"],
+            status_value="streaming",
+        )
+        await append_run_event(session, run_id=run.id, event_type="run_started", payload={})
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="tool_call_started",
+            payload={"tool_name": "web_search", "query": "a", "batch_size": 3},
+        )
+        run_public_id = str(run.public_id)
+        await session.commit()
+
+    # The first Started already carries the whole batch size.
+    first = await state_after(run_public_id)
+    assert first["status"] == "running"
+    assert first["running_count"] == 3
+
+    async with session_factory() as session:
+        for query in ("b", "c"):
+            await append_run_event(
+                session,
+                run_id=run.id,
+                event_type="tool_call_started",
+                payload={"tool_name": "web_search", "query": query, "batch_size": 3},
+            )
+        await session.commit()
+
+    assert (await state_after(run_public_id))["running_count"] == 3
+
+    async with session_factory() as session:
+        for _ in range(3):
+            await append_run_event(
+                session,
+                run_id=run.id,
+                event_type="tool_call_succeeded",
+                payload={"tool_name": "web_search", "result_count": 2, "batch_source_count": 5},
+            )
+        await session.commit()
+
+    finished = await state_after(run_public_id)
+    assert finished["status"] == "succeeded"
+    assert finished["result_count"] == 2
+    assert finished["batch_source_count"] == 5
+
+    async with session_factory() as session:
+        await append_run_event(
+            session,
+            run_id=run.id,
+            event_type="tool_call_started",
+            payload={"tool_name": "web_search", "query": "next turn"},
+        )
+        await session.commit()
+
+    next_turn = await state_after(run_public_id)
+    assert next_turn["query"] == "next turn"
+    assert next_turn["running_count"] == 1
+    assert next_turn["batch_source_count"] is None
 
 
 async def test_get_run_state_combines_checkpoint_with_newer_redis_deltas(

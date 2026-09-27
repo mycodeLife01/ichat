@@ -51,6 +51,10 @@ class RunToolStateResponse(BaseModel):
     message: str | None = None
     result_count: int | None = None
     sources: list[RunToolSourceResponse] = Field(default_factory=list)
+    # Calls in the current concurrent batch; the header shows a count when > 1.
+    running_count: int = 1
+    # Distinct sources found by the whole concurrent batch; None for single calls.
+    batch_source_count: int | None = None
 
 
 class RunStateResponse(BaseModel):

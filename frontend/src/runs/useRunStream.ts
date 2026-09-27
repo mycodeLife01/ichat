@@ -171,5 +171,13 @@ function toolStateFromEvent(event: RunEventResponse): RunToolState {
     message: typeof payload.message === "string" ? payload.message : null,
     result_count: typeof payload.result_count === "number" ? payload.result_count : null,
     sources,
+    // The first started event of a concurrent batch already carries its size.
+    ...(status === "running" && typeof payload.batch_size === "number" && payload.batch_size > 1
+      ? { running_count: payload.batch_size }
+      : {}),
+    // Each Finished of a concurrent batch already carries the batch's total.
+    ...(status !== "running" && typeof payload.batch_source_count === "number"
+      ? { batch_source_count: payload.batch_source_count }
+      : {}),
   };
 }

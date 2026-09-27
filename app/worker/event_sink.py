@@ -284,11 +284,19 @@ def external_tool_payload(
         provider = tool_backend_names.get(payload["tool_name"])
         if provider is not None:
             payload["provider"] = provider
+        # Only concurrent batches carry a size; single calls keep the old payload.
+        batch_size = event.payload.get("batch_size")
+        if isinstance(batch_size, int) and batch_size > 1:
+            payload["batch_size"] = batch_size
         return payload
 
     metadata = event.payload.get("metadata")
     if isinstance(metadata, dict):
         payload.update(metadata)
+    # Only concurrent batches carry a total; single calls keep the old payload.
+    batch_source_count = event.payload.get("batch_source_count")
+    if isinstance(batch_source_count, int):
+        payload["batch_source_count"] = batch_source_count
     if event.type == "tool_call_failed":
         payload.setdefault("error_code", "tool_error")
         payload.setdefault("message", "Tool execution failed.")

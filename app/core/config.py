@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     web_search_max_extract_results: int = 3
     web_search_max_evidence_chars: int = 10_000
     web_search_max_source_chars: int = 1_200
+    tool_call_max_concurrency: int = 4
 
     # --- Redis / Celery (email + rate limiting) ---
     redis_url: str = "redis://localhost:6379/0"
@@ -255,6 +256,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_external_services(self) -> Self:
+        if self.tool_call_max_concurrency < 1:
+            raise ValueError("tool_call_max_concurrency must be at least 1")
         if self.files_multipart_threshold_bytes <= 0:
             raise ValueError("files_multipart_threshold_bytes must be positive")
         if self.files_multipart_part_size_bytes < 5 * 1024 * 1024:

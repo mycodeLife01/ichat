@@ -58,7 +58,7 @@ created_at ──queued──▶ 认领(started_at) ──▶ worker 执行起�
 | `model_wait` | 每次模型调用开始 → 该调用第一个 delta；工具结果返回 → 下一次调用首个 delta | 上游首包延迟。可重试错误导致的整次重试耗时也记入此阶段 |
 | `reasoning` | 当前阶段为推理时的累计时长 | 收到 `ReasoningDelta`（raw 或 summary）后进入，直到下一个不同类别事件 |
 | `answering` | 当前阶段为正文时的累计时长 | 收到 `TextDelta` 后进入。前言正文（工具调用前的正文）也计入此阶段 |
-| `tool` | `ToolCallStarted` → `ToolCallFinished` | 当前工具按顺序执行（`chat_agent.py` 的 for 循环），无并行重叠。没有 Started 的 Finished（未知工具、超限）计 0 |
+| `tool` | 一批 `ToolCallStarted` → 该批第一个 `ToolCallFinished` | 同一 turn 的工具调用并发执行（2026-09-27 起，见[并发计划](../plans/2026-09-27-parallel-tool-calls.md)），Finished 在整批完成后按调用顺序连续发出，因此 `phases.tool` 是并发批次的墙钟时间。`tools[].ms` 取事件携带的单次调用耗时（`elapsed_ms`），所以 `sum(tools[].ms)` 可以大于 `phases.tool`。没有 Started 的 Finished（未知工具、超限）计 0 |
 | `finalizing` | agent 流结束 → 终态事务提交 | 物化消息、持久化 transcript、终态事件 |
 
 阶段切换规则（worker 内状态机，按事件到达 worker 的时刻计时）：

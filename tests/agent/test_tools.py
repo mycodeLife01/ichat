@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.agent.tools import (
@@ -12,13 +14,16 @@ from app.agent.tools.web_search import WEB_SEARCH_TOOL_SPEC
 from app.search.types import ExtractRequest, SearchRequest, SearchResult
 
 
-def search_config(*, available: bool = True) -> WebSearchConfig:
+def search_config(
+    *, available: bool = True, total_timeout_seconds: float = 25.0
+) -> WebSearchConfig:
     return WebSearchConfig(
         provider="tavily",
         available=available,
         default_max_results=5,
         max_extract_results=2,
         extract_timeout_seconds=8.0,
+        total_timeout_seconds=total_timeout_seconds,
         max_source_chars=400,
         max_evidence_chars=2_000,
     )
@@ -174,3 +179,48 @@ async def test_web_search_tool_accumulates_sources_across_calls() -> None:
 
     # The tool owns its per-run SourceRegistry; citation numbering stays stable.
     assert len(tool.sources.all_metadata()) == 2
+
+
+class _HangingClient:
+    name = "tavily"
+
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return [SearchResult(title="late", url="https://late.example", snippet="x")]
+
+    async def extract(self, request: ExtractRequest) -> list[object]:
+        return []
+
+
+async def test_web_search_total_timeout_returns_error_without_sources() -> None:
+    client = _HangingClient()
+    tool = WebSearchTool(
+        config=search_config(total_timeout_seconds=0.05), client=client
+    )
+
+    result = await tool.execute({"query": "slow"})
+
+    assert result.is_error is True
+    assert result.metadata["error_code"] == "timeout"
+    assert result.metadata["query"] == "slow"
+    assert client.cancelled is True
+    assert tool.sources.all_metadata() == []
+
+
+async def test_web_search_outer_cancel_propagates() -> None:
+    client = _HangingClient()
+    tool = WebSearchTool(config=search_config(), client=client)
+
+    task = asyncio.create_task(tool.execute({"query": "slow"}))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert client.cancelled is True

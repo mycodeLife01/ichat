@@ -17,6 +17,7 @@ from app.worker.event_sink import (
     FanoutSink,
     PostgresEventSink,
     RedisStreamSink,
+    external_tool_payload,
 )
 from tests.worker.test_executor import clean_test_data, queue_run
 
@@ -189,3 +190,42 @@ async def test_redis_stream_sink_drops_redis_failure_without_raising() -> None:
     sink = RedisStreamSink(stream=FailingStream(), run_id=1)
 
     await sink.emit(RunEvent(seq=1, type="text_delta", payload={"text": "x"}))
+
+
+@pytest.mark.parametrize(("batch_size", "expected"), [(3, 3), (1, None), (None, None)])
+def test_external_started_payload_carries_only_concurrent_batch_size(
+    batch_size: int | None, expected: int | None
+) -> None:
+    internal_payload: dict = {"tool_name": "web_search", "arguments": {"query": "q"}}
+    if batch_size is not None:
+        internal_payload["batch_size"] = batch_size
+
+    payload = external_tool_payload(
+        RunEvent(seq=1, type="tool_call_started", payload=internal_payload),
+        tool_backend_names={"web_search": "tavily"},
+    )
+
+    assert payload.get("batch_size") == expected
+    assert payload["query"] == "q"
+
+
+@pytest.mark.parametrize("batch_source_count", [4, None])
+def test_external_finished_payload_carries_only_batch_source_count(
+    batch_source_count: int | None,
+) -> None:
+    payload = external_tool_payload(
+        RunEvent(
+            seq=1,
+            type="tool_call_succeeded",
+            payload={
+                "tool_name": "web_search",
+                "metadata": {"result_count": 2},
+                "batch_source_count": batch_source_count,
+            },
+        ),
+        tool_backend_names={"web_search": "tavily"},
+    )
+
+    assert payload.get("batch_source_count") == batch_source_count
+    assert ("batch_source_count" in payload) is (batch_source_count is not None)
+    assert payload["result_count"] == 2

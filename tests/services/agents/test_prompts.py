@@ -59,6 +59,27 @@ def test_web_search_appends_date_and_guidance() -> None:
     assert "Never write: [1, 2]" in prompt
 
 
+def test_web_search_guidance_states_budget_and_parallel_calls() -> None:
+    settings = _settings("Base.").model_copy(update={"web_search_max_tool_calls": 10})
+    prompt = build_system_prompt(settings=settings, web_search_enabled=True, now=_NOW)
+    assert "at most 10 web_search calls in this response" in prompt
+    assert "run in parallel" in prompt
+    assert "stop searching as soon as" in prompt
+    # Usage, budget, then citation rules, each as its own paragraph.
+    assert (
+        prompt.index("Skip it for questions")
+        < prompt.index("at most 10")
+        < prompt.index("Citation format")
+    )
+
+
+def test_single_call_budget_omits_parallel_guidance() -> None:
+    settings = _settings("Base.").model_copy(update={"web_search_max_tool_calls": 1})
+    prompt = build_system_prompt(settings=settings, web_search_enabled=True, now=_NOW)
+    assert "at most 1 web_search calls in this response" in prompt
+    assert "run in parallel" not in prompt
+
+
 def test_no_web_search_omits_date_and_guidance() -> None:
     prompt = build_system_prompt(settings=_settings("Base."), web_search_enabled=False, now=_NOW)
     assert "Today's date" not in prompt

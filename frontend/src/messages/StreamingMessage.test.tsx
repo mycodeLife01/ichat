@@ -209,6 +209,45 @@ describe("StreamingMessage", () => {
     );
     expect(screen.getByText("已找到 2 个来源")).toBeInTheDocument();
     expect(screen.queryByText("[1] Release notes")).toBeNull();
+
+    // A call from a concurrent batch reports the whole batch's distinct total.
+    rerender(
+      <StreamingMessage
+        run={run({
+          toolState: {
+            status: "succeeded",
+            tool_name: "web_search",
+            query: "ja.wikipedia.org",
+            message: null,
+            result_count: 2,
+            sources: [],
+            batch_source_count: 7,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("已找到 7 个来源")).toBeInTheDocument();
+
+    // A failed call that finishes the batch still reports what the batch found.
+    const failedInBatch = (batchSourceCount: number) => (
+      <StreamingMessage
+        run={run({
+          toolState: {
+            status: "failed",
+            tool_name: "web_search",
+            query: "ja.wikipedia.org",
+            message: "Web search timed out.",
+            result_count: null,
+            sources: [],
+            batch_source_count: batchSourceCount,
+          },
+        })}
+      />
+    );
+    rerender(failedInBatch(5));
+    expect(screen.getByText("已找到 5 个来源")).toBeInTheDocument();
+    rerender(failedInBatch(0));
+    expect(screen.getByText("Web search timed out.")).toBeInTheDocument();
   });
 
   it("lets a reasoning summary take the header back after a tool call succeeds", () => {
@@ -233,6 +272,26 @@ describe("StreamingMessage", () => {
     // The headline owns the header, so the viewport keeps only its prose.
     expect(viewport(container)?.textContent).toBe("正在核对");
     expect(screen.queryByText("不应作为预览显示的完整过程")).toBeNull();
+  });
+
+  it("labels a concurrent search batch by its call count", () => {
+    render(
+      <StreamingMessage
+        run={run({
+          toolState: {
+            status: "running",
+            tool_name: "web_search",
+            query: "last query",
+            message: null,
+            result_count: null,
+            sources: [],
+            running_count: 3,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("正在搜索 3 项")).toBeInTheDocument();
+    expect(screen.queryByText("正在搜索 last query")).not.toBeInTheDocument();
   });
 
   it("follows text, tool, and resumed reasoning phases in one run", () => {

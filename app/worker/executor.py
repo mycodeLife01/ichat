@@ -495,7 +495,11 @@ def _to_run_event(
         internal = RunEvent(
             seq=seq,
             type="tool_call_started",
-            payload={"tool_name": event.tool_name, "arguments": event.arguments},
+            payload={
+                "tool_name": event.tool_name,
+                "arguments": event.arguments,
+                "batch_size": event.batch_size,
+            },
         )
         return RunEvent(
             seq=seq,
@@ -509,7 +513,11 @@ def _to_run_event(
         internal = RunEvent(
             seq=seq,
             type="tool_call_failed" if event.is_error else "tool_call_succeeded",
-            payload={"tool_name": event.tool_name, "metadata": event.metadata},
+            payload={
+                "tool_name": event.tool_name,
+                "metadata": event.metadata,
+                "batch_source_count": event.batch_source_count,
+            },
         )
         return RunEvent(
             seq=seq,

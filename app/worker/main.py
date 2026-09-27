@@ -11,6 +11,7 @@ from app.core.config import Settings, get_settings, validate_worker_vision_setti
 from app.core.logging import configure_logging, logger
 from app.db.session import get_session_factory
 from app.schemas.runs import RunEventResponse
+from app.search.registry import aclose_search_clients
 from app.services.agents import resolve_provider as default_resolve_provider
 from app.services.model_catalog import available_chat_models, database_catalog_enabled
 from app.services.run_events.stream import RedisRunEventStream
@@ -126,6 +127,7 @@ async def run_worker_loop(
             await recovery_task
         except asyncio.CancelledError:
             pass
+        await aclose_search_clients()
 
 
 async def _recovery_loop(

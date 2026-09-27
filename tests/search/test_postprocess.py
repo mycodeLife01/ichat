@@ -1,5 +1,5 @@
 from app.search.postprocess import SourceRegistry, cited_source_ids
-from app.search.types import SearchResult
+from app.search.types import ExtractResult, SearchResult
 
 
 def result(url: str, title: str = "t") -> SearchResult:
@@ -35,6 +35,55 @@ def test_repeated_url_keeps_its_prior_id() -> None:
     )
 
     assert [record.id for record in records] == [1, 2]
+    assert records[0].snippet == "snippet"
+
+
+def test_extracted_text_upgrades_a_snippet_registered_first() -> None:
+    # A plain search finishing first must not shadow a concurrent call's
+    # extracted page text for the same URL.
+    registry = SourceRegistry()
+    first = registry.register([result("https://a.test")], [], max_source_chars=100)
+
+    extract = ExtractResult(url="https://a.test/", content="page text", title="Page")
+    second = registry.register([result("https://a.test")], [extract], max_source_chars=100)
+
+    assert second[0] is first[0]
+    assert (second[0].id, second[0].title, second[0].snippet) == (1, "Page", "page text")
+    assert registry.all_metadata()[0]["snippet"] == "page text"
+
+
+def test_extracted_text_is_never_replaced_by_a_later_call() -> None:
+    registry = SourceRegistry()
+    registry.register(
+        [result("https://a.test")],
+        [ExtractResult(url="https://a.test", content="first page")],
+        max_source_chars=100,
+    )
+
+    later = registry.register(
+        [result("https://a.test")],
+        [ExtractResult(url="https://a.test", content="second page")],
+        max_source_chars=100,
+    )
+    empty = registry.register(
+        [result("https://a.test")],
+        [ExtractResult(url="https://a.test", content="  ")],
+        max_source_chars=100,
+    )
+
+    assert later[0].snippet == empty[0].snippet == "first page"
+
+
+def test_empty_extract_does_not_replace_a_snippet() -> None:
+    registry = SourceRegistry()
+    registry.register([result("https://a.test")], [], max_source_chars=100)
+
+    records = registry.register(
+        [result("https://a.test")],
+        [ExtractResult(url="https://a.test", content="")],
+        max_source_chars=100,
+    )
+
     assert records[0].snippet == "snippet"
 
 

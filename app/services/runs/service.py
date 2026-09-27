@@ -304,6 +304,13 @@ def _tool_state_from_event(event: RunEvent) -> RunToolStateResponse:
     query = payload.get("query")
     message = payload.get("message")
     result_count = payload.get("result_count")
+    batch_size = payload.get("batch_size")
+    batch_source_count = payload.get("batch_source_count")
+    running_count = (
+        batch_size
+        if status_value == "running" and isinstance(batch_size, int) and batch_size > 1
+        else 1
+    )
     return RunToolStateResponse(
         status=status_value,
         tool_name=str(payload.get("tool_name", "web_search")),
@@ -311,4 +318,10 @@ def _tool_state_from_event(event: RunEvent) -> RunToolStateResponse:
         message=message if isinstance(message, str) else None,
         result_count=result_count if isinstance(result_count, int) else None,
         sources=sources,
+        running_count=running_count,
+        batch_source_count=(
+            batch_source_count
+            if status_value != "running" and isinstance(batch_source_count, int)
+            else None
+        ),
     )

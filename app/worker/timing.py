@@ -56,7 +56,6 @@ class RunTimer:
         # First text mark of each model call, by call index; the final answer is
         # the last call's text, so work time is only known once the stream ends.
         self._first_text_ms: dict[int, int] = {}
-        self._tool_started_ms: int | None = None
         self._tools: list[dict[str, Any]] = []
         self._result: dict[str, Any] | None = None
 
@@ -94,18 +93,19 @@ class RunTimer:
             if isinstance(event, TextDelta):
                 self._first_text_ms.setdefault(self._model_calls, now)
         elif isinstance(event, ToolCallStarted):
-            self._tool_started_ms = self._switch("tool")
+            self._switch("tool")
         elif isinstance(event, ToolCallFinished):
-            now = self._switch("model_wait")
-            started = self._tool_started_ms
+            # A turn's calls run concurrently and all Finished events arrive
+            # together after the batch, so the first one closes the tool phase
+            # (its wall time) and each call's own latency comes from the event.
+            self._switch("model_wait")
             self._tools.append(
                 {
                     "name": event.tool_name,
-                    "ms": now - started if started is not None else 0,
+                    "ms": event.elapsed_ms if event.elapsed_ms is not None else 0,
                     "ok": not event.is_error,
                 }
             )
-            self._tool_started_ms = None
         elif isinstance(event, MessageDone) and event.message.role == "user":
             # Tool results are appended as a user turn; the next model call
             # starts right after it.

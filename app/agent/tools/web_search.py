@@ -10,6 +10,7 @@ application ``Settings`` (the orchestration layer expands ``Settings`` into
 ``WebSearchConfig``).
 """
 
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, cast
@@ -47,6 +48,9 @@ class WebSearchConfig:
     default_max_results: int
     max_extract_results: int
     extract_timeout_seconds: float
+    # Wall-clock cap for one call: httpx timeouts bound single operations, and a
+    # hung call would otherwise hold its whole concurrent batch.
+    total_timeout_seconds: float
     max_source_chars: int
     max_evidence_chars: int
 
@@ -154,9 +158,20 @@ class WebSearchTool:
                 provider=config.provider,
                 query=args.query,
             )
-        return await run_web_search(
-            args=args, client=self._client, registry=self._sources, config=config
-        )
+        try:
+            async with asyncio.timeout(config.total_timeout_seconds):
+                return await run_web_search(
+                    args=args, client=self._client, registry=self._sources, config=config
+                )
+        except TimeoutError:
+            # Sources register only after every request returns, so a timeout
+            # leaves the registry untouched.
+            return _error(
+                "timeout",
+                "Web search timed out. Continuing without live results.",
+                provider=self._client.name,
+                query=args.query,
+            )
 
 
 def parse_web_search_args(data: dict[str, Any], *, config: WebSearchConfig) -> WebSearchArgs:

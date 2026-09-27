@@ -21,21 +21,31 @@ from app.agent.provider import ReasoningDelta, TextDelta
 @dataclass(frozen=True)
 class ToolCallStarted:
     """A tool is about to execute. Never announced for unknown-tool or
-    limit-exceeded calls (those go straight to an error ``ToolCallFinished``)."""
+    limit-exceeded calls (those go straight to an error ``ToolCallFinished``).
+    ``batch_size`` is the number of calls in this turn's concurrent batch, so
+    the first announcement already describes the whole batch."""
 
     tool_name: str
     arguments: dict[str, Any]
+    batch_size: int = 1
 
 
 @dataclass(frozen=True)
 class ToolCallFinished:
     """A tool call resolved. ``is_error`` records whether it maps to a failed
     run event; ``metadata`` carries the tool's free-form product (sources,
-    query, error code) for the sink to project onto the external payload."""
+    query, error code) for the sink to project onto the external payload.
+    ``elapsed_ms`` is the call's own execution time, or ``None`` when the call
+    was rejected without executing (unknown tool, call limit); it is for timing
+    only and never reaches the external payload. ``batch_source_count`` is the
+    number of distinct sources the whole concurrent batch found, set on every
+    Finished of a batch with more than one call and ``None`` otherwise."""
 
     tool_name: str
     is_error: bool
     metadata: dict[str, Any] = field(default_factory=dict)
+    elapsed_ms: int | None = None
+    batch_source_count: int | None = None
 
 
 @dataclass(frozen=True)

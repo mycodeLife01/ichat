@@ -154,6 +154,74 @@ describe("useRunStream", () => {
     expect(result.current.activeRun?.draftReasoningSummary).toBe("摘要");
   });
 
+  it.each([
+    [{ query: "a", batch_size: 3 }, 3],
+    [{ query: "solo" }, undefined],
+  ])("maps a started event's batch size to the running count", async (payload, expected) => {
+    const services = createFakeServices(
+      {},
+      {},
+      {
+        streamEvents: () =>
+          fakeStream([
+            {
+              ...reasoningDeltaEvent,
+              seq: 1,
+              type: "tool_call_started",
+              payload: { tool_name: "web_search", ...payload },
+            },
+          ]),
+      },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: "100", conversationId: "10" });
+    });
+    await act(async () => {
+      await result.current.start("100", "10", 0);
+    });
+
+    expect(result.current.activeRun?.toolState?.status).toBe("running");
+    expect(result.current.activeRun?.toolState?.running_count).toBe(expected);
+  });
+
+  it.each([
+    [{ result_count: 5, batch_source_count: 10 }, 10],
+    [{ result_count: 5 }, undefined],
+  ])("maps a finished event's batch source total", async (payload, expected) => {
+    const services = createFakeServices(
+      {},
+      {},
+      {
+        streamEvents: () =>
+          fakeStream([
+            {
+              ...reasoningDeltaEvent,
+              seq: 1,
+              type: "tool_call_succeeded",
+              payload: { tool_name: "web_search", sources: [], ...payload },
+            },
+          ]),
+      },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "run/started", runId: "100", conversationId: "10" });
+    });
+    await act(async () => {
+      await result.current.start("100", "10", 0);
+    });
+
+    expect(result.current.activeRun?.toolState?.status).toBe("succeeded");
+    expect(result.current.activeRun?.toolState?.batch_source_count).toBe(expected);
+  });
+
   it("keeps run failure in message context without adding a toast", async () => {
     const detail = vi.fn(async () => conversationDetailResponse);
     const services = createFakeServices(
