@@ -1,6 +1,6 @@
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from app.search.types import ExtractResult, SearchResult
@@ -14,6 +14,8 @@ class SourceRecord:
     snippet: str
     published_at: str | None
     provider: str
+    # Whether the snippet is extracted page text rather than a search snippet.
+    extracted: bool = field(default=False, compare=False)
 
     def metadata(self) -> dict[str, object]:
         return {
@@ -87,10 +89,17 @@ class SourceRegistry:
         for result in results:
             key = _normalize_url(result.url)
             existing = self._by_url.get(key)
+            extract = extract_by_url.get(key)
             if existing is not None:
+                # Concurrent calls register in completion order, so a plain
+                # search can claim a URL before a slower extracting call; keep
+                # the id but upgrade the content to the extracted page text.
+                if extract is not None and extract.content.strip() and not existing.extracted:
+                    existing.snippet = _squeeze(extract.content, max_source_chars)
+                    existing.title = extract.title or existing.title
+                    existing.extracted = True
                 records.append(existing)
                 continue
-            extract = extract_by_url.get(key)
             snippet = extract.content if extract is not None else result.snippet
             title = extract.title or result.title if extract is not None else result.title
             prior = self._prior_by_url.get(key)
@@ -106,6 +115,7 @@ class SourceRegistry:
                 snippet=_squeeze(snippet, max_source_chars),
                 published_at=result.published_at,
                 provider=result.provider,
+                extracted=extract is not None,
             )
             self._by_url[key] = record
             self._ordered.append(record)

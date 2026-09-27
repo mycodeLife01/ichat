@@ -1,8 +1,11 @@
 import json
 
 import httpx
+import pytest
 
 from app.core.config import Settings, get_settings
+from app.search import tavily
+from app.search.registry import aclose_search_clients
 from app.search.tavily import TavilySearchClient
 from app.search.types import ExtractRequest, SearchRequest
 
@@ -123,3 +126,51 @@ async def test_tavily_extract_maps_request_and_normalizes_results() -> None:
     assert results[0].title == "Release notes"
     assert results[0].content == "Full extracted text."
     assert results[0].provider == "tavily"
+
+
+async def test_tavily_without_transport_reuses_one_pooled_client() -> None:
+    settings = search_settings()
+    try:
+        first = tavily._get_shared_client(settings)
+        second = tavily._get_shared_client(settings)
+
+        assert first is second
+        assert str(first.base_url).rstrip("/") == settings.tavily_base_url.rstrip("/")
+    finally:
+        await aclose_search_clients()
+
+    assert first.is_closed
+    reopened = tavily._get_shared_client(settings)
+    try:
+        assert reopened is not first
+    finally:
+        await aclose_search_clients()
+
+
+async def test_tavily_without_transport_sends_through_pooled_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[str, str, float | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        read_timeout = request.extensions["timeout"]["read"]
+        seen.append((request.url.path, request.headers["authorization"], read_timeout))
+        return httpx.Response(200, json={"results": []})
+
+    settings = search_settings()
+    pooled = httpx.AsyncClient(
+        base_url=settings.tavily_base_url, transport=httpx.MockTransport(handler)
+    )
+    monkeypatch.setattr(tavily, "_get_shared_client", lambda _settings: pooled)
+    client = TavilySearchClient(settings=settings)
+
+    try:
+        await client.search(SearchRequest(query="a", max_results=1))
+        await client.extract(ExtractRequest(urls=["https://example.com"]))
+    finally:
+        await pooled.aclose()
+
+    assert seen == [
+        ("/search", "Bearer tvly-test", settings.web_search_search_timeout_seconds),
+        ("/extract", "Bearer tvly-test", settings.web_search_extract_timeout_seconds),
+    ]

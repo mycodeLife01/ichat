@@ -14,7 +14,9 @@ instance holds only the immutable assembly result and each ``stream()`` call is
 an independent, re-entrant loop.
 """
 
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+import asyncio
+import time
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -29,7 +31,7 @@ from app.agent.events import (
 from app.agent.messages import ContentBlock, ImageBlock, Message, ToolCallBlock, ToolResultBlock
 from app.agent.primitives import ModelCallResult, execute_tool, stream_model_call
 from app.agent.provider import ImageInputResolver, Provider, ProviderError, ReasoningConfig
-from app.agent.tools import ToolRegistry, ToolResult, WebSearchConfig, WebSearchTool
+from app.agent.tools import Tool, ToolRegistry, ToolResult, WebSearchConfig, WebSearchTool
 from app.core.config import Settings
 from app.search import SourceRegistry
 from app.search.registry import resolve_search_client
@@ -88,15 +90,19 @@ class ChatAgent:
         system_prompt: str,
         image_resolver: ImageInputResolver | None = None,
         image_token_reserve: int = 0,
+        max_tool_concurrency: int = 4,
     ) -> None:
         if max_tool_calls < 0:
             raise ValueError("max_tool_calls must be non-negative")
+        if max_tool_concurrency < 1:
+            raise ValueError("max_tool_concurrency must be at least 1")
         self._provider = provider
         self._model = model
         self._reasoning = reasoning
         self._tools = tools
         self._messages = messages
         self._max_tool_calls = max_tool_calls
+        self._max_tool_concurrency = max_tool_concurrency
         self._retry_policy = retry_policy
         self._tool_backend_names = dict(tool_backend_names)
         self._assistant_metadata = assistant_metadata
@@ -149,6 +155,7 @@ class ChatAgent:
         a clean loop (the worker relies on this for whole-loop retry)."""
         messages = list(self._messages)
         tool_calls_used = 0
+        semaphore = asyncio.Semaphore(self._max_tool_concurrency)
 
         while True:
             message: Message | None = None
@@ -178,24 +185,64 @@ class ChatAgent:
                 return
 
             messages.append(message)
-            tool_results: list[ToolResultBlock] = []
-            for call in tool_calls:
+            # Admission is decided in call order before anything runs, so which
+            # calls execute depends only on the model's order, never on timing.
+            rejected: dict[int, ToolResult] = {}
+            admitted: list[tuple[int, Tool]] = []
+            for index, call in enumerate(tool_calls):
                 tool = self._tools.get(call.name)
                 if tool is None:
-                    result = _error_result("unknown_tool", f"Unsupported tool: {call.name}.")
+                    rejected[index] = _error_result(
+                        "unknown_tool", f"Unsupported tool: {call.name}."
+                    )
                 elif tool_calls_used >= self._max_tool_calls:
-                    result = _error_result(
+                    rejected[index] = _error_result(
                         "tool_call_limit",
                         "Tool call limit reached. Continuing without executing more tools.",
                     )
                 else:
                     tool_calls_used += 1
-                    yield ToolCallStarted(tool_name=call.name, arguments=call.arguments)
-                    result = await execute_tool(tool, call.arguments)
+                    admitted.append((index, tool))
+
+            for index, _tool in admitted:
+                call = tool_calls[index]
+                yield ToolCallStarted(
+                    tool_name=call.name,
+                    arguments=call.arguments,
+                    batch_size=len(admitted),
+                )
+            outcomes = await asyncio.gather(
+                *(
+                    _timed_execute(tool, tool_calls[index].arguments, semaphore)
+                    for index, tool in admitted
+                )
+            )
+            executed = {
+                index: outcome for (index, _tool), outcome in zip(admitted, outcomes, strict=True)
+            }
+
+            # Every Finished of a concurrent batch carries the batch's total, so
+            # the header never shows one call's count before settling on another.
+            batch_source_count = (
+                _distinct_source_count(result for result, _elapsed in outcomes)
+                if len(admitted) > 1
+                else None
+            )
+            # Finished events wait for the whole batch and follow call order:
+            # emitting in completion order would report success while sibling
+            # calls are still running.
+            tool_results: list[ToolResultBlock] = []
+            for index, call in enumerate(tool_calls):
+                if index in executed:
+                    result, elapsed_ms = executed[index]
+                else:
+                    result, elapsed_ms = rejected[index], None
                 yield ToolCallFinished(
                     tool_name=call.name,
                     is_error=result.is_error,
                     metadata=dict(result.metadata),
+                    elapsed_ms=elapsed_ms,
+                    batch_source_count=batch_source_count,
                 )
                 tool_results.append(
                     ToolResultBlock(
@@ -293,6 +340,7 @@ def build_chat_agent(
         tools=tools,
         messages=messages,
         max_tool_calls=(settings.web_search_max_tool_calls if web_search_enabled else 0),
+        max_tool_concurrency=settings.tool_call_max_concurrency,
         retry_policy=RetryPolicy(max_attempts=1 if web_search_enabled else 2),
         tool_backend_names=tool_backend_names,
         assistant_metadata=assistant_metadata,
@@ -334,6 +382,7 @@ def _web_search_config(settings: Settings) -> WebSearchConfig:
         default_max_results=settings.web_search_default_max_results,
         max_extract_results=settings.web_search_max_extract_results,
         extract_timeout_seconds=settings.web_search_extract_timeout_seconds,
+        total_timeout_seconds=settings.web_search_total_timeout_seconds,
         max_source_chars=settings.web_search_max_source_chars,
         max_evidence_chars=settings.web_search_max_evidence_chars,
     )
@@ -341,6 +390,29 @@ def _web_search_config(settings: Settings) -> WebSearchConfig:
 
 def _contains_image_block(messages: list[Message]) -> bool:
     return any(isinstance(block, ImageBlock) for message in messages for block in message.blocks)
+
+
+async def _timed_execute(
+    tool: Tool, arguments: dict[str, Any], semaphore: asyncio.Semaphore
+) -> tuple[ToolResult, int]:
+    """Run one tool under the per-run concurrency cap; the elapsed time excludes
+    waiting for a slot, so it is the call's own latency."""
+    async with semaphore:
+        started = time.monotonic()
+        result = await execute_tool(tool, arguments)
+        return result, round((time.monotonic() - started) * 1000)
+
+
+def _distinct_source_count(results: Iterable[ToolResult]) -> int:
+    """Count sources across successful results by citation id; the registry
+    reuses an id when two searches return the same URL."""
+    ids: set[object] = set()
+    for result in results:
+        sources = result.metadata.get("sources")
+        if result.is_error or not isinstance(sources, list):
+            continue
+        ids.update(source.get("id") for source in sources if isinstance(source, dict))
+    return len(ids)
 
 
 def _error_result(code: str, message: str) -> ToolResult:

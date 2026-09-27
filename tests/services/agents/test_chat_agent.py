@@ -5,6 +5,8 @@ is the whole surface. Cancellation and retry are the worker's engineering and
 are covered by the worker integration tests.
 """
 
+import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,6 +61,50 @@ class FakeTool:
         return self.results[len(self.calls) - 1]
 
 
+@dataclass
+class SleepTool:
+    """Sleeps ``arguments["delay"]`` seconds, tracking peak concurrency."""
+
+    in_flight: int = 0
+    peak: int = 0
+    cancelled: int = 0
+
+    @property
+    def name(self) -> str:
+        return "lookup"
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(name=self.name, description="Lookup", parameters={"type": "object"})
+
+    async def execute(self, arguments: dict[str, Any]) -> ToolResult:
+        self.in_flight += 1
+        self.peak = max(self.peak, self.in_flight)
+        try:
+            await asyncio.sleep(arguments["delay"])
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        finally:
+            self.in_flight -= 1
+        if arguments.get("fail"):
+            raise RuntimeError(f"failed {arguments['q']}")
+        metadata: dict[str, Any] = {"query": arguments["q"]}
+        if "sources" in arguments:
+            metadata["sources"] = [{"id": source_id} for source_id in arguments["sources"]]
+        return ToolResult(f"result {arguments['q']}", metadata=metadata)
+
+
+def _batch_script(*arguments: dict[str, Any], name: str = "lookup") -> list[list[object]]:
+    calls: list[object] = [
+        ToolCallDone(f"call_{i}", args.get("tool", name), args) for i, args in enumerate(arguments)
+    ]
+    return [
+        [*calls, StreamDone("tool_calls")],
+        [TextDelta("answer"), StreamDone("stop")],
+    ]
+
+
 class ThrowingTool:
     @property
     def name(self) -> str:
@@ -77,6 +123,7 @@ def make_agent(
     *,
     tools: ToolRegistry | None = None,
     max_tool_calls: int = 4,
+    max_tool_concurrency: int = 4,
 ) -> ChatAgent:
     return ChatAgent(
         provider=provider,
@@ -89,6 +136,7 @@ def make_agent(
         tool_backend_names={},
         assistant_metadata=lambda _text: None,
         system_prompt="sys",
+        max_tool_concurrency=max_tool_concurrency,
     )
 
 
@@ -248,8 +296,8 @@ async def test_multi_tool_turn_yields_events_and_messages() -> None:
         "ReasoningDelta",
         "MessageDone",
         "ToolCallStarted",
-        "ToolCallFinished",
         "ToolCallStarted",
+        "ToolCallFinished",
         "ToolCallFinished",
         "MessageDone",
         "TextDelta",
@@ -277,6 +325,7 @@ async def test_multi_tool_turn_yields_events_and_messages() -> None:
     ]
     started = [e for e in events if isinstance(e, ToolCallStarted)]
     assert [s.arguments for s in started] == [{"query": "one"}, {"query": "two"}]
+    assert [s.batch_size for s in started] == [2, 2]
     finished = [e for e in events if isinstance(e, ToolCallFinished)]
     assert finished[0].metadata == {"query": "one", "result_count": 1}
     assert all(not f.is_error for f in finished)
@@ -286,6 +335,131 @@ async def test_multi_tool_turn_yields_events_and_messages() -> None:
     assert final.provider_request_id == "req-1"
     # The second model call replays the first two transcript messages.
     assert provider.calls[1][1:] == messages[:2]
+
+
+async def test_turn_tool_calls_run_concurrently_in_call_order() -> None:
+    # The slowest call is first: results and events still follow call order.
+    provider = FakeProvider(
+        scripts=_batch_script(
+            {"q": "a", "delay": 0.3}, {"q": "b", "delay": 0.1}, {"q": "c", "delay": 0.2}
+        )
+    )
+    tool = SleepTool()
+
+    started_at = time.monotonic()
+    events = await collect(make_agent(provider, tools=ToolRegistry([tool])))
+    elapsed = time.monotonic() - started_at
+
+    assert elapsed < 0.5  # serial execution would take 0.6s
+    assert tool.peak == 3
+    finished = [e for e in events if isinstance(e, ToolCallFinished)]
+    assert [f.metadata["query"] for f in finished] == ["a", "b", "c"]
+    assert all(f.elapsed_ms is not None for f in finished)
+    assert finished[0].elapsed_ms is not None and finished[0].elapsed_ms >= 250
+    results = [e.message for e in events if isinstance(e, MessageDone)][1].blocks
+    assert [(b.tool_call_id, b.content) for b in results if isinstance(b, ToolResultBlock)] == [
+        ("call_0", "result a"),
+        ("call_1", "result b"),
+        ("call_2", "result c"),
+    ]
+
+
+async def test_tool_concurrency_is_capped() -> None:
+    provider = FakeProvider(
+        scripts=_batch_script(*({"q": str(i), "delay": 0.05} for i in range(5)))
+    )
+    tool = SleepTool()
+
+    events = await collect(
+        make_agent(
+            provider, tools=ToolRegistry([tool]), max_tool_calls=5, max_tool_concurrency=2
+        )
+    )
+
+    assert tool.peak == 2
+    assert sum(isinstance(e, ToolCallFinished) and not e.is_error for e in events) == 5
+
+
+async def test_mixed_batch_keeps_admission_order_and_error_results() -> None:
+    provider = FakeProvider(
+        scripts=_batch_script(
+            {"tool": "missing"},
+            {"q": "slow-fail", "delay": 0.1, "fail": True},
+            {"q": "ok", "delay": 0.01},
+            {"q": "over-limit", "delay": 0.01},
+        )
+    )
+    tool = SleepTool()
+
+    events = await collect(
+        make_agent(provider, tools=ToolRegistry([tool]), max_tool_calls=2)
+    )
+
+    names = [type(e).__name__ for e in events if "ToolCall" in type(e).__name__]
+    assert names == ["ToolCallStarted"] * 2 + ["ToolCallFinished"] * 4
+    # Rejected calls are not announced, so they do not count toward the batch.
+    started = [e for e in events if isinstance(e, ToolCallStarted)]
+    assert [s.batch_size for s in started] == [2, 2]
+    finished = [e for e in events if isinstance(e, ToolCallFinished)]
+    assert [(f.is_error, f.metadata.get("error_code")) for f in finished] == [
+        (True, "unknown_tool"),
+        (True, "tool_execution_error"),
+        (False, None),
+        (True, "tool_call_limit"),
+    ]
+    assert [f.elapsed_ms is None for f in finished] == [True, False, False, True]
+    assert [f.batch_source_count for f in finished] == [0, 0, 0, 0]
+
+
+async def test_batch_finished_events_carry_distinct_source_total() -> None:
+    # Source 3 was returned by both searches: the registry reuses its citation id.
+    provider = FakeProvider(
+        scripts=_batch_script(
+            {"q": "a", "delay": 0.01, "sources": [1, 2, 3]},
+            {"q": "b", "delay": 0.01, "sources": [3, 4]},
+            {"q": "c", "delay": 0.01, "sources": [5], "fail": True},
+        )
+    )
+
+    events = await collect(make_agent(provider, tools=ToolRegistry([SleepTool()])))
+
+    finished = [e for e in events if isinstance(e, ToolCallFinished)]
+    assert [f.batch_source_count for f in finished] == [4, 4, 4]
+
+
+async def test_single_call_finished_has_no_batch_source_total() -> None:
+    provider = FakeProvider(scripts=_batch_script({"q": "solo", "delay": 0, "sources": [1]}))
+
+    events = await collect(make_agent(provider, tools=ToolRegistry([SleepTool()])))
+
+    finished = [e for e in events if isinstance(e, ToolCallFinished)]
+    assert [f.batch_source_count for f in finished] == [None]
+
+
+async def test_cancel_during_tool_batch_cancels_in_flight_calls() -> None:
+    provider = FakeProvider(
+        scripts=_batch_script({"q": "a", "delay": 5}, {"q": "b", "delay": 5})
+    )
+    tool = SleepTool()
+    agent = make_agent(provider, tools=ToolRegistry([tool]))
+    started = 0
+
+    async def consume() -> None:
+        nonlocal started
+        async for event in agent.stream():
+            if isinstance(event, ToolCallStarted):
+                started += 1
+
+    task = asyncio.create_task(consume())
+    while tool.in_flight < 2:
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert started == 2
+    assert tool.cancelled == 2
+    assert tool.in_flight == 0
 
 
 async def test_no_tools_yields_final() -> None:

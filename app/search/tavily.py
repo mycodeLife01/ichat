@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import httpx
@@ -5,6 +6,12 @@ import httpx
 from app.core.config import Settings
 from app.search.client import SearchClient, SearchError
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
+
+# One pooled client per worker process: every run's calls reuse its keep-alive
+# connections instead of paying a TCP + TLS handshake per request. Bound to the
+# event loop that created it (httpx connections cannot cross loops).
+_shared_client: httpx.AsyncClient | None = None
+_shared_loop: asyncio.AbstractEventLoop | None = None
 
 _RECENCY_TO_TIME_RANGE = {
     "day": "day",
@@ -126,27 +133,31 @@ class TavilySearchClient(SearchClient):
         timeout_seconds: float,
         error_code: str,
     ) -> dict[str, Any]:
-        client_kwargs: dict[str, Any] = {
-            "base_url": self._settings.tavily_base_url,
-            "timeout": httpx.Timeout(timeout_seconds, connect=5.0),
-        }
-        if self._transport is not None:
-            client_kwargs["transport"] = self._transport
+        timeout = httpx.Timeout(timeout_seconds, connect=5.0)
         headers = {
             "Authorization": f"Bearer {self._settings.tavily_api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        async with httpx.AsyncClient(**client_kwargs) as client:
-            try:
-                response = await client.post(path, json=payload, headers=headers)
-            except httpx.TimeoutException as exc:
-                raise SearchError(
-                    code="timeout",
-                    message="Web search timed out. Continuing without live results.",
-                ) from exc
-            except httpx.HTTPError as exc:
-                raise SearchError(code=error_code, message=str(exc)) from exc
+        try:
+            if self._transport is not None:
+                async with httpx.AsyncClient(
+                    base_url=self._settings.tavily_base_url, transport=self._transport
+                ) as client:
+                    response = await client.post(
+                        path, json=payload, headers=headers, timeout=timeout
+                    )
+            else:
+                response = await _get_shared_client(self._settings).post(
+                    path, json=payload, headers=headers, timeout=timeout
+                )
+        except httpx.TimeoutException as exc:
+            raise SearchError(
+                code="timeout",
+                message="Web search timed out. Continuing without live results.",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise SearchError(code=error_code, message=str(exc)) from exc
         if response.status_code >= 400:
             raise SearchError(
                 code=error_code,
@@ -165,3 +176,25 @@ class TavilySearchClient(SearchClient):
         if not isinstance(data, dict):
             raise SearchError(code=error_code, message="Tavily returned invalid JSON.")
         return data
+
+
+def _get_shared_client(settings: Settings) -> httpx.AsyncClient:
+    global _shared_client, _shared_loop
+    loop = asyncio.get_running_loop()
+    if _shared_client is None or _shared_client.is_closed or _shared_loop is not loop:
+        # Sized to the worker's peak demand so the pool never becomes a queue.
+        limit = settings.worker_max_inflight_runs * settings.tool_call_max_concurrency
+        _shared_client = httpx.AsyncClient(
+            base_url=settings.tavily_base_url,
+            limits=httpx.Limits(max_connections=limit, max_keepalive_connections=limit),
+        )
+        _shared_loop = loop
+    return _shared_client
+
+
+async def aclose_shared_client() -> None:
+    """Close the process-wide pooled client; the next request reopens it."""
+    global _shared_client, _shared_loop
+    client, _shared_client, _shared_loop = _shared_client, None, None
+    if client is not None and not client.is_closed:
+        await client.aclose()

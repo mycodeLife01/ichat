@@ -86,7 +86,7 @@ def test_work_time_ends_at_the_last_model_calls_first_text() -> None:
     timer.observe(_assistant())
     timer.observe(ToolCallStarted(tool_name="web_search", arguments={"query": "q"}))
     clock.advance(1500)
-    timer.observe(ToolCallFinished(tool_name="web_search", is_error=False))
+    timer.observe(ToolCallFinished(tool_name="web_search", is_error=False, elapsed_ms=1500))
     timer.observe(_tool_results())
     clock.advance(400)
     timer.observe(ReasoningDelta(text="r"))
@@ -110,6 +110,36 @@ def test_work_time_ends_at_the_last_model_calls_first_text() -> None:
         "answering": 300,
         "finalizing": 0,
     }
+
+
+def test_concurrent_tool_batch_records_wall_time_and_per_call_latency() -> None:
+    clock = FakeClock()
+    timer = RunTimer(clock=clock)
+    timer.stream_started()
+    clock.advance(100)
+    timer.observe(_assistant())
+    timer.observe(ToolCallStarted(tool_name="web_search", arguments={"query": "a"}))
+    timer.observe(ToolCallStarted(tool_name="web_search", arguments={"query": "b"}))
+    clock.advance(2000)
+    timer.observe(ToolCallFinished(tool_name="web_search", is_error=False, elapsed_ms=1200))
+    timer.observe(ToolCallFinished(tool_name="web_search", is_error=True, elapsed_ms=2000))
+    timer.observe(ToolCallFinished(tool_name="unknown", is_error=True))
+    timer.observe(_tool_results())
+    clock.advance(300)
+    timer.observe(TextDelta(text="Answer"))
+    timer.stream_ended()
+
+    timing = timer.finish(outcome="succeeded")
+
+    _assert_partition(timing)
+    phases = timing["phases"]
+    assert isinstance(phases, dict)
+    assert phases["tool"] == 2000
+    assert timing["tools"] == [
+        {"name": "web_search", "ms": 1200, "ok": True},
+        {"name": "web_search", "ms": 2000, "ok": False},
+        {"name": "unknown", "ms": 0, "ok": False},
+    ]
 
 
 def test_tool_finished_without_start_counts_zero() -> None:
