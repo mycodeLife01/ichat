@@ -74,6 +74,10 @@ class Run(Base):
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Worker-measured phase durations written with the terminal status. NULL for
+    # runs the worker never executed or that expired by lease. Shape and phase
+    # rules: docs/specs/2026-09-27-run-timing.md.
+    timing: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

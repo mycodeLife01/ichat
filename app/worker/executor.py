@@ -39,6 +39,7 @@ from app.services.runs.lifecycle import (
     mark_run_cancelled_if_cancelling,
     mark_run_failed,
     mark_run_succeeded,
+    record_run_timing,
     renew_lease,
 )
 from app.services.runs.service import get_next_run_event_seq, list_run_events_after
@@ -53,6 +54,7 @@ from app.worker.event_sink import (
     external_tool_payload,
 )
 from app.worker.run_cancel_listener import RunCancelListener
+from app.worker.timing import RunTimer
 
 _RunStatus = Literal["succeeded", "failed", "cancelled"]
 
@@ -93,6 +95,8 @@ async def execute_run(
         if run is None:
             run_logger.warning("Run vanished before execution")
             return
+        timer = RunTimer(queued_ms=_queued_ms(run))
+        timing_labels = _timing_labels(run)
         initial_seq = await get_next_run_event_seq(session, run_id=run_id) - 1
         try:
             history = await load_conversation_history(session, run_id=run_id)
@@ -136,8 +140,10 @@ async def execute_run(
                 code="context_build_error",
                 message=str(exc),
                 event_seq=initial_seq + 1,
+                timer=timer,
             )
             await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
+            _emit_run_timing_metric(run_logger, timer=timer, labels=timing_labels)
             return
         await session.commit()
 
@@ -192,10 +198,13 @@ async def execute_run(
                 sink=sink,
                 cancel=cancel,
                 initial_seq=initial_seq,
+                timer=timer,
             )
+            timer.stream_ended()
             await sink.flush()
             _emit_vision_run_metric(run_logger, agent=agent, outcome=outcome)
         except Exception as exc:
+            timer.stream_ended()
             if agent.image_count > 0:
                 # Unexpected adapter/runtime exceptions can carry serialized
                 # request details. Never log or persist their text after a
@@ -216,8 +225,10 @@ async def execute_run(
                 code="agent_runtime_error",
                 message=failure_message,
                 event_seq=sink.latest_seq + 1,
+                timer=timer,
             )
             await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
+            _emit_run_timing_metric(run_logger, timer=timer, labels=timing_labels)
             with contextlib.suppress(Exception):
                 await draft_sink.delete()
             return
@@ -232,8 +243,10 @@ async def execute_run(
             outcome=outcome,
             agent=agent,
             create_title_job_row=settings.auto_title_enabled,
+            timer=timer,
         )
         await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
+        _emit_run_timing_metric(run_logger, timer=timer, labels=timing_labels)
         with contextlib.suppress(Exception):
             await draft_sink.delete()
 
@@ -253,6 +266,7 @@ async def _consume_agent(
     sink: EventSink,
     cancel: asyncio.Event,
     initial_seq: int,
+    timer: RunTimer,
 ) -> _StreamOutcome:
     """Drive ``agent.stream()``: assign seq, map AgentEvents to RunEvents, sink
     them, accumulate the transcript, and apply the retry policy.
@@ -273,8 +287,10 @@ async def _consume_agent(
         pending_blocks: list[ContentBlock] = []
 
         gen = agent.stream()
+        timer.stream_started()
         try:
             async for event in _iter_until_cancel(gen, cancel):
+                timer.observe(event)
                 if isinstance(event, MessageDone):
                     transcript.append(event.message)
                     pending_blocks = []
@@ -369,6 +385,48 @@ def _emit_vision_run_metric(
         provider_request_id=outcome.provider_request_id,
         usage=_numeric_usage(outcome.usage),
     ).info("Vision run metric")
+
+
+def _queued_ms(run: Run) -> int | None:
+    if run.started_at is None:
+        return None
+    return max(0, round((run.started_at - run.created_at).total_seconds() * 1000))
+
+
+def _timing_labels(run: Run) -> dict[str, object]:
+    snapshot = run.model_config_snapshot or {}
+    return {
+        "provider_name": run.provider_name,
+        "provider_model": run.provider_model,
+        "route_id": snapshot.get("route_id"),
+    }
+
+
+async def _record_timing(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    timer: RunTimer,
+    terminal: RunEvent | None,
+) -> None:
+    """Persist timing only when this worker wrote the terminal status."""
+    if terminal is None:
+        return
+    outcome = terminal.type.removeprefix("run_")
+    await record_run_timing(session, run_id=run_id, timing=timer.finish(outcome=outcome))
+
+
+def _emit_run_timing_metric(
+    run_logger: object,
+    *,
+    timer: RunTimer,
+    labels: dict[str, object],
+) -> None:
+    timing = timer.result
+    bind = getattr(run_logger, "bind", None)
+    if timing is None or not callable(bind):
+        return
+    bind(metric="run_timing", **labels, **timing).info("Run timing metric")
 
 
 def _numeric_usage(usage: dict[str, object] | None) -> dict[str, int | float] | None:
@@ -503,6 +561,7 @@ async def _finalize_result(
     outcome: _StreamOutcome,
     agent: ChatAgent,
     create_title_job_row: bool,
+    timer: RunTimer,
 ) -> tuple[RunEvent | None, bool]:
     terminal_seq = outcome.last_seq + 1
     async with session_factory() as session:
@@ -520,15 +579,14 @@ async def _finalize_result(
                     run_id=run_id,
                     event_seq=terminal_seq,
                 )
-                await session.commit()
-                return (
-                    (
-                        RunEvent(seq=terminal_seq, type="run_cancelled", payload={})
-                        if cancelled
-                        else None
-                    ),
-                    False,
+                cancelled_event = (
+                    RunEvent(seq=terminal_seq, type="run_cancelled", payload={})
+                    if cancelled
+                    else None
                 )
+                await _record_timing(session, run_id=run_id, timer=timer, terminal=cancelled_event)
+                await session.commit()
+                return cancelled_event, False
 
             final = _final_assistant_message(outcome.transcript)
             final_text = final.text()
@@ -549,6 +607,11 @@ async def _finalize_result(
                 transcript=outcome.transcript,
                 count_tokens=agent.count_tokens,
                 final_message_id=materialized.id,
+            )
+            await record_run_timing(
+                session,
+                run_id=run_id,
+                timing=timer.finish(outcome="succeeded"),
             )
             title_job_created = False
             if create_title_job_row:
@@ -601,6 +664,7 @@ async def _finalize_result(
                 transcript=outcome.transcript,
                 count_tokens=agent.count_tokens,
             )
+            await _record_timing(session, run_id=run_id, timer=timer, terminal=terminal)
         await session.commit()
         return (terminal if changed else None), False
 
@@ -686,6 +750,7 @@ async def _mark_failed_or_cancelled_if_cancelling(
     code: str,
     message: str,
     event_seq: int,
+    timer: RunTimer,
 ) -> RunEvent | None:
     async with session_factory() as session:
         terminal: RunEvent | None
@@ -713,6 +778,7 @@ async def _mark_failed_or_cancelled_if_cancelling(
                 if failed
                 else None
             )
+        await _record_timing(session, run_id=run_id, timer=timer, terminal=terminal)
         await session.commit()
         return terminal
 

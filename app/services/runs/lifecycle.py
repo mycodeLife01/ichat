@@ -70,6 +70,18 @@ async def mark_run_streaming(session: AsyncSession, *, run_id: int) -> bool:
     return True
 
 
+async def record_run_timing(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    timing: dict[str, Any],
+) -> None:
+    """Store the worker's phase timing alongside the terminal status write."""
+    run = await _get_run_for_update(session, run_id=run_id)
+    run.timing = timing
+    await session.flush()
+
+
 async def mark_run_succeeded(
     session: AsyncSession,
     *,

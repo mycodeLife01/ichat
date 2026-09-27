@@ -1,6 +1,7 @@
 import json
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal, cast
 
@@ -21,6 +22,7 @@ from app.schemas.conversations import (
     ConversationResponse,
     ImageContextResponse,
     MessageResponse,
+    MessageTimingResponse,
     ReplyQuoteRequest,
     ReplyQuoteResponse,
     ReplyQuoteSourceAnchor,
@@ -88,6 +90,7 @@ def message_response(
     conversation_public_id: uuid.UUID,
     run_public_id: uuid.UUID | None,
     attachments: list[MessageAttachmentResponse] | None = None,
+    timing: MessageTimingResponse | None = None,
 ) -> MessageResponse:
     return MessageResponse(
         id=message.public_id,
@@ -114,6 +117,7 @@ def message_response(
             if message.reply_quote_excerpt is not None
             else None
         ),
+        timing=timing,
     )
 
 
@@ -299,7 +303,7 @@ async def get_conversation_detail(
             .order_by(Message.position.asc())
         )
     ).all()
-    run_public_ids = await _run_public_id_map(session, messages)
+    runs = await _message_run_map(session, messages)
     attachment_map = await attachment_responses(
         session,
         message_ids=[message.id for message in messages],
@@ -317,11 +321,14 @@ async def get_conversation_detail(
                 message,
                 conversation_public_id=conversation.public_id,
                 run_public_id=(
-                    run_public_ids.get(message.run_id)
-                    if message.run_id is not None
-                    else None
+                    runs[message.run_id].public_id if message.run_id in runs else None
                 ),
                 attachments=attachment_map.get(message.id, []),
+                timing=(
+                    _message_timing(runs[message.run_id].timing)
+                    if message.role == "assistant" and message.run_id in runs
+                    else None
+                ),
             )
             for message in messages
         ],
@@ -1156,19 +1163,37 @@ async def _get_owned_unarchived_message_by_public_id(
     return message
 
 
-async def _run_public_id_map(
+@dataclass(frozen=True)
+class _MessageRun:
+    public_id: uuid.UUID
+    timing: dict[str, Any] | None
+
+
+async def _message_run_map(
     session: AsyncSession,
     messages: Sequence[Message],
-) -> dict[int, uuid.UUID]:
-    """Map internal run ids referenced by messages to their public ids.
+) -> dict[int, _MessageRun]:
+    """Map internal run ids referenced by messages to their public id and timing.
 
     Runs in a single query so conversation detail avoids a per-message lookup.
     """
     run_ids = {message.run_id for message in messages if message.run_id is not None}
     if not run_ids:
         return {}
-    rows = await session.execute(select(Run.id, Run.public_id).where(Run.id.in_(run_ids)))
-    return {row.id: row.public_id for row in rows}
+    rows = await session.execute(
+        select(Run.id, Run.public_id, Run.timing).where(Run.id.in_(run_ids))
+    )
+    return {row.id: _MessageRun(public_id=row.public_id, timing=row.timing) for row in rows}
+
+
+def _message_timing(timing: dict[str, Any] | None) -> MessageTimingResponse | None:
+    """Project a run's stored timing onto the fields the product displays."""
+    if timing is None or timing.get("version") != 1:
+        return None
+    work_ms = timing.get("work_ms")
+    if not isinstance(work_ms, int):
+        return None
+    return MessageTimingResponse(work_ms=work_ms)
 
 
 def _validate_existing_image_context(

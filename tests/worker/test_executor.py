@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from datetime import timedelta
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -137,6 +138,15 @@ async def queue_run(
 
 
 
+def assert_timing(run: Run, *, outcome: str) -> dict[str, Any]:
+    timing = run.timing
+    assert timing is not None
+    assert timing["version"] == 1
+    assert timing["outcome"] == outcome
+    assert sum(timing["phases"].values()) == timing["execution_ms"]
+    return timing
+
+
 def make_resolver(provider: Provider) -> ProviderResolver:
     def resolve(name: str, *, settings: Settings) -> Provider:
         return provider
@@ -189,6 +199,12 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert run.completed_at is not None
         assert run.usage_metadata == {"prompt_tokens": 4, "completion_tokens": 2}
         assert run.provider_request_id == "req-1"
+        timing = assert_timing(run, outcome="succeeded")
+        assert timing["work_ms"] is not None
+        assert timing["queued_ms"] is not None
+        assert timing["model_calls"] == 1
+        assert timing["attempts"] == 1
+        assert timing["tools"] == []
         # The worker records the assembled system prompt it sent. With web search
         # off and DEFAULT_SYSTEM_PROMPT overridden in tests, that is the override
         # plus the run's model-code block (environment-mode key = provider model).
@@ -365,6 +381,7 @@ async def test_execute_run_retries_temporary_image_failure_before_any_delta(
         run = await session.get(Run, run_id)
         assert run is not None
         assert run.status == "succeeded"
+        assert assert_timing(run, outcome="succeeded")["attempts"] == 2
 
         events = (
             await session.scalars(
@@ -511,6 +528,7 @@ async def test_execute_run_does_not_retry_after_two_pre_delta_failures(
         assert run is not None
         assert run.status == "failed"
         assert run.error_code == "dead"
+        assert assert_timing(run, outcome="failed")["work_ms"] is None
 
 
 async def test_execute_run_does_not_retry_incompatible_provider_continuation(
@@ -657,6 +675,9 @@ async def test_execute_run_marks_cancelled_when_context_build_fails_after_db_can
         assert run.status == "cancelled"
         assert run.cancelled_at is not None
         assert run.error_code is None
+        timing = assert_timing(run, outcome="cancelled")
+        assert timing["model_calls"] == 0
+        assert timing["phases"]["preparing"] == timing["execution_ms"]
 
         events = (
             await session.scalars(
@@ -1287,6 +1308,14 @@ async def test_execute_run_with_web_search_persists_tool_events_sources_and_tran
         (9, "run_succeeded"),
     ]
     assert replay[0].payload == {"text": "Need live info", "kind": "raw"}
+    async with session_factory() as session:
+        run = await session.get(Run, run_id)
+        assert run is not None
+        timing = assert_timing(run, outcome="succeeded")
+        assert timing["model_calls"] == 2
+        assert [(tool["name"], tool["ok"]) for tool in timing["tools"]] == [
+            ("web_search", True)
+        ]
     assert replay[1].payload == {"text": "Need fresh sources", "kind": "summary"}
     assert replay[2].payload == {
         "tool_name": "web_search",

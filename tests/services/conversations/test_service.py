@@ -212,6 +212,74 @@ async def test_get_conversation_detail_hides_archived_messages(
     assert [message.id for message in detail.messages] == [visible_public_id]
 
 
+async def test_get_conversation_detail_exposes_assistant_work_time_only(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await create_user(session, "alice")
+        conversation = Conversation(user_id=user.id, title="Timed chat")
+        session.add(conversation)
+        await session.flush()
+        messages: list[Message] = []
+        runs: list[Run] = []
+        timings = [
+            {"version": 1, "work_ms": 12_345, "execution_ms": 15_000, "phases": {}},
+            None,
+            {"version": 2, "work_ms": 10},
+        ]
+        for index, timing in enumerate(timings):
+            question = Message(
+                conversation_id=conversation.id,
+                role="user",
+                content=f"q{index}",
+                position=index * 2 + 1,
+            )
+            session.add(question)
+            await session.flush()
+            run = Run(
+                conversation_id=conversation.id,
+                user_message_id=question.id,
+                status="succeeded",
+                provider_name="fake",
+                provider_model="fake-model",
+                timing=timing,
+            )
+            session.add(run)
+            await session.flush()
+            question.run_id = run.id
+            answer = Message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=f"a{index}",
+                position=index * 2 + 2,
+                run_id=run.id,
+            )
+            session.add(answer)
+            messages.extend([question, answer])
+            runs.append(run)
+        await session.commit()
+
+        detail = await get_conversation_detail(
+            session, user=user, conversation_public_id=conversation.public_id
+        )
+
+    shown = [
+        (message.role, message.timing.work_ms if message.timing else None)
+        for message in detail.messages
+    ]
+    # User messages share the run id but never carry timing; legacy (NULL) and
+    # unknown-version timing fall back to no value.
+    assert shown == [
+        ("user", None),
+        ("assistant", 12_345),
+        ("user", None),
+        ("assistant", None),
+        ("user", None),
+        ("assistant", None),
+    ]
+    assert detail.messages[1].model_dump()["timing"] == {"work_ms": 12_345}
+
+
 async def test_rename_conversation_updates_title(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
