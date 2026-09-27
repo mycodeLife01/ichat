@@ -340,6 +340,8 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
             run_id: run.runId,
             reasoning: run.draftReasoning,
             reasoning_summary: run.draftReasoningSummary || null,
+            // Deterministic stand-in for the worker's recorded work time.
+            timing: { work_ms: 12_345 },
           },
         ],
       }));

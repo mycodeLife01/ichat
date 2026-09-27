@@ -101,6 +101,35 @@ describe("ThinkingBlock", () => {
     expect(container.querySelector(".thinking-body")).toBeNull();
   });
 
+  it("appends the work time to the settled header without touching geometry", () => {
+    const { container, rerender } = render(
+      <ThinkingBlock content="思考过程" streaming={false} />,
+    );
+    const block = container.querySelector(".thinking");
+    const rowClassName = block?.firstElementChild?.className;
+    const blockClassName = block?.className;
+    const labelClassName = container.querySelector(".thinking-label")?.className;
+    expect(header()).toHaveTextContent(/^已思考$/);
+
+    // Detail refetch after run_succeeded delivers the timing in place.
+    rerender(<ThinkingBlock content="思考过程" streaming={false} workMs={12_345} />);
+
+    expect(header()).toHaveTextContent(/^已思考 12 秒$/);
+    expect(block?.className).toBe(blockClassName);
+    expect(block?.firstElementChild?.className).toBe(rowClassName);
+    expect(container.querySelector(".thinking-label")?.className).toBe(labelClassName);
+  });
+
+  it("ignores the work time while streaming or when a label overrides the header", () => {
+    const { rerender } = render(<ThinkingBlock content="" streaming workMs={5000} />);
+    expect(header()).toHaveTextContent(/^正在思考$/);
+
+    rerender(
+      <ThinkingBlock content="思考" streaming={false} label="已找到 3 个来源" workMs={5000} />,
+    );
+    expect(header()).toHaveTextContent(/^已找到 3 个来源$/);
+  });
+
   it("toggles only the full content after thinking ends", async () => {
     const user = userEvent.setup();
     const { container } = render(<ThinkingBlock content="推理内容" streaming={false} />);

@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 
 import { focusRing } from "../ui/classes";
 import { Icons } from "../ui/icons";
+import { formatDuration } from "./formatDuration";
 import { reasoningPreview } from "./reasoningPreview";
 
 // Raw chains of thought and provider summaries share one behavior. While
@@ -22,6 +23,9 @@ type ThinkingBlockProps = {
   // Run id shared by the streaming surface and the persisted message, so a
   // choice made after thinking ends survives the handoff to history.
   handoffKey?: string | null;
+  // Settled Run's work time (thinking + tools before the final answer);
+  // appended to the settled header as 已思考 N 秒. Text only, never geometry.
+  workMs?: number | null;
 };
 
 // Written only by blocks that streamed and consumed by the next block that
@@ -33,6 +37,7 @@ export function ThinkingBlock({
   streaming,
   label,
   handoffKey,
+  workMs,
 }: ThinkingBlockProps) {
   const [open, setOpenState] = useState(
     () => (handoffKey && handoffChoices.get(handoffKey)) || false,
@@ -60,7 +65,8 @@ export function ThinkingBlock({
   const hasContent = content.trim() !== "";
   const mode = open ? "full" : streaming ? "preview" : "collapsed";
   const headline = streaming ? reasoningPreview(content) : "";
-  const headerText = label ?? (streaming ? headline || "正在思考" : "已思考");
+  const settledText = workMs != null ? `已思考 ${formatDuration(workMs)}` : "已思考";
+  const headerText = label ?? (streaming ? headline || "正在思考" : settledText);
 
   // The header's vertical geometry (root + row padding) is unconditional: the
   // empty status and the first reasoning delta must share one layout, or the

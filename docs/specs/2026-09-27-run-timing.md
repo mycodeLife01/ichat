@@ -1,7 +1,7 @@
 # Run 耗时记录与工作时长展示（Run timing）
 
 - 日期：2026-09-27
-- 状态：已确认（2026-09-27 review）
+- 状态：已确认（2026-09-27 review），已实现（分支 `feat/run-timing`）
 - 范围：worker 执行链路（`app/worker/executor.py`）、`runs` 表、会话详情 API（`MessageResponse`）、
   live 对话页思考 header（`frontend/src/messages/ThinkingBlock.tsx`、`Message.tsx`）及 design
   workbench 对应镜像

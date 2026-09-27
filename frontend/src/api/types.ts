@@ -86,8 +86,14 @@ export type MessageResponse = {
   metadata?: MessageMetadata | null;
   attachments?: FileAttachment[];
   reply_quote?: ReplyQuote | null;
+  // Assistant replies only; absent for runs recorded before timing existed.
+  timing?: MessageTiming | null;
   position: number;
   created_at: string;
+};
+
+export type MessageTiming = {
+  work_ms: number;
 };
 
 export type RunStatus =
