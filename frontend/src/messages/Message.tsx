@@ -254,9 +254,12 @@ export function Message({
 
   // Mobile: assistant actions stay resident (the desktop bar already is — no
   // hover exists on touch); user actions open via long-press on the bubble.
+  // The pending placeholder shares the committed bar's DOM node (React reuses
+  // the div), so it must already be transparent: an opaque placeholder would
+  // run the opacity transition 1 -> 0 over the real buttons and flash them.
   const actionBar =
     pending ? (
-      !isMobile && <div className="msg-actions mt-1 h-7" aria-hidden="true" />
+      !isMobile && <div className="msg-actions mt-1 h-7 opacity-0" aria-hidden="true" />
     ) : isMobile && isUser ? (
       <BottomSheet
         open={sheetOpen}

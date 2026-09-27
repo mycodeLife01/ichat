@@ -75,6 +75,19 @@ describe("Message", () => {
     );
   });
 
+  it("keeps the user action bar hidden when a pending message commits", () => {
+    const { container, rerender } = render(<Message message={userMessage} pending />);
+    const placeholder = container.querySelector(".msg-actions");
+    expect(placeholder).toHaveClass("opacity-0");
+
+    rerender(<Message message={userMessage} />);
+
+    // React reuses the placeholder node; an opaque placeholder would fade the
+    // real buttons out from opacity 1 and flash them after every send.
+    expect(container.querySelector(".msg-actions")).toBe(placeholder);
+    expect(placeholder).toHaveClass("opacity-0");
+  });
+
   it("renders a signed image thumbnail and reopens its preview without another read-url request", async () => {
     const user = userEvent.setup();
     const onReadAttachment = vi.fn(async () => ({ url: "https://signed.example.test/preview" }));
