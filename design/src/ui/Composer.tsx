@@ -66,11 +66,23 @@ type ComposerProps = {
 };
 
 // ChatGPT lets the prompt occupy up to 30% of the viewport before scrolling.
-// Once it reaches that ceiling, the prompt takes a full-width row and the
-// controls move into a footer row instead of floating beside the text.
+// As soon as the prompt no longer fits on one line beside the controls, it
+// takes a full-width row and the controls move into a footer row instead of
+// squeezing multi-line text between them.
 const PROMPT_MAX_HEIGHT = "max(30svh, 5rem)";
-const PROMPT_MAX_VIEWPORT_RATIO = 0.3;
-const PROMPT_MIN_MAX_HEIGHT = 80;
+// Used only when the computed line height is unavailable (e.g. jsdom).
+const PROMPT_FALLBACK_LINE_HEIGHT = 25;
+
+// True when the prompt wraps past one line. The textarea height must already
+// be reset to `auto` so scrollHeight reflects the content.
+function promptWrapsPastOneLine(el: HTMLTextAreaElement): boolean {
+  const style = window.getComputedStyle(el);
+  const lineHeight = parseFloat(style.lineHeight);
+  const padding =
+    (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+  const line = Number.isFinite(lineHeight) ? lineHeight : PROMPT_FALLBACK_LINE_HEIGHT;
+  return el.scrollHeight > padding + line * 1.5;
+}
 
 // Composer tools share one geometry: a 36px visual target with a 4px
 // pseudo-element bleed, so the effective touch target reaches 44×44 CSS px
@@ -181,6 +193,10 @@ export function Composer({
   const [toolsOpen, setToolsOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  // Text width of the compact (inline) prompt column, remembered so an
+  // expanded prompt only collapses once it would fit on one line there again.
+  // Measuring at the wider expanded width would flip back and forth.
+  const compactPromptWidthRef = useRef<number | null>(null);
   const [toolsMenuPosition, setToolsMenuPosition] = useState({
     left: 12,
     top: 0,
@@ -220,11 +236,27 @@ export function Composer({
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
+    let expanded: boolean;
+    if (value === "") {
+      expanded = false;
+    } else if (!promptExpanded) {
+      compactPromptWidthRef.current = el.clientWidth;
+      expanded = promptWrapsPastOneLine(el);
+    } else if (compactPromptWidthRef.current !== null) {
+      // Re-measure at the compact column width without committing a frame.
+      const { flex, width } = el.style;
+      el.style.flex = "none";
+      el.style.width = `${compactPromptWidthRef.current}px`;
+      expanded = promptWrapsPastOneLine(el);
+      el.style.flex = flex;
+      el.style.width = width;
+    } else {
+      expanded = true;
+    }
     el.style.height = `${el.scrollHeight}px`;
-    setPromptExpanded(
-      el.scrollHeight >
-        Math.max(window.innerHeight * PROMPT_MAX_VIEWPORT_RATIO, PROMPT_MIN_MAX_HEIGHT),
-    );
+    setPromptExpanded(expanded);
+    // promptExpanded is read, not tracked: layout changes re-measure below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, ref]);
 
   useLayoutEffect(() => {

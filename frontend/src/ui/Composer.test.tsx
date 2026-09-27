@@ -168,7 +168,7 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
   });
 
-  it("moves the controls below a prompt that reaches the ChatGPT height limit", () => {
+  it("moves the controls below a prompt that wraps past one line", () => {
     const props: ComponentProps<typeof Composer> = {
       value: "short",
       onChange: noop,
