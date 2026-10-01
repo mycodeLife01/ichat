@@ -11,7 +11,7 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from app.services.files import parser_worker, parsers
-from app.services.files.formats import FileFormat, policy_for_filename
+from app.services.files.formats import FileFormat, FileLimits, policy_for_filename
 from app.services.files.parsers import parse_file, parse_in_subprocess
 from app.services.files.protocols import FileProcessingError, ProcessedFile
 
@@ -220,6 +220,54 @@ def test_text_parser_rejects_binary_and_non_utf8(source: bytes, code: str) -> No
         parse_file(source, policy_for_filename("note.md"))
 
 
+@pytest.mark.parametrize(
+    ("text", "encoding", "filename"),
+    [
+        ("名称,数量\r\n苹果,3", "gb18030", "table.csv"),
+        ("你好，世界", "gb18030", "note.txt"),
+        ("中文", "gb18030", "short.txt"),
+        ("北京市朝阳区建国路88号", "gb18030", "address.txt"),
+        ("繁體字也可以用國標編碼保存。", "gb18030", "traditional-gb.txt"),
+        ("名稱,數量\r\n蘋果,3\r\n香蕉,5", "big5", "table.csv"),
+        ("你好，世界", "big5", "note.txt"),
+        ("會議紀要\n1. 討論了第三季度的銷售目標", "big5", "minutes.md"),
+        ("臺北市信義區市府路1號", "big5", "address.txt"),
+    ],
+)
+def test_text_parser_falls_back_to_legacy_chinese_encodings(
+    text: str, encoding: str, filename: str
+) -> None:
+    source = text.encode(encoding)
+    with pytest.raises(UnicodeDecodeError):
+        source.decode("utf-8")
+
+    result = parse_file(source, policy_for_filename(filename))
+
+    assert "text_encoding_normalized" in result.warnings
+    assert _document_text(result) == text.replace("\r\n", "\n")
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("Dockerfile", b"FROM python:3.12-slim\nRUN echo ok\n"),
+        (".env", b"KEY=value\n"),
+        ("main.rs", b"fn main() {}\n"),
+    ],
+)
+def test_unlisted_and_code_files_parse_as_text(filename: str, source: bytes) -> None:
+    result = parse_file(source, policy_for_filename(filename))
+
+    assert result.media_type == "text/plain"
+    assert _document_text(result) == source.decode()
+
+
+def test_renamed_executable_is_rejected_as_text() -> None:
+    executable = b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00" * 8
+    with pytest.raises(FileProcessingError):
+        parse_file(executable, policy_for_filename("setup.txt"))
+
+
 def test_csv_shape_limit_warns_without_rejecting_content() -> None:
     result = parse_file(b"not: [valid", policy_for_filename("broken.yaml"))
     assert _document_text(result) == "not: [valid"
@@ -258,8 +306,150 @@ def test_image_parser_verifies_real_type_uses_first_frame_and_strips_metadata() 
     with Image.open(BytesIO(animated_result.preview.content)) as preview:
         assert getattr(preview, "n_frames", 1) == 1
 
+    renamed = parse_file(source.getvalue(), policy_for_filename("photo.jpg"))
+    assert renamed.format == "png"
+    assert renamed.media_type == "image/png"
+    assert renamed.original.content_type == "image/png"
+    assert renamed.warnings == ("format_corrected",)
+
+
+@pytest.mark.parametrize("filename", ["notes.txt", "photo.jpg", "slides.docx"])
+def test_cross_category_content_is_rejected(filename: str) -> None:
     with pytest.raises(FileProcessingError, match="file_format_mismatch"):
-        parse_file(source.getvalue(), policy_for_filename("photo.jpg"))
+        parse_file(_text_pdf(), policy_for_filename(filename))
+
+
+def test_image_admission_uses_injected_limits() -> None:
+    limits = FileLimits(image_max_edge=100, image_max_pixels=5_000)
+    with pytest.raises(FileProcessingError, match="image_dimensions_exceeded"):
+        parse_file(_png_bytes((101, 10)), policy_for_filename("wide.png"), limits=limits)
+    with pytest.raises(FileProcessingError, match="image_pixel_limit_exceeded"):
+        parse_file(_png_bytes((100, 51)), policy_for_filename("big.png"), limits=limits)
+    with pytest.raises(FileProcessingError, match="file_too_large"):
+        parse_file(
+            _png_bytes((10, 10)),
+            policy_for_filename("small.png"),
+            limits=FileLimits(image_max_bytes=10),
+        )
+
+
+def test_long_screenshot_is_admitted_with_readable_preview() -> None:
+    result = parse_file(_png_bytes((1080, 10_000)), policy_for_filename("long.png"))
+
+    assert (result.metadata["width"], result.metadata["height"]) == (657, 6085)
+    assert (result.metadata["original_width"], result.metadata["original_height"]) == (
+        1080,
+        10_000,
+    )
+
+
+def test_gif_uses_first_frame_with_warning() -> None:
+    first = Image.new("RGB", (6, 4), (255, 0, 0))
+    second = Image.new("RGB", (6, 4), (0, 0, 255))
+    source = BytesIO()
+    first.save(source, format="GIF", save_all=True, append_images=[second], duration=100)
+
+    result = parse_file(source.getvalue(), policy_for_filename("loop.gif"))
+
+    assert result.media_type == "image/gif"
+    assert result.warnings == ("animated_image_first_frame_only",)
+    assert result.metadata["frame_count"] == 2
+    with Image.open(BytesIO(result.preview.content)) as preview:
+        assert preview.format == "WEBP"
+        assert preview.size == (6, 4)
+
+
+def test_heic_is_decoded_upright_into_webp_preview() -> None:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    image = Image.new("RGB", (64, 32), (200, 30, 30))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    source = BytesIO()
+    image.save(source, format="HEIF", quality=90, exif=exif.tobytes())
+
+    result = parse_file(source.getvalue(), policy_for_filename("IMG_0001.HEIC"))
+
+    assert result.format == "heic"
+    assert result.original.content_type == "image/heic"
+    assert result.preview.content_type == "image/webp"
+    assert (result.metadata["width"], result.metadata["height"]) == (32, 64)
+    assert (result.metadata["original_width"], result.metadata["original_height"]) == (32, 64)
+    # A HEIC renamed to .jpg is corrected within the image category.
+    renamed = parse_file(source.getvalue(), policy_for_filename("photo.jpg"))
+    assert renamed.format == "heic"
+    assert renamed.warnings == ("format_corrected",)
+
+
+def _png_bytes(size: tuple[int, int]) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", size, (30, 60, 90)).save(output, format="PNG")
+    return output.getvalue()
+
+
+def _jpeg_bytes(size: tuple[int, int], *, orientation: int | None = None) -> bytes:
+    image = Image.new("RGB", size, (200, 30, 30))
+    # Mark the top-left corner so the orientation of the preview is observable.
+    image.paste((20, 200, 20), (0, 0, size[0] // 4, size[1] // 4))
+    exif = Image.Exif()
+    if orientation is not None:
+        exif[0x0112] = orientation
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=95, exif=exif)
+    return output.getvalue()
+
+
+def test_image_parser_applies_exif_orientation_to_preview() -> None:
+    # Orientation 6 means the stored pixels must be rotated 90 degrees clockwise.
+    result = parse_file(_jpeg_bytes((80, 40), orientation=6), policy_for_filename("photo.jpg"))
+
+    assert result.extractor_version == "image-v2"
+    assert result.metadata["width"] == 40
+    assert result.metadata["height"] == 80
+    assert result.metadata["original_width"] == 40
+    assert result.metadata["original_height"] == 80
+    with Image.open(BytesIO(result.preview.content)) as preview:
+        assert preview.size == (40, 80)
+        assert not preview.getexif()
+        rgb = preview.convert("RGB")
+        # The marked source corner moves to the top-right after rotation.
+        top_right = rgb.getpixel((35, 4))
+        top_left = rgb.getpixel((4, 4))
+    assert isinstance(top_right, tuple) and top_right[1] > 150
+    assert isinstance(top_left, tuple) and top_left[0] > 150
+
+
+def test_image_parser_downscales_preview_to_pixel_budget_without_upscaling() -> None:
+    large = parse_file(_jpeg_bytes((4000, 3000)), policy_for_filename("large.jpg"))
+    assert large.metadata["width"] * large.metadata["height"] <= parsers.MAX_PREVIEW_PIXELS
+    assert large.metadata["original_width"] == 4000
+    assert large.metadata["original_height"] == 3000
+    assert abs(large.metadata["width"] / large.metadata["height"] - 4 / 3) < 0.01
+    with Image.open(BytesIO(large.preview.content)) as preview:
+        assert preview.size == (large.metadata["width"], large.metadata["height"])
+
+    small = parse_file(_jpeg_bytes((640, 480)), policy_for_filename("small.jpg"))
+    assert (small.metadata["width"], small.metadata["height"]) == (640, 480)
+
+
+def test_preview_size_keeps_long_screenshots_readable() -> None:
+    assert parsers._preview_size(1080, 10_000) == (657, 6085)
+    assert parsers._preview_size(8064, 6048) == (2309, 1732)
+    assert parsers._preview_size(1920, 1080) == (1920, 1080)
+
+
+def test_image_parser_accepts_multi_picture_jpeg_as_single_frame() -> None:
+    primary = Image.new("RGB", (40, 30), (10, 20, 30))
+    secondary = Image.new("RGB", (20, 15), (200, 200, 200))
+    source = BytesIO()
+    primary.save(source, format="MPO", save_all=True, append_images=[secondary])
+
+    result = parse_file(source.getvalue(), policy_for_filename("hdr.jpg"))
+
+    assert result.warnings == ()
+    assert result.metadata["frame_count"] == 1
+    assert (result.metadata["width"], result.metadata["height"]) == (40, 30)
 
 
 def test_pdf_parser_uses_real_pdf_pages_and_rejects_encryption() -> None:
@@ -442,8 +632,22 @@ def test_ooxml_container_rejects_path_traversal_and_wrong_internal_type() -> Non
     )
     with pytest.raises(FileProcessingError, match="unsafe_archive_path"):
         parse_file(traversal, policy_for_filename("file.docx"))
+    renamed = parse_file(_docx(), policy_for_filename("file.pptx"))
+    assert renamed.format == "docx"
+    assert renamed.warnings == ("format_corrected",)
+    # When the package declares no recognizable main part, the declared
+    # format's own validation still rejects the mismatch.
+    ambiguous = _replace_zip_parts(
+        _docx(),
+        {
+            "[Content_Types].xml": _content_types(
+                "word/document.xml",
+                "application/vnd.ms-word.document.macroEnabled.main+xml",
+            )
+        },
+    )
     with pytest.raises(FileProcessingError, match="ooxml_type_mismatch"):
-        parse_file(_docx(), policy_for_filename("file.pptx"))
+        parse_file(ambiguous, policy_for_filename("file.pptx"))
 
 
 def test_restricted_parser_returns_stable_result_from_child_process() -> None:
@@ -454,6 +658,35 @@ def test_restricted_parser_returns_stable_result_from_child_process() -> None:
         memory_limit_bytes=None,
     )
     assert _document_text(result) == "child process"
+
+
+def test_restricted_parser_carries_same_category_correction_and_limits() -> None:
+    corrected = parse_in_subprocess(
+        _png_bytes((8, 6)),
+        policy_for_filename("photo.jpg"),
+        timeout_seconds=10,
+        memory_limit_bytes=None,
+    )
+    assert corrected.format == "png"
+    assert corrected.media_type == "image/png"
+    assert corrected.warnings == ("format_corrected",)
+
+    with pytest.raises(FileProcessingError, match="image_dimensions_exceeded"):
+        parse_in_subprocess(
+            _png_bytes((8, 6)),
+            policy_for_filename("photo.png"),
+            limits=FileLimits(image_max_edge=7),
+            timeout_seconds=10,
+            memory_limit_bytes=None,
+        )
+
+
+def test_parent_rejects_cross_category_child_result() -> None:
+    declared = policy_for_filename("photo.jpg")
+    assert parsers._result_policy("png", declared=declared).format is FileFormat.PNG
+    for value in ("pdf", "txt", "unknown", None):
+        with pytest.raises(FileProcessingError, match="parser_failed"):
+            parsers._result_policy(value, declared=declared)
 
 
 def test_restricted_parser_can_run_inside_a_daemonic_celery_style_process() -> None:

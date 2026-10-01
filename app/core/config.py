@@ -183,7 +183,13 @@ class Settings(BaseSettings):
     files_quota_bytes: int = 1 * 1024 * 1024 * 1024
     files_max_inflight_uploads: int = 5
     files_max_attachments_per_message: int = 5
-    files_max_message_bytes: int = 50 * 1024 * 1024
+    files_max_message_bytes: int = 100 * 1024 * 1024
+    files_text_max_bytes: int = 2 * 1024 * 1024
+    files_image_max_bytes: int = 30 * 1024 * 1024
+    files_pdf_max_bytes: int = 50 * 1024 * 1024
+    files_office_max_bytes: int = 30 * 1024 * 1024
+    files_image_max_pixels: int = 80_000_000
+    files_image_max_edge: int = 16_384
     files_rate_user_limit: int = 100
     files_rate_ip_limit: int = 500
     files_rate_window_seconds: int = 3_600
@@ -270,6 +276,16 @@ class Settings(BaseSettings):
             raise ValueError("files_r2_parallel_download_threshold_bytes must be positive")
         if self.files_r2_parallel_download_max_concurrency < 1:
             raise ValueError("files_r2_parallel_download_max_concurrency must be positive")
+        for name in (
+            "files_text_max_bytes",
+            "files_image_max_bytes",
+            "files_pdf_max_bytes",
+            "files_office_max_bytes",
+            "files_image_max_pixels",
+            "files_image_max_edge",
+        ):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be positive")
         openai_models = _strict_model_list(self.openai_models, allow_empty=False)
         vision_models = _strict_model_list(self.openai_vision_models, allow_empty=True)
         unknown_vision_models = sorted(set(vision_models) - set(openai_models))

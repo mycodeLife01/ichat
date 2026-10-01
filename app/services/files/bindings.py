@@ -32,6 +32,7 @@ from app.models.files import (
 )
 from app.models.user import User
 from app.services.agents.context import estimate_message_tokens
+from app.services.files.formats import SUPPORTED_IMAGE_PROCESSOR_VERSIONS
 
 ATTACHMENT_INVALID = "One or more attachments are unavailable"
 ATTACHMENT_LIMIT = "A message can include at most five attachments"
@@ -174,7 +175,7 @@ async def prepare_attachment_plan(
                     or not isinstance(height, int)
                     or isinstance(height, bool)
                     or height <= 0
-                    or file.extractor_version != "image-v1"
+                    or file.extractor_version not in SUPPORTED_IMAGE_PROCESSOR_VERSIONS
                 ):
                     raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ATTACHMENT_INVALID)
                 blocks.append(

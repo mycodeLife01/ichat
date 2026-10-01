@@ -16,6 +16,7 @@ from app.main import create_app
 from app.models.conversation import Conversation, Message
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
+from app.services.files.formats import supported_extensions
 
 TEST_DATABASE_URL = os.environ.get(
     "CONVERSATION_TEST_DATABASE_URL",
@@ -826,36 +827,16 @@ async def test_capabilities_endpoint_is_public_and_hides_provider_name(
         "web_search": {"enabled": True},
         "files": {
             "enabled": False,
-            "allowed_extensions": [
-                "csv",
-                "docx",
-                "go",
-                "java",
-                "jpeg",
-                "jpg",
-                "js",
-                "json",
-                "md",
-                "pdf",
-                "png",
-                "pptx",
-                "py",
-                "sql",
-                "ts",
-                "txt",
-                "webp",
-                "xlsx",
-                "yaml",
-                "yml",
-            ],
+            "allowed_extensions": list(supported_extensions()),
             "category_max_bytes": {
-                "image": 10 * 1024 * 1024,
-                "pdf": 25 * 1024 * 1024,
-                "office": 20 * 1024 * 1024,
+                "image": 30 * 1024 * 1024,
+                "pdf": 50 * 1024 * 1024,
+                "office": 30 * 1024 * 1024,
                 "text": 2 * 1024 * 1024,
             },
+            "accepts_unlisted_text": True,
             "max_attachments_per_message": 5,
-            "max_message_bytes": 50 * 1024 * 1024,
+            "max_message_bytes": 100 * 1024 * 1024,
             "quota_bytes": 1024 * 1024 * 1024,
             "target_turn_tokens": 128_000,
             "context_budget_tokens": 256_000,

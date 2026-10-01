@@ -75,7 +75,7 @@ def _success_payload(output_directory: Path, processed: ProcessedFile) -> dict[s
 
 def main(argv: list[str] | None = None) -> int:
     arguments = argv or sys.argv
-    if len(arguments) != 6:
+    if len(arguments) != 7:
         return 2
     try:
         _terminate_if_parent_dies(int(arguments[5]))
@@ -84,12 +84,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Import untrusted parser dependencies only after the Linux parent-death
     # contract is armed, closing the fork/exec-to-import orphan window.
-    from app.services.files.formats import policy_for_format
+    from app.services.files.formats import FileLimits, policy_for_format
     from app.services.files.parsers import _apply_child_limits, parse_file
     from app.services.files.protocols import FileProcessingError
 
     try:
         policy = policy_for_format(arguments[1])
+        limits = FileLimits(**json.loads(arguments[6]))
         output_directory = Path(arguments[2]).resolve(strict=True)
         timeout_seconds = float(arguments[3])
         raw_memory_limit = int(arguments[4])
@@ -98,10 +99,11 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=timeout_seconds,
             memory_limit_bytes=memory_limit,
         )
-        content = sys.stdin.buffer.read(policy.max_bytes + 1)
-        if len(content) > policy.max_bytes:
+        max_bytes = limits.max_bytes(policy.category)
+        content = sys.stdin.buffer.read(max_bytes + 1)
+        if len(content) > max_bytes:
             raise FileProcessingError("file_too_large")
-        processed = parse_file(content, policy)
+        processed = parse_file(content, policy, limits=limits)
         payload = _success_payload(output_directory, processed)
     except FileProcessingError as error:
         payload = {

@@ -9,6 +9,9 @@ class FileUploadCapabilityResponse(BaseModel):
     enabled: bool
     allowed_extensions: list[str]
     category_max_bytes: dict[str, int]
+    # Files with an unlisted or no extension are accepted as plain text
+    # under the text size limit and validated by the worker.
+    accepts_unlisted_text: bool
     max_attachments_per_message: int
     max_message_bytes: int
     quota_bytes: int

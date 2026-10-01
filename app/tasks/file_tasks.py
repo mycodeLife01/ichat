@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.db.sync_session import get_sync_session_factory
 from app.models.files import FileStorageLocation, FileUpload
 from app.services.files.dependencies import build_file_storage
+from app.services.files.formats import FileLimits
 from app.services.files.maintenance import (
     backfill_model_previews,
     cleanup_staging_objects,
@@ -68,7 +69,10 @@ def process_file_upload(upload_id: str) -> str:
         # cannot poison later uploads in the same Celery child.
         storage=build_file_storage(settings, role="worker"),
         scanner=scanner,
-        parser=RestrictedFileParser(timeout_seconds=settings.files_parser_timeout_seconds),
+        parser=RestrictedFileParser(
+            timeout_seconds=settings.files_parser_timeout_seconds,
+            limits=FileLimits.from_settings(settings),
+        ),
         task_id=uuid4().hex,
     )
     if scanner.signature_age_seconds is not None:

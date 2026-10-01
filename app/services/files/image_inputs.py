@@ -27,6 +27,7 @@ from app.models.files import (
     FilePurpose,
     FileStorageLocation,
 )
+from app.services.files.formats import SUPPORTED_IMAGE_PROCESSOR_VERSIONS
 from app.services.files.protocols import PresignedDownload, PreviewLlmSigner
 from app.services.files.storage import (
     StorageCredentialsUnavailable,
@@ -38,7 +39,6 @@ from app.services.files.telemetry import emit_image_input_resolution
 _UNAVAILABLE_CODE = "image_input_unavailable"
 _UNAVAILABLE_MESSAGE = "Image input could not be resolved"
 _IMAGE_PREVIEW_MEDIA_TYPE = "image/webp"
-_IMAGE_PROCESSOR_VERSION = "image-v1"
 _MAX_IMAGE_EDGE = 8_192
 _MAX_IMAGE_PIXELS = 20_000_000
 
@@ -248,9 +248,9 @@ class FileImageInputResolver(ImageInputResolver):
                 _raise_permanent("preview_dimensions_exceeded")
             if width * height > _MAX_IMAGE_PIXELS:
                 _raise_permanent("preview_pixels_exceeded")
-            if asset.extractor_version != _IMAGE_PROCESSOR_VERSION:
+            if asset.extractor_version not in SUPPORTED_IMAGE_PROCESSOR_VERSIONS:
                 _raise_permanent("processor_version_mismatch")
-            if block.processor_version != _IMAGE_PROCESSOR_VERSION:
+            if block.processor_version != asset.extractor_version:
                 _raise_permanent("snapshot_processor_version_mismatch")
             warnings = asset.warnings
             if not isinstance(warnings, list) or not all(
