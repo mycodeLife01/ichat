@@ -1,10 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { FilesApi } from "../api/files";
+import type { FilesApi, StoragePut } from "../api/files";
 import { attachmentDraftStore } from "./draftStore";
 import {
+  FILE_TOO_LARGE_MESSAGE,
+  FILE_TYPE_UNSUPPORTED_MESSAGE,
   FILE_UPLOAD_FAILURE_MESSAGE,
+  MESSAGE_ATTACHMENT_LIMIT_MESSAGE,
   useAttachmentUploads,
 } from "./useAttachmentUploads";
 import type { FileUploadRecord, FilesCapability } from "./types";
@@ -88,16 +91,14 @@ afterEach(() => {
 describe("useAttachmentUploads", () => {
   it("creates, directly PUTs, confirms, and persists a ready attachment", async () => {
     const filesApi = makeApi();
-    const fetchImpl = vi.fn(async () =>
-      new Response(null, { status: 200, headers: { ETag: '"r2-etag"' } }),
-    );
+    const storagePut = vi.fn<StoragePut>(async () => ({ ok: true, etag: '"r2-etag"' }));
     const { result } = renderHook(() =>
       useAttachmentUploads({
         userId: 7,
         conversationId: "conversation-1",
         capability,
         filesApi,
-        fetchImpl,
+        storagePut,
       }),
     );
 
@@ -111,11 +112,71 @@ describe("useAttachmentUploads", () => {
       size_bytes: 5,
     });
     expect(filesApi.confirm).toHaveBeenCalledWith("upload-1", { etag: '"r2-etag"' });
-    expect(fetchImpl).toHaveBeenCalledWith(session.upload_url, expect.objectContaining({ method: "PUT" }));
+    expect(storagePut).toHaveBeenCalledWith(
+      expect.objectContaining({ url: session.upload_url }),
+    );
     expect(attachmentDraftStore.read(7, "conversation-1")).toMatchObject({
       content: "please read this",
       attachments: [{ upload_id: "upload-1", status: "succeeded" }],
     });
+  });
+
+  it("exposes whole-percent upload progress without persisting it", async () => {
+    const filesApi = makeApi({ createUpload: vi.fn(async () => session) });
+    const storagePut = vi.fn<StoragePut>((request) => {
+      request.onProgress?.(2);
+      return new Promise(() => {});
+    });
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        storagePut,
+      }),
+    );
+
+    act(() => result.current.addFiles([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+
+    await waitFor(() => expect(result.current.attachments[0]?.progress).toBe(40));
+    expect(result.current.attachments[0]?.status).toBe("uploading");
+    expect(attachmentDraftStore.read(7, "conversation-1").attachments[0]).not.toHaveProperty(
+      "progress",
+    );
+  });
+
+  it("holds full progress while confirm is in flight after the transfer finishes", async () => {
+    let resolveConfirm: (record: FileUploadRecord) => void = () => {};
+    const confirm = vi.fn(
+      () =>
+        new Promise<FileUploadRecord>((resolve) => {
+          resolveConfirm = resolve;
+        }),
+    );
+    const filesApi = makeApi({ createUpload: vi.fn(async () => session), confirm });
+    const storagePut = vi.fn<StoragePut>(async (request) => {
+      request.onProgress?.(5);
+      return { ok: true, etag: '"r2-etag"' };
+    });
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        storagePut,
+      }),
+    );
+
+    act(() => result.current.addFiles([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(result.current.attachments[0]).toMatchObject({ status: "uploading", progress: 100 });
+
+    await act(async () => resolveConfirm(queuedRecordWithoutFile));
+    expect(result.current.attachments[0]?.status).not.toBe("uploading");
+    expect(result.current.attachments[0]).not.toHaveProperty("progress");
   });
 
   it("handles a queued response without file before polling the ready attachment", async () => {
@@ -123,16 +184,14 @@ describe("useAttachmentUploads", () => {
       confirm: vi.fn(async () => queuedRecordWithoutFile),
       status: vi.fn(async () => [readyRecord]),
     });
-    const fetchImpl = vi.fn(async () =>
-      new Response(null, { status: 200, headers: { ETag: '"r2-etag"' } }),
-    );
+    const storagePut = vi.fn<StoragePut>(async () => ({ ok: true, etag: '"r2-etag"' }));
     const { result } = renderHook(() =>
       useAttachmentUploads({
         userId: 7,
         conversationId: "conversation-1",
         capability,
         filesApi,
-        fetchImpl,
+        storagePut,
       }),
     );
 
@@ -206,9 +265,37 @@ describe("useAttachmentUploads", () => {
       ]),
     );
 
-    expect(onError).toHaveBeenCalledWith(FILE_UPLOAD_FAILURE_MESSAGE);
-    expect(onError).toHaveBeenCalledWith("You can attach at most 1 files to one message.");
+    expect(onError).toHaveBeenCalledWith(FILE_TYPE_UNSUPPORTED_MESSAGE);
+    expect(onError).toHaveBeenCalledWith(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
     expect(filesApi.createUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts unlisted and extensionless names as text when the server allows it", () => {
+    const filesApi = makeApi();
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability: { ...capability, accepts_unlisted_text: true, max_message_bytes: 1024 },
+        filesApi,
+        onError,
+      }),
+    );
+
+    act(() =>
+      result.current.addFiles([
+        new File(["FROM python"], "Dockerfile"),
+        new File(["x".repeat(33)], "huge.unknownext"),
+      ]),
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(FILE_TOO_LARGE_MESSAGE);
+    expect(filesApi.createUpload).toHaveBeenCalledTimes(1);
+    expect(filesApi.createUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: "Dockerfile" }),
+    );
   });
 
   it("ejects a file and shows the ChatGPT-style toast when upload creation fails", async () => {
@@ -245,9 +332,7 @@ describe("useAttachmentUploads", () => {
       file: null,
     };
     const filesApi = makeApi({ confirm: vi.fn(async () => failedRecord) });
-    const fetchImpl = vi.fn(async () =>
-      new Response(null, { status: 200, headers: { ETag: '"r2-etag"' } }),
-    );
+    const storagePut = vi.fn<StoragePut>(async () => ({ ok: true, etag: '"r2-etag"' }));
     const onError = vi.fn();
     const { result } = renderHook(() =>
       useAttachmentUploads({
@@ -255,7 +340,7 @@ describe("useAttachmentUploads", () => {
         conversationId: "conversation-1",
         capability,
         filesApi,
-        fetchImpl,
+        storagePut,
         onError,
       }),
     );
@@ -383,14 +468,14 @@ describe("useAttachmentUploads", () => {
     const filesApi = makeApi({
       createUpload: vi.fn(async () => session),
     });
-    const fetchImpl = vi.fn(() => new Promise<Response>(() => {}));
+    const storagePut = vi.fn<StoragePut>(() => new Promise(() => {}));
     const { result } = renderHook(() =>
       useAttachmentUploads({
         userId: 7,
         conversationId: "conversation-1",
         capability,
         filesApi,
-        fetchImpl,
+        storagePut,
       }),
     );
 

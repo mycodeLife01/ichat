@@ -718,15 +718,26 @@ describe("AppShell", () => {
       configurable: true,
       value: revokeObjectURL,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(null, {
-          status: 200,
-          headers: { ETag: '"upload-etag"' },
-        }),
-      ),
-    );
+    // Storage PUTs use XHR for upload progress.
+    class StorageXhr {
+      upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+      status = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      ontimeout: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open() {}
+      setRequestHeader() {}
+      abort() {}
+      getResponseHeader(name: string) {
+        return name === "ETag" ? '"upload-etag"' : null;
+      }
+      send() {
+        this.status = 200;
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", StorageXhr);
 
     const attachment = {
       id: "file-1",

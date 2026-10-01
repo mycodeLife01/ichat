@@ -90,6 +90,8 @@ export type FilesCapability = {
   enabled: boolean;
   allowed_extensions: string[];
   category_max_bytes: Record<string, number>;
+  /** Files with unlisted or missing extensions are accepted and parsed as text. */
+  accepts_unlisted_text?: boolean;
   max_attachments_per_message: number;
   max_message_bytes: number;
   quota_bytes: number;
@@ -116,6 +118,8 @@ export type DraftAttachment = {
   size_bytes: number;
   category: FileCategory;
   model_input_kind?: "document" | "image" | null;
+  /** Whole-percent byte progress of the storage PUT; in memory only. */
+  progress?: number;
   /** Ephemeral object URL for an image selected in this browser tab. */
   local_preview_url?: string;
   session_expires_at?: string | null;

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { putFileToUpload, type FilesApi } from "../api/files";
+import { putFileToUpload, type FilesApi, type StoragePut } from "../api/files";
 import { attachmentDraftStore } from "./draftStore";
 import {
   categoryForFileName,
   categoryLimit,
   draftFromUpload,
+  FILE_UPLOAD_FAILURE_LABEL,
+  fileExtension,
   isPollingStatus,
   isUploadFailed,
   isUploadInProgress,
@@ -22,7 +24,10 @@ const FAST_POLL_DELAY_MS = 250;
 const FAST_POLL_WINDOW_MS = 10_000;
 const INITIAL_BACKOFF_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 5_000;
-export const FILE_UPLOAD_FAILURE_MESSAGE = "文件上传失败，请稍后再试";
+export const FILE_UPLOAD_FAILURE_MESSAGE = FILE_UPLOAD_FAILURE_LABEL;
+export const FILE_TOO_LARGE_MESSAGE = "文件过大，无法上传";
+export const FILE_TYPE_UNSUPPORTED_MESSAGE = "不支持该文件类型";
+export const MESSAGE_ATTACHMENT_LIMIT_MESSAGE = "超出单条消息的附件数量或总大小限制";
 
 type AttachmentUploadOptions = {
   userId: number | string | null;
@@ -34,7 +39,7 @@ type AttachmentUploadOptions = {
   onRestoredContent?: (content: string) => void;
   onError?: (message: string) => void;
   onImagesBlocked?: (files: File[]) => void;
-  fetchImpl?: typeof fetch;
+  storagePut?: StoragePut;
 };
 
 type DetachedImagePreview = {
@@ -99,9 +104,14 @@ export function useAttachmentUploads({
   onRestoredContent,
   onError,
   onImagesBlocked,
-  fetchImpl,
+  storagePut,
 }: AttachmentUploadOptions) {
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
+  // Byte progress is transient: it is never persisted, so a reload resumes
+  // status polling without a percentage.
+  const [uploadProgress, setUploadProgress] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
   const attachmentsRef = useRef(attachments);
   const contentRef = useRef("");
   const abortControllersRef = useRef(new Map<string, AbortController>());
@@ -146,6 +156,7 @@ export function useAttachmentUploads({
     sourcesRef.current.clear();
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrlsRef.current.clear();
+    setUploadProgress(new Map());
 
     if (userId == null) {
       attachmentsRef.current = [];
@@ -188,6 +199,24 @@ export function useAttachmentUploads({
     [persist],
   );
 
+  const reportUploadProgress = useCallback((clientId: string, progress: number) => {
+    setUploadProgress((current) => {
+      if (current.get(clientId) === progress) return current;
+      const next = new Map(current);
+      next.set(clientId, progress);
+      return next;
+    });
+  }, []);
+
+  const clearUploadProgress = useCallback((clientId: string) => {
+    setUploadProgress((current) => {
+      if (!current.has(clientId)) return current;
+      const next = new Map(current);
+      next.delete(clientId);
+      return next;
+    });
+  }, []);
+
   const discardLocalAttachment = useCallback((clientId: string) => {
     abortControllersRef.current.get(clientId)?.abort();
     abortControllersRef.current.delete(clientId);
@@ -195,7 +224,8 @@ export function useAttachmentUploads({
     const previewUrl = previewUrlsRef.current.get(clientId);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrlsRef.current.delete(clientId);
-  }, []);
+    clearUploadProgress(clientId);
+  }, [clearUploadProgress]);
 
   const updateUploadRecord = useCallback(
     (record: FileUploadRecord, clientId: string) => {
@@ -287,14 +317,30 @@ export function useAttachmentUploads({
 
         const controller = new AbortController();
         abortControllersRef.current.set(clientId, controller);
-        const confirmation = await putFileToUpload(session, file, controller.signal, fetchImpl);
+        const confirmation = await putFileToUpload(session, file, {
+          signal: controller.signal,
+          put: storagePut,
+          onProgress: (loaded, total) => {
+            if (!isCurrentScope()) return;
+            // Whole percents bound re-renders to at most 100 per file.
+            reportUploadProgress(clientId, total > 0 ? Math.floor((loaded / total) * 100) : 100);
+          },
+        });
         abortControllersRef.current.delete(clientId);
-        if (!isCurrentScope()) return;
+        if (!isCurrentScope()) {
+          clearUploadProgress(clientId);
+          return;
+        }
         const record = await filesApi.confirm(session.upload_id, confirmation);
+        // Keep the transferred bytes until confirm moves the draft out of
+        // "uploading"; clearing earlier drops the ring to 0% while confirm is
+        // in flight.
+        clearUploadProgress(clientId);
         if (!isCurrentScope()) return;
         updateUploadRecord(record, clientId);
       } catch (error) {
         abortControllersRef.current.delete(clientId);
+        clearUploadProgress(clientId);
         if (!isCurrentScope() || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
@@ -303,7 +349,15 @@ export function useAttachmentUploads({
         errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
       }
     },
-    [commit, discardLocalAttachment, fetchImpl, filesApi, updateUploadRecord],
+    [
+      clearUploadProgress,
+      commit,
+      discardLocalAttachment,
+      filesApi,
+      reportUploadProgress,
+      storagePut,
+      updateUploadRecord,
+    ],
   );
 
   const addFiles = useCallback(
@@ -332,22 +386,25 @@ export function useAttachmentUploads({
       let totalSize = attachmentsRef.current.reduce((sum, item) => sum + item.size_bytes, 0);
 
       for (const file of selected) {
-        const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
-        if (!extension || !allowedExtensions.has(extension)) {
-          errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
+        const extension = fileExtension(file.name);
+        const listed = extension !== "" && allowedExtensions.has(extension);
+        // Unlisted or extensionless names are uploaded as plain text under the
+        // text limit when the server sniffs and falls back to text itself.
+        if (!listed && capability.accepts_unlisted_text !== true) {
+          errorRef.current?.(FILE_TYPE_UNSUPPORTED_MESSAGE);
           continue;
         }
         if (existingCount + accepted.length >= maxCount) {
-          errorRef.current?.(`You can attach at most ${maxCount} files to one message.`);
+          errorRef.current?.(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
           break;
         }
         const limit = categoryLimit(capability.category_max_bytes, file.name);
         if (limit != null && file.size > limit) {
-          errorRef.current?.("This file is larger than the allowed limit.");
+          errorRef.current?.(FILE_TOO_LARGE_MESSAGE);
           continue;
         }
         if (totalSize + file.size > capability.max_message_bytes) {
-          errorRef.current?.("The selected files exceed the message size limit.");
+          errorRef.current?.(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
           continue;
         }
         totalSize += file.size;
@@ -450,6 +507,7 @@ export function useAttachmentUploads({
     previewUrlsRef.current.clear();
     attachmentsRef.current = [];
     setAttachments([]);
+    setUploadProgress(new Map());
   }, [conversationId, userId]);
 
   const pollingKey = attachments
@@ -546,6 +604,19 @@ export function useAttachmentUploads({
     };
   }, [commit, discardLocalAttachment, filesApi, pollingKey, visibilityVersion]);
 
+  const visibleAttachments = useMemo(
+    () =>
+      uploadProgress.size === 0
+        ? attachments
+        : attachments.map((attachment) => {
+            const progress = uploadProgress.get(attachment.client_id);
+            return progress === undefined || attachment.status !== "uploading"
+              ? attachment
+              : { ...attachment, progress };
+          }),
+    [attachments, uploadProgress],
+  );
+
   const readyAttachmentIds = useMemo(
     () =>
       attachments
@@ -589,7 +660,7 @@ export function useAttachmentUploads({
   }, [commit, discardLocalAttachment, filesApi]);
 
   return {
-    attachments,
+    attachments: visibleAttachments,
     readyAttachmentIds,
     hasPendingAttachments,
     hasFailedAttachments,

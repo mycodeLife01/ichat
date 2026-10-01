@@ -68,28 +68,112 @@ export type FilesApi = ReturnType<typeof createFilesApi>;
 
 export const filesApi = createFilesApi();
 
+export type StoragePutRequest = {
+  url: string;
+  headers?: Record<string, string>;
+  body: Blob;
+  signal?: AbortSignal;
+  onProgress?: (loadedBytes: number) => void;
+};
+
+export type StoragePutResponse = { ok: boolean; etag: string | null };
+
+/** Sends one presigned storage PUT. Injectable so tests need no real network. */
+export type StoragePut = (request: StoragePutRequest) => Promise<StoragePutResponse>;
+
+export type PutFileOptions = {
+  signal?: AbortSignal;
+  onProgress?: (loadedBytes: number, totalBytes: number) => void;
+  put?: StoragePut;
+  wait?: (delayMs: number, signal?: AbortSignal) => Promise<void>;
+  random?: () => number;
+};
+
+const MULTIPART_CONCURRENCY = 3;
+const MULTIPART_ATTEMPTS = 3;
+const MULTIPART_RETRY_BASE_DELAY_MS = 500;
+
+function abortError(): DOMException {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+// fetch cannot observe request-body progress, so storage PUTs go through XHR.
+export const xhrStoragePut: StoragePut = ({ url, headers, body, signal, onProgress }) =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    const settle = (callback: () => void) => {
+      signal?.removeEventListener("abort", onAbort);
+      callback();
+    };
+    xhr.open("PUT", url);
+    for (const [name, value] of Object.entries(headers ?? {})) {
+      xhr.setRequestHeader(name, value);
+    }
+    if (onProgress) xhr.upload.onprogress = (event) => onProgress(event.loaded);
+    xhr.onload = () =>
+      settle(() =>
+        resolve({
+          ok: xhr.status >= 200 && xhr.status < 300,
+          etag: xhr.getResponseHeader("ETag"),
+        }),
+      );
+    xhr.onerror = () => settle(() => reject(new TypeError("Storage request failed")));
+    xhr.ontimeout = xhr.onerror;
+    xhr.onabort = () => settle(() => reject(abortError()));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    xhr.send(body);
+  });
+
+export function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function putFileToUpload(
   session: FileUploadSession,
   file: File,
-  signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  options: PutFileOptions = {},
 ): Promise<UploadConfirmation> {
+  const { signal, onProgress, put = xhrStoragePut } = options;
   if (session.upload_method === "multipart") {
-    return putMultipartFile(session, file, signal, fetchImpl);
+    return putMultipartFile(session, file, options);
   }
   if (!session.upload_url) {
     throw new Error("Storage did not provide an upload URL. Please try again.");
   }
-  let response: Response;
+  let response: StoragePutResponse;
   try {
-    response = await fetchImpl(session.upload_url, {
-      method: "PUT",
+    response = await put({
+      url: session.upload_url,
       headers: session.upload_headers,
       body: file,
       signal,
+      onProgress: onProgress && ((loaded) => onProgress(Math.min(loaded, file.size), file.size)),
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (isAbortError(error)) throw error;
     throw new Error("The upload could not reach storage. Check your connection and try again.", {
       cause: error,
     });
@@ -98,18 +182,23 @@ export async function putFileToUpload(
   if (!response.ok) {
     throw new Error("The file upload was rejected by storage. Please try again.");
   }
-  const etag = response.headers.get("ETag");
-  if (!etag) {
+  if (!response.etag) {
     throw new Error("Storage did not return an upload confirmation. Please try again.");
   }
-  return { etag };
+  onProgress?.(file.size, file.size);
+  return { etag: response.etag };
 }
 
 async function putMultipartFile(
   session: FileUploadSession,
   file: File,
-  signal: AbortSignal | undefined,
-  fetchImpl: typeof fetch,
+  {
+    signal,
+    onProgress,
+    put = xhrStoragePut,
+    wait = abortableDelay,
+    random = Math.random,
+  }: PutFileOptions,
 ): Promise<UploadConfirmation> {
   const parts = session.upload_parts ?? [];
   const partSize = session.part_size_bytes ?? 0;
@@ -117,6 +206,14 @@ async function putMultipartFile(
     throw new Error("Storage returned an invalid multipart upload plan. Please try again.");
   }
   const completed: Array<{ part_number: number; etag: string }> = [];
+  // Bytes currently counted per part; a retried part starts again from zero.
+  const partLoaded = new Array<number>(parts.length).fill(0);
+  const reportProgress = (index: number, loaded: number) => {
+    partLoaded[index] = loaded;
+    if (!onProgress) return;
+    const total = partLoaded.reduce((sum, value) => sum + value, 0);
+    onProgress(Math.min(total, file.size), file.size);
+  };
   let cursor = 0;
 
   const uploadNext = async () => {
@@ -125,35 +222,47 @@ async function putMultipartFile(
       const part = parts[index];
       const start = index * partSize;
       const body = file.slice(start, Math.min(start + partSize, file.size));
-      let response: Response | undefined;
+      let etag: string | null = null;
       let lastError: unknown;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+      for (let attempt = 0; attempt < MULTIPART_ATTEMPTS; attempt += 1) {
+        if (signal?.aborted) throw abortError();
+        if (attempt > 0) {
+          reportProgress(index, 0);
+          // Exponential backoff with 0-50% jitter so concurrent parts spread out.
+          const baseDelay = MULTIPART_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+          await wait(Math.round(baseDelay * (1 + random() * 0.5)), signal);
+        }
         try {
-          response = await fetchImpl(part.upload_url, {
-            method: "PUT",
+          const response = await put({
+            url: part.upload_url,
             headers: part.upload_headers,
             body,
             signal,
+            onProgress: (loaded) => reportProgress(index, Math.min(loaded, body.size)),
           });
-          if (response.ok && response.headers.get("ETag")) break;
+          if (response.ok && response.etag) {
+            etag = response.etag;
+            break;
+          }
           lastError = new Error(`Multipart upload part ${part.part_number} failed`);
         } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") throw error;
+          if (isAbortError(error)) throw error;
           lastError = error;
         }
       }
-      const etag = response?.ok ? response.headers.get("ETag") : null;
       if (!etag) {
         throw new Error("A multipart upload part failed after retries. Please try again.", {
           cause: lastError,
         });
       }
+      reportProgress(index, body.size);
       completed.push({ part_number: part.part_number, etag });
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(3, parts.length) }, () => uploadNext()));
+  await Promise.all(
+    Array.from({ length: Math.min(MULTIPART_CONCURRENCY, parts.length) }, () => uploadNext()),
+  );
   completed.sort((left, right) => left.part_number - right.part_number);
   return { parts: completed };
 }

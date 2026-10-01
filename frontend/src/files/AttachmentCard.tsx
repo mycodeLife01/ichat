@@ -20,7 +20,7 @@ import {
 import type { FileReadRole } from "./types";
 import {
   attachmentWarnings,
-  errorLabel,
+  FILE_UPLOAD_FAILURE_LABEL,
   isUploadFailed,
   isUploadInProgress,
   fileExtension,
@@ -156,17 +156,96 @@ function attachmentTypeLabel(name: string, category: string): string {
   return "文件";
 }
 
+// Upload indicator phases: track real bytes during the storage PUT (holding
+// full while confirm is in flight); every other busy phase has no measurable
+// progress and spins. A ready attachment renders no indicator.
+function uploadIndicatorProgress(draft: DraftAttachment | null): number | undefined {
+  if (draft?.status === "uploading") return draft.progress ?? 0;
+  return undefined;
+}
+
+// The spinning arc and the progress ring share one track geometry, so the
+// switch from a full ring to the spinner keeps the same size and stroke.
+function UploadProgressIndicator({
+  progress,
+  size,
+  className,
+  label,
+}: {
+  progress: number | undefined;
+  size: number;
+  className?: string;
+  label?: string;
+}) {
+  const radius = 9;
+  const circumference = 2 * Math.PI * radius;
+  if (progress === undefined) {
+    return (
+      <svg
+        className={`animate-spin ${className ?? ""}`}
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        role={label ? "img" : undefined}
+        aria-label={label}
+        aria-hidden={label ? undefined : true}
+      >
+        <circle cx="12" cy="12" r={radius} fill="none" stroke="currentColor" strokeOpacity={0.25} strokeWidth={2.5} />
+        <circle
+          cx="12"
+          cy="12"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeDasharray={`${circumference * 0.25} ${circumference}`}
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={progress}
+    >
+      <circle cx="12" cy="12" r={radius} fill="none" stroke="currentColor" strokeOpacity={0.25} strokeWidth={2.5} />
+      <circle
+        cx="12"
+        cy="12"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - progress / 100)}
+        transform="rotate(-90 12 12)"
+      />
+    </svg>
+  );
+}
+
 function AttachmentTypeIcon({
   name,
   category,
   loading,
+  progress,
 }: {
   name: string;
   category: string;
   loading: boolean;
+  progress?: number;
 }) {
   if (loading) {
-    return <LoaderCircle className="animate-spin text-text-muted" size={24} />;
+    return <UploadProgressIndicator className="text-text-muted" size={24} progress={progress} />;
   }
 
   const extension = fileExtension(name);
@@ -297,10 +376,8 @@ export function AttachmentCard({
   ) {
     const name = file?.name ?? draft?.name ?? "Attachment";
     const compactStatus = failed && draft
-      ? draft.error_message ?? errorLabel(draft.error_code)
-      : progress
-        ? "正在上传"
-        : attachmentTypeLabel(name, file?.category ?? draft?.category ?? "text");
+      ? FILE_UPLOAD_FAILURE_LABEL
+      : attachmentTypeLabel(name, file?.category ?? draft?.category ?? "text");
     const readRole: FileReadRole = file?.preview_available ? "preview" : "download";
     const canRead = Boolean(fileId && getReadUrl);
     const category = file?.category ?? draft?.category ?? "text";
@@ -404,8 +481,16 @@ export function AttachmentCard({
               </span>
             )}
             {(progress || (loadingRole === "preview" && !localPreviewUrl)) && (
-              <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white">
-                <LoaderCircle className="animate-spin" size={24} aria-label="正在上传" />
+              <span
+                className={`absolute inset-0 flex items-center justify-center bg-black/25 text-white ${
+                  progress ? "backdrop-blur-md" : ""
+                }`}
+              >
+                <UploadProgressIndicator
+                  size={24}
+                  label="正在上传"
+                  progress={uploadIndicatorProgress(draft)}
+                />
               </span>
             )}
             {failed && (
@@ -497,6 +582,7 @@ export function AttachmentCard({
                 name={name}
                 category={category}
                 loading={Boolean(progress)}
+                progress={uploadIndicatorProgress(draft)}
               />
             </span>
             <span className="min-w-0 flex-1">
@@ -575,7 +661,7 @@ export function AttachmentCard({
           )}
           {failed && (
             <p className="mt-1 text-[11.5px] text-error-foreground">
-              {draft.error_message ?? errorLabel(draft.error_code)}
+              {FILE_UPLOAD_FAILURE_LABEL}
             </p>
           )}
           {file && file.model_input_kind === null && (

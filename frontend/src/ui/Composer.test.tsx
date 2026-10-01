@@ -335,7 +335,8 @@ describe("Composer", () => {
     );
     await user.click(screen.getByRole("menuitem", { name: /添加照片和文件/ }));
     const input = screen.getByLabelText("选择附件") as HTMLInputElement;
-    expect(input).toHaveAttribute("accept", ".txt,.png");
+    // The server accepts unlisted text files, so the picker must not filter by extension.
+    expect(input).not.toHaveAttribute("accept");
   });
 
   it("uses the attachment-aware send gate instead of requiring text", () => {
@@ -452,22 +453,54 @@ describe("Composer", () => {
     expect(onReadAttachment).toHaveBeenCalledWith("file-1", "download");
   });
 
-  it("keeps every non-terminal attachment in one neutral loading state", () => {
+  it("tracks bytes while uploading and spins in every unmeasurable phase", () => {
+    const ring = (status: DraftAttachment["status"], progress?: number) => {
+      const { unmount } = renderComposer({
+        attachments: [{ ...READY_ATTACHMENT, status, file: null, progress }],
+      });
+      const tile = screen.getByRole("group", { name: "report.xlsx" });
+      expect(tile).toHaveAttribute("aria-busy", "true");
+      expect(tile).toHaveTextContent("电子表格");
+      expect(tile).not.toHaveTextContent("%");
+      const indicator = tile.querySelector("svg");
+      const result = {
+        spinning: indicator?.classList.contains("animate-spin") ?? false,
+        value: tile.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow") ?? null,
+      };
+      unmount();
+      return result;
+    };
+
+    expect(ring("creating")).toEqual({ spinning: true, value: null });
+    expect(ring("uploading")).toEqual({ spinning: false, value: "0" });
+    expect(ring("uploading", 42)).toEqual({ spinning: false, value: "42" });
+    expect(ring("uploading", 100)).toEqual({ spinning: false, value: "100" });
+    for (const status of ["pending", "queued", "processing"] as const) {
+      expect(ring(status)).toEqual({ spinning: true, value: null });
+    }
+  });
+
+  it("drops the indicator once ready and never exposes failure detail", () => {
+    const { unmount } = renderComposer({ attachments: [READY_ATTACHMENT] });
+    const ready = screen.getByRole("group", { name: "report.xlsx" });
+    expect(ready).not.toHaveAttribute("aria-busy");
+    expect(ready.querySelector('[role="progressbar"], .animate-spin')).toBeNull();
+    unmount();
+
     renderComposer({
       attachments: [
         {
           ...READY_ATTACHMENT,
-          status: "processing",
+          status: "failed",
           file: null,
+          error_code: "invalid_ooxml",
+          error_message: "zip central directory is corrupt",
         },
       ],
     });
-
-    const tile = screen.getByRole("group", { name: "report.xlsx" });
-    expect(tile).toHaveAttribute("aria-busy", "true");
-    expect(tile).toHaveTextContent("正在上传");
-    expect(tile).not.toHaveTextContent("Scanning and processing");
-    expect(tile.querySelector("svg")).toHaveClass("animate-spin");
+    const failed = screen.getByRole("group", { name: "report.xlsx" });
+    expect(failed).toHaveTextContent("文件上传失败，请稍后再试");
+    expect(failed).not.toHaveTextContent("zip central directory");
   });
 
   it("explains an attachment send gate when disabled", () => {
