@@ -36,7 +36,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | Touching SSE replay, run state, or run events | `docs/handover/2026-05-17-run-events-sse-replay.md` + `docs/handover/2026-05-17-provider-and-worker.md` |
 | Email verification, auth emails, Celery/Redis, outbox, IP rate limiting | `docs/handover/2026-06-26-email-verification.md` + `docs/superpowers/specs/2026-06-21-email-verification-design.md` |
 | Password reset, change password, account deletion (soft deactivation) | `docs/handover/2026-07-13-password-reset-account-deletion.md` + `docs/adr/2026-07-13-account-deletion-soft-deactivation.md` |
-| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
+| File upload, message attachments, file lifecycle, R2/ClamAV rollout | `docs/plans/2026-09-29-file-upload-limits-and-progress.md` + `docs/handover/2026-08-13-clamav-startup-readiness.md` + `docs/handover/2026-08-09-file-upload-performance.md` + `docs/handover/2026-08-01-unified-file-upload.md` + `docs/architecture/module-boundaries.md` + `docs/architecture/background-tasks.md` |
 | Public share pages, share snapshots, anonymous attachment reads | `docs/handover/2026-08-14-share-attachment-parity.md` + ADR `0011-grant-attachment-reads-to-public-shares.md` + `docs/handover/2026-06-18-conversation-sharing.md` |
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `docs/archive/scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
@@ -156,6 +156,7 @@ Executable implementation plans. Planned steps and performance targets are not e
 - `2026-09-12-model-admin-archive-and-layout.md` — model catalog archiving (replacing hard delete), route-id credential resolution, restore rules, and the model-admin layout selection; implemented with the approved list + detail layout.
 - `2026-09-21-glm-provider.md` — planned GLM upstream provider: BigModel protocol facts, dedicated `glm` adapter behavior (thinking, reasoning replay, tool continuation), catalog validation and migration, admin surface, test and real-upstream smoke gates, and rollout/rollback.
 - `2026-09-27-parallel-tool-calls.md` — concurrent execution of tool calls in one turn: decisions, success criteria, change list (concurrency cap, timing, web_search timeout, Tavily pooling, 正在搜索 N 项), and verification; implemented.
+- `2026-09-29-file-upload-limits-and-progress.md` — file-upload improvements: EXIF orientation, XHR upload progress, multipart retry backoff, configurable size limits, pixel-budget preview downscaling (single `image-v2` bump with EXIF fix), content-based format correction, GB18030 fallback, unlisted-text acceptance, HEIC/GIF; implemented 2026-09-29, real-stack acceptance pending.
 
 ### `docs/superpowers/specs/`
 

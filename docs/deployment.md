@@ -175,6 +175,8 @@ clamd，避免持久卷中的旧病毒库与 clamd 并发加载。健康检查�
 
 compose 的环境覆盖是安全边界的一部分：API 会清空 file-worker 与 preview LLM 凭证；普通 LLM worker 只保留 preview LLM 读凭证并显式清空 staging/canonical 配置及其他 files 凭证；邮件/标题 worker、media-worker 和 beat 清空全部五组 files 凭证；file-worker 不使用通用 `env_file`，固定 `FILE_UPLOAD_ENABLED=false`，只持有自己的 worker 凭证、三个私有 bucket、PG/broker 和 ClamAV 连接。这里的 `false` 只代表它不创建 API 上传会话，**不会**阻止它按 PostgreSQL 事实排空已有上传、preview backfill、回收或删除补偿。数据库模型目录启用视觉模型时，LLM Worker 启动门禁直接读取数据库目录并要求 preview LLM 凭据，不再依赖旧 `OPENAI_VISION_MODELS`；因此删除 provider ENV 配置时必须保留这组静态存储凭据。
 
+附件大小与图像尺寸上限可按部署调整（默认值见 `.env.example`）：`FILES_TEXT_MAX_BYTES`（2 MiB）、`FILES_IMAGE_MAX_BYTES`（30 MiB）、`FILES_PDF_MAX_BYTES`（50 MiB）、`FILES_OFFICE_MAX_BYTES`（30 MiB）、`FILES_IMAGE_MAX_PIXELS`（8000 万像素）、`FILES_IMAGE_MAX_EDGE`（16384 px），以及单条消息总量 `FILES_MAX_MESSAGE_BYTES`（100 MiB）。API 在创建上传会话时按这些值预检并通过 `/capabilities` 下发给前端；file-worker 在解析子进程中再次执行同一上限，因此 compose 已把这些变量同时透传给 API（经 `.env`）与 file-worker（显式 `environment`），**修改时两边必须一致**，否则会出现 API 放行但 worker 拒绝的附件。解析子进程的地址空间上限为 1 GiB（8000 万像素 RGBA PNG 实测峰值约 760 MiB），file-worker 以并发 2 运行，因此容器 `mem_limit` 为 3g；调大像素上限或并发时需同步调大该值。
+
 `media-worker` 只持有头像公开对象和 CDN purge 所需凭证，不能获得 files staging/canonical/preview 凭证；file-worker 反之不能获得头像公开 bucket、purge、邮件或 LLM Secret。不要为了简化 Compose 将这两个服务改回共享 `.env`。精确 R2 CORS、ETag/If-Match、ClamAV EICAR（不落盘）smoke 与权限核对命令见[统一文件上传交接](handover/2026-08-01-unified-file-upload.md)；视觉白名单、preview backfill、真实 GPT/R2 smoke 与回滚见[GPT 图片输入交接](handover/2026-08-03-gpt-vision-input.md)。
 
 `FILE_UPLOAD_ENABLED` 只控制新附件创建：关闭后 `/capabilities` 要求前端隐藏入口，API 拒绝新会话；已有附件仍可展示/读取，files queue 仍排空，维护与删除补偿仍运行。切换该开关必须 force-recreate API；生产回滚顺序见该交接，不能先停 worker 或撤销凭证。
