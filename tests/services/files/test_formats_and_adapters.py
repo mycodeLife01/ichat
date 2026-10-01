@@ -7,9 +7,12 @@ from threading import Barrier
 
 import pytest
 
+from app.core.config import Settings
 from app.services.files.formats import (
-    IMAGE_MAX_BYTES,
+    DEFAULT_FILE_LIMITS,
+    TEXT_FALLBACK_POLICY,
     FileFormat,
+    FileLimits,
     policy_for_filename,
     validate_upload_declaration,
 )
@@ -74,7 +77,63 @@ def test_format_policy_is_extension_controlled_and_checks_size() -> None:
         validate_upload_declaration(
             filename="photo.png",
             content_type="image/png",
-            size_bytes=IMAGE_MAX_BYTES + 1,
+            size_bytes=DEFAULT_FILE_LIMITS.image_max_bytes + 1,
+        )
+
+
+def test_upload_declaration_uses_injected_limits() -> None:
+    limits = FileLimits(image_max_bytes=10)
+
+    assert validate_upload_declaration(
+        filename="photo.png", content_type="image/png", size_bytes=10, limits=limits
+    ).format is FileFormat.PNG
+    with pytest.raises(FileProcessingError, match="file_too_large"):
+        validate_upload_declaration(
+            filename="photo.png", content_type="image/png", size_bytes=11, limits=limits
+        )
+
+
+def test_default_limits_match_settings_defaults() -> None:
+    settings = Settings.model_construct()
+
+    assert FileLimits.from_settings(settings) == DEFAULT_FILE_LIMITS
+    assert DEFAULT_FILE_LIMITS.category_max_bytes() == {
+        "image": 30 * 1024 * 1024,
+        "pdf": 50 * 1024 * 1024,
+        "office": 30 * 1024 * 1024,
+        "text": 2 * 1024 * 1024,
+    }
+    assert (DEFAULT_FILE_LIMITS.image_max_pixels, DEFAULT_FILE_LIMITS.image_max_edge) == (
+        80_000_000,
+        16_384,
+    )
+    assert settings.files_max_message_bytes == 100 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("main.rs", FileFormat.TXT),
+        ("index.html", FileFormat.TXT),
+        ("App.tsx", FileFormat.TS),
+        ("view.jsx", FileFormat.JS),
+        ("animation.gif", FileFormat.GIF),
+        ("IMG_0001.HEIC", FileFormat.HEIC),
+        ("photo.heif", FileFormat.HEIC),
+    ],
+)
+def test_added_extensions_select_their_policy(filename: str, expected: FileFormat) -> None:
+    assert policy_for_filename(filename).format is expected
+
+
+@pytest.mark.parametrize("filename", ["Dockerfile", ".env", "notes.unknownext", "Makefile"])
+def test_unlisted_names_fall_back_to_text_under_text_limit(filename: str) -> None:
+    assert policy_for_filename(filename) is TEXT_FALLBACK_POLICY
+    with pytest.raises(FileProcessingError, match="file_too_large"):
+        validate_upload_declaration(
+            filename=filename,
+            content_type="application/octet-stream",
+            size_bytes=DEFAULT_FILE_LIMITS.text_max_bytes + 1,
         )
 
 
@@ -302,3 +361,26 @@ def test_clamd_signature_stale_or_unavailable_is_fail_closed() -> None:
     )
     with pytest.raises(ScannerUnavailable, match="scanner_unavailable"):
         unavailable_scanner.scan(b"safe")
+
+
+@pytest.mark.parametrize(
+    ("filename", "media_type", "category"),
+    [
+        # A corrected Office format keeps the user's original filename.
+        (
+            "deck.pptx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "office",
+        ),
+        ("photo.jpg", "image/png", "image"),
+        ("IMG_0001.HEIC", "image/heic", "image"),
+        ("paper.pdf", "application/pdf", "pdf"),
+        ("Dockerfile", "text/plain", "text"),
+    ],
+)
+def test_file_category_follows_stored_media_type(
+    filename: str, media_type: str, category: str
+) -> None:
+    from app.services.files.service import file_category_values
+
+    assert file_category_values(filename, media_type) == category

@@ -12,13 +12,7 @@ from app.schemas.capabilities import (
     WebSearchCapabilityResponse,
 )
 from app.schemas.responses import SuccessResponse
-from app.services.files.formats import (
-    IMAGE_MAX_BYTES,
-    OOXML_MAX_BYTES,
-    PDF_MAX_BYTES,
-    TEXT_MAX_BYTES,
-    supported_extensions,
-)
+from app.services.files.formats import FileLimits, supported_extensions
 from app.services.model_catalog import available_chat_models
 
 router = APIRouter(prefix="/api/v1/capabilities", tags=["capabilities"])
@@ -39,12 +33,8 @@ async def get_capabilities_route(
             files=FileUploadCapabilityResponse(
                 enabled=settings.file_upload_enabled,
                 allowed_extensions=list(supported_extensions()),
-                category_max_bytes={
-                    "image": IMAGE_MAX_BYTES,
-                    "pdf": PDF_MAX_BYTES,
-                    "office": OOXML_MAX_BYTES,
-                    "text": TEXT_MAX_BYTES,
-                },
+                category_max_bytes=FileLimits.from_settings(settings).category_max_bytes(),
+                accepts_unlisted_text=True,
                 max_attachments_per_message=settings.files_max_attachments_per_message,
                 max_message_bytes=settings.files_max_message_bytes,
                 quota_bytes=settings.files_quota_bytes,

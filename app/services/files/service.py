@@ -42,7 +42,11 @@ from app.schemas.files import (
     UploadPart,
 )
 from app.services.auth import rate_limit
-from app.services.files.formats import normalized_extension, validate_upload_declaration
+from app.services.files.formats import (
+    OFFICE_MEDIA_TYPES,
+    FileLimits,
+    validate_upload_declaration,
+)
 from app.services.files.lifecycle import ACTIVE_UPLOAD_STATUSES, transition_upload
 from app.services.files.protocols import (
     CompletedPart,
@@ -201,6 +205,7 @@ async def create_upload(
             filename=safe_name,
             content_type=content_type,
             size_bytes=size_bytes,
+            limits=FileLimits.from_settings(settings),
         )
     except FileProcessingError as exc:
         raise AppError(
@@ -622,7 +627,9 @@ def file_category_values(
         return "image"
     if media_type == "application/pdf":
         return "pdf"
-    if normalized_extension(filename) in {"docx", "pptx", "xlsx"}:
+    # The worker may correct the extension-selected format, so the stored
+    # media type is authoritative rather than the original filename.
+    if media_type in OFFICE_MEDIA_TYPES:
         return "office"
     return "text"
 

@@ -292,10 +292,6 @@ export function Composer({
     onSend();
   };
 
-  const uploadAccept = fileCapability?.allowed_extensions
-    .map((extension) => `.${extension}`)
-    .join(",");
-
   const togglePicker = () => {
     setToolsOpen(false);
     setOpenSubmenu(null);
@@ -598,7 +594,6 @@ export function Composer({
                 className="sr-only"
                 type="file"
                 multiple
-                accept={uploadAccept}
                 disabled={!fileUploadAllowed || readOnly}
                 aria-label="选择附件"
                 onChange={(event) => {

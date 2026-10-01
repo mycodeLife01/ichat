@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -175,6 +176,17 @@ async def test_deduplicates_by_file_identity_with_one_query_and_one_signature() 
     assert len(resolver._signer.calls) == 1  # type: ignore[attr-defined]
 
 
+async def test_current_image_processor_version_resolves() -> None:
+    asset, preview, block = _asset_and_block()
+    asset.extractor_version = "image-v2"
+    block = replace(block, processor_version="image-v2")
+    resolver, _ = _resolver([(asset, preview)], _Signer())
+
+    resolved = await resolver.resolve((block,))
+
+    assert set(resolved) == {block.file_id}
+
+
 async def test_success_uses_configured_ttl_and_returns_protocol_value() -> None:
     asset, preview, block = _asset_and_block()
     signer = _Signer(url="https://safe.invalid/short-lived")
@@ -206,6 +218,7 @@ async def test_success_uses_configured_ttl_and_returns_protocol_value() -> None:
             asset, "summary_metadata", {"width": 1, "height": 240}
         ),
         lambda asset, preview, block: setattr(asset, "extractor_version", "files-v1"),
+        lambda asset, preview, block: setattr(asset, "extractor_version", "image-v2"),
         lambda asset, preview, block: setattr(asset, "warnings", ["different"]),
     ],
 )

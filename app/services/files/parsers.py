@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import posixpath
 import re
@@ -23,17 +24,26 @@ import warnings
 import xml.etree.ElementTree as ElementTree
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
 from hashlib import sha256
 from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from typing import cast
 
+from charset_normalizer import from_bytes
 from PIL import Image, UnidentifiedImageError
+from PIL.Image import Transpose
 from pypdf import PdfReader
 
-from app.services.files.formats import FileFormat, FormatPolicy, policy_for_format
+from app.services.files.formats import (
+    DEFAULT_FILE_LIMITS,
+    IMAGE_PROCESSOR_VERSION,
+    FileFormat,
+    FileLimits,
+    FormatPolicy,
+    policy_for_format,
+)
 from app.services.files.protocols import (
     DerivativeRole,
     FileDerivative,
@@ -44,8 +54,8 @@ from app.services.files.protocols import (
 
 MAX_CSV_ROWS = 100_000
 MAX_CSV_COLUMNS = 256
-MAX_IMAGE_EDGE = 8_192
-MAX_IMAGE_PIXELS = 20_000_000
+MAX_PREVIEW_PIXELS = 4_000_000
+MAX_PREVIEW_EDGE = 8_192
 MAX_PDF_PAGES = 200
 MAX_OOXML_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
 MAX_OOXML_ENTRIES = 10_000
@@ -56,7 +66,9 @@ MAX_PPTX_VISIBLE_SLIDES = 200
 MAX_XLSX_VISIBLE_SHEETS = 50
 MAX_XLSX_NONEMPTY_CELLS = 100_000
 DEFAULT_PARSER_TIMEOUT_SECONDS = 120.0
-DEFAULT_PARSER_MEMORY_BYTES = 512 * 1024 * 1024
+# An 80MP RGBA PNG needs two full-resolution buffers (Pillow premultiplies
+# alpha before resampling), measured at roughly 760 MiB resident.
+DEFAULT_PARSER_MEMORY_BYTES = 1024 * 1024 * 1024
 MAX_PARSER_RESULT_BYTES = 64 * 1024
 MAX_PARSER_DERIVED_BYTES = 128 * 1024 * 1024
 
@@ -70,8 +82,42 @@ WARNING_EMBEDDED_CONTENT = "embedded_content_not_extracted"
 WARNING_EXTERNAL_LINKS = "external_links_not_extracted"
 WARNING_NO_EXTRACTABLE_TEXT = "no_extractable_text"
 WARNING_TEXT_ENCODING_NORMALIZED = "text_encoding_normalized"
+WARNING_FORMAT_CORRECTED = "format_corrected"
 
 _UTF8_BOM = b"\xef\xbb\xbf"
+_EXIF_ORIENTATION_TAG = 0x0112
+# Mirrors ``PIL.ImageOps.exif_transpose`` but is applied to the downscaled
+# preview, so a rotated photo never needs a second full-resolution copy.
+_EXIF_ORIENTATION_TRANSPOSE = {
+    2: Transpose.FLIP_LEFT_RIGHT,
+    3: Transpose.ROTATE_180,
+    4: Transpose.FLIP_TOP_BOTTOM,
+    5: Transpose.TRANSPOSE,
+    6: Transpose.ROTATE_270,
+    7: Transpose.TRANSVERSE,
+    8: Transpose.ROTATE_90,
+}
+_AXIS_SWAPPING_TRANSPOSES = frozenset(
+    {Transpose.TRANSPOSE, Transpose.TRANSVERSE, Transpose.ROTATE_90, Transpose.ROTATE_270}
+)
+# Multi-picture JPEGs (for example phone photos carrying an HDR gain map)
+# open as MPO; the primary image is still an ordinary JPEG.
+_IMAGE_FORMATS = {
+    FileFormat.JPG: frozenset({"JPEG", "MPO"}),
+    FileFormat.PNG: frozenset({"PNG"}),
+    FileFormat.WEBP: frozenset({"WEBP"}),
+    FileFormat.GIF: frozenset({"GIF"}),
+    FileFormat.HEIC: frozenset({"HEIF"}),
+}
+# Legacy East Asian encodings tried after UTF-8/UTF-16, most common first.
+# GB18030 and Big5 byte ranges overlap, so both often decode without error.
+_FALLBACK_TEXT_ENCODINGS = ("gb18030", "big5")
+_HEIF_BRANDS = frozenset({b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1"})
+_OOXML_SNIFF_MAX_BYTES = 1024 * 1024
+_RESIZE_NATIVE_MODES = frozenset({"RGB", "RGBA", "L"})
+# Box-reduce by an integer factor first; Pillow documents 3.0 as visually
+# indistinguishable from a full LANCZOS pass while bounding time and memory.
+_PREVIEW_REDUCING_GAP = 3.0
 _PDF_HEADER_SEARCH_BYTES = 1_024
 _NESTED_ARCHIVE_SUFFIXES = frozenset({".zip", ".jar", ".apk", ".docx", ".pptx", ".xlsx"})
 _OLE_COMPOUND_FILE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
@@ -100,8 +146,11 @@ _CELL_REFERENCE_RE = re.compile(r"^([A-Za-z]{1,3})([1-9][0-9]{0,9})$")
 class DirectFileParser:
     """Adapter exposing the direct parser seam for small trusted test inputs."""
 
+    def __init__(self, *, limits: FileLimits = DEFAULT_FILE_LIMITS) -> None:
+        self._limits = limits
+
     def parse(self, content: bytes, policy: FormatPolicy) -> ProcessedFile:
-        return parse_file(content, policy)
+        return parse_file(content, policy, limits=self._limits)
 
 
 class RestrictedFileParser:
@@ -112,14 +161,17 @@ class RestrictedFileParser:
         *,
         timeout_seconds: float = DEFAULT_PARSER_TIMEOUT_SECONDS,
         memory_limit_bytes: int | None = DEFAULT_PARSER_MEMORY_BYTES,
+        limits: FileLimits = DEFAULT_FILE_LIMITS,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._memory_limit_bytes = memory_limit_bytes
+        self._limits = limits
 
     def parse(self, content: bytes, policy: FormatPolicy) -> ProcessedFile:
         return parse_in_subprocess(
             content,
             policy,
+            limits=self._limits,
             timeout_seconds=self._timeout_seconds,
             memory_limit_bytes=self._memory_limit_bytes,
         )
@@ -153,13 +205,86 @@ class FakeFileParser:
         return parse_file(content, policy)
 
 
-def parse_file(content: bytes, policy: FormatPolicy | FileFormat | str) -> ProcessedFile:
-    """Parse one already-scanned file directly, with no external side effects."""
+def parse_file(
+    content: bytes,
+    policy: FormatPolicy | FileFormat | str,
+    *,
+    limits: FileLimits = DEFAULT_FILE_LIMITS,
+) -> ProcessedFile:
+    """Parse one already-scanned file directly, with no external side effects.
 
-    resolved_policy = _resolve_policy(policy)
-    if len(content) > resolved_policy.max_bytes:
+    The declared (extension-selected) policy is corrected to the sniffed byte
+    format only within the same category; a cross-category mismatch is
+    rejected before any format-specific parser sees the bytes.
+    """
+
+    declared_policy = _resolve_policy(policy)
+    resolved_policy = _content_policy(content, declared_policy)
+    if len(content) > limits.max_bytes(resolved_policy.category):
         raise FileProcessingError("file_too_large")
+    processed = _parse_resolved(content, resolved_policy, limits)
+    if resolved_policy is declared_policy:
+        return processed
+    return replace(
+        processed,
+        warnings=_merge_warnings(processed.warnings, (WARNING_FORMAT_CORRECTED,)),
+    )
 
+
+def sniff_format(content: bytes) -> FileFormat | None:
+    """Identify a supported binary format from its leading signature."""
+
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return FileFormat.PNG
+    if content.startswith(b"\xff\xd8\xff"):
+        return FileFormat.JPG
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return FileFormat.WEBP
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return FileFormat.GIF
+    if content[4:8] == b"ftyp" and content[8:12] in _HEIF_BRANDS:
+        return FileFormat.HEIC
+    if content.startswith(b"%PDF-"):
+        return FileFormat.PDF
+    if content.startswith(b"PK\x03\x04"):
+        return _sniff_ooxml(content)
+    return None
+
+
+def _sniff_ooxml(content: bytes) -> FileFormat | None:
+    """Read only the package's declared main part type; full validation follows."""
+
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            info = archive.getinfo("[Content_Types].xml")
+            if info.file_size > _OOXML_SNIFF_MAX_BYTES:
+                return None
+            declared = archive.read(info)
+    except (KeyError, OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+        return None
+    matches = [
+        file_format
+        for file_format, (content_type, _part) in _CONTENT_TYPE_MAIN_PART.items()
+        if content_type.encode("ascii") in declared
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _content_policy(content: bytes, declared: FormatPolicy) -> FormatPolicy:
+    sniffed = sniff_format(content)
+    if sniffed is None or sniffed == declared.format:
+        return declared
+    actual = policy_for_format(sniffed)
+    if actual.category != declared.category or declared.category not in {"image", "office"}:
+        raise FileProcessingError("file_format_mismatch")
+    return actual
+
+
+def _parse_resolved(
+    content: bytes,
+    resolved_policy: FormatPolicy,
+    limits: FileLimits,
+) -> ProcessedFile:
     match resolved_policy.format:
         case (
             FileFormat.TXT
@@ -175,8 +300,14 @@ def parse_file(content: bytes, policy: FormatPolicy | FileFormat | str) -> Proce
             | FileFormat.SQL
         ):
             return _parse_text(content, resolved_policy)
-        case FileFormat.JPG | FileFormat.PNG | FileFormat.WEBP:
-            return _parse_image(content, resolved_policy)
+        case (
+            FileFormat.JPG
+            | FileFormat.PNG
+            | FileFormat.WEBP
+            | FileFormat.GIF
+            | FileFormat.HEIC
+        ):
+            return _parse_image(content, resolved_policy, limits)
         case FileFormat.PDF:
             return _parse_pdf(content, resolved_policy)
         case FileFormat.DOCX:
@@ -192,6 +323,7 @@ def parse_in_subprocess(
     content: bytes,
     policy: FormatPolicy | FileFormat | str,
     *,
+    limits: FileLimits = DEFAULT_FILE_LIMITS,
     timeout_seconds: float = DEFAULT_PARSER_TIMEOUT_SECONDS,
     memory_limit_bytes: int | None = DEFAULT_PARSER_MEMORY_BYTES,
 ) -> ProcessedFile:
@@ -206,7 +338,7 @@ def parse_in_subprocess(
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
     resolved_policy = _resolve_policy(policy)
-    if len(content) > resolved_policy.max_bytes:
+    if len(content) > limits.max_bytes(resolved_policy.category):
         raise FileProcessingError("file_too_large")
     with tempfile.TemporaryDirectory(prefix="ichat-file-parser-") as output_directory:
         project_root = Path(__file__).resolve().parents[3]
@@ -219,6 +351,7 @@ def parse_in_subprocess(
             repr(timeout_seconds),
             str(memory_limit_bytes or 0),
             str(os.getpid()),
+            json.dumps(asdict(limits), separators=(",", ":")),
         ]
         process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module and validated args.
             command,
@@ -302,12 +435,13 @@ def _load_parser_result(
         if isinstance(code, str) and isinstance(retryable, bool):
             raise FileProcessingError(code, retryable=retryable)
         raise FileProcessingError("parser_failed")
-    if raw.get("outcome") != "ok" or raw.get("format") != policy.format.value:
+    if raw.get("outcome") != "ok":
         raise FileProcessingError("parser_failed")
+    result_policy = _result_policy(raw.get("format"), declared=policy)
 
     media_type = _bounded_result_string(raw.get("media_type"), maximum=255)
     kind_value = raw.get("kind")
-    if media_type != policy.media_type or kind_value != policy.kind:
+    if media_type != result_policy.media_type or kind_value != result_policy.kind:
         raise FileProcessingError("parser_failed")
     kind = cast(ProcessedFileKind, kind_value)
     extractor_version = _bounded_result_string(raw.get("extractor_version"), maximum=100)
@@ -379,7 +513,7 @@ def _load_parser_result(
     if "original" not in roles:
         raise FileProcessingError("parser_failed")
     return ProcessedFile(
-        format=policy.format.value,
+        format=result_policy.format.value,
         media_type=media_type,
         kind=kind,
         derivatives=tuple(derivatives),
@@ -387,6 +521,22 @@ def _load_parser_result(
         metadata=cast(dict[str, int | str | bool], metadata_value),
         extractor_version=extractor_version,
     )
+
+
+def _result_policy(value: object, *, declared: FormatPolicy) -> FormatPolicy:
+    """Accept the child's format only if it is a same-category correction."""
+
+    if value == declared.format.value:
+        return declared
+    if not isinstance(value, str):
+        raise FileProcessingError("parser_failed")
+    try:
+        actual = policy_for_format(FileFormat(value))
+    except (ValueError, FileProcessingError):
+        raise FileProcessingError("parser_failed") from None
+    if actual.category != declared.category or declared.category not in {"image", "office"}:
+        raise FileProcessingError("parser_failed")
+    return actual
 
 
 def _regular_file_stat(path: Path) -> os.stat_result:
@@ -458,7 +608,8 @@ def _decode_text(content: bytes) -> tuple[str, bool]:
             text = content.decode("utf-8")
             encoding_normalized = False
     except UnicodeDecodeError:
-        raise FileProcessingError("invalid_text_encoding") from None
+        text = _decode_legacy_text(content)
+        encoding_normalized = True
     if content.startswith(_UTF8_BOM):
         text = text.removeprefix("\ufeff")
     if "\0" in text:
@@ -466,14 +617,39 @@ def _decode_text(content: bytes) -> tuple[str, bool]:
     return _normalize_newlines(text), encoding_normalized
 
 
+def _decode_legacy_text(content: bytes) -> str:
+    decoded: dict[str, str] = {}
+    for encoding in _FALLBACK_TEXT_ENCODINGS:
+        try:
+            decoded[encoding] = content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    if not decoded:
+        raise FileProcessingError("invalid_text_encoding")
+    if len(decoded) == 1:
+        return next(iter(decoded.values()))
+    # Rank the strict decodes by how garbled they read; ties (typically very
+    # short inputs) keep the declared preference order.
+    scores = {
+        match.encoding: (match.chaos, -match.coherence)
+        for match in from_bytes(content, cp_isolation=list(decoded))
+    }
+    preference = list(decoded)
+    best = min(
+        preference,
+        key=lambda encoding: (
+            scores.get(encoding, (float("inf"), 0.0)),
+            preference.index(encoding),
+        ),
+    )
+    return decoded[best]
+
+
 def _reject_nontext_magic(content: bytes) -> None:
     """Reject a known binary/document container renamed as a text extension."""
 
     if (
-        content.startswith(b"%PDF-")
-        or content.startswith(b"\x89PNG\r\n\x1a\n")
-        or content.startswith(b"\xff\xd8\xff")
-        or (content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+        sniff_format(content) is not None
         or content.startswith(b"PK\x03\x04")
         or content.startswith(_OLE_COMPOUND_FILE_MAGIC)
     ):
@@ -511,31 +687,79 @@ def _inspect_csv_shape(text: str) -> tuple[int, int, bool]:
     return row_count, max_columns, limit_exceeded
 
 
-def _parse_image(content: bytes, policy: FormatPolicy) -> ProcessedFile:
-    expected_format = {
-        FileFormat.JPG: "JPEG",
-        FileFormat.PNG: "PNG",
-        FileFormat.WEBP: "WEBP",
-    }[policy.format]
+def _exif_orientation(image: Image.Image) -> object:
+    # Malformed EXIF is untrusted metadata, not a reason to reject the pixels.
+    try:
+        return image.getexif().get(_EXIF_ORIENTATION_TAG)
+    except Exception:
+        return None
+
+
+def _preview_size(width: int, height: int) -> tuple[int, int]:
+    """Fit the preview within the pixel budget and edge limit without upscaling."""
+
+    scale = min(
+        1.0,
+        math.sqrt(MAX_PREVIEW_PIXELS / (width * height)),
+        MAX_PREVIEW_EDGE / max(width, height),
+    )
+    if scale >= 1.0:
+        return width, height
+    return max(1, math.floor(width * scale)), max(1, math.floor(height * scale))
+
+
+def _parse_image(content: bytes, policy: FormatPolicy, limits: FileLimits) -> ProcessedFile:
+    expected_formats = _IMAGE_FORMATS[policy.format]
+    if policy.format is FileFormat.HEIC:
+        _register_heif_opener()
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(BytesIO(content)) as image:
-                if image.format != expected_format:
+                if image.format not in expected_formats:
                     raise FileProcessingError("file_format_mismatch")
-                frame_count = getattr(image, "n_frames", 1)
+                # MPO secondary pictures are not animation frames.
+                frame_count = 1 if image.format == "MPO" else getattr(image, "n_frames", 1)
                 width, height = image.size
-                if width > MAX_IMAGE_EDGE or height > MAX_IMAGE_EDGE:
+                if width > limits.image_max_edge or height > limits.image_max_edge:
                     raise FileProcessingError("image_dimensions_exceeded")
-                if width * height > MAX_IMAGE_PIXELS:
+                if width * height > limits.image_max_pixels:
                     raise FileProcessingError("image_pixel_limit_exceeded")
+                orientation = _exif_orientation(image)
                 image.seek(0)
+                target_size = _preview_size(width, height)
+                if image.format in {"JPEG", "MPO"} and target_size != (width, height):
+                    # Let the JPEG decoder skip DCT detail the preview never uses.
+                    image.draft("RGB", target_size)
                 image.load()
-                converted = image.convert("RGBA")
+                # Resize before widening RGB/L to RGBA so an 80MP source never
+                # needs a second full-resolution copy; the result is the same.
+                converted: Image.Image = (
+                    image if image.mode in _RESIZE_NATIVE_MODES else image.convert("RGBA")
+                )
+                if converted.size != target_size:
+                    converted = converted.resize(
+                        target_size,
+                        Image.Resampling.LANCZOS,
+                        reducing_gap=_PREVIEW_REDUCING_GAP,
+                    )
+                if converted.mode != "RGBA":
+                    converted = converted.convert("RGBA")
+                transpose = (
+                    _EXIF_ORIENTATION_TRANSPOSE.get(orientation)
+                    if isinstance(orientation, int)
+                    else None
+                )
+                if transpose is not None:
+                    converted = converted.transpose(transpose)
                 output = BytesIO()
                 # Re-encoding a fresh RGBA image removes EXIF/XMP/ICC and all
                 # source container metadata rather than attempting a blacklist.
-                converted.save(output, format="WEBP", quality=82, method=6, exact=True)
+                converted.save(output, format="WEBP", quality=82, method=4, exact=True)
+                preview_width, preview_height = converted.size
+                original_width, original_height = (
+                    (height, width) if transpose in _AXIS_SWAPPING_TRANSPOSES else (width, height)
+                )
     except FileProcessingError:
         raise
     except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError):
@@ -551,14 +775,25 @@ def _parse_image(content: bytes, policy: FormatPolicy) -> ProcessedFile:
             FileDerivative(role="preview", content_type=PREVIEW_MEDIA_TYPE, content=preview),
         ),
         warnings=(WARNING_ANIMATED_IMAGE_FIRST_FRAME,) if frame_count > 1 else (),
+        # ``width``/``height`` describe the preview that is displayed and sent
+        # to vision models; the upright source size is kept separately.
         metadata={
-            "width": width,
-            "height": height,
-            "pixels": width * height,
+            "width": preview_width,
+            "height": preview_height,
+            "pixels": preview_width * preview_height,
+            "original_width": original_width,
+            "original_height": original_height,
             "frame_count": frame_count,
         },
-        extractor_version="image-v1",
+        extractor_version=IMAGE_PROCESSOR_VERSION,
     )
+
+
+def _register_heif_opener() -> None:
+    # Imported lazily so only the sandboxed parser loads libheif.
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
 
 
 def _parse_pdf(content: bytes, policy: FormatPolicy) -> ProcessedFile:
