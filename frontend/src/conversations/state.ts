@@ -1,4 +1,9 @@
-import type { ConversationResponse, ImageContext, MessageResponse } from "../api/types";
+import type {
+  ConversationActiveRun,
+  ConversationResponse,
+  ImageContext,
+  MessageResponse,
+} from "../api/types";
 import type { AppAction } from "../app/store";
 
 export type ConversationIndexState = {
@@ -6,6 +11,8 @@ export type ConversationIndexState = {
   selectedId: string | null;
   draftId: string | null;
   pendingTitleIds: string[];
+  // Conversations whose run finished while the user was elsewhere; cleared on entry.
+  unreadIds: string[];
   status: "idle" | "loading" | "loadingMore" | "error";
   hasMore: boolean;
 };
@@ -15,6 +22,7 @@ export const initialConversationIndexState: ConversationIndexState = {
   selectedId: null,
   draftId: null,
   pendingTitleIds: [],
+  unreadIds: [],
   status: "idle",
   hasMore: true,
 };
@@ -47,6 +55,15 @@ export type ConversationIndexAction =
       hasMore: boolean;
     }
   | { type: "conversations/listError" }
+  // Refreshed first page merged over the current list (polling / post-run sync).
+  | { type: "conversations/listSynced"; items: ConversationResponse[] }
+  | {
+      type: "conversations/runStarted";
+      conversation: ConversationResponse;
+      run: ConversationActiveRun;
+      updatedAt: string;
+    }
+  | { type: "conversations/runFinished"; id: string }
   | { type: "conversations/selected"; id: string | null }
   | { type: "conversations/renamed"; conversation: ConversationResponse }
   | { type: "conversations/removed"; id: string }
@@ -63,12 +80,41 @@ export function conversationIndexReducer(
     case "conversations/listLoading":
       return { ...state, status: "loading" };
     case "conversations/listLoaded":
-      return {
+      return reconcileList(state, {
         ...state,
         items: action.items,
         hasMore: action.hasMore ?? false,
         status: "idle",
+      });
+    case "conversations/listSynced":
+      return reconcileList(state, { ...state, items: mergeFirstPage(state.items, action.items) });
+    case "conversations/runStarted": {
+      const existing = state.items.find((c) => c.id === action.conversation.id);
+      const started: ConversationResponse = {
+        ...(existing ?? action.conversation),
+        active_run: action.run,
+        updated_at: action.updatedAt,
       };
+      const needsTitle =
+        !started.title?.trim() && !state.pendingTitleIds.includes(started.id);
+      return {
+        ...state,
+        items: [started, ...state.items.filter((c) => c.id !== started.id)],
+        pendingTitleIds: needsTitle
+          ? [...state.pendingTitleIds, started.id]
+          : state.pendingTitleIds,
+      };
+    }
+    case "conversations/runFinished": {
+      const finished = state.items.map((c) =>
+        c.id === action.id && c.active_run ? { ...c, active_run: null } : c,
+      );
+      return {
+        ...state,
+        items: finished,
+        unreadIds: markUnread(state.unreadIds, action.id, state.selectedId),
+      };
+    }
     case "conversations/listLoadingMore":
       return { ...state, status: "loadingMore" };
     case "conversations/listPageLoaded": {
@@ -86,16 +132,26 @@ export function conversationIndexReducer(
     case "conversations/listError":
       return { ...state, status: "error" };
     case "conversations/selected":
-      return { ...state, selectedId: action.id };
+      return {
+        ...state,
+        selectedId: action.id,
+        unreadIds: state.unreadIds.filter((id) => id !== action.id),
+      };
     case "conversations/renamed":
       return {
         ...state,
         items: state.items.map((c) =>
-          c.id === action.conversation.id ? action.conversation : c,
+          c.id === action.conversation.id
+            ? { ...action.conversation, active_run: c.active_run }
+            : c,
         ),
       };
     case "conversations/removed":
-      return { ...state, items: state.items.filter((c) => c.id !== action.id) };
+      return {
+        ...state,
+        items: state.items.filter((c) => c.id !== action.id),
+        unreadIds: state.unreadIds.filter((id) => id !== action.id),
+      };
     case "conversations/draftCreated":
       return { ...state, draftId: action.id };
     case "conversations/draftActivated":
@@ -114,6 +170,52 @@ export function conversationIndexReducer(
     default:
       return state;
   }
+}
+
+function markUnread(unreadIds: string[], id: string, selectedId: string | null): string[] {
+  return id === selectedId || unreadIds.includes(id) ? unreadIds : [...unreadIds, id];
+}
+
+// Server rows replace local ones unless the local row is newer (e.g. a poll
+// issued before a send landed after it). Rows beyond the first page are kept.
+function mergeFirstPage(
+  current: ConversationResponse[],
+  page: ConversationResponse[],
+): ConversationResponse[] {
+  const byId = new Map(current.map((c) => [c.id, c]));
+  const pageIds = new Set(page.map((c) => c.id));
+  const merged = page.map((incoming) => {
+    const local = byId.get(incoming.id);
+    return local && Date.parse(incoming.updated_at) < Date.parse(local.updated_at)
+      ? local
+      : incoming;
+  });
+  return [...merged, ...current.filter((c) => !pageIds.has(c.id))];
+}
+
+// A run seen in flight that is now gone finished in the background: mark it
+// unread unless it is open. A pending title that has landed stops pending.
+function reconcileList(
+  prev: ConversationIndexState,
+  next: ConversationIndexState,
+): ConversationIndexState {
+  const prevById = new Map(prev.items.map((c) => [c.id, c]));
+  let unreadIds = next.unreadIds;
+  for (const item of next.items) {
+    if (prevById.get(item.id)?.active_run && !item.active_run) {
+      unreadIds = markUnread(unreadIds, item.id, next.selectedId);
+    }
+  }
+  const titled = new Set(next.items.filter((c) => c.title?.trim()).map((c) => c.id));
+  const pendingTitleIds = next.pendingTitleIds.filter((id) => !titled.has(id));
+  return {
+    ...next,
+    unreadIds,
+    pendingTitleIds:
+      pendingTitleIds.length === next.pendingTitleIds.length
+        ? next.pendingTitleIds
+        : pendingTitleIds,
+  };
 }
 
 export type ConversationDetailAction =
@@ -165,6 +267,17 @@ export function conversationDetailReducer(
       return state.conversation && state.conversation.id === action.conversation.id
         ? { ...state, conversation: action.conversation }
         : state;
+    case "conversations/listLoaded":
+    case "conversations/listSynced": {
+      // The topbar reads detail, so a title that landed in the list syncs here.
+      const current = state.conversation;
+      const synced = current && action.items.find((c) => c.id === current.id);
+      return synced &&
+        synced.title !== current.title &&
+        Date.parse(synced.updated_at) >= Date.parse(current.updated_at)
+        ? { ...state, conversation: { ...current, title: synced.title } }
+        : state;
+    }
     case "app/reset":
       return initialConversationDetailState;
     default:

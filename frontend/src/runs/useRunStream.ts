@@ -3,7 +3,7 @@ import { useCallback, useRef } from "react";
 import { isAbortError } from "../api/errors";
 import type { RunEventResponse, RunToolState } from "../api/types";
 import { useAppActions } from "../app/context";
-import { CONVERSATION_PAGE_SIZE, hasMoreConversationPages } from "../conversations/pagination";
+import { CONVERSATION_PAGE_SIZE } from "../conversations/pagination";
 
 export function useRunStream() {
   const { dispatch, services, streamAbort, stateRef } = useAppActions();
@@ -71,6 +71,9 @@ export function useRunStream() {
                   ? "failed"
                   : "cancelled";
             if (isActiveRun()) dispatch({ type: "run/terminal", status });
+            // Unconditional: the sidebar row stops spinning, and a run that
+            // finished while its conversation was not open is marked unread.
+            dispatch({ type: "conversations/runFinished", id: conversationId });
 
             if (status === "succeeded") {
               // Refetch unconditionally: a run finishing in the background still
@@ -80,11 +83,7 @@ export function useRunStream() {
                 conversationApi.detail(conversationId),
                 conversationApi.list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 }),
               ]);
-              dispatch({
-                type: "conversations/listLoaded",
-                items: list,
-                hasMore: hasMoreConversationPages(list.length),
-              });
+              dispatch({ type: "conversations/listSynced", items: list });
               dispatch({ type: "conversations/draftActivated" });
               if (stateRef.current.conversationIndex.selectedId === conversationId) {
                 const { messages, ...conversation } = detail;
@@ -97,10 +96,9 @@ export function useRunStream() {
               }
               if (isActiveRun()) dispatch({ type: "run/cleared" });
 
-              // A freshly-activated draft has no title yet (the worker generates
-              // it best-effort after this commit, with no SSE event). Mark it
-              // pending so the sidebar/topbar show a skeleton; an AppShell effect
-              // polls detail until the title lands or the window elapses.
+              // The title is generated from the first message in parallel with
+              // the reply; if it has not landed yet, keep the skeleton up while
+              // useConversationListSync polls for it.
               if (!detail.title?.trim()) {
                 dispatch({ type: "conversations/titlePending", id: conversationId });
               }

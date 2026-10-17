@@ -117,6 +117,24 @@ describe("Sidebar", () => {
     expect(screen.queryByText("新对话")).toBeNull();
   });
 
+  it("marks running and unread rows and badges the collapsed rail", () => {
+    const props = baseProps();
+    const items = [
+      makeConversation("1", "进行中", today),
+      makeConversation("2", "已完成", today),
+    ];
+    const { rerender } = render(
+      <Sidebar {...props} items={items} rowStatus={{ "1": "running", "2": "unread" }} />,
+    );
+    expect(screen.getByText("，正在生成")).toBeInTheDocument();
+    expect(screen.getByText("，有新回复")).toBeInTheDocument();
+
+    rerender(
+      <Sidebar {...props} items={items} collapsed rowStatus={{ "2": "unread" }} />,
+    );
+    expect(screen.getByRole("button", { name: "最近聊天，有新回复" })).toBeInTheDocument();
+  });
+
   it("shows empty placeholder when no conversations", () => {
     render(<Sidebar {...baseProps()} items={[]} />);
     expect(
