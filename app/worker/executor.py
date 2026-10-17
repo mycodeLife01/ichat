@@ -28,7 +28,6 @@ from app.core.logging import logger
 from app.models.run import Run
 from app.services.agents import ChatAgent, ChatAgentOptions, build_chat_agent
 from app.services.conversations import materialize_assistant_message
-from app.services.conversations.title_jobs import create_title_job
 from app.services.model_catalog import resolve_run_model_runtime
 from app.services.run_events.stream import RedisRunEventStream
 from app.services.runs.events import RunEvent
@@ -44,7 +43,6 @@ from app.services.runs.lifecycle import (
 )
 from app.services.runs.service import get_next_run_event_seq, list_run_events_after
 from app.services.runs.transcript import append_transcript_message
-from app.tasks.llm_tasks import generate_conversation_title
 from app.worker.event_sink import (
     DraftCheckpointSink,
     EventSink,
@@ -237,24 +235,17 @@ async def execute_run(
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
 
-        terminal, title_job_created = await _finalize_result(
+        terminal = await _finalize_result(
             session_factory=session_factory,
             run_id=run_id,
             outcome=outcome,
             agent=agent,
-            create_title_job_row=settings.auto_title_enabled,
             timer=timer,
         )
         await _publish_terminal(run_event_stream, run_id=run_id, event=terminal)
         _emit_run_timing_metric(run_logger, timer=timer, labels=timing_labels)
         with contextlib.suppress(Exception):
             await draft_sink.delete()
-
-        if title_job_created:
-            try:
-                generate_conversation_title.apply_async(args=[run_id])
-            except Exception:
-                run_logger.exception("Failed to enqueue conversation title generation")
     finally:
         if run_cancel_listener is not None:
             run_cancel_listener.unregister(run_id)
@@ -568,9 +559,8 @@ async def _finalize_result(
     run_id: int,
     outcome: _StreamOutcome,
     agent: ChatAgent,
-    create_title_job_row: bool,
     timer: RunTimer,
-) -> tuple[RunEvent | None, bool]:
+) -> RunEvent | None:
     terminal_seq = outcome.last_seq + 1
     async with session_factory() as session:
         if outcome.status == "succeeded":
@@ -594,7 +584,7 @@ async def _finalize_result(
                 )
                 await _record_timing(session, run_id=run_id, timer=timer, terminal=cancelled_event)
                 await session.commit()
-                return cancelled_event, False
+                return cancelled_event
 
             final = _final_assistant_message(outcome.transcript)
             final_text = final.text()
@@ -621,17 +611,11 @@ async def _finalize_result(
                 run_id=run_id,
                 timing=timer.finish(outcome="succeeded"),
             )
-            title_job_created = False
-            if create_title_job_row:
-                title_job_created = await create_title_job(session, run_id=run_id)
             await session.commit()
-            return (
-                RunEvent(
-                    seq=terminal_seq,
-                    type="run_succeeded",
-                    payload={"usage": outcome.usage} if outcome.usage is not None else {},
-                ),
-                title_job_created,
+            return RunEvent(
+                seq=terminal_seq,
+                type="run_succeeded",
+                payload={"usage": outcome.usage} if outcome.usage is not None else {},
             )
 
         if outcome.status == "cancelled":
@@ -674,7 +658,7 @@ async def _finalize_result(
             )
             await _record_timing(session, run_id=run_id, timer=timer, terminal=terminal)
         await session.commit()
-        return (terminal if changed else None), False
+        return terminal if changed else None
 
 
 async def _persist_transcript(

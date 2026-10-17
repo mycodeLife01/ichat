@@ -28,7 +28,7 @@ from app.agent import (
 )
 from app.core.config import Settings, get_settings
 from app.models.conversation import Conversation, Message
-from app.models.run import ConversationTitleJob, Run, RunEvent, RunProviderMessage
+from app.models.run import Run, RunEvent, RunProviderMessage
 from app.models.user import User
 from app.search.types import ExtractRequest, ExtractResult, SearchRequest, SearchResult
 from app.services.run_events.stream import RedisRunEventStream
@@ -241,87 +241,6 @@ async def test_execute_run_streams_deltas_marks_succeeded_and_materializes_messa
         assert conversation.title is None
 
 
-async def test_execute_run_enqueues_title_generation_after_success(
-    session_factory: async_sessionmaker[AsyncSession],
-    settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async with session_factory() as session:
-        run_id = await queue_run(session, conversation_title=None)
-        await session.commit()
-    async with session_factory() as session:
-        await claim_next_queued_run(
-            session,
-            worker_id="worker-x",
-            lease_seconds=settings.run_lease_seconds,
-        )
-        await session.commit()
-
-    enqueued: list[list[int]] = []
-    monkeypatch.setattr(
-        "app.worker.executor.generate_conversation_title.apply_async",
-        lambda *, args: enqueued.append(args),
-    )
-
-    await execute_run(
-        session_factory=session_factory,
-        run_id=run_id,
-        worker_id="worker-x",
-        settings=settings.model_copy(update={"auto_title_enabled": True}),
-        resolve_provider=make_resolver(
-            FakeProvider(script=[TextDelta(text="Hi"), StreamDone(finish_reason="stop")])
-        ),
-    )
-
-    assert enqueued == [[run_id]]
-    async with session_factory() as session:
-        run = await session.get(Run, run_id)
-        assert run is not None
-        assert run.status == "succeeded"
-        job = await session.get(ConversationTitleJob, run_id)
-        assert job is not None
-        assert job.status == "pending"
-
-
-async def test_execute_run_keeps_title_job_when_broker_publish_fails(
-    session_factory: async_sessionmaker[AsyncSession],
-    settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async with session_factory() as session:
-        run_id = await queue_run(session, conversation_title=None)
-        await session.commit()
-    async with session_factory() as session:
-        await claim_next_queued_run(
-            session,
-            worker_id="worker-x",
-            lease_seconds=settings.run_lease_seconds,
-        )
-        await session.commit()
-
-    def fail_publish(*, args: list[int]) -> None:
-        assert args == [run_id]
-        raise ConnectionError("broker unavailable")
-
-    monkeypatch.setattr(
-        "app.worker.executor.generate_conversation_title.apply_async",
-        fail_publish,
-    )
-    await execute_run(
-        session_factory=session_factory,
-        run_id=run_id,
-        worker_id="worker-x",
-        settings=settings.model_copy(update={"auto_title_enabled": True}),
-        resolve_provider=make_resolver(
-            FakeProvider(script=[TextDelta(text="Hi"), StreamDone(finish_reason="stop")])
-        ),
-    )
-
-    async with session_factory() as session:
-        run = await session.get(Run, run_id)
-        job = await session.get(ConversationTitleJob, run_id)
-        assert run is not None and run.status == "succeeded"
-        assert job is not None and job.status == "pending"
 
 
 async def test_execute_run_retries_temporary_image_failure_before_any_delta(

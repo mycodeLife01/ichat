@@ -144,6 +144,17 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class ConversationActiveRunResponse(BaseModel):
+    id: uuid.UUID
+    status: Literal["queued", "started", "streaming", "cancelling"]
+
+
+class ConversationListItemResponse(ConversationResponse):
+    # The conversation's in-flight run, if any, so the sidebar can mark rows
+    # that are still generating.
+    active_run: ConversationActiveRunResponse | None = None
+
+
 class MessageTimingResponse(BaseModel):
     # Only the fields the product shows; full phase timing stays server-side.
     work_ms: int

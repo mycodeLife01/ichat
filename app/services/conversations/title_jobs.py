@@ -17,8 +17,13 @@ class TitleJobClaim:
 
 
 async def create_title_job(session: AsyncSession, *, run_id: int) -> bool:
+    """Queue title generation from the run's user message at submit time.
+
+    The title depends only on the user's message, so it does not wait for the
+    reply. At most one job exists per conversation; later submits are no-ops.
+    """
     run = await session.get(Run, run_id)
-    if run is None or run.status != "succeeded":
+    if run is None:
         return False
     conversation = await session.get(Conversation, run.conversation_id)
     if (
@@ -26,17 +31,6 @@ async def create_title_job(session: AsyncSession, *, run_id: int) -> bool:
         or conversation.deleted_at is not None
         or conversation.title is not None
     ):
-        return False
-    first_succeeded_run_id = await session.scalar(
-        select(Run.id)
-        .where(
-            Run.conversation_id == run.conversation_id,
-            Run.status == "succeeded",
-        )
-        .order_by(Run.completed_at.asc().nulls_last(), Run.created_at.asc(), Run.id.asc())
-        .limit(1)
-    )
-    if first_succeeded_run_id != run.id:
         return False
 
     statement = (

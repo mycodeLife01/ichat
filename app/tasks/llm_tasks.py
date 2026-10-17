@@ -35,7 +35,6 @@ _TITLE_JOB_LEASE_SECONDS = 120
 class TitleInputs:
     conversation_id: int
     user_content: str
-    assistant_content: str
     attachment_metadata: str | None = None
 
 
@@ -74,7 +73,6 @@ def generate_conversation_title(
 
         title = build_title_agent(settings=settings).generate(
             user_content=inputs.user_content,
-            assistant_content=inputs.assistant_content,
             attachment_metadata=inputs.attachment_metadata,
         )
         with factory() as session:
@@ -124,7 +122,7 @@ def sweep_conversation_title_jobs() -> int:
 
 def _load_title_inputs(session: Session, *, run_id: int) -> TitleInputs | None:
     run = session.get(Run, run_id)
-    if run is None or run.status != "succeeded":
+    if run is None:
         return None
 
     conversation = session.get(Conversation, run.conversation_id)
@@ -135,40 +133,13 @@ def _load_title_inputs(session: Session, *, run_id: int) -> TitleInputs | None:
     ):
         return None
 
-    first_succeeded_run_id = session.scalar(
-        select(Run.id)
-        .where(
-            Run.conversation_id == run.conversation_id,
-            Run.status == "succeeded",
-        )
-        .order_by(Run.completed_at.asc().nulls_last(), Run.created_at.asc(), Run.id.asc())
-        .limit(1)
-    )
-    if first_succeeded_run_id != run.id:
-        return None
-
     first_user = session.get(Message, run.user_message_id)
-    assistant = session.scalar(
-        select(Message)
-        .where(
-            Message.run_id == run_id,
-            Message.role == "assistant",
-        )
-        .order_by(Message.position.asc())
-        .limit(1)
-    )
-    if (
-        first_user is None
-        or first_user.role != "user"
-        or assistant is None
-        or not assistant.content.strip()
-    ):
+    if first_user is None or first_user.role != "user":
         return None
 
     return TitleInputs(
         conversation_id=run.conversation_id,
         user_content=first_user.content,
-        assistant_content=assistant.content,
         attachment_metadata=_title_attachment_metadata(session, message_id=first_user.id),
     )
 
