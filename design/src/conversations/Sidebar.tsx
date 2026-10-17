@@ -36,8 +36,8 @@ export type SidebarUser = {
   avatarUrl?: string | null;
 };
 
-// Per-conversation run status shown at the row's trailing edge. Only the
-// sidebar-run-status proposal passes it; the current design omits the prop.
+// Per-conversation run status shown at the row's trailing edge: a spinner
+// while a run is in flight, a dot once a background run finishes unseen.
 export type ConversationRowStatus = "running" | "unread";
 
 type SidebarProps = {

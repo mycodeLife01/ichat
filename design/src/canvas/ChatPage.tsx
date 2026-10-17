@@ -154,17 +154,14 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
   );
   const seq = useRef(0);
   const alive = useRef(true);
-  // sidebar-run-status proposal: runs keep going after the user switches away,
-  // and finishing off-screen leaves an unread mark until the row is opened.
-  const runStatus =
-    new URLSearchParams(window.location.search).get("proposal") ===
-    "sidebar-run-status";
+  // Runs keep going after the user switches away, and finishing off-screen
+  // leaves an unread mark until the row is opened.
   const [background, setBackground] = useState<Record<string, number>>(
     (): Record<string, number> =>
-    runStatus && scene.initial === "run-status" ? { "design-2": 1 } : {},
+    scene.initial === "run-status" ? { "design-2": 1 } : {},
   );
   const [unread, setUnread] = useState<string[]>(() =>
-    runStatus && scene.initial === "run-status" ? ["design-4"] : [],
+    scene.initial === "run-status" ? ["design-4"] : [],
   );
   const [titlePending, setTitlePending] = useState<string[]>([]);
   const conversationsRef = useRef(conversations);
@@ -214,7 +211,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     setMobileOpen(false);
     setRun(null);
     setPlaying(false);
-    if (runStatus && id !== selectedId) {
+    if (id !== selectedId) {
       setUnread((ids) => ids.filter((x) => x !== id));
       const resumed = id ? background[id] : undefined;
       setBackground((bg) => {
@@ -284,9 +281,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         onConversations([
           {
             id,
-            // The proposal shows the placeholder row first; the title lands
+            // The placeholder row shows first; the title lands
             // asynchronously right after the user message is committed.
-            title: runStatus ? null : content.slice(0, 30) || "新对话",
+            title: null,
             created_at: fixedDate,
             updated_at: fixedDate,
             activated_at: fixedDate,
@@ -296,20 +293,18 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         ]);
         setAnimateComposer(true);
         navigate(`/c/${id}`);
-        if (runStatus) {
-          setTitlePending((ids) => [...ids, id]);
-          setTimeout(() => {
-            if (!alive.current) return;
-            setTitlePending((ids) => ids.filter((x) => x !== id));
-            onConversations(
-              conversationsRef.current.map((c) =>
-                c.id === id
-                  ? { ...c, title: content.trim().slice(0, 16) || "新对话" }
-                  : c,
-              ),
-            );
-          }, 1500);
-        }
+        setTitlePending((ids) => [...ids, id]);
+        setTimeout(() => {
+          if (!alive.current) return;
+          setTitlePending((ids) => ids.filter((x) => x !== id));
+          onConversations(
+            conversationsRef.current.map((c) =>
+              c.id === id
+                ? { ...c, title: content.trim().slice(0, 16) || "新对话" }
+                : c,
+            ),
+          );
+        }, 1500);
       }
       setValue("");
       setAttachments([]);
@@ -383,11 +378,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [background]);
   const rowStatus: Record<string, ConversationRowStatus> = {};
-  if (runStatus) {
-    for (const id of unread) rowStatus[id] = "unread";
-    for (const id of Object.keys(background)) rowStatus[id] = "running";
-    if (busy && selectedId) rowStatus[selectedId] = "running";
-  }
+  for (const id of unread) rowStatus[id] = "unread";
+  for (const id of Object.keys(background)) rowStatus[id] = "running";
+  if (busy && selectedId) rowStatus[selectedId] = "running";
   useEffect(() => {
     if (!playing) return;
     const timer = setInterval(advance, 180);
@@ -761,7 +754,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         collapsed={collapsed && !isMobile}
         mobileOpen={mobileOpen}
         pendingTitleIds={titlePending}
-        rowStatus={runStatus ? rowStatus : undefined}
+        rowStatus={rowStatus}
         hasMore={limit < conversations.length}
         isLoadingMore={loadingMore}
         onSelect={(id) => select(id)}

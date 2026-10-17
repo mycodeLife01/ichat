@@ -59,7 +59,8 @@ PG 永远是事实源」这一项目级约定在后台任务上的落地。
 
 标题任务的三问答案：最多重试 3 次；以 5 秒为基数做指数退避并封顶 60 秒；耗尽后
 Celery 将任务标为失败并记录日志，conversation `title` 保持 NULL（不污染业务事实），后续
-首个成功 Run 的重复投递仍可按 `title IS NULL` 幂等补写。
+提交的重复投递仍可按 `title IS NULL` 幂等补写。标题任务在用户消息提交后由 API 投递，只依据
+用户消息与附件元数据，不等待 Run 完成（见 `docs/handover/frontend/2026-10-17-sidebar-run-status.md`）。
 
 文件任务的三问答案：上传处理最多 3 次；暂时故障按 30 秒、5 分钟退避，第三次耗尽进入
 `failed`；格式/安全/资源上限等永久失败进入 `rejected`。`FileObjectDeletion` 不因短暂

@@ -13,7 +13,7 @@ type ThreadActionsProps = {
   onNew: () => void;
   onShare: () => void;
   onDelete: () => void;
-  // Another conversation has an unseen reply (sidebar-run-status proposal only).
+  // Another conversation has an unseen reply.
   historyBadge?: boolean;
 };
 
