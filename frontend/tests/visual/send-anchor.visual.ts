@@ -276,3 +276,38 @@ test("a follow-up send without scrolling only pushes the current turn upward", a
   const last = frames[frames.length - 1]!;
   expect(Math.abs(last.top! - anchorGap(page))).toBeLessThanOrEqual(2);
 });
+
+test("lifts a long collapsible message by its collapsed height", async ({ page }) => {
+  // A long text message lays out clipped to the 320px collapse cap; the lift
+  // must not target a position computed from its full height, which would
+  // scroll past the message into blank reserve.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await openFixture(page, 8);
+  const samples = page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const region = document.querySelector<HTMLElement>(".thread-region")!;
+        const out: number[] = [];
+        const start = performance.now();
+        const frame = (now: number) => {
+          const users = [...document.querySelectorAll<HTMLElement>(".thread-stage .msg.user")];
+          const user = users.find((node) => node.textContent?.includes("超长问题第 1 行"));
+          if (user) out.push(user.getBoundingClientRect().top - region.getBoundingClientRect().top);
+          if (now - start < 1200) requestAnimationFrame(frame);
+          else resolve(out);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+  await send(page, Array.from({ length: 120 }, (_, index) => `超长问题第 ${index + 1} 行`).join("\n"));
+  const tops = await samples;
+  const gap = anchorGap(page);
+
+  // Every frame of the lift stays at or below the gap: no excursion past it.
+  expect(tops.length).toBeGreaterThan(0);
+  for (const top of tops) expect(top).toBeGreaterThanOrEqual(gap - 1);
+  const metrics = await measure(page);
+  expect(Math.abs(metrics.userTop - gap)).toBeLessThanOrEqual(2);
+  expect(metrics.userBottom - metrics.userTop).toBeLessThan(500);
+  expect(metrics.userBottom).toBeLessThan(metrics.footerTop);
+});

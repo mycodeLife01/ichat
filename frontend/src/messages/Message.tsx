@@ -352,7 +352,11 @@ export function Message({
   }
 
   if (isUser) {
-    const collapsed = overflowing && !expanded && !searchExpanded;
+    // Clip before `overflowing` is measured: the first layout must already have
+    // the collapsed height, or send-anchored scrolling lifts to a position
+    // computed from the full message.
+    const clipped = !expanded && !searchExpanded;
+    const collapsed = overflowing && clipped;
     return (
       <div
         className={`${msgBase} user items-end`}
@@ -437,7 +441,7 @@ export function Message({
                   data-search-message-id={message.id}
                   data-search-field="body"
                   className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere"
-                  style={collapsed ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
+                  style={clipped ? { maxHeight: `${COLLAPSE_MAX_HEIGHT}px`, overflow: "hidden" } : undefined}
                 >
                   {message.content}
                 </div>

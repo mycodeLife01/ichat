@@ -41,10 +41,13 @@ type Mode = "bottom" | "anchored" | "free";
 
 type Anchor = {
   target: HTMLElement;
-  // A turn left at its natural position keeps a fixed offset; a lifted turn
-  // is re-measured so late layout (collapse, images, resize) stays aligned.
-  // Either way an oversized message keeps its end and the reply start in view.
-  fixedTop: number | null;
+  // Content below the target at anchor time, frozen so the growing reply
+  // never moves the natural position. Natural-vs-lifted is re-decided from the
+  // target's and footer's current geometry, so late layout (collapse, images,
+  // the Composer clearing, resize) re-aligns instead of keeping a stale
+  // position. Either way an oversized message keeps its end and the reply
+  // start in view.
+  tail: number;
 };
 
 // Scroll-content coordinate of a viewport y value.
@@ -178,11 +181,11 @@ export function useStickToBottom<T extends HTMLElement>(
     const rect = current.target.getBoundingClientRect();
     const gap = anchorGap();
     const visible = el.clientHeight - footerHeight();
-    return Math.max(
-      0,
-      current.fixedTop ?? toScrollY(el, rect.top) - shift - gap,
-      toScrollY(el, rect.bottom) - shift - (visible - REPLY_PEEK),
-    );
+    const top = toScrollY(el, rect.top) - shift;
+    const bottom = toScrollY(el, rect.bottom) - shift;
+    const naturalTop = Math.max(0, bottom + current.tail + footerHeight() - el.clientHeight);
+    const natural = top - naturalTop <= el.clientHeight * ANCHOR_TRIGGER_RATIO;
+    return Math.max(0, natural ? naturalTop : top - gap, bottom - (visible - REPLY_PEEK));
   };
 
   // Stage height that lets the viewport rest at `top`.
@@ -282,11 +285,10 @@ export function useStickToBottom<T extends HTMLElement>(
       setReserve(null);
       return;
     }
-    const naturalTop = Math.max(0, effectiveMetrics(el).scrollHeight - el.clientHeight);
-    const offset = toScrollY(el, target.getBoundingClientRect().top) - naturalTop;
+    const contentEnd = effectiveMetrics(el).scrollHeight - footerHeight();
     anchor.current = {
       target,
-      fixedTop: offset <= el.clientHeight * ANCHOR_TRIGGER_RATIO ? naturalTop : null,
+      tail: contentEnd - toScrollY(el, target.getBoundingClientRect().bottom),
     };
     resizeObserver.current?.observe(target);
     const top = anchorTop(el, anchor.current);
@@ -307,6 +309,18 @@ export function useStickToBottom<T extends HTMLElement>(
     if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
+      // Shrinking layout (the Composer clearing, a message collapsing) can
+      // clamp scrollTop below the anchor before the ResizeObserver re-measures
+      // it. Landing exactly on the scroll end is that clamp, not the reader.
+      if (
+        mode.current === "anchored" &&
+        top < lastSetTop.current &&
+        top >= el.scrollHeight - el.clientHeight - 1
+      ) {
+        holdAnchor(el);
+        if (animatingTo.current === null) syncScrollFromBottom(el);
+        return;
+      }
       // Scrolls during the lift are its own frames; gestures cancel it below.
       if (animatingTo.current === null && !searchPaused.current && top !== lastSetTop.current) {
         const metrics = effectiveMetrics(el);

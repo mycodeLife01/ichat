@@ -68,10 +68,15 @@
     `pt-10`）一致。
   - 移动端（`max-width: 760px`）60px：右上角浮动按钮下沿约 52px，且与右对齐的用户气泡横向
     重叠，40px 会产生遮挡。
-- 自然末尾 `N = 有效 scrollHeight - clientHeight`；若新消息在 N 处的视口位置不超过
-  `clientHeight / 3`，视为 R2，`T = N`（固定，不随回复增长而改变）。
+- 自然末尾 `N = 消息底部 + tail + 当前 Composer 区高度 - clientHeight`，其中
+  `tail = 置顶时的有效内容末尾 - 消息底部`，只在置顶时冻结一次，所以回复增长不会移动 N。
+  若新消息在 N 处的视口位置不超过 `clientHeight / 3`，视为 R2，`T = N`。
 - 否则 `T = max(消息顶部 - gap, 消息底部 - (clientHeight - Composer 区高度 - 120))`，
   第二项即超高消息保护。
+- R2 判定每次重新测量都用消息与 Composer 区的**当前**几何重新计算，不能冻结成绝对 scrollTop：
+  置顶发生时长消息可能尚未折叠、Composer 可能还装着刚发送的草稿；冻结的 T 会在两者收缩后
+  指向真实内容之外，视口滚进一大片空白预留（2026-10 修复的“长文本发送后滚动过远”）。
+  `Message` 因此从首次布局起就按 320px 裁切，`overflowing` 只控制渐隐与展开按钮。
 
 ### 3.4 可收缩底部预留
 
@@ -81,6 +86,9 @@
 - **预留（anchored）**：`min-height = T + clientHeight - Composer 区高度 - stageTop`，保证能滚到 T。
   回复变长时真实内容自然撑开，滚动高度在超出前保持恒定、视口不动。锚定期间对用户消息、滚动容器、
   Composer 区做 ResizeObserver，重新计算 T 与预留（覆盖折叠测量、键盘、resize、图片加载）。
+  布局收缩会被同步强制布局提前触发，浏览器夹紧 scrollTop 产生的 scroll 事件可能早于
+  ResizeObserver 回调；anchored 期间若 scrollTop 低于上次写入值且恰好落在滚动末尾，视为夹紧
+  而非用户滚动，直接重新测量锚点，不离开 anchored。
 - **收缩（离开 anchored 后）**：每次滚动把 `min-height` 缩到“刚好保持当前 scrollTop 合法”的
   值，只缩不涨；不再需要时移除。生成结束本身不删除预留，因此结束瞬间不跳；用户上翻后，空白消失。
 - 下一次发送重新计算新的预留，但**不先清除旧预留**：否则滚动高度瞬间变小，浏览器把 scrollTop
