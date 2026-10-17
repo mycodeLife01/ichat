@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Sidebar } from "../conversations/Sidebar";
+import { Sidebar, type ConversationRowStatus } from "../conversations/Sidebar";
 import { AccountCard } from "../conversations/AccountCard";
 import { MySharesCard } from "../conversations/MySharesCard";
 import { ThreadActions } from "../conversations/ThreadActions";
@@ -154,6 +154,21 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
   );
   const seq = useRef(0);
   const alive = useRef(true);
+  // sidebar-run-status proposal: runs keep going after the user switches away,
+  // and finishing off-screen leaves an unread mark until the row is opened.
+  const runStatus =
+    new URLSearchParams(window.location.search).get("proposal") ===
+    "sidebar-run-status";
+  const [background, setBackground] = useState<Record<string, number>>(
+    (): Record<string, number> =>
+    runStatus && scene.initial === "run-status" ? { "design-2": 1 } : {},
+  );
+  const [unread, setUnread] = useState<string[]>(() =>
+    runStatus && scene.initial === "run-status" ? ["design-4"] : [],
+  );
+  const [titlePending, setTitlePending] = useState<string[]>([]);
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const {
     ref: threadRef,
@@ -199,6 +214,22 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     setMobileOpen(false);
     setRun(null);
     setPlaying(false);
+    if (runStatus && id !== selectedId) {
+      setUnread((ids) => ids.filter((x) => x !== id));
+      const resumed = id ? background[id] : undefined;
+      setBackground((bg) => {
+        const next = { ...bg };
+        // The foreground run keeps streaming off-screen.
+        if (busy && run && selectedId) next[selectedId] = step;
+        if (id) delete next[id];
+        return next;
+      });
+      if (id && resumed !== undefined) {
+        setRun({ ...startRun(scene.initial), conversationId: id });
+        setStep(resumed);
+        setPlaying(true);
+      }
+    }
     navigate(id ? `/c/${id}` : "/");
   }
   async function send(
@@ -253,7 +284,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         onConversations([
           {
             id,
-            title: content.slice(0, 30) || "新对话",
+            // The proposal shows the placeholder row first; the title lands
+            // asynchronously right after the user message is committed.
+            title: runStatus ? null : content.slice(0, 30) || "新对话",
             created_at: fixedDate,
             updated_at: fixedDate,
             activated_at: fixedDate,
@@ -263,6 +296,20 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         ]);
         setAnimateComposer(true);
         navigate(`/c/${id}`);
+        if (runStatus) {
+          setTitlePending((ids) => [...ids, id]);
+          setTimeout(() => {
+            if (!alive.current) return;
+            setTitlePending((ids) => ids.filter((x) => x !== id));
+            onConversations(
+              conversationsRef.current.map((c) =>
+                c.id === id
+                  ? { ...c, title: content.trim().slice(0, 16) || "新对话" }
+                  : c,
+              ),
+            );
+          }, 1500);
+        }
       }
       setValue("");
       setAttachments([]);
@@ -285,6 +332,62 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     }
   }
   const advance = useCallback(() => setStep((s) => s + 1), []);
+  const backgroundCount = Object.keys(background).length;
+  useEffect(() => {
+    if (!backgroundCount) return;
+    // Slower than the foreground timeline so the running state is reviewable.
+    const timer = setInterval(
+      () =>
+        setBackground((bg) =>
+          Object.fromEntries(Object.entries(bg).map(([k, v]) => [k, v + 1])),
+        ),
+      400,
+    );
+    return () => clearInterval(timer);
+  }, [backgroundCount]);
+  useEffect(() => {
+    const done = Object.keys(background).filter(
+      (id) => background[id] >= reasoningSteps + 25,
+    );
+    if (!done.length) return;
+    onConversations(
+      conversationsRef.current.map((c) =>
+        done.includes(c.id)
+          ? {
+              ...c,
+              messages: [
+                ...c.messages,
+                {
+                  ...message(
+                    `answer-bg-${c.id}`,
+                    "assistant",
+                    answer,
+                    c.messages.length + 1,
+                  ),
+                  conversation_id: c.id,
+                  timing: { work_ms: 12_345 },
+                },
+              ],
+            }
+          : c,
+      ),
+    );
+    setBackground((bg) =>
+      Object.fromEntries(Object.entries(bg).filter(([k]) => !done.includes(k))),
+    );
+    setUnread((ids) => [
+      ...ids,
+      ...done.filter((id) => id !== selectedId && !ids.includes(id)),
+    ]);
+    // Completion only depends on the background step map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [background]);
+  const rowStatus: Record<string, ConversationRowStatus> = {};
+  if (runStatus) {
+    for (const id of unread) rowStatus[id] = "unread";
+    for (const id of Object.keys(background)) rowStatus[id] = "running";
+    if (busy && selectedId) rowStatus[selectedId] = "running";
+  }
   useEffect(() => {
     if (!playing) return;
     const timer = setInterval(advance, 180);
@@ -657,7 +760,8 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         isMobile={isMobile}
         collapsed={collapsed && !isMobile}
         mobileOpen={mobileOpen}
-        pendingTitleIds={[]}
+        pendingTitleIds={titlePending}
+        rowStatus={runStatus ? rowStatus : undefined}
         hasMore={limit < conversations.length}
         isLoadingMore={loadingMore}
         onSelect={(id) => select(id)}
@@ -703,6 +807,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
             onNew={() => select(null)}
             onShare={() => void quickShare()}
             onDelete={() => setDeleteId(selectedId)}
+            historyBadge={unread.some((id) => id !== selectedId)}
           />
           <div
             className="thread-region relative flex min-h-0 flex-1 flex-col overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8"

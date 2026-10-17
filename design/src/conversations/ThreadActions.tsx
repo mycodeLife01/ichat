@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { dangerMenuItem, iconControl, neutralMenuItem, popoverSurface } from "../ui/classes";
 import { Icons } from "../ui/icons";
+import { UnreadBadge } from "./Sidebar";
 
 type ThreadActionsProps = {
   isMobile: boolean;
@@ -12,6 +13,8 @@ type ThreadActionsProps = {
   onNew: () => void;
   onShare: () => void;
   onDelete: () => void;
+  // Another conversation has an unseen reply (sidebar-run-status proposal only).
+  historyBadge?: boolean;
 };
 
 // The chat page has no header row: these controls float over the top of the
@@ -25,6 +28,7 @@ export function ThreadActions({
   onNew,
   onShare,
   onDelete,
+  historyBadge = false,
 }: ThreadActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRootRef = useRef<HTMLDivElement>(null);
@@ -57,11 +61,12 @@ export function ThreadActions({
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between px-4 pt-2 max-[760px]:px-2">
       {isMobile ? (
         <button
-          className={`${floatingControl} ${controlSize}`}
-          aria-label="打开历史"
+          className={`${floatingControl} relative ${controlSize}`}
+          aria-label={historyBadge ? "打开历史，有新回复" : "打开历史"}
           onClick={onOpenMobileSidebar}
         >
           <Icons.Menu size={18} />
+          {historyBadge && <UnreadBadge />}
         </button>
       ) : (
         <span />
