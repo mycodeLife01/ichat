@@ -211,7 +211,7 @@ describe("useStickToBottom", () => {
       clientHeight?: number;
       footer?: number;
     }) {
-      const geometry = { content, userTop, userHeight, scrollTop: 0 };
+      const geometry = { content, userTop, userHeight, scrollTop: 0, footer };
       const region = document.createElement("div");
       const stage = document.createElement("div");
       const inner = document.createElement("div");
@@ -225,7 +225,7 @@ describe("useStickToBottom", () => {
       region.append(stage, footerEl);
       const stageHeight = () =>
         Math.max(geometry.content, Number.parseFloat(stage.style.minHeight) || 0);
-      const scrollHeight = () => Math.max(clientHeight, stageHeight() + footer);
+      const scrollHeight = () => Math.max(clientHeight, stageHeight() + geometry.footer);
       const rect = (top: number, bottom: number) =>
         ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top }) as DOMRect;
       Object.defineProperties(region, {
@@ -251,7 +251,7 @@ describe("useStickToBottom", () => {
         );
       reply.getBoundingClientRect = () =>
         rect(geometry.userTop + geometry.userHeight, geometry.content - geometry.scrollTop);
-      Object.defineProperty(footerEl, "offsetHeight", { get: () => footer });
+      Object.defineProperty(footerEl, "offsetHeight", { get: () => geometry.footer });
       const userScroll = (top: number) => {
         region.scrollTop = top;
         region.dispatchEvent(new Event("scroll"));
@@ -412,6 +412,41 @@ describe("useStickToBottom", () => {
 
       // Visible reading area is 700px; the message bottom sits 120px above it.
       expect(model.region.scrollTop).toBe(2700 - (700 - 120));
+    });
+
+    it("re-aligns when a tall message collapses after the anchor was measured", () => {
+      // The message first lays out at its full height and only collapses
+      // after mount; the anchor must follow the collapsed geometry instead of
+      // keeping the scroll position computed from the full height.
+      const model = layout({ content: 1800, userTop: 1700, userHeight: 100 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      Object.assign(model.geometry, { content: 3020, userTop: 1800, userHeight: 1200 });
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(3000 - (700 - 120));
+
+      Object.assign(model.geometry, { content: 2180, userHeight: 360 });
+      hook.rerender({ deps: [4], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1800 - 40);
+      expect(model.stage.style.minHeight).toBe(`${1800 - 40 + 700}px`);
+    });
+
+    it("re-aligns instead of leaving when the Composer shrinks after the anchor", () => {
+      // Measured while the Composer still holds the sent draft, the turn sits
+      // in the upper third and stays at its natural end.
+      const model = layout({ content: 1800, userTop: 1700, footer: 300 });
+      const hook = mount(model);
+      act(() => hook.result.current.anchorNextTurn());
+      Object.assign(model.geometry, { content: 2000, userTop: 1700, userHeight: 200 });
+      hook.rerender({ deps: [3], force: "c1", turn: "pending-1" });
+      expect(model.region.scrollTop).toBe(1900 - (500 - 120));
+
+      // The Composer clears: the browser clamps scrollTop to the shorter
+      // scroll end before any ResizeObserver callback. That is not the reader.
+      model.geometry.footer = 100;
+      act(() => model.userScroll(model.region.scrollTop));
+      expect(model.region.scrollTop).toBe(1700 - 40);
+      expect(model.stage.style.minHeight).toBe(`${1700 - 40 + 700}px`);
     });
 
     it("releases the reserve only as the reader scrolls away from it", () => {
