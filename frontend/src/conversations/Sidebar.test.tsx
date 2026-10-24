@@ -142,6 +142,24 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a row skeleton instead of the empty placeholder while the list loads", () => {
+    render(<Sidebar {...baseProps()} items={[]} isLoadingList />);
+    expect(screen.getByRole("status", { name: "正在加载对话" })).toBeInTheDocument();
+    expect(screen.queryByText(/还没有已保存的对话/)).not.toBeInTheDocument();
+  });
+
+  it("shows skeleton rows below the list while loading more", () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        items={[makeConversation("1", "对话1", today)]}
+        isLoadingMore
+      />,
+    );
+    expect(screen.getByRole("status", { name: "正在加载更多对话" })).toBeInTheDocument();
+    expect(screen.queryByText("正在加载...")).not.toBeInTheDocument();
+  });
+
   it("collapsed: keeps a rail with new chat, recent chats and the account avatar", async () => {
     const props = baseProps();
     const user = userEvent.setup();

@@ -49,6 +49,7 @@ type SidebarProps = {
   mobileOpen: boolean;
   pendingTitleIds: string[];
   rowStatus?: Record<string, ConversationRowStatus>;
+  isLoadingList?: boolean;
   hasMore: boolean;
   isLoadingMore: boolean;
   onSelect: (id: string) => void;
@@ -100,6 +101,7 @@ export function Sidebar({
   mobileOpen,
   pendingTitleIds,
   rowStatus,
+  isLoadingList = false,
   hasMore,
   isLoadingMore,
   onSelect,
@@ -572,16 +574,15 @@ export function Sidebar({
                   {items.map((c) =>
                     renderRow(c, { renderDesktopMenu: !railCollapsed }),
                   )}
-                  {items.length === 0 && (
-                    <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                      还没有已保存的对话。开始一次对话后会自动出现在这里。
-                    </div>
-                  )}
-                  {isLoadingMore && (
-                    <div className="px-2.5 py-3 text-[12px] leading-[1.6] text-fg-subtle max-[760px]:text-[13px]">
-                      正在加载...
-                    </div>
-                  )}
+                  {items.length === 0 &&
+                    (isLoadingList ? (
+                      <HistorySkeleton rows={historySkeletonWidths.length} label="正在加载对话" />
+                    ) : (
+                      <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
+                        还没有已保存的对话。开始一次对话后会自动出现在这里。
+                      </div>
+                    ))}
+                  {isLoadingMore && <HistorySkeleton rows={3} label="正在加载更多对话" />}
                 </div>
               </div>
             </div>
@@ -644,11 +645,14 @@ export function Sidebar({
             {items
               .slice(0, railRecentLimit)
               .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
-            {items.length === 0 && (
-              <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
-                还没有已保存的对话。
-              </div>
-            )}
+            {items.length === 0 &&
+              (isLoadingList ? (
+                <HistorySkeleton rows={5} label="正在加载对话" />
+              ) : (
+                <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
+                  还没有已保存的对话。
+                </div>
+              ))}
           </nav>,
           document.body,
         )}
@@ -662,6 +666,29 @@ export function Sidebar({
         />
       )}
     </>
+  );
+}
+
+// Uneven title widths so the placeholder reads as a list of real titles.
+const historySkeletonWidths = ["72%", "54%", "86%", "62%", "78%", "46%", "68%", "58%"];
+
+// Title-bar placeholders on the exact history-row geometry, so loaded rows
+// replace them without shifting the column. Lower rows fade out to suggest a
+// list continuing below rather than a fixed count.
+function HistorySkeleton({ rows, label }: { rows: number; label: string }) {
+  return (
+    <div role="status" aria-label={label} aria-busy="true">
+      {historySkeletonWidths.slice(0, rows).map((width, index) => (
+        <div
+          key={index}
+          className="flex min-h-9 items-center px-2.5 max-[760px]:min-h-11"
+          style={{ opacity: 1 - (index / rows) * 0.7 }}
+          aria-hidden="true"
+        >
+          <span className={titleSkeleton} style={{ width }} />
+        </div>
+      ))}
+    </div>
   );
 }
 

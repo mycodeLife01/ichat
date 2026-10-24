@@ -85,6 +85,16 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
   );
   const [limit, setLimit] = useState(30);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The bootstrap list fetch: held until "完成等待" in the loading scene.
+  const [listLoading, setListLoading] = useState(
+    scene.initial === "sidebar-loading",
+  );
+  useEffect(() => {
+    if (scene.initial !== "sidebar-loading") return;
+    void services.outcomes
+      .run("list", null, { initial: true })
+      .finally(() => setListLoading(false));
+  }, [scene.initial, services]);
   const [value, setValue] = useState("");
   const drafts = useRef(
     new Map<
@@ -747,7 +757,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         onStale={() => toast("无法打开这段对话，请重新搜索后再试。")}
       />
       <Sidebar
-        items={conversations.slice(0, limit)}
+        items={listLoading ? [] : conversations.slice(0, limit)}
         selectedId={selectedId}
         {...accountProps}
         isMobile={isMobile}
@@ -755,6 +765,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         mobileOpen={mobileOpen}
         pendingTitleIds={titlePending}
         rowStatus={rowStatus}
+        isLoadingList={listLoading}
         hasMore={limit < conversations.length}
         isLoadingMore={loadingMore}
         onSelect={(id) => select(id)}

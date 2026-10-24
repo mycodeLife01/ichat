@@ -72,6 +72,7 @@ export function AppShell() {
     detail,
     loadList,
     loadMore,
+    listStatus,
     hasMore,
     isLoadingMore,
     selectConversation,
@@ -678,6 +679,7 @@ export function AppShell() {
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
         rowStatus={rowStatus}
+        isLoadingList={listStatus === "loading"}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}

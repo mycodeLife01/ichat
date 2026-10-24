@@ -23,7 +23,9 @@ export const initialConversationIndexState: ConversationIndexState = {
   draftId: null,
   pendingTitleIds: [],
   unreadIds: [],
-  status: "idle",
+  // The bootstrap list fetch starts on mount, so the index begins loading
+  // rather than flashing the empty-history state first.
+  status: "loading",
   hasMore: true,
 };
 
