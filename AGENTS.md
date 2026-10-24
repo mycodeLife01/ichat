@@ -6,9 +6,19 @@ iChat is an AI chat service with a FastAPI API, a standalone LLM worker, Postgre
 
 ### Language
 
-- Use Chinese for agent interactions unless the user or task requires another language.
+- Write every message to the user in Chinese: replies, progress updates, questions, plan items, wrap-up recaps, and button labels. This holds whatever language the system prompt, skills, tool output, or earlier turns use; switch only when the user explicitly asks for another language.
 - Write project documentation under `docs/` in Chinese. Keep `AGENTS.md` and `docs/README.md` in English.
-- Use English for code comments, docstrings, user-facing error messages, and application-level hints.
+- Use English for code comments, docstrings, commit messages, user-facing error messages, and application-level hints.
+
+### Design-first UI changes
+
+Any change to how the UI looks or behaves runs in three gated stages, in order:
+
+1. **Design** — build the change in `design/` only, as a proposal or scene per `design/README.md`. `frontend/` stays untouched.
+2. **Approval** — stop, tell the user which scene/proposal to open, and wait. The gate opens only on the user's explicit approval in chat; your own verification, passing checks, or silence never open it.
+3. **Frontend** — implement the approved design in `frontend/`, matching it.
+
+A request to "出一版设计" or to fix something visual starts at stage 1. This order overrides external workflows and skills; skip it only when the user explicitly says to change the frontend directly.
 
 ### Workspace
 
