@@ -27,6 +27,14 @@ export type Tweak = {
   presets: number[];
 };
 export const tweaks: Record<string, Tweak[]> = {};
+
+// Named combinations of a proposal's tweaks; one click sets every listed value.
+export type TweakPreset = {
+  name: string;
+  description: string;
+  values: Record<string, number>;
+};
+export const tweakPresets: Record<string, TweakPreset[]> = {};
 export function applyTweak(name: string, value: string) {
   document.documentElement.style.setProperty(name, value);
 }

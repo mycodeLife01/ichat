@@ -1,0 +1,30 @@
+{
+  "proposalId": "sidebar-pin-favorite",
+  "requirement": "docs/handover/frontend/2026-10-24-sidebar-pin-favorite.md",
+  "designStatus": "approved",
+  "implementationStatus": "verified",
+  "sceneIds": ["pin-favorite", "toasts"],
+  "viewport": [
+    { "width": 1440, "height": 900 },
+    { "width": 390, "height": 844 }
+  ],
+  "sourceCommit": "ccea345e3ea2218eb106192453447ec6cacdaa8c",
+  "designCommit": null,
+  "designFingerprint": "574f90ba811936a621f97acc15734172a41cfddae065f905971dc84281ed82ec",
+  "implementationCommit": null,
+  "evidence": {
+    "comparedCandidates": ["sidebar-pin-favorite"],
+    "chosenTweaks": "pin-style=4 (Phosphor), section-label-size=14px, section-label-ink=60%, sidebar-row-gap=2px at 1440x900; favorites search keeps the title filter",
+    "parity": "pnpm --dir design test:parity: 56 passed",
+    "visual": "pnpm --dir design test:visual: 130 passed",
+    "realChrome": "Built-in browser against the rebuilt local API (migration 20261024_0028) with a seeded test user: the hover pin moved a row into 置顶 with a green 已置顶 toast while updated_at stayed unchanged in Postgres; with 10 pins the menu 置顶 showed the warning 最多置顶 10 个对话 and sent nothing; 收藏 from the row menu and the chat-page 更多操作 menu showed 已加入收藏 in the success green (#f0f8f2 / #39734a) and the menu flipped to 取消收藏; un-starring inside FavoritesDialog kept the row with 重新收藏 until close, and reopening showed the empty state; rows stayed 36px (38px pitch) on desktop through pin, hover and menu, 44px (46px pitch) on mobile, section labels 14px."
+  },
+  "scope": "Per-user pins (limit 10) in a collapsible 置顶 section above the collapsible 最近 section, a fixed 收藏 entry opening FavoritesDialog with a title filter, 置顶/收藏 in the row menu and the chat-page actions menu, a hover Phosphor pin on desktop rows (solid when pinned), green success toasts, and a 2px row gap.",
+  "exceptions": [
+    "Delete/restore marker rules are covered by backend API tests, not by the browser run.",
+    "designCommit and implementationCommit stay null until the change is committed."
+  ],
+  "approvedBy": "jackey",
+  "approvedAt": "2026-10-24",
+  "notes": "Promoted to current. The sidebar-pin-favorite proposal entry, its isProposal gate in ChatPage, the applyProposal block, the four tweaks and their presets, the pin-style container queries and the data-toast-success rule were removed; --color-favorite, the 14px/60% section label and the 2px row gap moved into global.css as fixed values; success toasts use the success palette in both workspaces. The pin-favorite and toasts scenes stay. The frontend design-reference harness now serves list views (pinned / favorites / recent) like the API. Follow-up approved the same day: the 取消置顶 menu item (row menu, mobile sheet, chat-page menu) uses the slashed pin (Phosphor PushPinSlash) to match StarOff, and the FavoritesDialog no-match state shows only its title; parity re-run 56 passed."
+}

@@ -34,6 +34,8 @@ export type ConversationResponse = {
   updated_at: string;
   deleted_at?: string | null;
   deletion_due_at?: string | null;
+  pinned_at?: string | null;
+  favorited_at?: string | null;
 };
 
 export type ImageContextState = "none" | "vision_required" | "legacy_upgrade_required";

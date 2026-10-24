@@ -13,6 +13,8 @@ import type {
 export type ConversationListParams = {
   limit?: number;
   skip?: number;
+  // recent (default) leaves pinned rows out; pinned returns every pin.
+  view?: "recent" | "pinned" | "favorites";
 };
 
 export type ConversationDeletionResponse = CommandStatusResponse & {
@@ -69,6 +71,18 @@ export function createConversationApi(client?: Pick<ApiClient, "request">) {
         method: "PATCH",
         body: { title },
       });
+    },
+    setPinned(conversationId: string, pinned: boolean): Promise<ConversationResponse> {
+      return resolveClient().request<ConversationResponse>(
+        `/conversations/${conversationId}/pin`,
+        { method: pinned ? "PUT" : "DELETE" },
+      );
+    },
+    setFavorited(conversationId: string, favorited: boolean): Promise<ConversationResponse> {
+      return resolveClient().request<ConversationResponse>(
+        `/conversations/${conversationId}/favorite`,
+        { method: favorited ? "PUT" : "DELETE" },
+      );
     },
     remove(conversationId: string): Promise<ConversationDeletionResponse> {
       return resolveClient().request<ConversationDeletionResponse>(

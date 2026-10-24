@@ -341,6 +341,16 @@ a {
   border-color: #9bb8d4;
   color: #234f79;
 }
+.tweak-presets {
+  flex-basis: 100%;
+}
+.tweak-export {
+  flex-basis: 100%;
+}
+.tweak-export textarea {
+  flex: 1 1 360px;
+  font: 12px/1.5 ui-monospace, monospace;
+}
 .tweak code {
   color: #657487;
   font-size: 11px;

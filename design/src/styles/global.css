@@ -60,6 +60,7 @@
   --color-message-editor-foreground: #0d0d0d;
   /* Sidebar dot for a background run that finished while unseen. */
   --color-unread-indicator: #1a73c7;
+  --color-favorite: #c98a12;
 
   /* Assistant code surfaces use a restrained light syntax palette. */
   --color-code-surface: #f3f3f3;
@@ -1158,3 +1159,8 @@ body {
 @media (max-width: 760px) {
   .conversation-search { width: 100%; height: 100dvh; max-width: none; transform: none; border-radius: 0; border: 0; }
 }
+
+/* Gap between adjacent rows so a selected row and a hovered neighbour keep separate fills. */
+.history-row-spaced + .history-row-spaced { margin-top: 2px; }
+/* Section headers: ink is a share of the body text color, so the gray follows light and dark themes. */
+.section-label-quiet { font-size: 14px; color: color-mix(in srgb, var(--color-text-primary) 60%, transparent); }

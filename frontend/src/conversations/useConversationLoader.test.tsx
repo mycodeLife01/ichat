@@ -5,7 +5,7 @@ import { ApiError } from "../api/errors";
 import type { ConversationResponse } from "../api/types";
 import { useAppActions, useAppState } from "../app/context";
 import { conversationDetailResponse, conversationResponse } from "../test/apiFixtures";
-import { createFakeServices, makeWrapper } from "../test/appHarness";
+import { createFakeServices, makeWrapper, withNoPins } from "../test/appHarness";
 import { CONVERSATION_PAGE_SIZE } from "./pagination";
 import { selectionStore } from "./selectionStore";
 import { useConversationLoader } from "./useConversationLoader";
@@ -24,7 +24,7 @@ describe("useConversationLoader", () => {
 
   it("loads the first page of the list", async () => {
     const list = vi.fn(async () => [conversationResponse]);
-    const services = createFakeServices({}, { list });
+    const services = createFakeServices({}, { list: withNoPins(list) });
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),
     });
@@ -38,6 +38,26 @@ describe("useConversationLoader", () => {
     expect(list).toHaveBeenCalledWith({ limit: CONVERSATION_PAGE_SIZE, skip: 0 });
   });
 
+  it("loads pinned rows into their own list, apart from recent", async () => {
+    const pinned = { ...makeConversation(99), pinned_at: "2026-05-25T08:00:00Z" };
+    const list = vi.fn(async (params?: { view?: string }) =>
+      params?.view === "pinned" ? [pinned] : [conversationResponse],
+    );
+    const services = createFakeServices({}, { list });
+    const { result } = renderHook(
+      () => ({ loader: useConversationLoader(), state: useAppState() }),
+      { wrapper: makeWrapper(services) },
+    );
+
+    await act(async () => {
+      await result.current.loader.loadList();
+    });
+
+    expect(list).toHaveBeenCalledWith({ view: "pinned" });
+    expect(result.current.loader.items).toEqual([conversationResponse]);
+    expect(result.current.state.conversationIndex.pinnedItems).toEqual([pinned]);
+  });
+
   it("loads the next page when more conversations are available", async () => {
     const firstPage = Array.from({ length: CONVERSATION_PAGE_SIZE }, (_, index) =>
       makeConversation(index + 1),
@@ -47,7 +67,7 @@ describe("useConversationLoader", () => {
       .fn()
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce(secondPage);
-    const services = createFakeServices({}, { list });
+    const services = createFakeServices({}, { list: withNoPins(list) });
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),
     });
@@ -149,7 +169,7 @@ describe("useConversationLoader", () => {
     const services = createFakeServices(
       {},
       {
-        list: async () => [conversationResponse],
+        list: withNoPins(async () => [conversationResponse]),
         rename: async () => renamed,
       },
     );
@@ -171,7 +191,7 @@ describe("useConversationLoader", () => {
     const rename = vi.fn(async () => conversationResponse);
     const services = createFakeServices(
       {},
-      { list: async () => [conversationResponse], rename },
+      { list: withNoPins(async () => [conversationResponse]), rename },
     );
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),
@@ -195,7 +215,7 @@ describe("useConversationLoader", () => {
     const remove = vi.fn(async () => ({ status: "ok" }));
     const services = createFakeServices(
       {},
-      { list: async () => [conversationResponse], detail: async () => conversationDetailResponse, remove },
+      { list: withNoPins(async () => [conversationResponse]), detail: async () => conversationDetailResponse, remove },
     );
     const { result } = renderHook(() => useConversationLoader(), {
       wrapper: makeWrapper(services),

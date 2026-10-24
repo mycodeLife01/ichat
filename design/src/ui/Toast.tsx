@@ -1,9 +1,8 @@
 import { useEffect } from "react";
-import { CircleAlert, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 
 import { toastSurface } from "./classes";
-import { Icons } from "./icons";
-import type { ToastState, ToastTone } from "./state";
+import type { ToastState } from "./state";
+import { toastPresentations } from "./toastPresentations";
 
 type ToastProps = {
   toast: ToastState;
@@ -11,24 +10,6 @@ type ToastProps = {
   duration?: number;
 };
 
-const presentations = {
-  neutral: {
-    Icon: Info,
-    classes: "border-neutral-border bg-neutral-soft text-neutral-foreground",
-  },
-  success: {
-    Icon: Icons.Check,
-    classes: "border-accent bg-accent text-accent-foreground",
-  },
-  error: {
-    Icon: CircleAlert,
-    classes: "border-error-border bg-error-soft text-error-foreground",
-  },
-  warning: {
-    Icon: TriangleAlert,
-    classes: "border-warning-border bg-warning-soft text-warning-foreground",
-  },
-} satisfies Record<ToastTone, { Icon: LucideIcon; classes: string }>;
 
 // A single, auto-dismissing status toast. The component is keyed on toast.id by
 // the effect dependency, so a new toast (even with the same message) clears the
@@ -43,7 +24,7 @@ export function Toast({ toast, onDismiss, duration = 2600 }: ToastProps) {
   }, [id, duration, onDismiss]);
 
   if (toast == null) return null;
-  const { Icon, classes } = presentations[toast.tone];
+  const { Icon, classes } = toastPresentations[toast.tone];
 
   return (
     <div

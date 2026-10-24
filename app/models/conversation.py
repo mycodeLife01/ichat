@@ -28,6 +28,18 @@ class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
         Index("ix_conversations_user_deleted_updated", "user_id", "deleted_at", "updated_at"),
+        Index(
+            "ix_conversations_user_pinned",
+            "user_id",
+            "pinned_at",
+            postgresql_where=text("pinned_at IS NOT NULL AND deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_conversations_user_favorited",
+            "user_id",
+            "favorited_at",
+            postgresql_where=text("favorited_at IS NOT NULL AND deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -54,6 +66,9 @@ class Conversation(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Sidebar markers. Setting or clearing them must not advance updated_at.
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    favorited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

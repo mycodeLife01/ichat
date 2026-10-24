@@ -39,6 +39,14 @@ export function createFakeAuthApi(overrides: Partial<AuthApi> = {}): AuthApi {
   };
 }
 
+// Routes the sidebar's pinned-view fetch to an empty list so a test's list mock
+// only sees (and counts) the recent pages.
+export function withNoPins(
+  list: ConversationApi["list"],
+): ConversationApi["list"] {
+  return (params) => (params?.view === "pinned" ? Promise.resolve([]) : list(params));
+}
+
 export function createFakeConversationApi(
   overrides: Partial<ConversationApi> = {},
 ): ConversationApi {
@@ -52,6 +60,14 @@ export function createFakeConversationApi(
     }),
     detail: async () => conversationDetailResponse,
     rename: async () => conversationResponse,
+    setPinned: async (_id, pinned) => ({
+      ...conversationResponse,
+      pinned_at: pinned ? "2026-01-01T00:00:00Z" : null,
+    }),
+    setFavorited: async (_id, favorited) => ({
+      ...conversationResponse,
+      favorited_at: favorited ? "2026-01-01T00:00:00Z" : null,
+    }),
     remove: async () => ({ status: "ok" }),
     sendMessage: async () => sendMessageResponse,
     editAndRegenerate: async () => sendMessageResponse,

@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronDown, Search, Star, StarOff } from "lucide-react";
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 /* Hallmark · component: sidebar · genre: modern-minimal · system: existing warm-neutral tokens */
 import {
@@ -26,6 +26,7 @@ import { Icons } from "../ui/icons";
 import type { ToastHandler } from "../ui/state";
 import { Wordmark } from "../ui/Wordmark";
 import { BottomSheet } from "../ui/BottomSheet";
+import { PinGlyph } from "./PinGlyph";
 import { UserMenu } from "./UserMenu";
 
 export type SidebarUser = {
@@ -41,7 +42,9 @@ export type SidebarUser = {
 export type ConversationRowStatus = "running" | "unread";
 
 type SidebarProps = {
+  // Recent (unpinned) rows; pinned rows arrive separately in pinnedItems.
   items: ConversationResponse[];
+  pinnedItems: ConversationResponse[];
   selectedId: string | null;
   user: SidebarUser | null;
   isMobile: boolean;
@@ -59,6 +62,9 @@ type SidebarProps = {
   onRename: (id: string, title: string) => void;
   onRequestShare: (id: string) => void;
   onRequestDelete: (id: string) => void;
+  onTogglePin: (id: string) => void;
+  onToggleFavorite: (id: string) => void;
+  onOpenFavorites: () => void;
   onLogout: () => void;
   onResendVerification: () => Promise<unknown>;
   onUpdateNickname: (nickname: string) => Promise<unknown>;
@@ -72,8 +78,10 @@ type SidebarProps = {
   onCloseMobile: () => void;
 };
 
-const sectionLabel =
-  "px-2.5 pb-1.5 text-[14px] font-semibold leading-5 text-fg";
+// Light section headers that double as collapse toggles; folding a section
+// never shifts the header itself.
+const quietSectionLabel =
+  "section-label-quiet px-2.5 pb-1.5 font-normal leading-5";
 
 type ConversationMenu = {
   conversationId: string;
@@ -82,18 +90,20 @@ type ConversationMenu = {
 };
 
 const desktopMenuWidth = 156;
-const desktopMenuHeight = 126;
+const desktopMenuItemHeight = 38;
+const desktopMenuPadding = 12;
 const desktopMenuOverlap = 44;
 const viewportInset = 8;
 // The collapsed rail lists only the newest conversations; the full history stays
 // behind the expanded sidebar.
 const railRecentLimit = 10;
 const railRecentWidth = 260;
-const rowActionOrder = ["share", "rename", "delete"] as const;
+const rowActionOrder = ["pin", "favorite", "share", "rename", "delete"] as const;
 type RowActionKey = (typeof rowActionOrder)[number];
 
 export function Sidebar({
   items,
+  pinnedItems,
   selectedId,
   user,
   isMobile,
@@ -111,6 +121,9 @@ export function Sidebar({
   onRename,
   onRequestShare,
   onRequestDelete,
+  onTogglePin,
+  onToggleFavorite,
+  onOpenFavorites,
   onLogout,
   onResendVerification,
   onUpdateNickname,
@@ -130,6 +143,10 @@ export function Sidebar({
   const [recent, setRecent] = useState<{ left: number; top: number } | null>(null);
   const recentTriggerRef = useRef<HTMLButtonElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const [collapsedSections, setCollapsedSections] = useState<{
+    pinned: boolean;
+    recent: boolean;
+  }>({ pinned: false, recent: false });
   const lastAutoLoadItemCountRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -174,7 +191,8 @@ export function Sidebar({
     element: HTMLDivElement,
     automatic = false,
   ) => {
-    if (items.length === 0 || !hasMore || isLoadingMore) return;
+    if (items.length === 0 || !hasMore || isLoadingMore || collapsedSections.recent)
+      return;
     const distanceToBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight;
     if (distanceToBottom <= 48) {
@@ -189,7 +207,7 @@ export function Sidebar({
       }
       onLoadMore();
     }
-  }, [hasMore, isLoadingMore, items.length, onLoadMore]);
+  }, [collapsedSections.recent, hasMore, isLoadingMore, items.length, onLoadMore]);
 
   const handleHistoryScroll = (event: UIEvent<HTMLDivElement>) => {
     setMenu(null);
@@ -255,6 +273,8 @@ export function Sidebar({
     setRecent({ left: Math.max(viewportInset, left), top });
   };
 
+  const desktopMenuHeight =
+    desktopMenuPadding + rowActionOrder.length * desktopMenuItemHeight;
   const renderRow = (
     c: ConversationResponse,
     options: { onSelected?: () => void; renderDesktopMenu?: boolean } = {},
@@ -273,6 +293,24 @@ export function Sidebar({
         run: () => void;
       }
     > = {
+      pin: {
+        label: c.pinned_at ? "取消置顶" : "置顶",
+        desktopIcon: <PinGlyph size={18} slashed={!!c.pinned_at} />,
+        mobileIcon: <PinGlyph size={13} slashed={!!c.pinned_at} />,
+        run: () => {
+          onTogglePin(c.id);
+          setMenu(null);
+        },
+      },
+      favorite: {
+        label: c.favorited_at ? "取消收藏" : "收藏",
+        desktopIcon: c.favorited_at ? <StarOff size={18} strokeWidth={1.6} /> : <Star size={18} strokeWidth={1.6} />,
+        mobileIcon: c.favorited_at ? <StarOff size={13} strokeWidth={1.8} /> : <Star size={13} strokeWidth={1.8} />,
+        run: () => {
+          onToggleFavorite(c.id);
+          setMenu(null);
+        },
+      },
       share: {
         label: "分享",
         desktopIcon: <Icons.Upload size={18} />,
@@ -327,7 +365,7 @@ export function Sidebar({
         key={c.id}
         // A fixed minimum height keeps revealing the desktop action button from
         // shifting adjacent rows; mobile raises the whole target to 44px.
-        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem}`}
+        className={`history-row group/row relative flex min-h-9 items-center gap-1.5 text-[14px] font-normal leading-5 text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] max-[760px]:leading-[24px] ${interactiveItem} history-row-spaced`}
         data-selected={active || menuOpen}
       >
         {isRenaming ? (
@@ -395,7 +433,9 @@ export function Sidebar({
         )}
         {!isRenaming && (
           <button
-            className={`mr-1 shrink-0 items-center justify-center text-text-muted transition-[color,opacity] duration-[120ms] hover:text-text-primary focus-visible:text-text-primary focus-visible:outline-none ${
+            className={`${
+              isMobile ? "mr-1" : ""
+            } shrink-0 items-center justify-center text-text-muted transition-[color,opacity] duration-[120ms] hover:text-text-primary focus-visible:text-text-primary focus-visible:outline-none ${
               isMobile ? "h-11 w-11" : "h-7 w-7"
             } ${
               isMobile
@@ -440,6 +480,28 @@ export function Sidebar({
             <Icons.More size={14} />
           </button>
         )}
+        {/* Every row reveals a tilted pin at the trailing edge on hover; it
+            toggles the pin in one click, darker while pinned. Desktop only:
+            mobile reaches it from the sheet. */}
+        {!isRenaming && !isMobile && (
+          <button
+            className={`mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-item ${
+              // Pinned stays in the sidebar's muted gray; the solid glyph carries the state.
+              c.pinned_at
+                ? "text-text-muted"
+                : "text-text-muted hover:text-text-primary focus-visible:text-text-primary"
+            } opacity-0 pointer-events-none transition-[color,opacity] duration-[120ms] group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none`}
+            aria-label={c.pinned_at ? "取消置顶" : "置顶"}
+            aria-pressed={!!c.pinned_at}
+            title={c.pinned_at ? "取消置顶" : "置顶"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePin(c.id);
+            }}
+          >
+            <PinGlyph size={15} filled={!!c.pinned_at} />
+          </button>
+        )}
         {/* Desktop escapes the sidebar's overflow boundary; mobile uses a bottom sheet. */}
         {!isRenaming && menuOpen && !isMobile && options.renderDesktopMenu !== false && (
           createPortal(
@@ -466,6 +528,32 @@ export function Sidebar({
           </BottomSheet>
         )}
       </div>
+    );
+  };
+
+  const renderSectionHeader = (key: "pinned" | "recent", label: string) => {
+    const folded = collapsedSections[key];
+    return (
+      <button
+        type="button"
+        className={`${quietSectionLabel} group/section flex w-full items-center gap-1 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring`}
+        aria-expanded={!folded}
+        onClick={() =>
+          setCollapsedSections((current) => ({ ...current, [key]: !current[key] }))
+        }
+      >
+        {label}
+        <ChevronDown
+          size={14}
+          strokeWidth={1.8}
+          aria-hidden="true"
+          className={`transition-[opacity,transform] duration-[120ms] ${
+            folded
+              ? "-rotate-90 opacity-100"
+              : "opacity-0 group-hover/section:opacity-100 group-focus-visible/section:opacity-100"
+          }`}
+        />
+      </button>
     );
   };
 
@@ -567,14 +655,27 @@ export function Sidebar({
                     新建对话
                   </button>
                   {onSearch && <button className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`} onClick={() => { onSearch(); if (isMobile) onCloseMobile(); }}><Search size={20} strokeWidth={1.6} />搜索对话</button>}
+                  <button className={`flex min-h-9 w-full items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13.5px] font-medium text-text-primary max-[760px]:min-h-11 max-[760px]:text-[15px] ${interactiveItem}`} aria-haspopup="dialog" onClick={() => { onOpenFavorites(); if (isMobile) onCloseMobile(); }}><Star size={20} strokeWidth={1.6} />收藏</button>
                 </div>
 
+                {pinnedItems.length > 0 && (
+                  <div className="mt-5 flex flex-col" aria-label="置顶" role="group">
+                    {renderSectionHeader("pinned", "置顶")}
+                    {!collapsedSections.pinned &&
+                      pinnedItems.map((c) =>
+                        renderRow(c, { renderDesktopMenu: !railCollapsed }),
+                      )}
+                  </div>
+                )}
+
                 <div className="mt-5 flex flex-col">
-                  <div className={sectionLabel}>聊天</div>
-                  {items.map((c) =>
-                    renderRow(c, { renderDesktopMenu: !railCollapsed }),
-                  )}
-                  {items.length === 0 &&
+                  {(items.length > 0 || pinnedItems.length === 0) &&
+                    renderSectionHeader("recent", "最近")}
+                  {!collapsedSections.recent &&
+                    items.map((c) =>
+                      renderRow(c, { renderDesktopMenu: !railCollapsed }),
+                    )}
+                  {items.length === 0 && pinnedItems.length === 0 && !collapsedSections.recent &&
                     (isLoadingList ? (
                       <HistorySkeleton rows={historySkeletonWidths.length} label="正在加载对话" />
                     ) : (
@@ -582,7 +683,9 @@ export function Sidebar({
                         还没有已保存的对话。开始一次对话后会自动出现在这里。
                       </div>
                     ))}
-                  {isLoadingMore && <HistorySkeleton rows={3} label="正在加载更多对话" />}
+                  {isLoadingMore && !collapsedSections.recent && (
+                    <HistorySkeleton rows={3} label="正在加载更多对话" />
+                  )}
                 </div>
               </div>
             </div>
@@ -615,6 +718,7 @@ export function Sidebar({
               <Icons.NewChat size={20} />
             </button>
             {onSearch && <button className={`${railIconControl} h-9 w-9`} aria-label="搜索对话" title="搜索对话" onClick={onSearch}><Search size={20} strokeWidth={1.6} /></button>}
+            <button className={`${railIconControl} h-9 w-9`} aria-label="收藏" title="收藏" aria-haspopup="dialog" onClick={onOpenFavorites}><Star size={20} strokeWidth={1.6} /></button>
             <button
               ref={recentTriggerRef}
               className={`${railIconControl} relative h-9 w-9`}
@@ -641,11 +745,17 @@ export function Sidebar({
             aria-label="最近聊天"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={`${sectionLabel} pt-1 text-text-muted`}>最近聊天</div>
+            {pinnedItems.length > 0 && (
+              <>
+                <div className={`${quietSectionLabel} pt-1`}>置顶</div>
+                {pinnedItems.map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
+              </>
+            )}
+            <div className={`${quietSectionLabel} pt-1`}>最近</div>
             {items
               .slice(0, railRecentLimit)
               .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
-            {items.length === 0 &&
+            {items.length === 0 && pinnedItems.length === 0 &&
               (isLoadingList ? (
                 <HistorySkeleton rows={5} label="正在加载对话" />
               ) : (

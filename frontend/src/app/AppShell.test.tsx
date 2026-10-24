@@ -458,6 +458,8 @@ describe("AppShell", () => {
     await user.click(await screen.findByRole("button", { name: "更多操作" }));
     const menu = screen.getByRole("menu", { name: "对话操作" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "置顶",
+      "收藏",
       "删除",
     ]);
     await user.click(within(menu).getByRole("menuitem", { name: "删除" }));

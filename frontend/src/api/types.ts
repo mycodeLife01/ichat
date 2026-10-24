@@ -30,6 +30,9 @@ export type ConversationResponse = {
   id: string;
   title: string | null;
   activated_at: string | null;
+  // Sidebar markers; setting or clearing them never moves updated_at.
+  pinned_at?: string | null;
+  favorited_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;

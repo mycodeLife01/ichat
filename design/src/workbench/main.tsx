@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { scenes, getScene } from "../scenarios/registry";
-import { proposals, tweaks } from "../proposals/registry";
+import { proposals, tweakPresets, tweaks } from "../proposals/registry";
 import "./workbench.css";
 import { designFingerprint } from "../../catalog/baseline.json";
 function Workbench() {
@@ -41,6 +41,7 @@ function Workbench() {
   const scene = getScene(id);
   const url = `/canvas.html?scene=${id}&proposal=${proposal}`;
   const activeTweaks = tweaks[proposal] ?? [];
+  const activePresets = tweakPresets[proposal] ?? [];
   const [tweakValues, setTweakValues] = useState<Record<string, number>>({});
   const tweakValue = (name: string, initial: number) =>
     tweakValues[name] ?? initial;
@@ -66,6 +67,38 @@ function Workbench() {
       `${href}&${encodeURIComponent(t.name)}=${tweakValue(t.name, t.initial)}`,
     url,
   );
+  const presetActive = (values: Record<string, number>) =>
+    Object.entries(values).every(
+      ([name, v]) =>
+        tweakValue(name, activeTweaks.find((t) => t.name === name)?.initial ?? NaN) === v,
+    );
+  // Plain-text decision the reviewer can paste straight back to the agent.
+  function tweakPrompt() {
+    const meta = proposals.find((p) => p.id === proposal);
+    const preset = activePresets.find((p) => presetActive(p.values));
+    return [
+      `设计决定：提案「${meta?.name ?? proposal}」（${proposal}），场景「${scene.name}」（${id}），视口 ${width}×${height}。`,
+      ...(preset ? [`采用预设：${preset.name}（${preset.description}）`] : []),
+      "调节取值：",
+      ...activeTweaks.map((t) => {
+        const value = tweakValue(t.name, t.initial);
+        return `- ${t.label}：${t.name} = ${value}${t.unit}${value === t.initial ? "（默认）" : ""}`;
+      }),
+      `预览：${new URL(standaloneUrl, location.origin).href}`,
+      "请以这些取值作为该提案的定稿：更新设计稿中的默认值。",
+    ].join("\n");
+  }
+  const [promptState, setPromptState] = useState<"idle" | "copied" | "manual">("idle");
+  async function exportPrompt() {
+    try {
+      await navigator.clipboard.writeText(tweakPrompt());
+      setPromptState("copied");
+      setTimeout(() => setPromptState("idle"), 1600);
+    } catch {
+      // Clipboard can be denied; fall back to a selectable text box.
+      setPromptState("manual");
+    }
+  }
   function select(next: string) {
     setId(next);
   }
@@ -250,6 +283,25 @@ function Workbench() {
         </div>
         {activeTweaks.length > 0 && (
           <div className="tweakbar">
+            {activePresets.length > 0 && (
+              <div className="tweak tweak-presets" role="group" aria-label="预设组合">
+                <span>预设</span>
+                {activePresets.map((p) => (
+                  <button
+                    key={p.name}
+                    title={p.description}
+                    aria-pressed={presetActive(p.values)}
+                    onClick={() => {
+                      const next = { ...tweakValues, ...p.values };
+                      setTweakValues(next);
+                      sendTweaks(next);
+                    }}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
             {activeTweaks.map((t) => {
               const value = tweakValue(t.name, t.initial);
               return (
@@ -284,6 +336,23 @@ function Workbench() {
                 </div>
               );
             })}
+            <div className="tweak tweak-export">
+              <button onClick={() => void exportPrompt()}>
+                {promptState === "copied" ? "已复制" : "导出为 Prompt"}
+              </button>
+              {promptState === "manual" && (
+                <>
+                  <textarea
+                    aria-label="导出的 Prompt"
+                    readOnly
+                    rows={activeTweaks.length + 5}
+                    value={tweakPrompt()}
+                    ref={(el) => el?.select()}
+                  />
+                  <button onClick={() => setPromptState("idle")}>收起</button>
+                </>
+              )}
+            </div>
           </div>
         )}
         <div className="desk" ref={deskRef}>

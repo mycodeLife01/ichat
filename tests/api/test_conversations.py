@@ -171,6 +171,8 @@ async def test_conversation_crud_flow(client: AsyncClient) -> None:
         "id",
         "title",
         "activated_at",
+        "pinned_at",
+        "favorited_at",
         "created_at",
         "updated_at",
         "deleted_at",
@@ -271,6 +273,131 @@ async def test_list_conversations_accepts_limit_and_skip(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()["data"]
     assert [conversation["title"] for conversation in data] == ["middle"]
+
+
+async def seed_activated_conversations(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    email: str,
+    titles: list[str],
+) -> dict[str, str]:
+    async with session_factory() as session:
+        user = await session.scalar(select(User).where(User.email == email))
+        assert user is not None
+        base_time = datetime(2026, 5, 17, 12, 0, tzinfo=UTC)
+        conversations = []
+        for index, title in enumerate(titles):
+            conversation_time = base_time + timedelta(minutes=index)
+            conversation = Conversation(
+                user_id=user.id,
+                title=title,
+                activated_at=conversation_time,
+                updated_at=conversation_time,
+            )
+            session.add(conversation)
+            conversations.append(conversation)
+        await session.commit()
+        return {c.title or "": str(c.public_id) for c in conversations}
+
+
+async def list_titles(client: AsyncClient, headers: dict[str, str], query: str = "") -> list[str]:
+    response = await client.get(f"/api/v1/conversations{query}", headers=headers)
+    assert response.status_code == status.HTTP_200_OK
+    return [conversation["title"] for conversation in response.json()["data"]]
+
+
+async def test_pin_and_favorite_keep_updated_at_and_split_list_views(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    email = f"alice-pin@{TEST_EMAIL_DOMAIN}"
+    headers = auth_headers(await register_user(client, username="alice-pin-api", email=email))
+    ids = await seed_activated_conversations(session_factory, email=email, titles=["a", "b", "c"])
+
+    before = await client.get(f"/api/v1/conversations/{ids['a']}", headers=headers)
+    pin = await client.put(f"/api/v1/conversations/{ids['a']}/pin", headers=headers)
+    repeat_pin = await client.put(f"/api/v1/conversations/{ids['a']}/pin", headers=headers)
+    await client.put(f"/api/v1/conversations/{ids['c']}/pin", headers=headers)
+    favorite = await client.put(f"/api/v1/conversations/{ids['b']}/favorite", headers=headers)
+    await client.put(f"/api/v1/conversations/{ids['a']}/favorite", headers=headers)
+
+    assert pin.status_code == status.HTTP_200_OK
+    pinned = pin.json()["data"]
+    assert pinned["pinned_at"] is not None
+    assert pinned["updated_at"] == before.json()["data"]["updated_at"]
+    assert repeat_pin.json()["data"]["pinned_at"] == pinned["pinned_at"]
+    assert favorite.json()["data"]["favorited_at"] is not None
+    assert favorite.json()["data"]["pinned_at"] is None
+
+    assert await list_titles(client, headers) == ["b"]
+    assert await list_titles(client, headers, "?view=pinned") == ["c", "a"]
+    assert await list_titles(client, headers, "?view=favorites") == ["a", "b"]
+
+    unpin = await client.delete(f"/api/v1/conversations/{ids['a']}/pin", headers=headers)
+    repeat_unpin = await client.delete(f"/api/v1/conversations/{ids['a']}/pin", headers=headers)
+    unfavorite = await client.delete(f"/api/v1/conversations/{ids['b']}/favorite", headers=headers)
+
+    assert unpin.json()["data"]["pinned_at"] is None
+    assert unpin.json()["data"]["updated_at"] == before.json()["data"]["updated_at"]
+    assert repeat_unpin.status_code == status.HTTP_200_OK
+    assert unfavorite.json()["data"]["favorited_at"] is None
+    assert await list_titles(client, headers) == ["b", "a"]
+    assert await list_titles(client, headers, "?view=favorites") == ["a"]
+
+
+async def test_pin_limit_and_delete_restore_markers(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    email = f"alice-pin-limit@{TEST_EMAIL_DOMAIN}"
+    headers = auth_headers(await register_user(client, username="alice-pin-limit-api", email=email))
+    titles = [f"c{index}" for index in range(12)]
+    ids = await seed_activated_conversations(session_factory, email=email, titles=titles)
+
+    for title in titles[:10]:
+        response = await client.put(f"/api/v1/conversations/{ids[title]}/pin", headers=headers)
+        assert response.status_code == status.HTTP_200_OK
+    over_limit = await client.put(f"/api/v1/conversations/{ids['c10']}/pin", headers=headers)
+    assert over_limit.status_code == status.HTTP_409_CONFLICT
+    assert over_limit.json()["code"] == "PIN_LIMIT_REACHED"
+
+    # A deleted pin frees its slot and drops out of every view.
+    await client.put(f"/api/v1/conversations/{ids['c0']}/favorite", headers=headers)
+    deleted = await client.delete(f"/api/v1/conversations/{ids['c0']}", headers=headers)
+    assert deleted.status_code == status.HTTP_200_OK
+    assert "c0" not in await list_titles(client, headers, "?view=pinned")
+    assert await list_titles(client, headers, "?view=favorites") == []
+
+    restored = await client.post(f"/api/v1/conversations/{ids['c0']}/restore", headers=headers)
+    assert restored.json()["data"]["pinned_at"] is not None
+    assert restored.json()["data"]["favorited_at"] is not None
+
+    # Restoring a pin after its slot was taken drops the pin, keeps the favorite.
+    await client.delete(f"/api/v1/conversations/{ids['c0']}", headers=headers)
+    await client.put(f"/api/v1/conversations/{ids['c10']}/pin", headers=headers)
+    restored = await client.post(f"/api/v1/conversations/{ids['c0']}/restore", headers=headers)
+    assert restored.json()["data"]["pinned_at"] is None
+    assert restored.json()["data"]["favorited_at"] is not None
+    assert len(await list_titles(client, headers, "?view=pinned")) == 10
+
+
+async def test_pin_and_favorite_reject_other_users_conversations(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    email = f"alice-pin-owner@{TEST_EMAIL_DOMAIN}"
+    await register_user(client, username="alice-pin-owner-api", email=email)
+    ids = await seed_activated_conversations(session_factory, email=email, titles=["mine"])
+    bob = auth_headers(
+        await register_user(client, username="bob-pin-api", email=f"bob-pin@{TEST_EMAIL_DOMAIN}")
+    )
+
+    for method in ("put", "delete"):
+        for marker in ("pin", "favorite"):
+            response = await client.request(
+                method.upper(), f"/api/v1/conversations/{ids['mine']}/{marker}", headers=bob
+            )
+            assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 async def test_send_message_creates_user_message_and_queued_run(

@@ -24,6 +24,7 @@ const today = new Date().toISOString();
 function baseProps() {
   return {
     items: [makeConversation("1", "今天的对话", today)],
+    pinnedItems: [] as ConversationResponse[],
     selectedId: "1",
     user: {
       email: "a@b.com",
@@ -40,6 +41,9 @@ function baseProps() {
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onLoadMore: vi.fn(),
+    onTogglePin: vi.fn(),
+    onToggleFavorite: vi.fn(),
+    onOpenFavorites: vi.fn(),
     onRename: vi.fn(),
     onRequestShare: vi.fn(),
     onRequestDelete: vi.fn(),
@@ -72,7 +76,7 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(screen.getByText("聊天")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "最近" })).toBeInTheDocument();
     expect(screen.queryByText("今天")).toBeNull();
     expect(screen.queryByText("昨天")).toBeNull();
     expect(screen.queryByText("更早")).toBeNull();
@@ -89,9 +93,9 @@ describe("Sidebar", () => {
   it("distinguishes the chat section label from compact history rows", () => {
     render(<Sidebar {...baseProps()} />);
 
-    expect(screen.getByText("聊天")).toHaveClass(
-      "text-[14px]",
-      "font-semibold",
+    expect(screen.getByRole("button", { name: "最近" })).toHaveClass(
+      "section-label-quiet",
+      "font-normal",
       "leading-5",
     );
     expect(screen.getByText("今天的对话").closest(".history-row")).toHaveClass(
@@ -278,6 +282,8 @@ describe("Sidebar", () => {
     await user.click(within(panel).getByRole("button", { name: "更多" }));
     const menu = screen.getByRole("menu", { name: "会话操作" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "置顶",
+      "收藏",
       "分享",
       "重命名",
       "删除",
@@ -333,9 +339,15 @@ describe("Sidebar", () => {
     expect(menu).toHaveStyle({ left: "226px", top: "48px" });
 
     const actions = within(menu).getAllByRole("menuitem");
-    expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
+    expect(actions.map((action) => action.textContent)).toEqual([
+      "置顶",
+      "收藏",
+      "分享",
+      "重命名",
+      "删除",
+    ]);
     expect(actions[0]).toHaveAttribute("data-variant", "neutral");
-    expect(actions[2]).toHaveAttribute("data-variant", "danger");
+    expect(actions[4]).toHaveAttribute("data-variant", "danger");
 
     await user.click(within(menu).getByRole("menuitem", { name: "删除" }));
 
@@ -372,8 +384,14 @@ describe("Sidebar", () => {
     expect(document.querySelector(".history-menu")).toBeNull();
     expect(document.querySelector(".sheet-scrim")).toHaveClass("bg-transparent");
     const actions = within(sheet).getAllByRole("button");
-    expect(actions.map((action) => action.textContent)).toEqual(["分享", "重命名", "删除"]);
-    expect(actions[2]).toHaveAttribute("data-variant", "danger");
+    expect(actions.map((action) => action.textContent)).toEqual([
+      "置顶",
+      "收藏",
+      "分享",
+      "重命名",
+      "删除",
+    ]);
+    expect(actions[4]).toHaveAttribute("data-variant", "danger");
 
     await user.click(within(sheet).getByRole("button", { name: "删除" }));
     expect(props.onRequestDelete).toHaveBeenCalledWith("1");
@@ -562,5 +580,76 @@ describe("Sidebar", () => {
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "打开个人中心" })).toHaveFocus();
+  });
+});
+
+describe("Sidebar pin and favorite", () => {
+  const pinnedRow = {
+    ...makeConversation("9", "置顶的对话", today),
+    pinned_at: today,
+  };
+
+  it("lists pinned rows in their own section above recent", () => {
+    render(<Sidebar {...baseProps()} pinnedItems={[pinnedRow]} />);
+
+    const group = screen.getByRole("group", { name: "置顶" });
+    expect(within(group).getByRole("button", { name: "置顶的对话" })).toBeInTheDocument();
+    const headers = screen
+      .getAllByRole("button", { expanded: true })
+      .map((header) => header.textContent);
+    expect(headers).toEqual(["置顶", "最近"]);
+  });
+
+  it("collapses a section from its header", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps()} pinnedItems={[pinnedRow]} />);
+
+    const recent = screen.getByRole("button", { name: "最近" });
+    await user.click(recent);
+    expect(recent).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "今天的对话" })).toBeNull();
+    expect(screen.getByRole("button", { name: "置顶的对话" })).toBeInTheDocument();
+
+    await user.click(recent);
+    expect(screen.getByRole("button", { name: "今天的对话" })).toBeInTheDocument();
+  });
+
+  it("toggles a pin from the row's hover button, solid while pinned", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} pinnedItems={[pinnedRow]} />);
+
+    const unpin = screen.getByRole("button", { name: "取消置顶" });
+    expect(unpin).toHaveAttribute("aria-pressed", "true");
+    await user.click(unpin);
+    expect(props.onTogglePin).toHaveBeenCalledWith("9");
+    expect(props.onSelect).not.toHaveBeenCalled();
+
+    const row = screen.getByRole("button", { name: "今天的对话" }).closest(".history-row");
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "置顶" }));
+    expect(props.onTogglePin).toHaveBeenCalledWith("1");
+  });
+
+  it("pins and favorites from the row menu", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("menuitem", { name: "收藏" }));
+    expect(props.onToggleFavorite).toHaveBeenCalledWith("1");
+
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    expect(props.onTogglePin).toHaveBeenCalledWith("1");
+  });
+
+  it("opens favorites from the resident entry", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    render(<Sidebar {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "收藏" }));
+    expect(props.onOpenFavorites).toHaveBeenCalledTimes(1);
   });
 });
