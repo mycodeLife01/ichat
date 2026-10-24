@@ -22,6 +22,7 @@ from app.schemas.conversations import (
     ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationListItemResponse,
+    ConversationListView,
     ConversationResponse,
     ImageContextResponse,
     MessageResponse,
@@ -55,6 +56,9 @@ from app.services.runs.transcript import append_transcript_message
 CONVERSATION_NOT_FOUND_MESSAGE = "Conversation not found"
 ACTIVE_RUN_STATUSES = ("queued", "started", "streaming", "cancelling")
 ACTIVE_RUN_EXISTS_MESSAGE = "Active run already exists"
+PINNED_CONVERSATION_LIMIT = 10
+PIN_LIMIT_REACHED_CODE = "PIN_LIMIT_REACHED"
+PIN_LIMIT_REACHED_MESSAGE = "You can pin up to 10 conversations"
 MESSAGE_NOT_FOUND_MESSAGE = "Message not found"
 EDIT_TARGET_NOT_USER_MESSAGE = "Edit target must be a user message"
 CANNOT_RESOLVE_USER_MESSAGE = "Cannot resolve user message to regenerate from"
@@ -264,17 +268,26 @@ async def list_conversations(
     user: User,
     limit: int | None = None,
     skip: int = 0,
+    view: ConversationListView = "recent",
 ) -> list[ConversationListItemResponse]:
-    statement = (
-        select(Conversation)
-        .where(
-            Conversation.user_id == user.id,
-            Conversation.deleted_at.is_(None),
-            Conversation.activated_at.is_not(None),
-        )
-        .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
-        .offset(skip)
+    statement = select(Conversation).where(
+        Conversation.user_id == user.id,
+        Conversation.deleted_at.is_(None),
+        Conversation.activated_at.is_not(None),
     )
+    if view == "pinned":
+        statement = statement.where(Conversation.pinned_at.is_not(None)).order_by(
+            Conversation.pinned_at.desc(), Conversation.id.desc()
+        )
+    elif view == "favorites":
+        statement = statement.where(Conversation.favorited_at.is_not(None)).order_by(
+            Conversation.favorited_at.desc(), Conversation.id.desc()
+        )
+    else:
+        statement = statement.where(Conversation.pinned_at.is_(None)).order_by(
+            Conversation.updated_at.desc(), Conversation.id.desc()
+        )
+    statement = statement.offset(skip)
     if limit is not None:
         statement = statement.limit(limit)
 
@@ -388,6 +401,86 @@ async def rename_conversation(
     return conversation_response(conversation)
 
 
+async def set_conversation_pinned(
+    session: AsyncSession,
+    *,
+    user: User,
+    conversation_public_id: uuid.UUID,
+    pinned: bool,
+) -> ConversationResponse:
+    if pinned:
+        await _lock_user_pins(session, user_id=user.id)
+    conversation = await get_owned_visible_conversation_for_update(
+        session,
+        user=user,
+        public_id=conversation_public_id,
+    )
+    if pinned and conversation.pinned_at is None:
+        if await _pinned_count(session, user_id=user.id) >= PINNED_CONVERSATION_LIMIT:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                PIN_LIMIT_REACHED_MESSAGE,
+                code=PIN_LIMIT_REACHED_CODE,
+            )
+        await _set_marker(session, conversation, "pinned_at", on=True)
+    elif not pinned and conversation.pinned_at is not None:
+        await _set_marker(session, conversation, "pinned_at", on=False)
+    return conversation_response(conversation)
+
+
+async def set_conversation_favorited(
+    session: AsyncSession,
+    *,
+    user: User,
+    conversation_public_id: uuid.UUID,
+    favorited: bool,
+) -> ConversationResponse:
+    conversation = await get_owned_visible_conversation_for_update(
+        session,
+        user=user,
+        public_id=conversation_public_id,
+    )
+    if favorited != (conversation.favorited_at is not None):
+        await _set_marker(session, conversation, "favorited_at", on=favorited)
+    return conversation_response(conversation)
+
+
+async def _lock_user_pins(session: AsyncSession, *, user_id: int) -> None:
+    # Serialize a user's pin changes so concurrent requests cannot pass the limit.
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True))
+
+
+async def _pinned_count(session: AsyncSession, *, user_id: int) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(Conversation)
+        .where(
+            Conversation.user_id == user_id,
+            Conversation.pinned_at.is_not(None),
+            Conversation.deleted_at.is_(None),
+        )
+    )
+    return count or 0
+
+
+async def _set_marker(
+    session: AsyncSession,
+    conversation: Conversation,
+    field: Literal["pinned_at", "favorited_at"],
+    *,
+    on: bool,
+) -> None:
+    # Re-assigning updated_at to itself keeps the column's onupdate from firing,
+    # so pinning or favoriting never reorders the recent list.
+    await session.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation.id)
+        .values({field: func.now() if on else None, "updated_at": Conversation.updated_at})
+        .execution_options(synchronize_session=False)
+    )
+    await session.refresh(conversation)
+
+
 async def delete_conversation(
     session: AsyncSession,
     *,
@@ -436,6 +529,8 @@ async def restore_conversation(
     user: User,
     conversation_public_id: uuid.UUID,
 ) -> ConversationResponse:
+    # Same lock order as set_conversation_pinned: a restored pin counts against the limit.
+    await _lock_user_pins(session, user_id=user.id)
     conversation = await session.scalar(
         select(Conversation)
         .where(
@@ -450,9 +545,16 @@ async def restore_conversation(
     now = await get_database_now(session)
     if conversation.deletion_due_at is None or conversation.deletion_due_at <= now:
         raise AppError(status.HTTP_410_GONE, "Conversation can no longer be restored")
+    # Markers survive deletion; a pin that no longer fits under the limit is dropped.
+    pin_slot_taken = (
+        conversation.pinned_at is not None
+        and await _pinned_count(session, user_id=user.id) >= PINNED_CONVERSATION_LIMIT
+    )
     conversation.deleted_at = None
     conversation.deletion_due_at = None
     conversation.updated_at = now
+    if pin_slot_taken:
+        conversation.pinned_at = None
     await session.flush()
     return conversation_response(conversation)
 

@@ -17,6 +17,7 @@ from app.schemas.conversations import (
     ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
     ConversationListItemResponse,
+    ConversationListView,
     ConversationRenameRequest,
     ConversationResponse,
     MessageCreateRequest,
@@ -40,6 +41,8 @@ from app.services.conversations.service import (
     regenerate_from_message,
     rename_conversation,
     restore_conversation,
+    set_conversation_favorited,
+    set_conversation_pinned,
     submit_user_message,
 )
 from app.services.conversations.title_jobs import create_title_job
@@ -257,12 +260,14 @@ async def list_conversations_route(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int | None, Query(ge=1, le=100)] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
+    view: ConversationListView = "recent",
 ) -> SuccessResponse[list[ConversationListItemResponse]]:
     conversations = await list_conversations(
         session,
         user=current_user,
         limit=limit,
         skip=skip,
+        view=view,
     )
     return SuccessResponse(data=conversations)
 
@@ -312,6 +317,70 @@ async def rename_conversation_route(
         user=current_user,
         conversation_public_id=conversation_id,
         title=request.title,
+    )
+    await session.commit()
+    return SuccessResponse(data=conversation)
+
+
+@router.put(
+    "/{conversation_id}/pin",
+    response_model=SuccessResponse[ConversationResponse],
+)
+async def pin_conversation_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ConversationResponse]:
+    conversation = await set_conversation_pinned(
+        session, user=current_user, conversation_public_id=conversation_id, pinned=True
+    )
+    await session.commit()
+    return SuccessResponse(data=conversation)
+
+
+@router.delete(
+    "/{conversation_id}/pin",
+    response_model=SuccessResponse[ConversationResponse],
+)
+async def unpin_conversation_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ConversationResponse]:
+    conversation = await set_conversation_pinned(
+        session, user=current_user, conversation_public_id=conversation_id, pinned=False
+    )
+    await session.commit()
+    return SuccessResponse(data=conversation)
+
+
+@router.put(
+    "/{conversation_id}/favorite",
+    response_model=SuccessResponse[ConversationResponse],
+)
+async def favorite_conversation_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ConversationResponse]:
+    conversation = await set_conversation_favorited(
+        session, user=current_user, conversation_public_id=conversation_id, favorited=True
+    )
+    await session.commit()
+    return SuccessResponse(data=conversation)
+
+
+@router.delete(
+    "/{conversation_id}/favorite",
+    response_model=SuccessResponse[ConversationResponse],
+)
+async def unfavorite_conversation_route(
+    conversation_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ConversationResponse]:
+    conversation = await set_conversation_favorited(
+        session, user=current_user, conversation_public_id=conversation_id, favorited=False
     )
     await session.commit()
     return SuccessResponse(data=conversation)

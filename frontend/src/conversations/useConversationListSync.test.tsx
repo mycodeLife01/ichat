@@ -5,7 +5,7 @@ import { useAppActions, useAppState } from "../app/context";
 import type { ConversationResponse } from "../api/types";
 import { createAuthSession } from "../auth/tokenStore";
 import { authTokenResponse } from "../test/apiFixtures";
-import { createFakeServices, makeWrapper } from "../test/appHarness";
+import { createFakeServices, makeWrapper, withNoPins } from "../test/appHarness";
 import { useConversationListSync } from "./useConversationListSync";
 
 const row = (id: string, extra: Partial<ConversationResponse> = {}): ConversationResponse => ({
@@ -26,7 +26,7 @@ function useSyncProbe() {
 
 function setup(list: () => Promise<ConversationResponse[]>) {
   const listMock = vi.fn(list);
-  const services = createFakeServices({}, { list: listMock });
+  const services = createFakeServices({}, { list: withNoPins(listMock) });
   const { result } = renderHook(() => useSyncProbe(), { wrapper: makeWrapper(services) });
   act(() => {
     result.current.dispatch({

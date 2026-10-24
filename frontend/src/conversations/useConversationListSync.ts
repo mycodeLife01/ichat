@@ -22,9 +22,9 @@ export function useConversationListSync({
   const { dispatch, services, stateRef } = useAppActions();
   const { conversationApi } = services;
   const { conversationIndex, activeRun } = useAppState();
-  const { pendingTitleIds, items } = conversationIndex;
+  const { pendingTitleIds, items, pinnedItems } = conversationIndex;
   const localRunId = activeRun?.runId ?? null;
-  const hasBackgroundRun = items.some(
+  const hasBackgroundRun = [...items, ...pinnedItems].some(
     (c) => c.active_run != null && c.active_run.id !== localRunId,
   );
   const delay =
@@ -53,12 +53,14 @@ export function useConversationListSync({
       }
       if (inFlight) return;
       inFlight = true;
-      conversationApi
-        .list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 })
-        .then((list) => {
+      Promise.all([
+        conversationApi.list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 }),
+        conversationApi.list({ view: "pinned" }),
+      ])
+        .then(([list, pinned]) => {
           // Logout / identity reset while the request was out: drop the result.
           if (stateRef.current.auth.session === null) return;
-          dispatch({ type: "conversations/listSynced", items: list });
+          dispatch({ type: "conversations/listSynced", items: list, pinned });
         })
         .catch(() => {
           // Transient; the next tick retries.

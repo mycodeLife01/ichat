@@ -353,3 +353,75 @@ describe("conversation run status", () => {
     expect(next.unreadIds).toEqual([]);
   });
 });
+
+describe("conversation markers", () => {
+  const row = (id: string, updatedAt: string, extra: Partial<ConversationResponse> = {}) => ({
+    ...conversationResponse,
+    id,
+    title: id,
+    updated_at: updatedAt,
+    ...extra,
+  });
+  const loaded = (items: ConversationResponse[], pinned: ConversationResponse[] = [], hasMore = false) =>
+    conversationIndexReducer(initialConversationIndexState, {
+      type: "conversations/listLoaded",
+      items,
+      pinned,
+      hasMore,
+    });
+
+  it("keeps pinned rows out of the recent list", () => {
+    const pinned = row("p", "2026-05-01T00:00:00Z", { pinned_at: "2026-05-02T00:00:00Z" });
+    const state = loaded([row("a", "2026-05-03T00:00:00Z"), pinned], [pinned]);
+    expect(state.items.map((c) => c.id)).toEqual(["a"]);
+    expect(state.pinnedItems.map((c) => c.id)).toEqual(["p"]);
+  });
+
+  it("moves a pinned row up, newest pin first, and back by recency when unpinned", () => {
+    const older = row("old", "2026-05-01T00:00:00Z", { pinned_at: "2026-05-01T00:00:00Z" });
+    const base = loaded(
+      [row("a", "2026-05-04T00:00:00Z"), row("b", "2026-05-02T00:00:00Z")],
+      [older],
+    );
+    const pinned = conversationIndexReducer(base, {
+      type: "conversations/markerChanged",
+      conversation: { ...base.items[1], pinned_at: "2026-05-05T00:00:00Z" },
+    });
+    expect(pinned.pinnedItems.map((c) => c.id)).toEqual(["b", "old"]);
+    expect(pinned.items.map((c) => c.id)).toEqual(["a"]);
+
+    const unpinned = conversationIndexReducer(pinned, {
+      type: "conversations/markerChanged",
+      conversation: { ...pinned.pinnedItems[0], pinned_at: null },
+    });
+    expect(unpinned.pinnedItems.map((c) => c.id)).toEqual(["old"]);
+    expect(unpinned.items.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+
+  it("leaves an unpinned row past the loaded pages for a later page", () => {
+    const pinned = row("p", "2026-04-01T00:00:00Z", { pinned_at: "2026-05-05T00:00:00Z" });
+    const base = loaded([row("a", "2026-05-04T00:00:00Z")], [pinned], true);
+    const next = conversationIndexReducer(base, {
+      type: "conversations/markerChanged",
+      conversation: { ...pinned, pinned_at: null },
+    });
+    expect(next.pinnedItems).toEqual([]);
+    expect(next.items.map((c) => c.id)).toEqual(["a"]);
+  });
+
+  it("updates favorites in place and on the open conversation", () => {
+    const base = loaded([row("a", "2026-05-04T00:00:00Z")]);
+    const favorited = { ...base.items[0], favorited_at: "2026-05-05T00:00:00Z" };
+    const next = conversationIndexReducer(base, {
+      type: "conversations/markerChanged",
+      conversation: favorited,
+    });
+    expect(next.items[0].favorited_at).toBe("2026-05-05T00:00:00Z");
+
+    const detail = conversationDetailReducer(
+      { ...initialConversationDetailState, conversation: { ...conversationResponse, id: "a" } },
+      { type: "conversations/markerChanged", conversation: favorited },
+    );
+    expect(detail.conversation?.favorited_at).toBe("2026-05-05T00:00:00Z");
+  });
+});

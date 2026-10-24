@@ -8,6 +8,10 @@ function baseProps() {
   return {
     isMobile: false,
     hasConversation: true,
+    pinned: false,
+    favorited: false,
+    onTogglePin: vi.fn(),
+    onToggleFavorite: vi.fn(),
     onOpenMobileSidebar: vi.fn(),
     onNew: vi.fn(),
     onShare: vi.fn(),
@@ -28,6 +32,8 @@ describe("ThreadActions", () => {
     await user.click(screen.getByRole("button", { name: "更多操作" }));
     const menu = screen.getByRole("menu", { name: "对话操作" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "置顶",
+      "收藏",
       "删除",
     ]);
 
@@ -50,6 +56,8 @@ describe("ThreadActions", () => {
     await user.click(screen.getByRole("button", { name: "更多操作" }));
     const menu = screen.getByRole("menu", { name: "对话操作" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "置顶",
+      "收藏",
       "分享",
       "删除",
     ]);
@@ -75,5 +83,28 @@ describe("ThreadActions", () => {
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu", { name: "对话操作" })).toBeNull();
+  });
+
+  it("pins and favorites the open conversation from the more menu", async () => {
+    const props = baseProps();
+    const user = userEvent.setup();
+    const { rerender } = render(<ThreadActions {...props} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    expect(props.onTogglePin).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收藏" }));
+    expect(props.onToggleFavorite).toHaveBeenCalledTimes(1);
+
+    rerender(<ThreadActions {...props} pinned favorited />);
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    const menu = screen.getByRole("menu", { name: "对话操作" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "取消置顶",
+      "取消收藏",
+      "删除",
+    ]);
   });
 });

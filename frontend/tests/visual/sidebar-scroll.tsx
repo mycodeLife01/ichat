@@ -22,6 +22,7 @@ createRoot(root).render(
   <div className="app flex h-full bg-bg" data-testid="sidebar-scroll-fixture">
     <Sidebar
       items={items}
+      pinnedItems={[]}
       selectedId={items[0].id}
       user={{
         email: "fixture@example.com",
@@ -38,6 +39,9 @@ createRoot(root).render(
       onSelect={() => undefined}
       onNew={() => undefined}
       onLoadMore={() => undefined}
+      onTogglePin={() => undefined}
+      onToggleFavorite={() => undefined}
+      onOpenFavorites={() => undefined}
       onRename={() => undefined}
       onRequestShare={() => undefined}
       onRequestDelete={() => undefined}

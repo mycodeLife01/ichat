@@ -18,7 +18,7 @@ const presentations = {
   },
   success: {
     Icon: Icons.Check,
-    classes: "border-accent bg-accent text-accent-foreground",
+    classes: "border-success-border bg-success-soft text-success-foreground",
   },
   error: {
     Icon: CircleAlert,

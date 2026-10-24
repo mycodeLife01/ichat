@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Star, StarOff } from "lucide-react";
 
 import { dangerMenuItem, iconControl, neutralMenuItem, popoverSurface } from "../ui/classes";
 import { Icons } from "../ui/icons";
+import { PinGlyph } from "./PinGlyph";
 import { UnreadBadge } from "./Sidebar";
 
 type ThreadActionsProps = {
@@ -15,6 +17,10 @@ type ThreadActionsProps = {
   onDelete: () => void;
   // Another conversation has an unseen reply.
   historyBadge?: boolean;
+  pinned: boolean;
+  favorited: boolean;
+  onTogglePin: () => void;
+  onToggleFavorite: () => void;
 };
 
 // The chat page has no header row: these controls float over the top of the
@@ -29,6 +35,10 @@ export function ThreadActions({
   onShare,
   onDelete,
   historyBadge = false,
+  pinned,
+  favorited,
+  onTogglePin,
+  onToggleFavorite,
 }: ThreadActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRootRef = useRef<HTMLDivElement>(null);
@@ -108,6 +118,34 @@ export function ThreadActions({
                 role="menu"
                 aria-label="对话操作"
               >
+                <button
+                  className={neutralMenuItem}
+                  role="menuitem"
+                  data-variant="neutral"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onTogglePin();
+                  }}
+                >
+                  <PinGlyph size={18} slashed={pinned} />
+                  {pinned ? "取消置顶" : "置顶"}
+                </button>
+                <button
+                  className={neutralMenuItem}
+                  role="menuitem"
+                  data-variant="neutral"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onToggleFavorite();
+                  }}
+                >
+                  {favorited ? (
+                    <StarOff size={18} strokeWidth={1.6} />
+                  ) : (
+                    <Star size={18} strokeWidth={1.6} />
+                  )}
+                  {favorited ? "取消收藏" : "收藏"}
+                </button>
                 {/* Mobile has no room for a separate share button, so the menu
                     carries it there. */}
                 {isMobile && (

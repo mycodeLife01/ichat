@@ -17,13 +17,14 @@ export function useConversationLoader() {
   const loadList = useCallback(async () => {
     dispatch({ type: "conversations/listLoading" });
     try {
-      const items = await conversationApi.list({
-        limit: CONVERSATION_PAGE_SIZE,
-        skip: 0,
-      });
+      const [items, pinned] = await Promise.all([
+        conversationApi.list({ limit: CONVERSATION_PAGE_SIZE, skip: 0 }),
+        conversationApi.list({ view: "pinned" }),
+      ]);
       dispatch({
         type: "conversations/listLoaded",
         items,
+        pinned,
         hasMore: hasMoreConversationPages(items.length),
       });
     } catch {
@@ -121,18 +122,22 @@ export function useConversationLoader() {
       const trimmed = title.trim();
       if (trimmed === "") return;
       // Unchanged after trimming (e.g. blur without editing) — skip the API call.
-      const current = conversationIndex.items.find((c) => c.id === id);
+      const current = [...conversationIndex.items, ...conversationIndex.pinnedItems].find(
+        (c) => c.id === id,
+      );
       if (current && current.title === trimmed) return;
       const conversation = await conversationApi.rename(id, trimmed);
       dispatch({ type: "conversations/renamed", conversation });
     },
-    [dispatch, conversationApi, conversationIndex.items],
+    [dispatch, conversationApi, conversationIndex.items, conversationIndex.pinnedItems],
   );
 
   const deleteConversation = useCallback(
     async (id: string) => {
       const deletion = await conversationApi.remove(id);
-      const remaining = conversationIndex.items.filter((c) => c.id !== id);
+      const remaining = [...conversationIndex.pinnedItems, ...conversationIndex.items].filter(
+        (c) => c.id !== id,
+      );
       dispatch({ type: "conversations/removed", id });
       dispatch({ type: "ui/closeConfirm" });
       if (conversationIndex.selectedId === id) {

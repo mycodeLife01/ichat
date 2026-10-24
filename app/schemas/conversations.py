@@ -30,6 +30,10 @@ class ConversationRenameRequest(BaseModel):
         return value
 
 
+# recent: the sidebar's unpinned list by recency; pinned: every pinned
+# conversation, newest pin first; favorites: favorites, newest first.
+ConversationListView = Literal["recent", "pinned", "favorites"]
+
 ReasoningEffort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
@@ -136,6 +140,8 @@ class ConversationResponse(BaseModel):
     id: uuid.UUID = Field(validation_alias="public_id")
     title: str | None
     activated_at: datetime | None
+    pinned_at: datetime | None = None
+    favorited_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None = None

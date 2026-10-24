@@ -54,6 +54,23 @@ export const scenes: Scene[] = [
   ),
   scene(
     "聊天工作台",
+    "pin-favorite",
+    "侧栏 · 置顶与收藏",
+    "/c/design-chat",
+    "conversations/Sidebar.tsx",
+    "pin-favorite",
+  ),
+  scene(
+    "聊天工作台",
+    "sidebar-loading",
+    "侧栏 · 列表加载",
+    "/",
+    "conversations/Sidebar.tsx",
+    "sidebar-loading",
+    "loading",
+  ),
+  scene(
+    "聊天工作台",
     "unverified",
     "邮箱未验证",
     "/c/design-chat",
@@ -342,6 +359,7 @@ export const scenes: Scene[] = [
     "error",
   ),
   scene("基础组件", "components", "组件与样式", "/components", "ui/classes.ts"),
+  scene("基础组件", "toasts", "Toast 反馈汇总", "/toasts", "ui/Toast.tsx"),
 ];
 export function getScene(id: string | null) {
   return scenes.find((s) => s.id === id) ?? scenes[0];

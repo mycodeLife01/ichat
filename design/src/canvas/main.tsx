@@ -14,6 +14,7 @@ import { ModelAdminPage } from "../model-admin/ModelAdminPage";
 import { modelAdminAccessKeyStore } from "../model-admin/accessKeyStore";
 import { ChatPage } from "./ChatPage";
 import { ComponentsPage } from "./ComponentsPage";
+import { ToastsPage } from "./ToastsPage";
 import "../styles/global.css";
 import { applyProposal, applyTweak, tweaks } from "../proposals/registry";
 const params = new URLSearchParams(location.search);
@@ -33,6 +34,22 @@ function Canvas() {
     const items = makeConversations(scene.id === "long");
     // The run-status scene opens with design-2's reply still generating in the
     // background, so only its user message exists yet.
+    if (scene.initial === "pin-favorite") {
+      const pinned: Record<string, string> = {
+        "design-7": "2026-09-06T08:00:00.000Z",
+        "design-4": "2026-09-05T08:00:00.000Z",
+      };
+      const favorited: Record<string, string> = {
+        "design-2": "2026-09-06T09:00:00.000Z",
+        "design-chat": "2026-09-05T09:00:00.000Z",
+        "design-11": "2026-09-04T09:00:00.000Z",
+      };
+      return items.map((c) => ({
+        ...c,
+        pinned_at: pinned[c.id] ?? null,
+        favorited_at: favorited[c.id] ?? null,
+      }));
+    }
     return scene.initial === "run-status"
       ? items.map((c) =>
           c.id === "design-2" ? { ...c, messages: c.messages.slice(0, 1) } : c,
@@ -81,6 +98,7 @@ function Canvas() {
           <Route path="/share/:token" element={<SharePage />} />
           <Route path="/model-admin" element={<ModelAdminPage />} />
           <Route path="/components" element={<ComponentsPage />} />
+          <Route path="/toasts" element={<ToastsPage />} />
           <Route
             path="*"
             element={

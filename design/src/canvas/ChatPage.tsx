@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Sidebar, type ConversationRowStatus } from "../conversations/Sidebar";
 import { AccountCard } from "../conversations/AccountCard";
+import { FavoritesDialog } from "../conversations/FavoritesDialog";
 import { MySharesCard } from "../conversations/MySharesCard";
 import { ThreadActions } from "../conversations/ThreadActions";
 import { MessageThread } from "../messages/MessageThread";
@@ -84,7 +85,23 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     isMobile && ["account", "my-shares"].includes(scene.initial ?? ""),
   );
   const [limit, setLimit] = useState(30);
+  // Pinned rows load apart from the paged recent list, as in the product.
+  const pinnedConversations = conversations
+    .filter((c) => c.pinned_at)
+    .sort((a, b) => b.pinned_at!.localeCompare(a.pinned_at!));
+  const recentConversations = conversations.filter((c) => !c.pinned_at);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The bootstrap list fetch: held until "完成等待" in the loading scene.
+  const [listLoading, setListLoading] = useState(
+    scene.initial === "sidebar-loading",
+  );
+  useEffect(() => {
+    if (scene.initial !== "sidebar-loading") return;
+    void services.outcomes
+      .run("list", null, { initial: true })
+      .finally(() => setListLoading(false));
+  }, [scene.initial, services]);
   const [value, setValue] = useState("");
   const drafts = useRef(
     new Map<
@@ -198,6 +215,33 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     id: string,
     change: (c: ConversationDetailResponse) => ConversationDetailResponse,
   ) => onConversations(conversations.map((c) => (c.id === id ? change(c) : c)));
+  const maxPinned = 10;
+  function togglePin(id: string) {
+    const target = conversations.find((c) => c.id === id);
+    if (!target) return;
+    if (
+      !target.pinned_at &&
+      conversations.filter((c) => c.pinned_at).length >= maxPinned
+    ) {
+      toast(`最多置顶 ${maxPinned} 个对话`, "warning");
+      return;
+    }
+    update(id, (c) => ({
+      ...c,
+      pinned_at: c.pinned_at ? null : new Date().toISOString(),
+    }));
+    toast(target.pinned_at ? "已取消置顶" : "已置顶", "success");
+  }
+  function toggleFavorite(id: string, notify = true) {
+    const target = conversations.find((c) => c.id === id);
+    if (!target) return;
+    update(id, (c) => ({
+      ...c,
+      favorited_at: c.favorited_at ? null : new Date().toISOString(),
+    }));
+    if (notify)
+      toast(target.favorited_at ? "已取消收藏" : "已加入收藏", "success");
+  }
   function select(id: string | null) {
     ++seq.current;
     setSubmitting(false);
@@ -746,8 +790,21 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         }}
         onStale={() => toast("无法打开这段对话，请重新搜索后再试。")}
       />
+      {favoritesOpen && (
+        <FavoritesDialog
+          items={conversations}
+          selectedId={selectedId}
+          onClose={() => setFavoritesOpen(false)}
+          onChoose={(id) => {
+            setFavoritesOpen(false);
+            select(id);
+          }}
+          onToggleFavorite={(id) => toggleFavorite(id, false)}
+        />
+      )}
       <Sidebar
-        items={conversations.slice(0, limit)}
+        items={listLoading ? [] : recentConversations.slice(0, limit)}
+        pinnedItems={listLoading ? [] : pinnedConversations}
         selectedId={selectedId}
         {...accountProps}
         isMobile={isMobile}
@@ -755,7 +812,8 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         mobileOpen={mobileOpen}
         pendingTitleIds={titlePending}
         rowStatus={rowStatus}
-        hasMore={limit < conversations.length}
+        isLoadingList={listLoading}
+        hasMore={limit < recentConversations.length}
         isLoadingMore={loadingMore}
         onSelect={(id) => select(id)}
         onNew={() => select(null)}
@@ -779,6 +837,12 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         }}
         onRequestShare={setShareId}
         onRequestDelete={setDeleteId}
+        onTogglePin={togglePin}
+        onToggleFavorite={toggleFavorite}
+        onOpenFavorites={() => {
+          setMobileOpen(false);
+          setFavoritesOpen(true);
+        }}
         onLogout={() => setUser(null)}
         onLoadShares={services.shareApi.listMine}
         onRevokeShare={services.shareApi.revoke}
@@ -801,6 +865,14 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
             onShare={() => void quickShare()}
             onDelete={() => setDeleteId(selectedId)}
             historyBadge={unread.some((id) => id !== selectedId)}
+            pinned={!!conversations.find((c) => c.id === selectedId)?.pinned_at}
+            favorited={!!conversations.find((c) => c.id === selectedId)?.favorited_at}
+            onTogglePin={() => {
+              if (selectedId) togglePin(selectedId);
+            }}
+            onToggleFavorite={() => {
+              if (selectedId) toggleFavorite(selectedId);
+            }}
           />
           <div
             className="thread-region relative flex min-h-0 flex-1 flex-col overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] max-[760px]:pt-8"

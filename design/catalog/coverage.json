@@ -136,6 +136,58 @@
       ]
     },
     {
+      "id": "pin-favorite",
+      "name": "侧栏 · 置顶与收藏",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/Sidebar.tsx",
+      "design": "src/conversations/Sidebar.tsx",
+      "scene": "pin-favorite",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=pin-favorite&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "pin-favorite",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "sidebar-loading",
+      "name": "侧栏 · 列表加载",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/conversations/Sidebar.tsx",
+      "design": "src/conversations/Sidebar.tsx",
+      "scene": "sidebar-loading",
+      "route": "/",
+      "entry": "/canvas.html?scene=sidebar-loading&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "sidebar-loading",
+      "outcome": "loading",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
       "id": "unverified",
       "name": "邮箱未验证",
       "group": "聊天工作台",
@@ -1183,6 +1235,32 @@
       "scene": "components",
       "route": "/components",
       "entry": "/canvas.html?scene=components&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "default",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "toasts",
+      "name": "Toast 反馈汇总",
+      "group": "基础组件",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/Toast.tsx",
+      "design": "src/ui/Toast.tsx",
+      "scene": "toasts",
+      "route": "/toasts",
+      "entry": "/canvas.html?scene=toasts&proposal=current",
       "viewports": [
         "1440x900",
         "390x844"

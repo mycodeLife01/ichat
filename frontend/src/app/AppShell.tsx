@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Sidebar, type ConversationRowStatus } from "../conversations/Sidebar";
+import { FavoritesDialog } from "../conversations/FavoritesDialog";
 import { ThreadActions } from "../conversations/ThreadActions";
 import { useConversationLoader } from "../conversations/useConversationLoader";
 import { useQuickShare } from "../conversations/useQuickShare";
@@ -12,6 +13,7 @@ import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { replyQuoteDraftStore } from "../conversations/replyQuoteDraftStore";
 import { useConversationListSync } from "../conversations/useConversationListSync";
+import { useConversationMarkers } from "../conversations/useConversationMarkers";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
 import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
@@ -72,6 +74,7 @@ export function AppShell() {
     detail,
     loadList,
     loadMore,
+    listStatus,
     hasMore,
     isLoadingMore,
     selectConversation,
@@ -79,6 +82,8 @@ export function AppShell() {
     renameConversation,
     deleteConversation,
   } = useConversationLoader();
+  const pinnedItems = conversationIndex.pinnedItems;
+  const { togglePin, toggleFavorite } = useConversationMarkers();
 
   // The conversation public id is carried in the URL (`/c/:publicId`), so the
   // address bar is shareable/deep-linkable. Parsed from the path (rather than a
@@ -91,6 +96,7 @@ export function AppShell() {
   const [routerReady, setRouterReady] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [searchIntent, setSearchIntent] = useState<{ item: SearchItem; key: number; query: string } | null>(null);
 
 
@@ -562,7 +568,7 @@ export function AppShell() {
   const rowStatus = useMemo(() => {
     const status: Record<string, ConversationRowStatus> = {};
     for (const id of unreadIds) status[id] = "unread";
-    for (const item of items) {
+    for (const item of [...pinnedItems, ...items]) {
       if (item.active_run) status[item.id] = "running";
     }
     if (
@@ -578,7 +584,7 @@ export function AppShell() {
       status[pendingSubmission.conversationId] = "running";
     }
     return status;
-  }, [items, unreadIds, activeRun, pendingSubmission]);
+  }, [items, pinnedItems, unreadIds, activeRun, pendingSubmission]);
 
   const messages = detail.messages;
   const visiblePendingSubmission =
@@ -659,8 +665,20 @@ export function AppShell() {
       {searchEnabled && <ConversationSearch key={user?.id ?? "anonymous"} open={searchOpen} onClose={() => setSearchOpen(false)}
         search={services.conversationApi.search} onChoose={chooseSearchResult}
         onStale={() => dispatch({ type: "ui/showToast", message: "无法打开这段对话，请重新搜索后再试。", tone: "error" })} />}
+      {favoritesOpen && (
+        <FavoritesDialog
+          selectedId={selectedId}
+          onClose={() => setFavoritesOpen(false)}
+          onChoose={(id) => {
+            setFavoritesOpen(false);
+            onSelectConversation(id);
+          }}
+          onToggleFavorite={toggleFavorite}
+        />
+      )}
       <Sidebar
         items={items}
+        pinnedItems={pinnedItems}
         selectedId={selectedId}
         user={
           user
@@ -678,12 +696,16 @@ export function AppShell() {
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
         rowStatus={rowStatus}
+        isLoadingList={listStatus === "loading"}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
         onNew={onNewConversation}
         onSearch={searchEnabled ? () => { setSearchIntent(null); setSearchOpen(true); } : undefined}
         onLoadMore={() => void loadMore()}
+        onTogglePin={(id) => void togglePin(id)}
+        onToggleFavorite={(id) => void toggleFavorite(id)}
+        onOpenFavorites={() => setFavoritesOpen(true)}
         onRename={(id, title) => void renameConversation(id, title)}
         onRequestShare={(id) =>
           dispatch({ type: "ui/openShare", dialog: { conversationId: id } })
@@ -742,6 +764,16 @@ export function AppShell() {
           <ThreadActions
             isMobile={isMobile}
             hasConversation={selectedId != null}
+            pinned={!!detail.conversation?.pinned_at}
+            favorited={!!detail.conversation?.favorited_at}
+            onTogglePin={() => {
+              if (selectedId != null) void togglePin(selectedId, detail.conversation ?? undefined);
+            }}
+            onToggleFavorite={() => {
+              if (selectedId != null) {
+                void toggleFavorite(selectedId, detail.conversation ?? undefined);
+              }
+            }}
             historyBadge={unreadIds.length > 0}
             onOpenMobileSidebar={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
             onNew={onNewConversation}

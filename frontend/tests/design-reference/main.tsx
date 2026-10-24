@@ -66,11 +66,20 @@ const services = createFakeServices(
     }),
   },
   {
-    list: async (options) =>
-      data.slice(
+    // Mirror the server's list views: pins and favorites newest first, recent
+    // without the pinned rows.
+    list: async (options) => {
+      const rows =
+        options?.view === "pinned"
+          ? data.filter((c) => c.pinned_at).sort((a, b) => b.pinned_at!.localeCompare(a.pinned_at!))
+          : options?.view === "favorites"
+            ? data.filter((c) => c.favorited_at).sort((a, b) => b.favorited_at!.localeCompare(a.favorited_at!))
+            : data.filter((c) => !c.pinned_at);
+      return rows.slice(
         options?.skip ?? 0,
         (options?.skip ?? 0) + (options?.limit ?? 30),
-      ),
+      );
+    },
     detail: async (id) => data.find((c) => c.id === id) ?? data[0],
   },
   {},
