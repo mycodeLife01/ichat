@@ -46,7 +46,7 @@ export function createResults(
   const sceneCatalog = scene.id === "admin-dense" ? denseCatalog : initialCatalog;
   let catalog: ModelAdminCatalog = structuredClone(sceneCatalog);
   let shares: UserShareResponse[] =
-    scene.id === "share-dialog"
+    scene.id === "share-dialog" || scene.id === "sidebar-empty"
       ? []
       : [
           {
@@ -83,7 +83,7 @@ export function createResults(
       })),
     };
   }
-  snapshots.set("design-share", snapshot("design-chat"));
+  if (shares.length) snapshots.set("design-share", snapshot("design-chat"));
   const command = (name: string, token?: string) => {
     if (token === "invalid")
       return Promise.reject(new ApiError({ status: 400 }));

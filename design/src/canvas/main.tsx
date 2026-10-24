@@ -32,6 +32,7 @@ if (scene.initial === "unlocked") modelAdminAccessKeyStore.save("design-demo");
 function Canvas() {
   const [conversations, setConversations] = useState(() => {
     const items = makeConversations(scene.id === "long");
+    if (scene.initial === "sidebar-empty") return [];
     // The run-status scene opens with design-2's reply still generating in the
     // background, so only its user message exists yet.
     if (scene.initial === "pin-favorite") {

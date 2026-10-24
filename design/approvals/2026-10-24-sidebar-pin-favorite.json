@@ -10,7 +10,7 @@
   ],
   "sourceCommit": "ccea345e3ea2218eb106192453447ec6cacdaa8c",
   "designCommit": null,
-  "designFingerprint": "574f90ba811936a621f97acc15734172a41cfddae065f905971dc84281ed82ec",
+  "designFingerprint": "b875364a723a09214ebcafb6d18d77e33ba3f38db018938aa3f8ed25f48e26a3",
   "implementationCommit": null,
   "evidence": {
     "comparedCandidates": ["sidebar-pin-favorite"],

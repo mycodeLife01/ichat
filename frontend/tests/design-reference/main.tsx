@@ -22,7 +22,7 @@ import { createResults } from "../../../design/src/runtime/results";
 import { AuthScreen } from "../../src/auth/AuthScreen";
 import "../../src/styles/global.css";
 const scene = getScene(new URLSearchParams(location.search).get("scene"));
-const data = conversations(scene.id === "long");
+const data = scene.initial === "sidebar-empty" ? [] : conversations(scene.id === "long");
 const result = createResults(scene, () => data);
 for (const group of [result.authApi, result.shareApi, result.modelAdminApi]) {
   for (const [key, fn] of Object.entries(group)) {
