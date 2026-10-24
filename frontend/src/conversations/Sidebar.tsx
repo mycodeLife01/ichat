@@ -676,13 +676,9 @@ export function Sidebar({
                       renderRow(c, { renderDesktopMenu: !railCollapsed }),
                     )}
                   {items.length === 0 && pinnedItems.length === 0 && !collapsedSections.recent &&
-                    (isLoadingList ? (
+                    isLoadingList && (
                       <HistorySkeleton rows={historySkeletonWidths.length} label="正在加载对话" />
-                    ) : (
-                      <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle max-[760px]:text-[13.5px]">
-                        还没有已保存的对话。开始一次对话后会自动出现在这里。
-                      </div>
-                    ))}
+                    )}
                   {isLoadingMore && !collapsedSections.recent && (
                     <HistorySkeleton rows={3} label="正在加载更多对话" />
                   )}
@@ -755,14 +751,9 @@ export function Sidebar({
             {items
               .slice(0, railRecentLimit)
               .map((c) => renderRow(c, { onSelected: () => setRecent(null) }))}
-            {items.length === 0 && pinnedItems.length === 0 &&
-              (isLoadingList ? (
-                <HistorySkeleton rows={5} label="正在加载对话" />
-              ) : (
-                <div className="px-2.5 py-3 text-[12.5px] leading-[1.6] text-fg-subtle">
-                  还没有已保存的对话。
-                </div>
-              ))}
+            {items.length === 0 && pinnedItems.length === 0 && isLoadingList && (
+              <HistorySkeleton rows={5} label="正在加载对话" />
+            )}
           </nav>,
           document.body,
         )}

@@ -9,6 +9,7 @@ const ids = [
   "account",
   "my-shares",
   "welcome",
+  "sidebar-empty",
   "long",
   "unverified",
   "quote",

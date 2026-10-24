@@ -139,11 +139,10 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: "最近聊天，有新回复" })).toBeInTheDocument();
   });
 
-  it("shows empty placeholder when no conversations", () => {
+  it("shows no placeholder text when there are no conversations", () => {
     render(<Sidebar {...baseProps()} items={[]} />);
-    expect(
-      screen.getByText(/还没有已保存的对话/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("最近")).toBeInTheDocument();
+    expect(screen.queryByText(/还没有已保存的对话/)).not.toBeInTheDocument();
   });
 
   it("shows a row skeleton instead of the empty placeholder while the list loads", () => {
