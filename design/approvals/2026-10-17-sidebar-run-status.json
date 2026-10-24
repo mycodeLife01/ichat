@@ -10,7 +10,7 @@
   ],
   "sourceCommit": "2578b29b3929af49a3e18685ab9ae39c7d4f087f",
   "designCommit": null,
-  "designFingerprint": "66d590d5a9f2157105b981b7302a30b49ea60236b4a67d80b08981d345a04296",
+  "designFingerprint": "e4478c0dfeda324274f02bb94fd0991e4fd9988fbe1d62c9f23259ecdc8b4ad3",
   "implementationCommit": "cecad39d5f9a956b3e8f08d8a8ac3b1f90354d7a",
   "evidence": {
     "comparedCandidates": ["sidebar-run-status"],
@@ -26,5 +26,5 @@
   ],
   "approvedBy": "jackey",
   "approvedAt": "2026-10-17",
-  "notes": "Promoted to current. The sidebar-run-status proposal entry, its URL gate in ChatPage, and the candidate CSS injection were removed; --color-unread-indicator moved into global.css and the run-status scene stays."
+  "notes": "Promoted to current. The sidebar-run-status proposal entry, its URL gate in ChatPage, and the candidate CSS injection were removed; --color-unread-indicator moved into global.css and the run-status scene stays. 2026-10-24: the running spinner slowed to 1.5s per turn, chosen by jackey with the workbench tweak slider (sidebar-spinner-speed candidate, retired after the choice); the generic tweak mechanism stays in the workbench."
 }

@@ -41,7 +41,7 @@
 ### UI
 
 - `AppShell` 汇总 `rowStatus`：未读 → `unread`；有 `active_run`、本地 activeRun 处于 queued/started/streaming/cancelling、或 `pendingSubmission` 指向该会话 → `running`（未读优先）。
-- `Sidebar` 行尾：`running` 显示旋转图标，`unread` 显示 `--color-unread-indicator`（#1a73c7）圆点；悬停/聚焦时让位给「更多」按钮。无标题时显示骨架占位。行高在所有阶段保持不变（桌面 36px，移动端 44px），符合 AGENTS.md 流式表面几何约束。
+- `Sidebar` 行尾：`running` 显示旋转图标（一圈 1.5s，慢于默认 `animate-spin` 的 1s；2026-10-24 在 design 中用转速滑块选定），`unread` 显示 `--color-unread-indicator`（#1a73c7）圆点；悬停/聚焦时让位给「更多」按钮。无标题时显示骨架占位。行高在所有阶段保持不变（桌面 36px，移动端 44px），符合 AGENTS.md 流式表面几何约束。
 - 收起侧栏的「最近聊天」按钮与移动端「打开历史」按钮在存在未读时显示角标，无障碍名称追加「，有新回复」。
 
 ## 验证

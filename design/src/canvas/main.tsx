@@ -15,10 +15,18 @@ import { modelAdminAccessKeyStore } from "../model-admin/accessKeyStore";
 import { ChatPage } from "./ChatPage";
 import { ComponentsPage } from "./ComponentsPage";
 import "../styles/global.css";
-import { applyProposal } from "../proposals/registry";
+import { applyProposal, applyTweak, tweaks } from "../proposals/registry";
 const params = new URLSearchParams(location.search);
 const scene = getScene(params.get("scene"));
 applyProposal(params.get("proposal"));
+for (const tweak of tweaks[params.get("proposal") ?? ""] ?? []) {
+  const value = params.get(tweak.name);
+  if (value) applyTweak(tweak.name, `${value}${tweak.unit}`);
+}
+window.addEventListener("message", (event: MessageEvent) => {
+  if (event.origin === location.origin && event.data?.type === "design:tweak")
+    applyTweak(String(event.data.name), String(event.data.value));
+});
 if (scene.initial === "unlocked") modelAdminAccessKeyStore.save("design-demo");
 function Canvas() {
   const [conversations, setConversations] = useState(() => {

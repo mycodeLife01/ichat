@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { scenes, getScene } from "../scenarios/registry";
-import { proposals } from "../proposals/registry";
+import { proposals, tweaks } from "../proposals/registry";
 import "./workbench.css";
 import { designFingerprint } from "../../catalog/baseline.json";
 function Workbench() {
@@ -40,6 +40,32 @@ function Workbench() {
   const [notes, setNotes] = useState(true);
   const scene = getScene(id);
   const url = `/canvas.html?scene=${id}&proposal=${proposal}`;
+  const activeTweaks = tweaks[proposal] ?? [];
+  const [tweakValues, setTweakValues] = useState<Record<string, number>>({});
+  const tweakValue = (name: string, initial: number) =>
+    tweakValues[name] ?? initial;
+  function sendTweaks(values: Record<string, number>) {
+    for (const t of activeTweaks)
+      document.querySelector("iframe")?.contentWindow?.postMessage(
+        {
+          type: "design:tweak",
+          name: t.name,
+          value: `${values[t.name] ?? t.initial}${t.unit}`,
+        },
+        location.origin,
+      );
+  }
+  function setTweak(name: string, value: number) {
+    const next = { ...tweakValues, [name]: value };
+    setTweakValues(next);
+    sendTweaks(next);
+  }
+  // Standalone canvas links carry the chosen values as query params.
+  const standaloneUrl = activeTweaks.reduce(
+    (href, t) =>
+      `${href}&${encodeURIComponent(t.name)}=${tweakValue(t.name, t.initial)}`,
+    url,
+  );
   function select(next: string) {
     setId(next);
   }
@@ -72,7 +98,9 @@ function Workbench() {
       designFingerprint,
       approvedBy: null,
       approvedAt: null,
-      notes: "",
+      notes: activeTweaks
+        .map((t) => `${t.name}: ${tweakValue(t.name, t.initial)}${t.unit}`)
+        .join("; "),
     };
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(record, null, 2)], { type: "application/json" }),
@@ -161,7 +189,7 @@ function Workbench() {
           <button onClick={() => setNotes((n) => !n)} aria-pressed={notes}>
             说明
           </button>
-          <a href={url} target="_blank" rel="noreferrer">
+          <a href={standaloneUrl} target="_blank" rel="noreferrer">
             独立打开 ↗
           </a>
         </header>
@@ -220,6 +248,44 @@ function Workbench() {
             )}
           </div>
         </div>
+        {activeTweaks.length > 0 && (
+          <div className="tweakbar">
+            {activeTweaks.map((t) => {
+              const value = tweakValue(t.name, t.initial);
+              return (
+                <div key={t.name} className="tweak">
+                  <label>
+                    <span>{t.label}</span>
+                    <input
+                      type="range"
+                      aria-label={`${t.label}（${t.unit}）`}
+                      min={t.min}
+                      max={t.max}
+                      step={t.step}
+                      value={value}
+                      onChange={(e) => setTweak(t.name, Number(e.target.value))}
+                    />
+                    <output>
+                      {value.toFixed(2)}
+                      {t.unit}
+                    </output>
+                  </label>
+                  {t.presets.map((p) => (
+                    <button
+                      key={p}
+                      aria-pressed={value === p}
+                      onClick={() => setTweak(t.name, p)}
+                    >
+                      {p}
+                      {t.unit}
+                    </button>
+                  ))}
+                  <code>{t.name}</code>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="desk" ref={deskRef}>
           <div className="frame-label">
             <span>{proposal === "current" ? "当前基线" : "候选草稿"}</span>
@@ -242,6 +308,7 @@ function Workbench() {
                 transformOrigin: "top left",
               }}
               allow="clipboard-read; clipboard-write"
+              onLoad={() => sendTweaks(tweakValues)}
             />
           </div>
         </div>

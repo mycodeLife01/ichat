@@ -671,6 +671,8 @@ function RowStatusMark({ status }: { status: ConversationRowStatus }) {
       size={14}
       strokeWidth={2}
       className="animate-spin text-text-muted motion-reduce:animate-none"
+      // Slower than animate-spin's 1s so several running rows read as calm.
+      style={{ animationDuration: "1.5s" }}
     />
   ) : (
     <span className="h-2 w-2 rounded-full bg-[var(--color-unread-indicator)]" />
