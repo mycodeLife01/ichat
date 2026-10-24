@@ -14,8 +14,9 @@ from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import create_app
 from app.models.conversation import Conversation, Message
-from app.models.run import Run, RunProviderMessage
+from app.models.run import ConversationTitleJob, Run, RunProviderMessage
 from app.models.user import User
+from app.services.conversations.title_publisher import get_title_task_publisher
 from app.services.files.formats import supported_extensions
 
 TEST_DATABASE_URL = os.environ.get(
@@ -81,10 +82,24 @@ def run_queued_publisher(
     return RecordingRunQueuedPublisher(session_factory)
 
 
+class RecordingTitleTaskPublisher:
+    def __init__(self) -> None:
+        self.published: list[int] = []
+
+    def publish(self, run_id: int) -> None:
+        self.published.append(run_id)
+
+
+@pytest.fixture()
+def title_task_publisher() -> RecordingTitleTaskPublisher:
+    return RecordingTitleTaskPublisher()
+
+
 @pytest.fixture()
 async def app(
     session_factory: async_sessionmaker[AsyncSession],
     run_queued_publisher: RecordingRunQueuedPublisher,
+    title_task_publisher: RecordingTitleTaskPublisher,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[FastAPI]:
     get_settings.cache_clear()
@@ -99,6 +114,7 @@ async def app(
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_title_task_publisher] = lambda: title_task_publisher
     app.state.run_queued_publisher = run_queued_publisher
     yield app
     app.dependency_overrides.clear()
@@ -343,7 +359,8 @@ async def test_create_conversation_with_message_creates_all_records_and_queues_r
     assert response.status_code == status.HTTP_201_CREATED
     data = response.json()["data"]
     assert data["conversation"]["title"] == "Project chat"
-    assert data["conversation"]["activated_at"] is None
+    # Activated on submit so the sidebar lists it before the reply exists.
+    assert data["conversation"]["activated_at"] is not None
     assert data["message"]["conversation_id"] == data["conversation"]["id"]
     assert data["message"]["content"] == "Hello"
     assert data["message"]["position"] == 1
@@ -377,6 +394,83 @@ async def test_create_conversation_with_message_creates_all_records_and_queues_r
             "image_token_reserve": None,
         }
         assert run_queued_publisher.published == [run.id]
+
+
+async def test_untitled_first_message_queues_title_job_and_lists_active_run(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    title_task_publisher: RecordingTitleTaskPublisher,
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-early-title-api",
+        email=f"alice-early-title@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    response = await client.post(
+        "/api/v1/conversations/with-message",
+        json={"content": "Plan a backend"},
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()["data"]
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(data["run"]["id"]))
+        )
+        assert run is not None
+        job = await session.get(ConversationTitleJob, run.id)
+        assert job is not None
+        assert job.status == "pending"
+        # The title job is dispatched at submit, without waiting for the reply.
+        assert title_task_publisher.published == [run.id]
+
+    list_response = await client.get("/api/v1/conversations", headers=headers)
+    items = list_response.json()["data"]
+    assert [item["id"] for item in items] == [data["conversation"]["id"]]
+    assert items[0]["title"] is None
+    assert items[0]["active_run"] == {"id": data["run"]["id"], "status": "queued"}
+
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(data["run"]["id"]))
+        )
+        assert run is not None
+        run.status = "succeeded"
+        await session.commit()
+
+    list_response = await client.get("/api/v1/conversations", headers=headers)
+    assert list_response.json()["data"][0]["active_run"] is None
+
+
+async def test_titled_conversation_does_not_queue_title_job(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    title_task_publisher: RecordingTitleTaskPublisher,
+) -> None:
+    alice = await register_user(
+        client,
+        username="alice-titled-api",
+        email=f"alice-titled@{TEST_EMAIL_DOMAIN}",
+    )
+    headers = auth_headers(alice)
+
+    response = await client.post(
+        "/api/v1/conversations/with-message",
+        json={"title": "Manual", "content": "Hello"},
+        headers=headers,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(Run).where(Run.public_id == uuid.UUID(response.json()["data"]["run"]["id"]))
+        )
+        assert run is not None
+        assert await session.get(ConversationTitleJob, run.id) is None
+    assert title_task_publisher.published == []
 
 
 async def test_send_message_with_thinking_override_persists_provider_options(

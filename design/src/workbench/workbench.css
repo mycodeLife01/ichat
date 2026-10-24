@@ -306,3 +306,42 @@ a {
   top: 0;
   left: 0;
 }
+.tweakbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 18px;
+  border-bottom: 1px solid #d7dfe7;
+  background: #f7f9fb;
+  font-size: 12px;
+}
+.tweak {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.tweak label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tweak input[type="range"] {
+  width: 200px;
+}
+.tweak output {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+.tweak button {
+  padding: 4px 8px;
+}
+.tweak button[aria-pressed="true"] {
+  background: #dfeaf5;
+  border-color: #9bb8d4;
+  color: #234f79;
+}
+.tweak code {
+  color: #657487;
+  font-size: 11px;
+}

@@ -41,6 +41,7 @@ A task may match multiple rows. Treat the situation column as triggers and read 
 | GPT image understanding, vision-model constraints, safe preview delivery | `docs/handover/2026-08-03-gpt-vision-input.md` + `docs/archive/scratch/gpt-vision-input/PRD.md` + ADRs `0006`–`0009` |
 | Sent-image placement, local preview handoff, or attachment frame stability | `docs/handover/2026-08-09-sent-image-placement-stability.md` + `docs/architecture/frontend.md` + `docs/handover/2026-08-03-gpt-vision-input.md` |
 | Sidebar rail / collapsed navigation, chat-page floating actions, one-click share copy | `docs/handover/frontend/2026-09-05-mobile-quick-share-copy-failure.md` + `docs/handover/frontend/2026-08-14-sidebar-rail-and-chat-actions.md` + `docs/architecture/frontend.md` |
+| Sidebar row run status (running spinner / unread dot), new-conversation placeholder rows, conversation-list polling, `active_run` in the list API, or auto-title timing | `docs/handover/frontend/2026-10-17-sidebar-run-status.md` + `docs/architecture/frontend.md` + `docs/architecture/background-tasks.md`; also follow the sidebar rail row when touching collapsed navigation |
 | Avatar upload, Cloudflare R2, media worker, CDN purge | `docs/handover/2026-08-01-unified-file-upload.md`; read `docs/handover/2026-07-14-r2-avatar-upload.md` only for the legacy expand path retained before ticket 15 contract |
 | Naming domain concepts, changing domain terminology, or writing tests/designs that use domain terms | `CONTEXT.md` (root domain glossary, maintained by the `domain-modeling` skill) |
 
@@ -85,7 +86,7 @@ Dated implementation records (`YYYY-MM-DD-topic.md`), authoritative for "what wa
 - `2026-05-18-cicd-and-domain-deployment.md` — GitHub Actions pipeline, Nginx reverse proxy, Cloudflare SSL
 - `2026-05-19-concurrency-and-listen-notify.md` — delta batching, single-worker concurrency, claim/SSE LISTEN/NOTIFY, multi-worker compose, DB pool tuning
 - `2026-05-19-regenerate.md` — regenerate assistant message by editting user message or from the current response
-- `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded
+- `2026-05-20-auto-title-and-draft-conversation.md` — auto summary conversation title after first run succeeded (title timing and inputs superseded by `handover/frontend/2026-10-17-sidebar-run-status.md`)
 - `2026-06-11-per-request-thinking-options.md` — per-request thinking mode (runs.provider_options JSONB, request-body overrides, frontend Fast/High/Max dropdown)
 - `2026-06-11-web-search-tool.md` — web search tool (Tavily adapter, query planner, worker tools agent loop, tool-call SSE events, source metadata). Note: the rule-based query planner / pre-search was removed 2026-06-17 — tool calls are now model-driven. Since 2026-09-23 citation ids are unique per conversation and citations render live while streaming.
 - `2026-06-17-system-prompt-management.md` — system prompt module (`app/prompts/`), injection/composition order, optional env override, faithful `system_prompt_snapshot` written at execution time. Note: the prompt module moved to `app/services/agents/prompts.py` in the 2026-07-20 agent-runtime re-layering (issue 04b); `app/prompts/` no longer exists.
@@ -119,7 +120,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-06-06-frontend-state-and-auth.md` — reducer store, auth session, auth screen
 - `2026-06-08-frontend-conversation-list-and-detail.md` — sidebar conversation list, detail loading
 - `2026-06-09-frontend-send-and-sse-streaming.md` — send message, SSE streaming render
-- `2026-06-10-frontend-edit-regenerate-and-auto-title.md` — edit/regenerate flows, auto-title pending state
+- `2026-06-10-frontend-edit-regenerate-and-auto-title.md` — edit/regenerate flows, auto-title pending state (title polling superseded by `2026-10-17-sidebar-run-status.md`)
 - `2026-06-10-frontend-refresh-recovery.md` — refresh recovery of in-flight runs, partial restore, cancel robustness
 - `2026-06-10-frontend-toast-and-bottomsheet.md` — Toast, mobile BottomSheet actions
 - `2026-06-10-frontend-tailwind-v4-styles.md` — Tailwind CSS v4 migration (CSS-first `@theme`, all hand-written CSS removed, pixel-parity verified)
@@ -132,6 +133,7 @@ Historical frontend rebuild handovers. Read `docs/architecture/frontend.md` firs
 - `2026-08-15-chatgpt-tables-links-and-gfm.md` — ticket 04's private table/link renderers, DOM-to-TSV copy contract, isolated table overflow, safe external navigation, GFM semantics, and the handoff into ticket 05
 - `2026-08-15-chatgpt-streaming-prefix-and-performance.md` — ticket 05's cumulative prefix matrix, real-browser 10k/20k/50k and streaming profiles, interaction-state stability, no-batching decision, and the handoff into ticket 06
 - `2026-09-26-thinking-panel-viewport.md` — unified reasoning panel for raw and summary models: viewport preview ⇄ full content while thinking, collapse on thinking end, Markdown full content with headline headings, run-id handoff of the post-thinking choice, design approval, and real-Chrome geometry evidence
+- `2026-10-17-sidebar-run-status.md` — titles generated at submit from the user message, `active_run` in the conversation list, sidebar running/unread row status with list polling and unread badges, design approval, and real-Chrome evidence; supersedes the post-success title timing in the 2026-05-20 and 2026-06-10 auto-title handovers
 - `2026-08-15-chatgpt-response-rendering.md` — final tickets 01–06 handoff: shipped Markdown surfaces, frozen reasoning/backend scope, bundle and performance evidence, approved desktop/mobile golden baselines, accepted deviations, verification, and rollback
 
 ### `docs/goals/`

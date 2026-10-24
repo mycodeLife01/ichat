@@ -1,0 +1,30 @@
+{
+  "proposalId": "sidebar-run-status",
+  "requirement": "docs/handover/frontend/2026-10-17-sidebar-run-status.md",
+  "designStatus": "approved",
+  "implementationStatus": "verified",
+  "sceneIds": ["run-status"],
+  "viewport": [
+    { "width": 1440, "height": 900 },
+    { "width": 390, "height": 844 }
+  ],
+  "sourceCommit": "2578b29b3929af49a3e18685ab9ae39c7d4f087f",
+  "designCommit": null,
+  "designFingerprint": "e4478c0dfeda324274f02bb94fd0991e4fd9988fbe1d62c9f23259ecdc8b4ad3",
+  "implementationCommit": "cecad39d5f9a956b3e8f08d8a8ac3b1f90354d7a",
+  "evidence": {
+    "comparedCandidates": ["sidebar-run-status"],
+    "parity": "pnpm --dir design test:parity: 56 passed",
+    "visual": "pnpm --dir design test:visual: 124 passed",
+    "realChrome": "Real Chrome against a local API with temporary Postgres and Redis: the placeholder row (skeleton + spinner) appeared ~0.48s after send once the API returned; with no Celery worker the title fell back to 新对话 after 20s; marking a background run succeeded in the database while viewing another conversation showed the unread dot within the 3s poll, and entering that conversation cleared it; sidebar rows stayed 36px on desktop and 44px on mobile across every phase; the mobile 打开历史，有新回复 badge appeared. See docs/handover/frontend/2026-10-17-sidebar-run-status.md."
+  },
+  "scope": "Sidebar rows show a trailing spinner while a run is in flight and a blue dot when a background run finishes unseen, yielding to the more button on hover with constant row height. New conversations appear as a skeleton placeholder and receive their title asynchronously, generated at submit from the user message. The collapsed recent-chats rail button and the mobile history button show a badge while anything is unread.",
+  "exceptions": [
+    "The placeholder row appears after the submit API returns (~0.5s), not optimistically on click.",
+    "Unread state is in memory only and does not survive a page reload.",
+    "designCommit stays null because the promotion lands in the same commit as this record; the backend half is 9c100ef."
+  ],
+  "approvedBy": "jackey",
+  "approvedAt": "2026-10-17",
+  "notes": "Promoted to current. The sidebar-run-status proposal entry, its URL gate in ChatPage, and the candidate CSS injection were removed; --color-unread-indicator moved into global.css and the run-status scene stays. 2026-10-24: the running spinner slowed to 1.5s per turn, chosen by jackey with the workbench tweak slider (sidebar-spinner-speed candidate, retired after the choice); the generic tweak mechanism stays in the workbench."
+}

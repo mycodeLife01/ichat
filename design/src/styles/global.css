@@ -58,6 +58,8 @@
   --color-user-message-foreground: #0c274a;
   --color-message-editor: #ececec;
   --color-message-editor-foreground: #0d0d0d;
+  /* Sidebar dot for a background run that finished while unseen. */
+  --color-unread-indicator: #1a73c7;
 
   /* Assistant code surfaces use a restrained light syntax palette. */
   --color-code-surface: #f3f3f3;

@@ -15,15 +15,30 @@ import { modelAdminAccessKeyStore } from "../model-admin/accessKeyStore";
 import { ChatPage } from "./ChatPage";
 import { ComponentsPage } from "./ComponentsPage";
 import "../styles/global.css";
-import { applyProposal } from "../proposals/registry";
+import { applyProposal, applyTweak, tweaks } from "../proposals/registry";
 const params = new URLSearchParams(location.search);
 const scene = getScene(params.get("scene"));
 applyProposal(params.get("proposal"));
+for (const tweak of tweaks[params.get("proposal") ?? ""] ?? []) {
+  const value = params.get(tweak.name);
+  if (value) applyTweak(tweak.name, `${value}${tweak.unit}`);
+}
+window.addEventListener("message", (event: MessageEvent) => {
+  if (event.origin === location.origin && event.data?.type === "design:tweak")
+    applyTweak(String(event.data.name), String(event.data.value));
+});
 if (scene.initial === "unlocked") modelAdminAccessKeyStore.save("design-demo");
 function Canvas() {
-  const [conversations, setConversations] = useState(() =>
-    makeConversations(scene.id === "long"),
-  );
+  const [conversations, setConversations] = useState(() => {
+    const items = makeConversations(scene.id === "long");
+    // The run-status scene opens with design-2's reply still generating in the
+    // background, so only its user message exists yet.
+    return scene.initial === "run-status"
+      ? items.map((c) =>
+          c.id === "design-2" ? { ...c, messages: c.messages.slice(0, 1) } : c,
+        )
+      : items;
+  });
   const ref = useRef(conversations);
   ref.current = conversations;
   const services = useMemo(() => createResults(scene, () => ref.current), []);

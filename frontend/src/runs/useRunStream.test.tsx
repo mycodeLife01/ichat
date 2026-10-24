@@ -53,6 +53,8 @@ describe("useRunStream", () => {
     expect(result.current.conversationDetail.messages).toEqual(
       conversationDetailResponse.messages,
     );
+    // Watched to the end in place: nothing left unread.
+    expect(result.current.conversationIndex.unreadIds).toEqual([]);
   });
 
   it("does not apply detail when the user navigated away", async () => {
@@ -76,6 +78,30 @@ describe("useRunStream", () => {
     expect(list).toHaveBeenCalledWith({ limit: 30, skip: 0 });
     // detailLoaded skipped: detail not applied to the (different) current view.
     expect(result.current.conversationDetail.messages).toEqual([]);
+    expect(result.current.conversationIndex.unreadIds).toEqual([conversationResponse.id]);
+  });
+
+  it("marks a background run unread when it fails too", async () => {
+    const services = createFakeServices(
+      {},
+      {},
+      {
+        streamEvents: () =>
+          fakeStream([{ seq: 1, type: "run_failed", payload: {}, created_at: "x" }]),
+      },
+    );
+    const { result } = renderHook(() => useStreamProbe(), {
+      wrapper: makeWrapper(services),
+    });
+
+    await act(async () => {
+      result.current.dispatch({ type: "conversations/selected", id: "other" });
+    });
+    await act(async () => {
+      await result.current.start("100", conversationResponse.id, 0);
+    });
+
+    expect(result.current.conversationIndex.unreadIds).toEqual([conversationResponse.id]);
   });
 
   it("marks the conversation title-pending when it succeeds without a title", async () => {

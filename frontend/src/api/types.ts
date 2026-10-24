@@ -34,6 +34,13 @@ export type ConversationResponse = {
   updated_at: string;
   deleted_at?: string | null;
   deletion_due_at?: string | null;
+  // List endpoint only: the run still in flight for this conversation, if any.
+  active_run?: ConversationActiveRun | null;
+};
+
+export type ConversationActiveRun = {
+  id: string;
+  status: RunStatus;
 };
 
 export type ImageContextState = "none" | "vision_required" | "legacy_upgrade_required";

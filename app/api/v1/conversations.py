@@ -16,6 +16,7 @@ from app.schemas.conversations import (
     ConversationCreateWithMessageRequest,
     ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
+    ConversationListItemResponse,
     ConversationRenameRequest,
     ConversationResponse,
     MessageCreateRequest,
@@ -40,6 +41,11 @@ from app.services.conversations.service import (
     rename_conversation,
     restore_conversation,
     submit_user_message,
+)
+from app.services.conversations.title_jobs import create_title_job
+from app.services.conversations.title_publisher import (
+    TitleTaskPublisher,
+    get_title_task_publisher,
 )
 from app.services.model_catalog import (
     ChatModel,
@@ -72,6 +78,15 @@ async def _publish_run_queued(
     except Exception as exc:
         logger.bind(run_id=run_id, error=str(exc)).warning(
             "Run queued publish failed; worker polling fallback will claim it"
+        )
+
+
+def _publish_title_job(publisher: TitleTaskPublisher, *, run_id: int) -> None:
+    try:
+        publisher.publish(run_id)
+    except Exception as exc:
+        logger.bind(run_id=run_id, error=str(exc)).warning(
+            "Conversation title dispatch failed; title sweep will retry"
         )
 
 
@@ -203,6 +218,7 @@ async def create_conversation_with_message_route(
         RunQueuedPublisher | None,
         Depends(_get_run_queued_publisher),
     ],
+    title_publisher: Annotated[TitleTaskPublisher, Depends(get_title_task_publisher)],
 ) -> SuccessResponse[ConversationCreateWithMessageResponse]:
     chat_model = await resolve_chat_selection(session, settings, request)
     count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
@@ -222,21 +238,26 @@ async def create_conversation_with_message_route(
         count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
+    title_job_created = settings.auto_title_enabled and await create_title_job(
+        session, run_id=internal_run_id
+    )
     await session.commit()
     await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
+    if title_job_created:
+        _publish_title_job(title_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 
 @router.get(
     "",
-    response_model=SuccessResponse[list[ConversationResponse]],
+    response_model=SuccessResponse[list[ConversationListItemResponse]],
 )
 async def list_conversations_route(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int | None, Query(ge=1, le=100)] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
-) -> SuccessResponse[list[ConversationResponse]]:
+) -> SuccessResponse[list[ConversationListItemResponse]]:
     conversations = await list_conversations(
         session,
         user=current_user,
@@ -349,6 +370,7 @@ async def send_message_route(
         RunQueuedPublisher | None,
         Depends(_get_run_queued_publisher),
     ],
+    title_publisher: Annotated[TitleTaskPublisher, Depends(get_title_task_publisher)],
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = await resolve_chat_selection(session, settings, request)
     count_tokens = token_counter_for_chat_model(chat_model, settings=settings)
@@ -369,8 +391,13 @@ async def send_message_route(
         count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
+    title_job_created = settings.auto_title_enabled and await create_title_job(
+        session, run_id=internal_run_id
+    )
     await session.commit()
     await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
+    if title_job_created:
+        _publish_title_job(title_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 
@@ -391,6 +418,7 @@ async def edit_and_regenerate_route(
         RunQueuedPublisher | None,
         Depends(_get_run_queued_publisher),
     ],
+    title_publisher: Annotated[TitleTaskPublisher, Depends(get_title_task_publisher)],
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = await resolve_chat_selection(session, settings, request)
     if "attachment_ids" in request.model_fields_set and request.attachment_ids is None:
@@ -418,8 +446,13 @@ async def edit_and_regenerate_route(
         count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
+    title_job_created = settings.auto_title_enabled and await create_title_job(
+        session, run_id=internal_run_id
+    )
     await session.commit()
     await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
+    if title_job_created:
+        _publish_title_job(title_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 
@@ -439,6 +472,7 @@ async def regenerate_route(
         RunQueuedPublisher | None,
         Depends(_get_run_queued_publisher),
     ],
+    title_publisher: Annotated[TitleTaskPublisher, Depends(get_title_task_publisher)],
     request: RunOptionsRequest | None = None,
 ) -> SuccessResponse[SendMessageResponse]:
     chat_model = await resolve_chat_selection(session, settings, request)
@@ -458,8 +492,13 @@ async def regenerate_route(
         count_tokens=count_tokens,
     )
     internal_run_id = await get_internal_run_id(session, run_public_id=result.run.id)
+    title_job_created = settings.auto_title_enabled and await create_title_job(
+        session, run_id=internal_run_id
+    )
     await session.commit()
     await _publish_run_queued(run_queued_publisher, run_id=internal_run_id)
+    if title_job_created:
+        _publish_title_job(title_publisher, run_id=internal_run_id)
     return SuccessResponse(data=result)
 
 

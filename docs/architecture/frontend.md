@@ -24,7 +24,7 @@
 | `src/app/` | 应用装配、路由门、根 reducer/Context 和跨域 UI 编排。`AppProvider` 组装可注入服务；`AppShell` 是登录后工作台的 composition root，不承载 HTTP 协议或新的领域状态机。 |
 | `src/api/` | DTO、统一响应 envelope、`ApiError`、401 refresh/retry、端点封装和 SSE 解码。保持 React 无关；组件和业务 hook 不直接拼 URL 或解析 wire payload。 |
 | `src/auth/` | token/session 持久化、认证编排和公开认证页面。tokenStore 是 token 事实源，reducer 状态是渲染镜像。 |
-| `src/conversations/` | 会话索引、当前详情、提交前状态以及发送、编辑、重新生成、标题轮询等副作用编排。 |
+| `src/conversations/` | 会话索引、当前详情、提交前状态以及发送、编辑、重新生成、索引同步（标题与后台 Run 状态）等副作用编排。 |
 | `src/runs/` | 临时 Run 状态、单流消费、取消和进入会话时的恢复。它不拥有服务端已物化消息。 |
 | `src/files/` | 未发送附件的浏览器状态、直传、轮询和草稿恢复。持久上传状态仍由服务端拥有。 |
 | `src/messages/` | 已物化消息、临时流式回复、Markdown、来源和分享快照的展示。 |
@@ -136,7 +136,9 @@ UTF-16 区间先校验版本与 hash，再用真实 Markdown DOM Range 和 CSS C
 2. 新会话使用原子 `createWithMessage`，已有会话使用 `sendMessage`。服务端返回真实 user message
    与 Run 后，前端再建立 `activeRun` 并开始流式消费。回复引用只能走已有会话端点；pending
    submission 携带同一 DTO 快照，因此 quote-only user turn 在乐观态、服务端接管和失败恢复间
-   不会闪空或串用。
+   不会闪空或串用。提交成功后派发 `conversations/runStarted`：会话立即置顶并带 `active_run`；
+   无标题的会话进入 `pendingTitleIds`，侧栏显示骨架占位。服务端在提交时即按用户消息投递标题
+   任务，不等待回复。
 3. `useRunStream` 是唯一 stream owner；同一时间最多消费一条流，新 start 会中止旧 consumer。
 4. SSE 按 `after_seq` 续读。事件 dispatch 前必须确认 run id 仍是当前 active Run，防止迟到事件
    写入另一会话。
@@ -148,7 +150,12 @@ UTF-16 区间先校验版本与 hash，再用真实 Markdown DOM Range 和 CSS C
 ### 终态与恢复
 
 - `run_succeeded` 后重新拉取会话详情与第一页索引，以服务端物化消息替换临时回复，然后清理
-  active Run。标题尚未写回时仅标记 pending，由独立轮询刷新。
+  active Run。第一页索引经 `conversations/listSynced` 合并，保留本地更新的行与第一页之外的行。
+- 任何终态后派发 `conversations/runFinished`：清除行的 `active_run`，非当前会话则加入
+  `unreadIds`（侧栏蓝点），进入会话后清除。
+- `useConversationListSync` 是唯一的索引轮询：有 pending 标题时每 1s（单个标题 20s 超时），
+  否则有非本地消费的 `active_run` 时每 3s，其余情况不轮询。列表行的 `active_run` 消失即视为后台
+  Run 结束。详见 `docs/handover/frontend/2026-10-17-sidebar-run-status.md`。
 - `run_failed` 与 `run_cancelled` 保留已接收的 partial 正文和终态提示；刷新恢复时再以服务端
   draft 重建，不伪造 assistant message。
 - cancel 只发送取消请求并等待 SSE terminal；本地流继续消费。取消请求失败时回退 stopping

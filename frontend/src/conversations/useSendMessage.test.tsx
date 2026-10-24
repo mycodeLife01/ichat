@@ -74,6 +74,12 @@ describe("useSendMessage", () => {
     expect(sendMessage).not.toHaveBeenCalled();
     expect(result.current.conversationIndex.selectedId).toBe("77");
     expect(result.current.conversationIndex.draftId).toBe("77");
+    // The sidebar row appears at once, running, with its title still pending.
+    expect(result.current.conversationIndex.items[0]).toMatchObject({
+      id: "77",
+      active_run: { id: sendMessageResponse.run.id, status: sendMessageResponse.run.status },
+    });
+    expect(result.current.conversationIndex.pendingTitleIds).toEqual(["77"]);
     expect(selectionStore.read()).toBe("77");
     expect(start).toHaveBeenCalledWith(sendMessageResponse.run.id, "77", 0);
     await waitFor(() =>

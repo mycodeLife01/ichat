@@ -6,7 +6,7 @@ from app.core.config import Settings
 from app.services.agents.registry import resolve_provider as default_resolve_provider
 
 TITLE_SYSTEM_PROMPT = (
-    "你是 iChat 的对话标题生成器。请根据用户首条消息和助手首条回复，"
+    "你是 iChat 的对话标题生成器。请根据用户首条消息（及其附件元数据），"
     "生成一个简短标题。标题语言跟随用户消息。只输出标题文本，不要引号、"
     "不要句末标点、不要添加“标题：”前缀。中文不超过 16 个汉字，英文不超过 32 个字符。"
 )
@@ -36,14 +36,12 @@ class TitleAgent:
         self,
         *,
         user_content: str,
-        assistant_content: str,
         attachment_metadata: str | None = None,
     ) -> str | None:
         raw_title = self.provider.generate(
             model=self.model,
             messages=_title_messages(
                 user_content=user_content,
-                assistant_content=assistant_content,
                 attachment_metadata=attachment_metadata,
             ),
             max_output_tokens=self.max_output_tokens,
@@ -68,7 +66,6 @@ def build_title_agent(
 def _title_messages(
     *,
     user_content: str,
-    assistant_content: str,
     attachment_metadata: str | None = None,
 ) -> list[Message]:
     return [
@@ -77,9 +74,7 @@ def _title_messages(
             "用户首条消息：\n"
             f"{user_content}\n\n"
             "附件元数据（仅文件名、格式和大小；不含正文）：\n"
-            f"{attachment_metadata or '无'}\n\n"
-            "助手首条回复：\n"
-            f"{assistant_content}"
+            f"{attachment_metadata or '无'}"
         ),
     ]
 

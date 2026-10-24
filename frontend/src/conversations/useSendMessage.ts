@@ -70,6 +70,13 @@ export function useSendMessage(
           });
           dispatch({ type: "conversations/selected", id: convo.id });
           dispatch({ type: "conversations/draftCreated", id: convo.id });
+          // The sidebar row appears now, spinning, and its title fills in async.
+          dispatch({
+            type: "conversations/runStarted",
+            conversation: convo,
+            run: { id: run.id, status: run.status },
+            updatedAt: message.created_at,
+          });
           dispatch({
             type: "run/started",
             runId: run.id,
@@ -96,6 +103,20 @@ export function useSendMessage(
               );
         onCommitted?.(message.id, clientSubmissionId);
         dispatch({ type: "conversations/messageAppended", message, imageContext });
+        const current = stateRef.current;
+        const conversation =
+          current.conversationIndex.items.find((c) => c.id === targetId) ??
+          (current.conversationDetail.conversation?.id === targetId
+            ? current.conversationDetail.conversation
+            : null);
+        if (conversation) {
+          dispatch({
+            type: "conversations/runStarted",
+            conversation,
+            run: { id: run.id, status: run.status },
+            updatedAt: message.created_at,
+          });
+        }
         dispatch({
           type: "run/started",
           runId: run.id,

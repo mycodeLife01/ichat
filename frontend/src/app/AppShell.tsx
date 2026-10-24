@@ -1,17 +1,17 @@
 import { ConversationSearch } from "../search/ConversationSearch";
 import { SearchRevealContext, revealSearchResult } from "../search/revealSearchResult";
 import type { SearchItem } from "../search/types";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { Sidebar } from "../conversations/Sidebar";
+import { Sidebar, type ConversationRowStatus } from "../conversations/Sidebar";
 import { ThreadActions } from "../conversations/ThreadActions";
 import { useConversationLoader } from "../conversations/useConversationLoader";
 import { useQuickShare } from "../conversations/useQuickShare";
 import { useRegenerate } from "../conversations/useRegenerate";
 import { useSendMessage } from "../conversations/useSendMessage";
 import { replyQuoteDraftStore } from "../conversations/replyQuoteDraftStore";
-import { useTitlePolling } from "../conversations/useTitlePolling";
+import { useConversationListSync } from "../conversations/useConversationListSync";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
 import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
@@ -171,7 +171,7 @@ export function AppShell() {
   const send = useSendMessage(start, registerCommittedSubmission);
   const { editAndRegenerate, regenerate } = useRegenerate(start);
   const recover = useRunRecovery(start);
-  const pollTitle = useTitlePolling();
+  useConversationListSync();
   const quickShare = useQuickShare();
   const pendingTitleIds = conversationIndex.pendingTitleIds;
   const restoreComposerContent = useCallback((content: string) => {
@@ -556,13 +556,29 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newConversation]);
 
-  // Drive the auto-title poll loop for any conversation marked pending (e.g. by
-  // useRunStream after a draft's first run succeeds). pollTitle dedups per id.
-  useEffect(() => {
-    for (const id of pendingTitleIds) {
-      void pollTitle(id);
+  // Running wins over unread: the server's view, the local stream, and a send
+  // still in flight all count as running.
+  const unreadIds = conversationIndex.unreadIds;
+  const rowStatus = useMemo(() => {
+    const status: Record<string, ConversationRowStatus> = {};
+    for (const id of unreadIds) status[id] = "unread";
+    for (const item of items) {
+      if (item.active_run) status[item.id] = "running";
     }
-  }, [pendingTitleIds, pollTitle]);
+    if (
+      activeRun &&
+      (activeRun.status === "queued" ||
+        activeRun.status === "started" ||
+        activeRun.status === "streaming" ||
+        activeRun.status === "cancelling")
+    ) {
+      status[activeRun.conversationId] = "running";
+    }
+    if (pendingSubmission?.conversationId) {
+      status[pendingSubmission.conversationId] = "running";
+    }
+    return status;
+  }, [items, unreadIds, activeRun, pendingSubmission]);
 
   const messages = detail.messages;
   const visiblePendingSubmission =
@@ -661,6 +677,7 @@ export function AppShell() {
         collapsed={sidebarCollapsed && !isMobile}
         mobileOpen={ui.mobileSidebarOpen}
         pendingTitleIds={pendingTitleIds}
+        rowStatus={rowStatus}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onSelect={onSelectConversation}
@@ -725,6 +742,7 @@ export function AppShell() {
           <ThreadActions
             isMobile={isMobile}
             hasConversation={selectedId != null}
+            historyBadge={unreadIds.length > 0}
             onOpenMobileSidebar={() => dispatch({ type: "ui/setMobileSidebar", open: true })}
             onNew={onNewConversation}
             onShare={() => {

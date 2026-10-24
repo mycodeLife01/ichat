@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ConversationResponse } from "../api/types";
 
 import {
   conversationDetailResponse,
@@ -224,5 +225,131 @@ describe("conversation slices - streaming additions", () => {
     });
     const reset = conversationIndexReducer(pending, { type: "app/reset" });
     expect(reset.pendingTitleIds).toEqual([]);
+  });
+});
+
+describe("conversation run status", () => {
+  const convo = (id: string, extra: Partial<ConversationResponse> = {}): ConversationResponse => ({
+    ...conversationResponse,
+    id,
+    title: `Title ${id}`,
+    updated_at: "2026-10-01T00:00:00Z",
+    ...extra,
+  });
+  const run = { id: "run-1", status: "queued" as const };
+
+  it("inserts a new untitled conversation at the top, running and title-pending", () => {
+    const base = { ...initialConversationIndexState, items: [convo("a")] };
+    const next = conversationIndexReducer(base, {
+      type: "conversations/runStarted",
+      conversation: convo("b", { title: null }),
+      run,
+      updatedAt: "2026-10-02T00:00:00Z",
+    });
+    expect(next.items.map((c) => c.id)).toEqual(["b", "a"]);
+    expect(next.items[0].active_run).toEqual(run);
+    expect(next.items[0].updated_at).toBe("2026-10-02T00:00:00Z");
+    expect(next.pendingTitleIds).toEqual(["b"]);
+  });
+
+  it("moves an existing conversation to the top without marking its title pending", () => {
+    const base = { ...initialConversationIndexState, items: [convo("a"), convo("b")] };
+    const next = conversationIndexReducer(base, {
+      type: "conversations/runStarted",
+      conversation: convo("b"),
+      run,
+      updatedAt: "2026-10-02T00:00:00Z",
+    });
+    expect(next.items.map((c) => c.id)).toEqual(["b", "a"]);
+    expect(next.pendingTitleIds).toEqual([]);
+  });
+
+  it("marks a finished run unread only when its conversation is not open", () => {
+    const base = {
+      ...initialConversationIndexState,
+      selectedId: "a",
+      items: [
+        convo("a", { active_run: run }),
+        convo("b", { active_run: { ...run, id: "run-2" } }),
+      ],
+    };
+    const afterOpen = conversationIndexReducer(base, {
+      type: "conversations/runFinished",
+      id: "a",
+    });
+    expect(afterOpen.items[0].active_run).toBeNull();
+    expect(afterOpen.unreadIds).toEqual([]);
+
+    const afterBackground = conversationIndexReducer(afterOpen, {
+      type: "conversations/runFinished",
+      id: "b",
+    });
+    expect(afterBackground.unreadIds).toEqual(["b"]);
+
+    const entered = conversationIndexReducer(afterBackground, {
+      type: "conversations/selected",
+      id: "b",
+    });
+    expect(entered.unreadIds).toEqual([]);
+  });
+
+  it("marks unread when a synced list shows a background run gone", () => {
+    const base = {
+      ...initialConversationIndexState,
+      selectedId: "a",
+      items: [convo("a"), convo("b", { active_run: run })],
+    };
+    const next = conversationIndexReducer(base, {
+      type: "conversations/listSynced",
+      items: [convo("a"), convo("b")],
+    });
+    expect(next.items[1].active_run).toBeFalsy();
+    expect(next.unreadIds).toEqual(["b"]);
+  });
+
+  it("keeps rows beyond the first page and newer local rows when syncing", () => {
+    const base = {
+      ...initialConversationIndexState,
+      hasMore: true,
+      items: [
+        convo("a", { updated_at: "2026-10-03T00:00:00Z", active_run: run }),
+        convo("old"),
+      ],
+    };
+    const next = conversationIndexReducer(base, {
+      type: "conversations/listSynced",
+      items: [convo("a", { updated_at: "2026-10-02T00:00:00Z" })],
+    });
+    expect(next.items.map((c) => c.id)).toEqual(["a", "old"]);
+    expect(next.items[0].active_run).toEqual(run);
+    expect(next.hasMore).toBe(true);
+    expect(next.unreadIds).toEqual([]);
+  });
+
+  it("resolves a pending title once the synced row has one and syncs detail", () => {
+    const index = conversationIndexReducer(
+      {
+        ...initialConversationIndexState,
+        items: [convo("a", { title: null })],
+        pendingTitleIds: ["a"],
+      },
+      { type: "conversations/listSynced", items: [convo("a", { title: "Backend Plan" })] },
+    );
+    expect(index.items[0].title).toBe("Backend Plan");
+    expect(index.pendingTitleIds).toEqual([]);
+
+    const detail = conversationDetailReducer(
+      { ...initialConversationDetailState, conversation: convo("a", { title: null }) },
+      { type: "conversations/listSynced", items: [convo("a", { title: "Backend Plan" })] },
+    );
+    expect(detail.conversation?.title).toBe("Backend Plan");
+  });
+
+  it("drops a removed conversation from unread", () => {
+    const next = conversationIndexReducer(
+      { ...initialConversationIndexState, items: [convo("a")], unreadIds: ["a"] },
+      { type: "conversations/removed", id: "a" },
+    );
+    expect(next.unreadIds).toEqual([]);
   });
 });

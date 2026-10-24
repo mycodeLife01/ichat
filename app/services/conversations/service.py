@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 from fastapi import status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.agent.messages import Message as AgentMessage
 from app.core.config import Settings, get_settings
@@ -17,8 +18,10 @@ from app.models.run import Run
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
 from app.schemas.conversations import (
+    ConversationActiveRunResponse,
     ConversationCreateWithMessageResponse,
     ConversationDetailResponse,
+    ConversationListItemResponse,
     ConversationResponse,
     ImageContextResponse,
     MessageResponse,
@@ -261,7 +264,7 @@ async def list_conversations(
     user: User,
     limit: int | None = None,
     skip: int = 0,
-) -> list[ConversationResponse]:
+) -> list[ConversationListItemResponse]:
     statement = (
         select(Conversation)
         .where(
@@ -278,7 +281,36 @@ async def list_conversations(
     conversations = (
         await session.scalars(statement)
     ).all()
-    return [conversation_response(conversation) for conversation in conversations]
+    active_runs = await _active_runs_by_conversation(
+        session,
+        conversation_ids=[conversation.id for conversation in conversations],
+    )
+    return [
+        ConversationListItemResponse(
+            **conversation_response(conversation).model_dump(),
+            active_run=active_runs.get(conversation.id),
+        )
+        for conversation in conversations
+    ]
+
+
+async def _active_runs_by_conversation(
+    session: AsyncSession,
+    *,
+    conversation_ids: list[int],
+) -> dict[int, ConversationActiveRunResponse]:
+    if not conversation_ids:
+        return {}
+    rows = await session.execute(
+        select(Run.conversation_id, Run.public_id, Run.status).where(
+            Run.conversation_id.in_(conversation_ids),
+            Run.status.in_(ACTIVE_RUN_STATUSES),
+        )
+    )
+    return {
+        conversation_id: ConversationActiveRunResponse(id=public_id, status=run_status)
+        for conversation_id, public_id, run_status in rows.all()
+    }
 
 
 async def get_conversation_detail(
@@ -617,7 +649,16 @@ async def _submit_user_message_to_conversation(
         message_id=message.id,
         count_tokens=token_counter,
     )
-    conversation.updated_at = await get_database_now(session)
+    now = await get_database_now(session)
+    # A conversation joins the sidebar as soon as its first message is accepted,
+    # not when the first reply materializes.
+    if conversation.activated_at is None:
+        conversation.activated_at = now
+    conversation.updated_at = now
+    # In the creating transaction now() equals the inserted updated_at, so the
+    # assignment is not a net change; without the flag the UPDATE would fall back
+    # to onupdate and expire updated_at for the response below.
+    flag_modified(conversation, "updated_at")
     await session.flush()
 
     attachment_map = await attachment_responses(session, message_ids=[message.id])

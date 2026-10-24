@@ -36,6 +36,10 @@ export type SidebarUser = {
   avatarUrl?: string | null;
 };
 
+// Per-conversation run status shown at the row's trailing edge: a spinner
+// while a run is in flight, a dot once a background run finishes unseen.
+export type ConversationRowStatus = "running" | "unread";
+
 type SidebarProps = {
   items: ConversationResponse[];
   selectedId: string | null;
@@ -44,6 +48,7 @@ type SidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
   pendingTitleIds: string[];
+  rowStatus?: Record<string, ConversationRowStatus>;
   hasMore: boolean;
   isLoadingMore: boolean;
   onSelect: (id: string) => void;
@@ -94,6 +99,7 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   pendingTitleIds,
+  rowStatus,
   hasMore,
   isLoadingMore,
   onSelect,
@@ -254,6 +260,7 @@ export function Sidebar({
     const isRenaming = renameId === c.id;
     const menuOpen = menu?.conversationId === c.id;
     const active = selectedId === c.id;
+    const status = rowStatus?.[c.id];
     const rowActions: Record<
       RowActionKey,
       {
@@ -359,7 +366,30 @@ export function Sidebar({
             ) : (
               <span className="block truncate">{c.title || "新对话"}</span>
             )}
+            {status && (
+              <span className="sr-only">
+                {status === "running" ? "，正在生成" : "，有新回复"}
+              </span>
+            )}
           </button>
+        )}
+        {/* Desktop: the indicator shares the hidden action button's slot and
+            yields to it on hover/focus, so the row never reflows. Mobile keeps
+            the action button visible and adds a fixed-width slot before it. */}
+        {!isRenaming && status && (
+          <span
+            className={`pointer-events-none inline-flex shrink-0 items-center justify-center transition-opacity duration-[120ms] ${
+              isMobile
+                ? "-mr-1.5 h-11 w-4"
+                : `absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 group-hover/row:opacity-0 group-focus-within/row:opacity-0 ${
+                    menuOpen ? "opacity-0" : ""
+                  }`
+            }`}
+            data-row-status={status}
+            aria-hidden="true"
+          >
+            <RowStatusMark status={status} />
+          </span>
         )}
         {!isRenaming && (
           <button
@@ -456,6 +486,7 @@ export function Sidebar({
   );
 
   const railCollapsed = collapsed && !isMobile;
+  const hasUnread = Object.values(rowStatus ?? {}).includes("unread");
 
   return (
     <>
@@ -585,8 +616,8 @@ export function Sidebar({
             {onSearch && <button className={`${railIconControl} h-9 w-9`} aria-label="搜索对话" title="搜索对话" onClick={onSearch}><Search size={20} strokeWidth={1.6} /></button>}
             <button
               ref={recentTriggerRef}
-              className={`${railIconControl} h-9 w-9`}
-              aria-label="最近聊天"
+              className={`${railIconControl} relative h-9 w-9`}
+              aria-label={hasUnread ? "最近聊天，有新回复" : "最近聊天"}
               aria-haspopup="true"
               aria-expanded={recent !== null}
               onClick={(event) => {
@@ -595,6 +626,7 @@ export function Sidebar({
               }}
             >
               <Icons.Chats size={20} />
+              {hasUnread && <UnreadBadge />}
             </button>
             </div>
           )}
@@ -630,5 +662,29 @@ export function Sidebar({
         />
       )}
     </>
+  );
+}
+
+function RowStatusMark({ status }: { status: ConversationRowStatus }) {
+  return status === "running" ? (
+    <Icons.Loading
+      size={14}
+      strokeWidth={2}
+      className="animate-spin text-text-muted motion-reduce:animate-none"
+      // Slower than animate-spin's 1s so several running rows read as calm.
+      style={{ animationDuration: "1.5s" }}
+    />
+  ) : (
+    <span className="h-2 w-2 rounded-full bg-[var(--color-unread-indicator)]" />
+  );
+}
+
+// Corner dot for entry points that hide the history list (rail, mobile menu).
+export function UnreadBadge() {
+  return (
+    <span
+      className="pointer-events-none absolute top-1.5 right-1.5 h-[7px] w-[7px] rounded-full bg-[var(--color-unread-indicator)] ring-2 ring-sidebar"
+      aria-hidden="true"
+    />
   );
 }

@@ -55,7 +55,12 @@ def _clean_test_data(session: Session) -> None:
     session.execute(delete(User).where(User.email.like(f"%@{TEST_EMAIL_DOMAIN}")))
 
 
-def _seed_succeeded_turn(factory: sessionmaker[Session], *, title: str | None = None) -> int:
+def _seed_succeeded_turn(
+    factory: sessionmaker[Session],
+    *,
+    title: str | None = None,
+    run_status: str = "succeeded",
+) -> int:
     suffix = uuid4().hex
     with factory() as session:
         user = User(
@@ -85,22 +90,23 @@ def _seed_succeeded_turn(factory: sessionmaker[Session], *, title: str | None = 
         run = Run(
             conversation_id=conversation.id,
             user_message_id=user_message.id,
-            status="succeeded",
+            status=run_status,
             provider_name="fake",
             provider_model="fake-model",
         )
         session.add(run)
         session.flush()
         user_message.run_id = run.id
-        session.add(
-            Message(
-                conversation_id=conversation.id,
-                run_id=run.id,
-                role="assistant",
-                content="Start with the state machine",
-                position=2,
+        if run_status == "succeeded":
+            session.add(
+                Message(
+                    conversation_id=conversation.id,
+                    run_id=run.id,
+                    role="assistant",
+                    content="Start with the state machine",
+                    position=2,
+                )
             )
-        )
         session.add(
             ConversationTitleJob(
                 run_id=run.id,
@@ -156,13 +162,8 @@ def test_generate_conversation_title_updates_null_title(
         run = session.get(Run, run_id)
         assert run is not None
         user_message = session.get(Message, run.user_message_id)
-        assistant = session.scalar(
-            select(Message).where(Message.run_id == run_id, Message.role == "assistant")
-        )
-        assert user_message is not None and assistant is not None
-        archived_at = datetime.now(UTC)
-        user_message.archived_at = archived_at
-        assistant.archived_at = archived_at
+        assert user_message is not None
+        user_message.archived_at = datetime.now(UTC)
         session.commit()
 
     class FakeTitleAgent:
@@ -170,11 +171,9 @@ def test_generate_conversation_title_updates_null_title(
             self,
             *,
             user_content: str,
-            assistant_content: str,
             attachment_metadata: str | None = None,
         ) -> str:
             assert user_content == "Plan a backend"
-            assert assistant_content == "Start with the state machine"
             assert attachment_metadata is None
             return "Backend Plan"
 
@@ -192,6 +191,31 @@ def test_generate_conversation_title_updates_null_title(
         job = session.get(ConversationTitleJob, run_id)
         assert job is not None
         assert job.status == "completed"
+
+
+@pytest.mark.parametrize("run_status", ["queued", "streaming", "failed"])
+def test_generate_conversation_title_does_not_wait_for_reply(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    run_status: str,
+) -> None:
+    run_id = _seed_succeeded_turn(session_factory, run_status=run_status)
+
+    class FakeTitleAgent:
+        def generate(self, *, user_content: str, attachment_metadata: str | None = None) -> str:
+            assert user_content == "Plan a backend"
+            return "Backend Plan"
+
+    monkeypatch.setattr("app.tasks.llm_tasks.get_sync_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.tasks.llm_tasks.build_title_agent", lambda **kwargs: FakeTitleAgent())
+
+    assert generate_conversation_title.run(run_id) == "updated"
+    with session_factory() as session:
+        run = session.get(Run, run_id)
+        assert run is not None
+        conversation = session.get(Conversation, run.conversation_id)
+        assert conversation is not None
+        assert conversation.title == "Backend Plan"
 
 
 def test_generate_conversation_title_skips_manual_title(
@@ -235,7 +259,7 @@ def test_title_inputs_include_only_attachment_safe_metadata(
     assert "document body" not in (inputs.attachment_metadata or "")
 
 
-def test_generate_conversation_title_skips_when_success_is_not_first(
+def test_generate_conversation_title_skips_run_without_title_job(
     session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first_run_id = _seed_succeeded_turn(session_factory)
@@ -278,10 +302,9 @@ def test_generate_conversation_title_retries_provider_failure(
             self,
             *,
             user_content: str,
-            assistant_content: str,
             attachment_metadata: str | None = None,
         ) -> str:
-            del user_content, assistant_content, attachment_metadata
+            del user_content, attachment_metadata
             raise ProviderError(code="summary_failed", message="boom")
 
     retry_call: dict[str, object] = {}

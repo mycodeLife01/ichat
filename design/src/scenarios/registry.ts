@@ -46,6 +46,14 @@ export const scenes: Scene[] = [
   ),
   scene(
     "聊天工作台",
+    "run-status",
+    "侧栏 · 运行状态",
+    "/c/design-chat",
+    "conversations/Sidebar.tsx",
+    "run-status",
+  ),
+  scene(
+    "聊天工作台",
     "unverified",
     "邮箱未验证",
     "/c/design-chat",
