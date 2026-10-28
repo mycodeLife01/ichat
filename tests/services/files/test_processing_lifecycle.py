@@ -21,6 +21,7 @@ from app.models.files import (
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
+    FileOrigin,
     FilePurpose,
     FileQuota,
     FileStorageLocation,
@@ -91,6 +92,7 @@ def _seed_queued_upload(
     *,
     content: bytes = b"document body",
     now: datetime,
+    origin: FileOrigin = FileOrigin.UPLOAD,
 ) -> tuple[int, str]:
     with factory() as session:
         suffix = uuid4().hex
@@ -121,6 +123,7 @@ def _seed_queued_upload(
             status=FileUploadStatus.QUEUED,
             available_at=now,
             expires_at=now + timedelta(minutes=30),
+            origin=origin,
         )
         session.add(upload)
         session.add(FileQuota(user_id=user.id, reserved_bytes=len(content)))
@@ -180,6 +183,70 @@ def test_processing_success_commits_asset_manifest_and_quota_atomically(
         }
         assert len(storage.canonical) == 1
         assert storage.promoted_originals
+
+
+def test_pasted_text_asset_keeps_origin_and_card_stats(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    long_line = "x" * 200
+    _, upload_id = _seed_queued_upload(
+        session_factory,
+        storage,
+        content=f"\n  {long_line}  \nsecond\r\nthird".encode(),
+        now=now,
+        origin=FileOrigin.PASTE,
+    )
+
+    result = process_upload(
+        session_factory,
+        upload_id=upload_id,
+        settings=file_settings,
+        storage=storage,
+        scanner=FakeMalwareScanner(),
+        parser=DirectFileParser(),
+        task_id="worker-1",
+        now=now,
+    )
+
+    assert result == "succeeded"
+    with session_factory() as session:
+        upload = session.scalar(select(FileUpload).where(FileUpload.public_id == upload_id))
+        assert upload is not None and upload.file_id is not None
+        asset = session.get(FileAsset, upload.file_id)
+        assert asset is not None
+        assert asset.origin == FileOrigin.PASTE
+        assert asset.summary_metadata["line_count"] == 4
+        assert asset.summary_metadata["first_line"] == "x" * 120
+
+
+def test_uploaded_text_asset_has_no_paste_stats(
+    session_factory: sessionmaker[Session], file_settings: Settings
+) -> None:
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    storage = FakeFileStorage()
+    _, upload_id = _seed_queued_upload(session_factory, storage, now=now)
+
+    process_upload(
+        session_factory,
+        upload_id=upload_id,
+        settings=file_settings,
+        storage=storage,
+        scanner=FakeMalwareScanner(),
+        parser=DirectFileParser(),
+        task_id="worker-1",
+        now=now,
+    )
+
+    with session_factory() as session:
+        upload = session.scalar(select(FileUpload).where(FileUpload.public_id == upload_id))
+        assert upload is not None and upload.file_id is not None
+        asset = session.get(FileAsset, upload.file_id)
+        assert asset is not None
+        assert asset.origin == FileOrigin.UPLOAD
+        assert "line_count" not in asset.summary_metadata
+        assert "first_line" not in asset.summary_metadata
 
 
 def test_pre_cutover_document_extract_manifest_remains_retry_compatible(

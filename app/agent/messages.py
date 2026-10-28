@@ -86,6 +86,8 @@ class DocumentBlock:
     extractor_version: str
     warnings: tuple[str, ...] = ()
     summary: dict[str, Any] | None = None
+    # "paste" when the attachment came from a long paste in the composer.
+    origin: str = "upload"
 
 
 @dataclass(frozen=True)

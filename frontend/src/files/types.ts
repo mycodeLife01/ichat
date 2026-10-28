@@ -7,6 +7,9 @@ export type FileCategory =
   | "code"
   | (string & {});
 
+/** `paste` marks a text attachment created from a long composer paste. */
+export type AttachmentOrigin = "upload" | "paste";
+
 export type FileUploadStatus =
   | "pending"
   | "queued"
@@ -24,6 +27,8 @@ export type FileAttachment = {
   size_bytes: number;
   category: FileCategory;
   model_input_kind: "document" | "image" | null;
+  /** Absent on payloads from before attachment origins existed. */
+  origin?: AttachmentOrigin;
   position?: number;
   /** The API contract uses `warning`; `warnings` is accepted for old payloads. */
   warning?: string[];
@@ -52,6 +57,8 @@ export type SharedAttachmentPlaceholder = {
   preview_available?: boolean;
   /** Absent on snapshots minted before public attachment reads existed. */
   ref?: string;
+  /** Absent on snapshots minted before attachment origins existed. */
+  origin?: AttachmentOrigin;
   position?: number;
   stats?: Record<string, number | string>;
 };
@@ -118,6 +125,7 @@ export type DraftAttachment = {
   size_bytes: number;
   category: FileCategory;
   model_input_kind?: "document" | "image" | null;
+  origin?: AttachmentOrigin;
   /** Whole-percent byte progress of the storage PUT; in memory only. */
   progress?: number;
   /** Ephemeral object URL for an image selected in this browser tab. */

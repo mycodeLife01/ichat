@@ -156,6 +156,7 @@ export function createFakeFilesApi(overrides: Partial<FilesApi> = {}): FilesApi 
       url: "https://downloads.example.test/file",
       expires_at: "2026-08-01T10:05:00Z",
     }),
+    readText: async () => ({ text: "pasted text" }),
     ...overrides,
   };
 }
@@ -175,6 +176,7 @@ export function createFakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi 
       url: "https://cdn.example.com/shared-preview.png",
       expires_at: "2026-08-14T10:05:00Z",
     }),
+    readAttachmentText: async () => ({ text: "shared pasted text" }),
     ...overrides,
   };
 }

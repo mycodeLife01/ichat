@@ -19,6 +19,7 @@ from app.models.files import (
     FileModelInputKind,
     FileObject,
     FileObjectRole,
+    FileOrigin,
     FilePurpose,
     FileStorageLocation,
     MessageAttachment,
@@ -30,6 +31,7 @@ from app.services.shares.service import (
     create_share,
     get_public_share,
     get_public_share_attachment_read_url,
+    get_public_share_attachment_text,
     guard_public_read_rate_limit,
     revoke_share,
 )
@@ -743,3 +745,105 @@ async def test_read_rate_limit_throttles_per_token_and_fails_closed() -> None:
             settings=settings,
         )
     assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+
+async def _bound_pasted_attachment(
+    session: AsyncSession,
+    user: User,
+    conversation: Conversation,
+) -> FileAsset:
+    asset = FileAsset(
+        user_id=user.id,
+        purpose=FilePurpose.MESSAGE_ATTACHMENT,
+        original_filename="pasted-text-1.txt",
+        media_type="text/plain",
+        size_bytes=17,
+        sha256="d" * 64,
+        document_text="first line\nsecond",
+        model_input_kind=FileModelInputKind.DOCUMENT,
+        summary_metadata={"text_bytes": 17, "line_count": 2, "first_line": "first line"},
+        origin=FileOrigin.PASTE,
+        bound_at=datetime.now(UTC),
+    )
+    session.add(asset)
+    await session.flush()
+    user_message = await session.scalar(
+        select(Message).where(
+            Message.conversation_id == conversation.id,
+            Message.role == "user",
+        )
+    )
+    assert user_message is not None
+    session.add(
+        MessageAttachment(
+            message_id=user_message.id,
+            file_id=asset.id,
+            position=0,
+            name=asset.original_filename,
+            media_type=asset.media_type,
+            size_bytes=asset.size_bytes,
+            origin=FileOrigin.PASTE,
+        )
+    )
+    await session.flush()
+    return asset
+
+
+async def test_pasted_attachment_shares_origin_card_stats_and_text(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        await _bound_pasted_attachment(session, user, conversation)
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+            confirm_attachment_privacy=True,
+        )
+        await session.commit()
+
+        public = await get_public_share(session, token=created.token)
+        attachment = public.messages[0].attachments[0]
+        assert attachment.origin == "paste"
+        # Card stats pass through for pastes; other derived metadata stays out.
+        assert attachment.stats == {"line_count": 2, "first_line": "first line"}
+
+        text = await get_public_share_attachment_text(
+            session, token=created.token, ref="0-0"
+        )
+        assert text.text == "first line\nsecond"
+
+        await revoke_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            token=created.token,
+        )
+        await session.commit()
+        with pytest.raises(AppError) as excinfo:
+            await get_public_share_attachment_text(session, token=created.token, ref="0-0")
+        assert excinfo.value.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_shared_text_is_not_served_for_uploaded_files(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user, conversation = await _seed(session)
+        await _bound_image_attachment(session, user, conversation)
+        created = await create_share(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            expires_in_days=None,
+            confirm_attachment_privacy=True,
+        )
+        await session.commit()
+
+        public = await get_public_share(session, token=created.token)
+        assert public.messages[0].attachments[0].origin == "upload"
+        with pytest.raises(AppError) as excinfo:
+            await get_public_share_attachment_text(session, token=created.token, ref="0-0")
+        assert excinfo.value.status_code == status.HTTP_404_NOT_FOUND

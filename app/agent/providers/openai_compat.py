@@ -527,6 +527,8 @@ def _document_to_text(block: DocumentBlock) -> str:
         "warnings": list(block.warnings),
         "summary": block.summary,
     }
+    if block.origin == "paste":
+        metadata["origin"] = "paste"
     return (
         "\n\n[BEGIN UNTRUSTED ATTACHMENT]\n"
         f"metadata={json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))}\n"

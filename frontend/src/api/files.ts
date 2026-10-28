@@ -1,5 +1,6 @@
 import { getDefaultApiClient, type ApiClient } from "./client";
 import type {
+  AttachmentOrigin,
   FileReadRole,
   FileReadUrl,
   FileUploadRecord,
@@ -11,6 +12,7 @@ export type CreateFileUploadRequest = {
   content_type: string;
   size_bytes: number;
   multipart_supported?: boolean;
+  origin?: AttachmentOrigin;
 };
 
 export type UploadConfirmation =
@@ -59,6 +61,13 @@ export function createFilesApi(client?: FilesClient) {
       return resolveClient().request<FileReadUrl>(`/files/${fileId}/read-url`, {
         method: "POST",
         body: { role },
+      });
+    },
+    // Full text of a pasted-text attachment, read from the server's extracted
+    // text because storage objects are not readable cross-origin.
+    readText(fileId: string): Promise<{ text: string }> {
+      return resolveClient().request<{ text: string }>(`/files/${fileId}/text`, {
+        method: "POST",
       });
     },
   };

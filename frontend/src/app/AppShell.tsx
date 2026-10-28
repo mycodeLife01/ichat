@@ -15,6 +15,15 @@ import { replyQuoteDraftStore } from "../conversations/replyQuoteDraftStore";
 import { useConversationListSync } from "../conversations/useConversationListSync";
 import { useConversationMarkers } from "../conversations/useConversationMarkers";
 import { useAttachmentUploads } from "../files/useAttachmentUploads";
+import {
+  countChars,
+  createPastedTextFile,
+  formatCount,
+  MESSAGE_CHAR_LIMIT,
+  PastedTextActionsContext,
+  PastedTextReaderContext,
+  shouldConvertPaste,
+} from "../files/pastedText";
 import type { FileAttachment, FilesCapability } from "../files/types";
 import { MessageThread } from "../messages/MessageThread";
 import {
@@ -102,6 +111,8 @@ export function AppShell() {
 
   const isMobile = useIsMobile();
   const [composerValue, setComposerValue] = useState("");
+  const composerValueRef = useRef(composerValue);
+  composerValueRef.current = composerValue;
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const [fileCapability, setFileCapability] = useState<FilesCapability>();
   const sentImagePreviewUrlsRef = useRef(new Map<string, string>());
@@ -183,6 +194,10 @@ export function AppShell() {
   const restoreComposerContent = useCallback((content: string) => {
     setComposerValue(content);
   }, []);
+  const readPastedText = useCallback(
+    (fileId: string) => services.filesApi.readText(fileId).then(({ text }) => text),
+    [services.filesApi],
+  );
   const attachmentUploads = useAttachmentUploads({
     userId: user?.id ?? null,
     conversationId: selectedId,
@@ -635,8 +650,11 @@ export function AppShell() {
     (visionMutationBlocked ? "This conversation requires a compatible vision model." : null);
   const readyImagesAllowed =
     !attachmentUploads.hasReadyImageAttachment || selectedModel?.supports_image_input === true;
+  const composerOverLimit = countChars(composerValue) > MESSAGE_CHAR_LIMIT;
   const sendDisabledReason =
-    attachmentUploads.hasPendingAttachments
+    composerOverLimit
+      ? `Messages can be at most ${formatCount(MESSAGE_CHAR_LIMIT)} characters. Convert the text to an attachment to send it.`
+      : attachmentUploads.hasPendingAttachments
       ? "Wait until every attachment is ready before sending."
       : attachmentUploads.hasFailedAttachments
         ? "Remove or retry failed attachments before sending."
@@ -655,12 +673,56 @@ export function AppShell() {
     (attachmentUploads.hasModelConsumableAttachment && readyImagesAllowed)
   );
 
+  // A large paste becomes a text attachment through the regular upload path.
+  // When no attachment can be added, text that still fits is pasted inline
+  // instead of being dropped.
+  const onPasteText = (text: string): boolean => {
+    if (!shouldConvertPaste(text)) return false;
+    const { accepted, error } = attachmentUploads.addFiles(
+      [createPastedTextFile(text, attachmentUploads.attachments)],
+      { origin: "paste", quiet: true },
+    );
+    if (accepted > 0) return true;
+    const blocker = error ?? "File uploads are currently unavailable.";
+    if (countChars(composerValue) + countChars(text) <= MESSAGE_CHAR_LIMIT) {
+      dispatch({
+        type: "ui/showToast",
+        message: `${blocker} The text was pasted inline.`,
+        tone: "warning",
+      });
+      return false;
+    }
+    dispatch({
+      type: "ui/showToast",
+      message: `${blocker} The text exceeds the message length limit.`,
+      tone: "error",
+    });
+    return true;
+  };
+  const convertPromptToAttachment = () => {
+    const { accepted } = attachmentUploads.addFiles(
+      [createPastedTextFile(composerValue, attachmentUploads.attachments)],
+      { origin: "paste" },
+    );
+    if (accepted > 0) onComposerValueChange("");
+  };
+  const pastedTextActions = {
+    promptChars: countChars(composerValue),
+    onExpand: (clientId: string, text: string) => {
+      void attachmentUploads.cancelAttachment(clientId).then(() => {
+        onComposerValueChange(composerValueRef.current ? `${composerValueRef.current}\n\n${text}` : text);
+        composerInputRef.current?.focus();
+      });
+    },
+  };
+
   const confirmTarget =
     ui.confirmDialog?.kind === "deleteConversation"
       ? ui.confirmDialog.conversationId
       : null;
 
   return (
+    <PastedTextReaderContext.Provider value={readPastedText}>
     <div className="app flex h-full bg-bg">
       {searchEnabled && <ConversationSearch key={user?.id ?? "anonymous"} open={searchOpen} onClose={() => setSearchOpen(false)}
         search={services.conversationApi.search} onChoose={chooseSearchResult}
@@ -902,6 +964,7 @@ export function AppShell() {
                   我们先从哪里开始呢？
                 </h1>
               </div>
+              <PastedTextActionsContext.Provider value={pastedTextActions}>
               <Composer
                 value={composerValue}
                 onChange={onComposerValueChange}
@@ -941,7 +1004,10 @@ export function AppShell() {
                 sendDisabledReason={sendDisabledReason}
                 readOnly={visionMutationBlocked}
                 isMobile={isMobile}
+                onPasteText={onPasteText}
+                charLimit={{ limit: MESSAGE_CHAR_LIMIT, onConvert: convertPromptToAttachment }}
               />
+              </PastedTextActionsContext.Provider>
             </div>
             <div
               className={`min-h-0 shrink basis-0 [.composer-animate_&]:[transition:flex-grow_520ms_cubic-bezier(0.4,0,0.2,1)] ${showWelcome ? "grow" : "grow-0"}`}
@@ -985,5 +1051,6 @@ export function AppShell() {
 
       <Toast toast={ui.toast} onDismiss={dismissToast} />
     </div>
+    </PastedTextReaderContext.Provider>
   );
 }

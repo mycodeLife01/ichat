@@ -712,6 +712,57 @@ describe("Composer", () => {
     expect(onSelectFiles).not.toHaveBeenCalled();
   });
 
+  it("offers plain-text pastes to onPasteText and consumes the ones it accepts", () => {
+    const onPasteText = vi.fn(() => true);
+    renderComposer({ onPasteText });
+    const textbox = screen.getByRole("textbox");
+
+    const pasteAccepted = fireEvent.paste(textbox, {
+      clipboardData: { items: [], getData: () => "long text" },
+    });
+
+    expect(onPasteText).toHaveBeenCalledWith("long text");
+    expect(pasteAccepted).toBe(false);
+  });
+
+  it("skips paste conversion for the plain-paste shortcut", () => {
+    const onPasteText = vi.fn(() => true);
+    renderComposer({ onPasteText });
+    const textbox = screen.getByRole("textbox");
+
+    fireEvent.keyDown(textbox, { key: "V", metaKey: true, shiftKey: true });
+    const pasteAccepted = fireEvent.paste(textbox, {
+      clipboardData: { items: [], getData: () => "long text" },
+    });
+
+    expect(onPasteText).not.toHaveBeenCalled();
+    expect(pasteAccepted).toBe(true);
+  });
+
+  it("shows the character counter near the limit and converts an over-limit prompt", async () => {
+    const onConvert = vi.fn();
+    const { rerender } = renderComposer({
+      value: "x".repeat(15_999),
+      charLimit: { limit: 20_000, onConvert },
+    });
+    expect(screen.queryByText(/20,000/)).not.toBeInTheDocument();
+
+    const props = {
+      value: "x".repeat(20_001),
+      onChange: noop,
+      onSend: noop,
+      onStop: noop,
+      state: "idle" as const,
+      thinkingLevel: "low" as const,
+      onThinkingLevelChange: noop,
+      charLimit: { limit: 20_000, onConvert },
+    };
+    rerender(<Composer {...props} />);
+    expect(screen.getByText("20,001 / 20,000")).toHaveClass("text-error-foreground");
+    await userEvent.click(screen.getByRole("button", { name: "转为附件" }));
+    expect(onConvert).toHaveBeenCalledTimes(1);
+  });
+
   it("does not intercept clipboard images when file uploads are unavailable", () => {
     const onSelectFiles = vi.fn();
     renderComposer({ fileCapability: FILES, fileUploadAllowed: false, onSelectFiles });

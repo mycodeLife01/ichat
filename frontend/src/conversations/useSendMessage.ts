@@ -137,7 +137,9 @@ export function useSendMessage(
               ? "This conversation requires a compatible vision model."
               : code === "LEGACY_IMAGE_CONTEXT"
                 ? "Upgrade the original image message with a vision model first."
-                : null;
+                : error instanceof ApiError && error.status === 413
+                  ? "The attachments are too large for one message. Remove some text or files and try again."
+                  : null;
         if (recoveryMessage) {
           dispatch({ type: "ui/showToast", message: recoveryMessage, tone: "error" });
           return false;

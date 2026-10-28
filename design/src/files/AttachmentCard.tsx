@@ -28,6 +28,8 @@ import {
   warningLabel,
 } from "./utils";
 import type { DraftAttachment, FileAttachment, SharedAttachmentPlaceholder } from "./types";
+import { pastedText, usePastedTextActions } from "./pastedText";
+import { PastedTextCard } from "./PastedTextCard";
 
 type AttachmentDisplay = FileAttachment | SharedAttachmentPlaceholder | DraftAttachment;
 type ReadUrlResolver = (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
@@ -194,7 +196,21 @@ function AttachmentTypeIcon({
   return <FileText className="text-search-foreground" size={24} />;
 }
 
-export function AttachmentCard({
+// Pages that provide PastedTextContext show pasted text as its own card;
+// everywhere else every attachment keeps the file card.
+export function AttachmentCard(props: AttachmentCardProps) {
+  const pasted = usePastedTextActions();
+  const { attachment } = props;
+  const id = "client_id" in attachment ? attachment.client_id : "id" in attachment ? attachment.id : null;
+  const text = pasted ? pastedText(id) : undefined;
+  return text !== undefined ? (
+    <PastedTextCard {...props} text={text} />
+  ) : (
+    <FileAttachmentCard {...props} />
+  );
+}
+
+function FileAttachmentCard({
   attachment,
   mode = "message",
   getReadUrl,

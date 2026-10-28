@@ -207,10 +207,11 @@
       "implementation": "available",
       "checks": {
         "render": "tests/visual/scenes.spec.ts",
-        "paired": null
+        "paired": "tests/parity/pages.spec.ts"
       },
       "evidence": [
-        "output/visual-report.json"
+        "output/visual-report.json",
+        "output/parity-report.json"
       ]
     },
     {
@@ -309,6 +310,58 @@
         "390x844"
       ],
       "initial": "attachments",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "long-paste",
+      "name": "长文本粘贴转附件",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/Composer.tsx",
+      "design": "src/ui/Composer.tsx",
+      "scene": "long-paste",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=long-paste&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "long-paste",
+      "outcome": "success",
+      "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
+      "implementation": "available",
+      "checks": {
+        "render": "tests/visual/scenes.spec.ts",
+        "paired": null
+      },
+      "evidence": [
+        "output/visual-report.json"
+      ]
+    },
+    {
+      "id": "over-limit",
+      "name": "输入超出字数上限",
+      "group": "聊天工作台",
+      "sourceCommit": "7d01cfa6b542f98ee67d8a54a437748a60f4c190",
+      "source": "frontend/src/ui/Composer.tsx",
+      "design": "src/ui/Composer.tsx",
+      "scene": "over-limit",
+      "route": "/c/design-chat",
+      "entry": "/canvas.html?scene=over-limit&proposal=current",
+      "viewports": [
+        "1440x900",
+        "390x844"
+      ],
+      "initial": "over-limit",
       "outcome": "success",
       "simulation": "保留当前产品布局与本地交互。账号、消息、上传、邮件和管理操作使用本地示例结果；重置可恢复初态。",
       "implementation": "available",

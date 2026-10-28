@@ -28,6 +28,7 @@ import {
   warningLabel,
 } from "./utils";
 import type { DraftAttachment, FileAttachment, SharedAttachmentPlaceholder } from "./types";
+import { PastedTextCard } from "./PastedTextCard";
 
 type AttachmentDisplay = FileAttachment | SharedAttachmentPlaceholder | DraftAttachment;
 type ReadUrlResolver = (fileId: string, role: FileReadRole) => Promise<{ url: string }>;
@@ -273,7 +274,26 @@ function AttachmentTypeIcon({
   return <FileText className="text-search-foreground" size={24} />;
 }
 
-export function AttachmentCard({
+// Pasted text renders its own card; old payloads without `origin` stay files.
+export function AttachmentCard(props: AttachmentCardProps) {
+  const { attachment } = props;
+  const draft = isDraftAttachment(attachment) ? attachment : null;
+  const origin = draft ? (draft.origin ?? draft.file?.origin) : attachment.origin;
+  if (origin === "paste") {
+    return (
+      <PastedTextCard
+        attachment={attachment}
+        mode={props.mode}
+        readHandle={readHandle(draft ? draft.file : (attachment as FileAttachment | SharedAttachmentPlaceholder))}
+        onCancel={props.onCancel}
+        onRetry={props.onRetry}
+      />
+    );
+  }
+  return <FileAttachmentCard {...props} />;
+}
+
+function FileAttachmentCard({
   attachment,
   mode = "message",
   getReadUrl,

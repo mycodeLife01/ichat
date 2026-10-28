@@ -4,7 +4,15 @@ import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { DesignProvider, useDesignActions } from "../runtime/context";
 import { createResults } from "../runtime/results";
 import { getScene } from "../scenarios/registry";
-import { conversations as makeConversations, user } from "../scenarios/data";
+import {
+  conversations as makeConversations,
+  message,
+  pastedAttachment,
+  pastedLogSample,
+  pastedSentId,
+  user,
+} from "../scenarios/data";
+import { registerPastedText } from "../files/pastedText";
 import { AuthScreen } from "../auth/AuthScreen";
 import { VerifyEmailPage } from "../auth/VerifyEmailPage";
 import { ResetPasswordPage } from "../auth/ResetPasswordPage";
@@ -33,6 +41,34 @@ function Canvas() {
   const [conversations, setConversations] = useState(() => {
     const items = makeConversations(scene.id === "long");
     if (scene.initial === "sidebar-empty") return [];
+    // The long-paste scene adds an earlier turn whose prompt was a pasted
+    // log, so the sent-message card is visible next to the draft one.
+    if (scene.initial === "long-paste") {
+      const sent = pastedLogSample.split("\n").slice(0, 60).join("\n");
+      registerPastedText(pastedSentId, sent);
+      return items.map((c) =>
+        c.id === "design-chat"
+          ? {
+              ...c,
+              messages: [
+                ...c.messages,
+                {
+                  ...message("pasted-user", "user", "这段日志里的 ERROR 是什么原因？", 90),
+                  attachments: [
+                    pastedAttachment(pastedSentId, 1, new Blob([sent]).size),
+                  ],
+                },
+                message(
+                  "pasted-assistant",
+                  "assistant",
+                  "这些 ERROR 都是 `/v1/runs` 上游在第 3 次尝试后超时（30 秒）。同一时段 worker 持续在退避重试领取任务，说明上游响应变慢，而不是队列本身出错。建议先查看上游延迟，再决定是否调整超时。",
+                  91,
+                ),
+              ],
+            }
+          : c,
+      );
+    }
     // The run-status scene opens with design-2's reply still generating in the
     // background, so only its user message exists yet.
     if (scene.initial === "pin-favorite") {

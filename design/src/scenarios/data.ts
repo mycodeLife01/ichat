@@ -424,3 +424,31 @@ export const denseCatalog: ModelAdminCatalog = {
     }),
   ],
 };
+
+// Synthetic service log used by the long-paste scenes; long enough to cross
+// the paste-conversion threshold, all values invented.
+export const pastedLogSample = Array.from({ length: 140 }, (_, i) => {
+  const minute = String(10 + Math.floor(i / 6)).padStart(2, "0");
+  const second = String((i * 7) % 60).padStart(2, "0");
+  const level = i % 9 === 4 ? "ERROR" : i % 5 === 2 ? "WARN " : "INFO ";
+  const detail =
+    level === "ERROR"
+      ? "upstream timeout after 30000ms route=/v1/runs attempt=3"
+      : level === "WARN "
+        ? "retrying claim lease=run-queue backoff=1.5s"
+        : `request completed status=200 duration=${40 + ((i * 13) % 160)}ms`;
+  return `2026-10-27T09:${minute}:${second}Z ${level} worker-${(i % 3) + 1} ${detail}`;
+}).join("\n");
+export const pastedSentId = "pasted-sent-sample";
+export const pastedDraftId = "pasted-draft-sample";
+export function pastedAttachment(id: string, index: number, size: number): FileAttachment {
+  return {
+    id,
+    name: `pasted-text-${index}.txt`,
+    media_type: "text/plain",
+    size_bytes: size,
+    category: "text",
+    model_input_kind: "document",
+    preview_available: false,
+  };
+}

@@ -68,6 +68,13 @@ export function createShareApi(client?: Pick<ApiClient, "request">) {
         },
       );
     },
+    // Full text of a shared pasted-text attachment; anonymous like readAttachment.
+    readAttachmentText(token: string, ref: string): Promise<{ text: string }> {
+      return resolveClient().request<{ text: string }>(
+        `/share/${token}/attachments/${encodeURIComponent(ref)}/text`,
+        { method: "POST", auth: false, retryOnUnauthorized: false },
+      );
+    },
   };
 }
 

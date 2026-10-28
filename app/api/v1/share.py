@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
-from app.schemas.files import FileReadUrlResponse, ShareAttachmentReadRequest
+from app.schemas.files import FileReadUrlResponse, FileTextResponse, ShareAttachmentReadRequest
 from app.schemas.responses import SuccessResponse
 from app.schemas.shares import PublicShareResponse
 from app.services.auth import rate_limit
@@ -18,6 +18,7 @@ from app.services.files.protocols import FileStorage
 from app.services.shares.service import (
     get_public_share,
     get_public_share_attachment_read_url,
+    get_public_share_attachment_text,
     guard_public_read_rate_limit,
 )
 
@@ -72,4 +73,30 @@ async def create_public_share_attachment_read_url_route(
             settings=settings,
             preview_storage=preview_storage,
         )
+    )
+
+
+@router.post(
+    "/{token}/attachments/{ref}/text",
+    response_model=SuccessResponse[FileTextResponse],
+)
+async def read_public_share_attachment_text_route(
+    token: str,
+    ref: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(rate_limit.get_redis)],
+) -> SuccessResponse[FileTextResponse]:
+    # Same capability and throttle as the preview read URL; only pasted text is
+    # served inline, so the body never leaves the database for other files.
+    await guard_public_read_rate_limit(
+        redis,
+        token=token,
+        role="preview",
+        client_ip=rate_limit.client_ip_from_request(request),
+        settings=settings,
+    )
+    return SuccessResponse(
+        data=await get_public_share_attachment_text(session, token=token, ref=ref)
     )

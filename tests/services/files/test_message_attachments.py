@@ -16,7 +16,13 @@ from app.agent.messages import DocumentBlock
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.models.conversation import Conversation, Message
-from app.models.files import FileAsset, FileModelInputKind, FilePurpose, MessageAttachment
+from app.models.files import (
+    FileAsset,
+    FileModelInputKind,
+    FileOrigin,
+    FilePurpose,
+    MessageAttachment,
+)
 from app.models.run import Run, RunProviderMessage
 from app.models.user import User
 from app.services.conversations.service import (
@@ -102,6 +108,7 @@ async def _asset(
     size_bytes: int = 16,
     text: str | None = "full document text",
     now: datetime,
+    origin: FileOrigin = FileOrigin.UPLOAD,
 ) -> FileAsset:
     asset = FileAsset(
         user_id=user.id,
@@ -115,6 +122,7 @@ async def _asset(
         extractor_version="files-v1" if text is not None else None,
         summary_metadata={"pages": 1} if text is not None else None,
         unbound_expires_at=now + timedelta(days=1),
+        origin=origin,
     )
     session.add(asset)
     await session.flush()
@@ -243,6 +251,48 @@ async def test_document_only_turn_is_snapshotted_and_history_never_needs_file_st
     assert isinstance(block, DocumentBlock)
     assert block.text == "confidential report body"
     assert block.extractor_version == "files-v1"
+
+
+async def test_pasted_text_binding_keeps_origin_on_attachment_and_transcript(
+    session_factory: async_sessionmaker[AsyncSession], file_settings: Settings
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        user = await _user(session, "pasted")
+        conversation = await _conversation(session, user)
+        asset = await _asset(
+            session,
+            user,
+            name="pasted-text-1.txt",
+            text="pasted body",
+            now=now,
+            origin=FileOrigin.PASTE,
+        )
+
+        result = await submit_user_message(
+            session,
+            user=user,
+            conversation_public_id=conversation.public_id,
+            content="summarize",
+            attachment_ids=[asset.public_id],
+            provider_name="fake",
+            provider_model="fake",
+            settings=file_settings,
+            count_tokens=len,
+        )
+        attachment = await session.scalar(
+            select(MessageAttachment).where(MessageAttachment.file_id == asset.id)
+        )
+        assert attachment is not None
+        assert attachment.origin == FileOrigin.PASTE
+        assert result.message.attachments[0].origin == "paste"
+        run = await session.scalar(select(Run).where(Run.public_id == result.run.id))
+        assert run is not None
+        history = await load_conversation_history(session, run_id=run.id)
+
+    document = history[0].blocks[1]
+    assert isinstance(document, DocumentBlock)
+    assert document.origin == "paste"
 
 
 async def test_display_only_image_requires_text_and_becomes_a_notice_when_sent(

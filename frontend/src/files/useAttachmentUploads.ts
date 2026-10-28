@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { putFileToUpload, type FilesApi, type StoragePut } from "../api/files";
 import { attachmentDraftStore } from "./draftStore";
+import { adoptPastedText, pastedText, rememberPastedText } from "./pastedText";
 import {
   categoryForFileName,
   categoryLimit,
@@ -14,6 +15,7 @@ import {
   isUploadReady,
 } from "./utils";
 import type {
+  AttachmentOrigin,
   DraftAttachment,
   FileUploadRecord,
   FilesCapability,
@@ -41,6 +43,14 @@ type AttachmentUploadOptions = {
   onImagesBlocked?: (files: File[]) => void;
   storagePut?: StoragePut;
 };
+
+type AddFilesOptions = {
+  origin?: AttachmentOrigin;
+  /** Returns the first rejection instead of reporting it through onError. */
+  quiet?: boolean;
+};
+
+type AddFilesResult = { accepted: number; error: string | null };
 
 type DetachedImagePreview = {
   clientId: string;
@@ -80,6 +90,7 @@ function sameAttachment(left: DraftAttachment, right: DraftAttachment): boolean 
     left.media_type === right.media_type &&
     left.size_bytes === right.size_bytes &&
     left.category === right.category &&
+    left.origin === right.origin &&
     left.local_preview_url === right.local_preview_url &&
     left.session_expires_at === right.session_expires_at
   );
@@ -251,6 +262,17 @@ export function useAttachmentUploads({
         if (record.status !== "cancelled") errorRef.current?.(FILE_UPLOAD_FAILURE_MESSAGE);
         return;
       }
+      // The draft may not carry its upload id yet when confirm returns, so
+      // match the caller's client id as well.
+      if (record.file) {
+        const text = pastedText(
+          clientId,
+          ...attachmentsRef.current
+            .filter((attachment) => attachment.upload_id === record.upload_id)
+            .map((attachment) => attachment.client_id),
+        );
+        if (text !== undefined) rememberPastedText(record.file.id, text);
+      }
       commit((current) =>
         current.map((attachment) =>
           attachment.upload_id === record.upload_id
@@ -268,7 +290,7 @@ export function useAttachmentUploads({
   );
 
   const startFile = useCallback(
-    async (file: File): Promise<void> => {
+    async (file: File, origin: AttachmentOrigin = "upload"): Promise<void> => {
       const scopeVersion = scopeVersionRef.current;
       const isCurrentScope = () => scopeVersion === scopeVersionRef.current;
       const clientId = randomId();
@@ -290,9 +312,11 @@ export function useAttachmentUploads({
         size_bytes: file.size,
         category,
         model_input_kind: category === "image" ? "image" : null,
+        origin,
         local_preview_url: localPreviewUrl,
       };
       sourcesRef.current.set(clientId, file);
+      adoptPastedText(file, clientId);
       commit((current) => [...current, initial]);
 
       try {
@@ -300,6 +324,7 @@ export function useAttachmentUploads({
           filename: file.name,
           content_type: file.type || "application/octet-stream",
           size_bytes: file.size,
+          ...(origin === "paste" ? { origin } : {}),
         });
         if (!isCurrentScope()) return;
         commit((current) =>
@@ -361,22 +386,27 @@ export function useAttachmentUploads({
   );
 
   const addFiles = useCallback(
-    (input: FileList | File[]) => {
+    (input: FileList | File[], options: AddFilesOptions = {}): AddFilesResult => {
       const selected = Array.from(input);
-      if (selected.length === 0) return;
+      let firstError: string | null = null;
+      const reject = (message: string) => {
+        firstError ??= message;
+        if (!options.quiet) errorRef.current?.(message);
+      };
+      if (selected.length === 0) return { accepted: 0, error: null };
       if (!capability?.enabled || !canCreate) {
-        errorRef.current?.(
+        reject(
           canCreate
             ? "File uploads are currently unavailable."
             : "Verify your email before uploading files.",
         );
-        return;
+        return { accepted: 0, error: firstError };
       }
 
       const hasImage = selected.some((file) => categoryForFileName(file.name) === "image");
       if (hasImage && selectedModel?.supports_image_input !== true) {
         onImagesBlocked?.(selected);
-        return;
+        return { accepted: 0, error: null };
       }
 
       const allowedExtensions = new Set(capability.allowed_extensions.map((item) => item.toLowerCase()));
@@ -391,27 +421,28 @@ export function useAttachmentUploads({
         // Unlisted or extensionless names are uploaded as plain text under the
         // text limit when the server sniffs and falls back to text itself.
         if (!listed && capability.accepts_unlisted_text !== true) {
-          errorRef.current?.(FILE_TYPE_UNSUPPORTED_MESSAGE);
+          reject(FILE_TYPE_UNSUPPORTED_MESSAGE);
           continue;
         }
         if (existingCount + accepted.length >= maxCount) {
-          errorRef.current?.(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
+          reject(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
           break;
         }
         const limit = categoryLimit(capability.category_max_bytes, file.name);
         if (limit != null && file.size > limit) {
-          errorRef.current?.(FILE_TOO_LARGE_MESSAGE);
+          reject(FILE_TOO_LARGE_MESSAGE);
           continue;
         }
         if (totalSize + file.size > capability.max_message_bytes) {
-          errorRef.current?.(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
+          reject(MESSAGE_ATTACHMENT_LIMIT_MESSAGE);
           continue;
         }
         totalSize += file.size;
         accepted.push(file);
       }
 
-      for (const file of accepted) void startFile(file);
+      for (const file of accepted) void startFile(file, options.origin);
+      return { accepted: accepted.length, error: firstError };
     },
     [canCreate, capability, onImagesBlocked, selectedModel, startFile],
   );
@@ -437,13 +468,14 @@ export function useAttachmentUploads({
   const retryAttachment = useCallback(
     (clientId: string) => {
       const file = sourcesRef.current.get(clientId);
+      const origin = attachmentsRef.current.find((item) => item.client_id === clientId)?.origin;
       if (!file) {
         errorRef.current?.("Please select the file again to retry this upload.");
         return;
       }
       commit((current) => current.filter((item) => item.client_id !== clientId));
       discardLocalAttachment(clientId);
-      void startFile(file);
+      void startFile(file, origin);
     },
     [commit, discardLocalAttachment, startFile],
   );
@@ -543,6 +575,11 @@ export function useAttachmentUploads({
         const records = await filesApi.status(uploadIds);
         if (cancelled) return;
         const byId = new Map(records.map((record) => [record.upload_id, record]));
+        for (const attachment of attachmentsRef.current) {
+          const file = attachment.upload_id ? byId.get(attachment.upload_id)?.file : null;
+          const text = pastedText(attachment.client_id);
+          if (file && text !== undefined) rememberPastedText(file.id, text);
+        }
         const failedUploadIds = new Set(
           records
             .filter(
