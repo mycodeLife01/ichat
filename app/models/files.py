@@ -46,6 +46,13 @@ class FileUploadMethod(StrEnum):
     MULTIPART = "multipart"
 
 
+class FileOrigin(StrEnum):
+    """How the user supplied an attachment; it only affects display and model labeling."""
+
+    UPLOAD = "upload"
+    PASTE = "paste"
+
+
 class FileObjectRole(StrEnum):
     ORIGINAL = "original"
     PREVIEW = "preview"
@@ -75,6 +82,7 @@ class FileUpload(Base):
         CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
         CheckConstraint("purpose IN ('avatar', 'message_attachment')", name="purpose_valid"),
         CheckConstraint("upload_method IN ('single', 'multipart')", name="upload_method_valid"),
+        CheckConstraint("origin IN ('upload', 'paste')", name="origin_valid"),
         CheckConstraint(
             "(upload_method = 'single' AND multipart_upload_id IS NULL "
             "AND multipart_part_size_bytes IS NULL) OR "
@@ -132,6 +140,17 @@ class FileUpload(Base):
         ),
         nullable=False,
         server_default=FileUploadMethod.SINGLE.value,
+    )
+    origin: Mapped[FileOrigin] = mapped_column(
+        SAEnum(
+            FileOrigin,
+            native_enum=False,
+            values_callable=lambda origins: [origin.value for origin in origins],
+            validate_strings=True,
+            length=16,
+        ),
+        nullable=False,
+        server_default=FileOrigin.UPLOAD.value,
     )
     multipart_upload_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     multipart_part_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -191,6 +210,7 @@ class FileAsset(Base):
             "model_input_kind IS NULL OR model_input_kind IN ('document', 'image')",
             name="model_input_kind_valid",
         ),
+        CheckConstraint("origin IN ('upload', 'paste')", name="origin_valid"),
         Index("ix_files_user_purpose", "user_id", "purpose"),
         Index("ix_files_source_message_id", "source_message_id"),
         Index("ix_files_unbound_expires_at", "unbound_expires_at"),
@@ -244,6 +264,17 @@ class FileAsset(Base):
             length=16,
         ),
         nullable=True,
+    )
+    origin: Mapped[FileOrigin] = mapped_column(
+        SAEnum(
+            FileOrigin,
+            native_enum=False,
+            values_callable=lambda origins: [origin.value for origin in origins],
+            validate_strings=True,
+            length=16,
+        ),
+        nullable=False,
+        server_default=FileOrigin.UPLOAD.value,
     )
     unbound_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -329,6 +360,7 @@ class MessageAttachment(Base):
     __table_args__ = (
         CheckConstraint("position >= 0", name="position_non_negative"),
         CheckConstraint("size_bytes >= 0", name="size_non_negative"),
+        CheckConstraint("origin IN ('upload', 'paste')", name="origin_valid"),
         UniqueConstraint("message_id", "position", name="uq_message_attachments_message_position"),
         Index("ix_message_attachments_file_id", "file_id"),
     )
@@ -354,6 +386,17 @@ class MessageAttachment(Base):
         JSONB,
         nullable=False,
         server_default=text("'[]'::jsonb"),
+    )
+    origin: Mapped[FileOrigin] = mapped_column(
+        SAEnum(
+            FileOrigin,
+            native_enum=False,
+            values_callable=lambda origins: [origin.value for origin in origins],
+            validate_strings=True,
+            length=16,
+        ),
+        nullable=False,
+        server_default=FileOrigin.UPLOAD.value,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

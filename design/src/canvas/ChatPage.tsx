@@ -37,8 +37,22 @@ import {
   toolReasoningSegments,
   toolSearchCalls,
   models,
+  pastedAttachment,
+  pastedDraftId,
+  pastedLogSample,
   sources,
 } from "../scenarios/data";
+import {
+  adoptPastedText,
+  countChars,
+  createPastedTextFile,
+  formatCount,
+  MESSAGE_CHAR_LIMIT,
+  pastedText,
+  PastedTextContext,
+  registerPastedText,
+  shouldConvertPaste,
+} from "../files/pastedText";
 import type { Scene } from "../scenarios/registry";
 import type {
   ConversationDetailResponse,
@@ -102,7 +116,18 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
       .run("list", null, { initial: true })
       .finally(() => setListLoading(false));
   }, [scene.initial, services]);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() =>
+    scene.initial === "long-paste"
+      ? "帮我找出这段日志里反复出现的错误，并按影响排序。"
+      : scene.initial === "over-limit"
+        ? Array.from(
+            { length: Math.ceil(20_480 / (pastedLogSample.length + 1)) },
+            () => pastedLogSample,
+          )
+            .join("\n")
+            .slice(0, 20_480)
+        : "",
+  );
   const drafts = useRef(
     new Map<
       string,
@@ -121,8 +146,29 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         }
       : null,
   );
-  const [attachments, setAttachments] = useState<DraftAttachment[]>(() =>
-    scene.initial?.includes("attachment") || scene.initial === "upload-error"
+  const [attachments, setAttachments] = useState<DraftAttachment[]>(() => {
+    if (scene.initial === "long-paste") {
+      registerPastedText(pastedDraftId, pastedLogSample);
+      const file = pastedAttachment(
+        pastedDraftId,
+        2,
+        new Blob([pastedLogSample]).size,
+      );
+      return [
+        {
+          client_id: pastedDraftId,
+          upload_id: pastedDraftId,
+          status: "succeeded",
+          error_code: null,
+          file,
+          name: file.name,
+          media_type: file.media_type,
+          size_bytes: file.size_bytes,
+          category: file.category,
+        },
+      ];
+    }
+    return scene.initial?.includes("attachment") || scene.initial === "upload-error"
       ? [imageAttachment, fileAttachment].map((file, i) => ({
           client_id: `sample-${i}`,
           upload_id: `sample-${i}`,
@@ -135,8 +181,8 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
           category: file.category,
           local_preview_url: i === 0 ? "/assets/landscape.svg" : undefined,
         }))
-      : [],
-  );
+      : [];
+  });
   const [model, setModel] = useState("deepseek");
   const [level, setLevel] = useState<ThinkingLevel>("low");
   const [web, setWeb] = useState(false);
@@ -702,6 +748,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
       count++;
       bytes += file.size;
       const id = `local-${crypto.randomUUID()}`;
+      adoptPastedText(file, id);
       const image = file.type.startsWith("image/");
       const url = services.registerFile(id, file);
       setAttachments((a) => [
@@ -753,6 +800,52 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
       }
     }
   }
+  // A large paste becomes a text attachment that goes
+  // through the regular upload path. When no attachment can be added, text
+  // that still fits is pasted inline instead of being dropped.
+  const pasteCount = useRef(1);
+  const overLimit = countChars(value) > MESSAGE_CHAR_LIMIT;
+  function attachmentBlocker(): string | null {
+    if (!fileCapability.enabled || !user?.email_verified)
+      return "Files can't be attached right now.";
+    if (attachments.length >= fileCapability.max_attachments_per_message)
+      return `You can attach at most ${fileCapability.max_attachments_per_message} files to one message.`;
+    return null;
+  }
+  function attachText(text: string) {
+    pasteCount.current += 1;
+    void addFiles([createPastedTextFile(text, pasteCount.current)]);
+  }
+  function handlePasteText(text: string): boolean {
+    if (!shouldConvertPaste(text)) return false;
+    const blocker = attachmentBlocker();
+    if (!blocker) {
+      attachText(text);
+      return true;
+    }
+    if (countChars(value) + countChars(text) <= MESSAGE_CHAR_LIMIT) {
+      toast(`${blocker} The text was pasted inline.`, "neutral");
+      return false;
+    }
+    toast(`${blocker} The text exceeds the message length limit.`);
+    return true;
+  }
+  function convertPromptToAttachment() {
+    const blocker = attachmentBlocker();
+    if (blocker) {
+      toast(blocker);
+      return;
+    }
+    attachText(value);
+    setValue("");
+  }
+  function expandPastedText(clientId: string) {
+    const text = pastedText(clientId);
+    if (text === undefined) return;
+    setAttachments((a) => a.filter((x) => x.client_id !== clientId));
+    setValue((v) => (v ? `${v}\n\n${text}` : text));
+    inputRef.current?.focus();
+  }
   const accountProps = {
     user: {
       email: user!.email,
@@ -777,6 +870,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
     onToast: toast,
   };
   return (
+    <PastedTextContext.Provider
+      value={{ promptChars: countChars(value), onExpand: expandPastedText }}
+    >
     <div className="app flex h-full bg-bg">
       <ConversationSearch
         open={searchOpen}
@@ -1039,7 +1135,9 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
                 onRevealReplyQuote={quote ? () => reveal(quote) : undefined}
                 inputRef={inputRef}
                 sendDisabledReason={
-                  attachments.some((a) => a.status === "failed")
+                  overLimit
+                    ? `Messages can be at most ${formatCount(MESSAGE_CHAR_LIMIT)} characters. Convert the text to an attachment to send it.`
+                    : attachments.some((a) => a.status === "failed")
                     ? "Remove or retry failed attachments before sending."
                     : attachments.some((a) => a.status !== "succeeded")
                       ? "Wait until every attachment is ready before sending."
@@ -1050,12 +1148,18 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
                 }
                 canSend={
                   !busy &&
+                  !overLimit &&
                   !!(value.trim() || quote || attachments.length) &&
                   attachments.every((a) => a.status === "succeeded") &&
                   (!attachments.some((a) => a.category === "image") ||
                     model === "vision")
                 }
                 isMobile={isMobile}
+                onPasteText={handlePasteText}
+                charLimit={{
+                  limit: MESSAGE_CHAR_LIMIT,
+                  onConvert: convertPromptToAttachment,
+                }}
               />
             </div>
             <div
@@ -1106,6 +1210,7 @@ export function ChatPage({ scene, conversations, onConversations }: Props) {
         />
       )}
     </div>
+    </PastedTextContext.Provider>
   );
 }
 const REASONING_CHUNK = 14;

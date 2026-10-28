@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.files import FileOrigin
 from app.models.user import User
 from app.schemas.files import (
     CancelFileUploadsRequest,
@@ -15,6 +16,7 @@ from app.schemas.files import (
     CreateFileUploadResponse,
     FileReadUrlRequest,
     FileReadUrlResponse,
+    FileTextResponse,
     FileUploadResponse,
     FileUploadStatusRequest,
 )
@@ -36,6 +38,7 @@ from app.services.files.service import (
     get_upload,
     get_uploads,
     issue_read_url,
+    read_pasted_text,
 )
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
@@ -66,6 +69,7 @@ async def create_file_upload_route(
         multipart_supported=body.multipart_supported,
         client_ip=rate_limit.client_ip_from_request(request),
         settings=settings,
+        origin=FileOrigin(body.origin),
     )
     return SuccessResponse(data=result)
 
@@ -187,4 +191,18 @@ async def create_file_read_url_route(
             settings=settings,
             preview_storage=preview_storage,
         )
+    )
+
+
+@router.post(
+    "/{file_id}/text",
+    response_model=SuccessResponse[FileTextResponse],
+)
+async def read_file_text_route(
+    file_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[FileTextResponse]:
+    return SuccessResponse(
+        data=await read_pasted_text(session, user=user, file_public_id=file_id)
     )

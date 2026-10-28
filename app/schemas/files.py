@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 FileCategory = Literal["image", "pdf", "office", "text"]
 FileModelInputKindValue = Literal["document", "image"]
+FileOriginValue = Literal["upload", "paste"]
 FileUploadStatusValue = Literal[
     "pending",
     "queued",
@@ -23,6 +24,15 @@ class CreateFileUploadRequest(BaseModel):
     content_type: str = Field(min_length=1, max_length=127)
     size_bytes: int = Field(gt=0, le=50 * 1024 * 1024)
     multipart_supported: bool = False
+    # Client-declared and display-only: a paste still runs the full file
+    # validation pipeline, so the only server rule is the text-file shape.
+    origin: FileOriginValue = "upload"
+
+    @model_validator(mode="after")
+    def require_text_name_for_paste(self) -> "CreateFileUploadRequest":
+        if self.origin == "paste" and not self.filename.lower().endswith(".txt"):
+            raise ValueError("Pasted text must be uploaded as a .txt file")
+        return self
 
 
 class UploadPart(BaseModel):
@@ -74,6 +84,7 @@ class FileAssetResponse(BaseModel):
     preview_available: bool = False
     unbound_expires_at: datetime | None = None
     stats: dict[str, int | str] = Field(default_factory=dict)
+    origin: FileOriginValue = "upload"
 
 
 class FileUploadResponse(BaseModel):
@@ -119,6 +130,7 @@ class MessageAttachmentResponse(BaseModel):
     preview_available: bool = False
     stats: dict[str, int | str] = Field(default_factory=dict)
     position: int
+    origin: FileOriginValue = "upload"
 
 
 class SharedAttachmentResponse(BaseModel):
@@ -143,7 +155,14 @@ class SharedAttachmentResponse(BaseModel):
     model_input_kind: FileModelInputKindValue | None = None
     preview_available: bool = False
     stats: dict[str, int | str] = Field(default_factory=dict)
+    origin: FileOriginValue = "upload"
 
 
 class ShareAttachmentReadRequest(BaseModel):
     role: Literal["preview", "download"]
+
+
+class FileTextResponse(BaseModel):
+    """Full extracted text of a pasted-text attachment."""
+
+    text: str

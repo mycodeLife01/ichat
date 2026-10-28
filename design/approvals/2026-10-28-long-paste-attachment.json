@@ -1,0 +1,31 @@
+{
+  "proposalId": "long-paste-attachment",
+  "requirement": "docs/specs/2026-10-28-long-paste-attachment.md",
+  "designStatus": "approved",
+  "implementationStatus": "verified",
+  "sceneIds": ["long-paste", "over-limit"],
+  "viewport": [
+    { "width": 1440, "height": 900 },
+    { "width": 390, "height": 844 }
+  ],
+  "sourceCommit": "c3ae1747e241ea687a0695dad752d28f9b9d6ba6",
+  "designCommit": null,
+  "designFingerprint": "695c12d73cd3a7531f09077fc795346b45d3bc833aa8b91fd17c3757adf1bed7",
+  "implementationCommit": null,
+  "evidence": {
+    "comparedCandidates": ["long-paste-attachment"],
+    "chosenTweaks": "pasted-card-width=220px in the composer; sent and shared cards 320px (240px below 760px)",
+    "parity": "pnpm --dir design test:parity: 58 passed",
+    "visual": "pnpm --dir design test:visual: 136 passed",
+    "realChrome": "Built-in browser against the rebuilt local API (migration 20261028_0029) with a local test user on localhost:5173: a 100-line paste became pasted-text-1.txt (220px composer card, input left empty, draft stored metadata with origin paste and no text); the dialog showed only the header with 100 行 · 5,264 字符; a 20,100-character prompt showed the red 20,100 / 20,000 counter, disabled send and 转为附件 turned it into pasted-text-2.txt (first_line stored at 120 characters, no 在输入框中显示 because it would not fit); a 4,510-character paste expanded back into the focused input via 在输入框中显示; the sent message bound origin paste, the model answered from the log, and after reload the 240px/320px card read the text through POST /files/{id}/text; the public share page showed the card from snapshot stats and read the text through POST /share/{token}/attachments/0-0/text."
+  },
+  "scope": "Long pastes (>= 4,000 characters or >= 80 lines) become pasted-text-N.txt attachments with origin paste; 220px composer card with 在输入框中显示; header-only full-text dialog; 320px/240px sent and shared cards; 80% character counter with 转为附件 over the limit; Cmd/Ctrl+Shift+V pastes inline.",
+  "exceptions": [
+    "The ClamAV container had stale signatures locally and was restarted before processing succeeded; this is local environment state, not part of the change.",
+    "Cmd/Ctrl+Shift+V and the inline fallback when attachments are blocked are covered by unit tests, not by the browser run.",
+    "designCommit and implementationCommit stay null until the change is committed."
+  ],
+  "approvedBy": "jackey",
+  "approvedAt": "2026-10-28",
+  "notes": "Promoted to current. The long-paste-attachment proposal entry, its --pasted-card-width tweak, the isProposal gate and the activeProposal tracking were removed; ChatPage always provides PastedTextContext and the composer card is a fixed 220px. The long-paste and over-limit scenes stay."
+}

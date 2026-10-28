@@ -16,7 +16,7 @@ from app.core.errors import AppError
 from app.models.conversation import Conversation, Message, ShareLink
 from app.models.user import User
 from app.schemas.auth import CommandStatusResponse
-from app.schemas.files import FileReadUrlResponse
+from app.schemas.files import FileReadUrlResponse, FileTextResponse
 from app.schemas.shares import (
     PublicShareResponse,
     SharedMessage,
@@ -30,7 +30,11 @@ from app.services.conversations.service import (
     get_owned_visible_conversation_for_update,
 )
 from app.services.files.protocols import FileStorage
-from app.services.files.service import attachment_responses, issue_shared_attachment_read_url
+from app.services.files.service import (
+    attachment_responses,
+    issue_shared_attachment_read_url,
+    read_shared_pasted_text,
+)
 
 SHARE_NOT_FOUND_MESSAGE = "Share not found"
 ACTIVE_SHARE_EXISTS_MESSAGE = "Active share already exists"
@@ -42,6 +46,9 @@ _TOKEN_NBYTES = 32
 # Only geometry is copied into a snapshot: it is what the public page needs to
 # lay an image out, and it leaks nothing about derived document content.
 _SNAPSHOT_STAT_KEYS = ("width", "height")
+# Pasted text cards show the first line and line count; the owner chose to
+# share the text itself, so its first line is no more private than the body.
+_PASTE_SNAPSHOT_STAT_KEYS = ("line_count", "first_line")
 
 
 def _active_share_filter(now: datetime) -> ColumnElement[bool]:
@@ -155,6 +162,9 @@ def _snapshot_attachments(
             # A NULL file_id (reclaimed asset) surfaces as the zero UUID; such
             # an attachment stays a metadata-only placeholder with no read path.
             has_asset = attachment.id != UUID(int=0)
+            stat_keys: tuple[str, ...] = _SNAPSHOT_STAT_KEYS
+            if attachment.origin == "paste":
+                stat_keys += _PASTE_SNAPSHOT_STAT_KEYS
             entry: dict[str, Any] = {
                 "name": attachment.name,
                 "media_type": attachment.media_type,
@@ -167,9 +177,11 @@ def _snapshot_attachments(
                 "stats": {
                     key: value
                     for key, value in attachment.stats.items()
-                    if key in _SNAPSHOT_STAT_KEYS
+                    if key in stat_keys
                 },
             }
+            if attachment.origin == "paste":
+                entry["origin"] = "paste"
             if has_asset:
                 entry["ref"] = f"{message_index}-{attachment.position}"
                 entry["file_id"] = str(attachment.id)
@@ -444,22 +456,17 @@ def _snapshot_attachment_file_id(snapshot: dict[str, Any], ref: str) -> UUID | N
     return None
 
 
-async def get_public_share_attachment_read_url(
+async def _resolve_share_attachment(
     session: AsyncSession,
-    storage: FileStorage,
     *,
     token: str,
     ref: str,
-    role: str,
-    settings: Settings,
-    preview_storage: FileStorage | None = None,
-) -> FileReadUrlResponse:
-    """Exchange a share token plus attachment ref for a short-lived read URL.
+) -> tuple[UUID, int]:
+    """Map a live share token plus attachment ref to ``(file id, owner id)``.
 
-    The snapshot is the authorization proof, so this is the second anonymous
-    path after ``get_public_share``. Revocation, expiry, conversation deletion,
-    owner deactivation and asset deletion all revoke it; snapshots minted before
-    attachment reads existed carry no ``file_id`` and stay unreadable.
+    Revocation, expiry, conversation deletion and owner deactivation all raise
+    a 404; snapshots minted before attachment reads existed carry no
+    ``file_id`` and stay unreadable.
     """
     row = (
         await session.execute(
@@ -486,6 +493,27 @@ async def get_public_share_attachment_read_url(
     file_public_id = _snapshot_attachment_file_id(share.snapshot or {}, ref)
     if file_public_id is None:
         raise AppError(status.HTTP_404_NOT_FOUND, ATTACHMENT_NOT_FOUND_MESSAGE)
+    return file_public_id, owner_user_id
+
+
+async def get_public_share_attachment_read_url(
+    session: AsyncSession,
+    storage: FileStorage,
+    *,
+    token: str,
+    ref: str,
+    role: str,
+    settings: Settings,
+    preview_storage: FileStorage | None = None,
+) -> FileReadUrlResponse:
+    """Exchange a share token plus attachment ref for a short-lived read URL.
+
+    The snapshot is the authorization proof, so this is the second anonymous
+    path after ``get_public_share``.
+    """
+    file_public_id, owner_user_id = await _resolve_share_attachment(
+        session, token=token, ref=ref
+    )
     return await issue_shared_attachment_read_url(
         session,
         storage,
@@ -494,4 +522,19 @@ async def get_public_share_attachment_read_url(
         role=role,
         settings=settings,
         preview_storage=preview_storage,
+    )
+
+
+async def get_public_share_attachment_text(
+    session: AsyncSession,
+    *,
+    token: str,
+    ref: str,
+) -> FileTextResponse:
+    """Return a shared pasted-text attachment's full text."""
+    file_public_id, owner_user_id = await _resolve_share_attachment(
+        session, token=token, ref=ref
+    )
+    return await read_shared_pasted_text(
+        session, file_public_id=file_public_id, owner_user_id=owner_user_id
     )

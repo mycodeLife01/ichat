@@ -629,3 +629,23 @@ async def test_public_attachment_read_route_is_anonymous_and_rate_limited(
     assert second.headers["Retry-After"]
 
     await redis.aclose()
+
+
+async def test_public_attachment_text_route_shares_the_read_throttle(
+    app: FastAPI,
+    client: AsyncClient,
+) -> None:
+    redis = aioredis.FakeRedis(decode_responses=True)
+    throttled = get_settings().model_copy(
+        update={"share_read_ip_limit": 1, "share_read_ip_window_seconds": 60}
+    )
+    app.dependency_overrides[rate_limit.get_redis] = lambda: redis
+    app.dependency_overrides[get_settings] = lambda: throttled
+
+    first = await client.post(f"/api/v1/share/{uuid.uuid4().hex}/attachments/0-0/text")
+    assert first.status_code == status.HTTP_404_NOT_FOUND
+
+    second = await client.post(f"/api/v1/share/{uuid.uuid4().hex}/attachments/0-0/text")
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+    await redis.aclose()

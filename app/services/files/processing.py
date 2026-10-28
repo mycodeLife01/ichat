@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -16,6 +17,7 @@ from app.models.files import (
     FileObject,
     FileObjectDeletion,
     FileObjectRole,
+    FileOrigin,
     FilePurpose,
     FileQuota,
     FileStorageLocation,
@@ -237,6 +239,20 @@ def process_upload(
     return result
 
 
+PASTED_FIRST_LINE_MAX_CHARS = 120
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def pasted_text_stats(text: str) -> dict[str, int | str]:
+    """Card stats for pasted text, matching the client's line counting."""
+    lines = _LINE_BREAK.split(text) if text else []
+    first_line = next((line.strip() for line in lines if line.strip()), "")
+    return {
+        "line_count": len(lines),
+        "first_line": first_line[:PASTED_FIRST_LINE_MAX_CHARS],
+    }
+
+
 def _build_manifest(processed: ProcessedFile) -> list[dict[str, Any]]:
     return [
         {
@@ -377,6 +393,10 @@ def _commit_success(
             return "cancelled"
 
         extracted = processed.document_extract
+        document_text = extracted.content.decode("utf-8") if extracted is not None else None
+        summary_metadata = dict(processed.metadata)
+        if upload.origin == FileOrigin.PASTE and document_text is not None:
+            summary_metadata.update(pasted_text_stats(document_text))
         file = FileAsset(
             user_id=upload.user_id,
             purpose=upload.purpose,
@@ -386,7 +406,8 @@ def _commit_success(
             sha256=source_hash,
             warnings=list(processed.warnings),
             extractor_version=processed.extractor_version,
-            summary_metadata=dict(processed.metadata),
+            summary_metadata=summary_metadata,
+            origin=upload.origin,
             model_input_kind=(
                 FileModelInputKind.DOCUMENT
                 if processed.kind == "document"
@@ -402,9 +423,7 @@ def _commit_success(
                     else None
                 )
             ),
-            document_text=(
-                extracted.content.decode("utf-8") if extracted is not None else None
-            ),
+            document_text=document_text,
             unbound_expires_at=now + timedelta(seconds=settings.files_unbound_ttl_seconds),
         )
         session.add(file)

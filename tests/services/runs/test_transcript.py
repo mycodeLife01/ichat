@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent.messages import (
+    DocumentBlock,
     ImageBlock,
     Message,
     ProviderContinuationBlock,
@@ -219,6 +220,33 @@ def test_reasoning_and_provider_continuation_blocks_round_trip_without_loss() ->
         },
     ]
     assert _deserialize_blocks(raw) == blocks
+
+
+def _document(origin: str = "upload") -> DocumentBlock:
+    return DocumentBlock(
+        file_id="doc-1",
+        filename="pasted-text-1.txt",
+        media_type="text/plain",
+        text="body",
+        sha256="b" * 64,
+        extractor_version="text-v1",
+        origin=origin,
+    )
+
+
+def test_document_origin_is_recorded_only_for_pastes() -> None:
+    uploaded, pasted = serialize_blocks([_document(), _document("paste")])
+
+    assert "origin" not in uploaded
+    assert pasted["origin"] == "paste"
+    assert _deserialize_blocks([uploaded, pasted]) == [_document(), _document("paste")]
+
+
+def test_document_origin_rejects_unknown_values() -> None:
+    raw = serialize_blocks([_document()])[0] | {"origin": "clipboard"}
+
+    with pytest.raises(ValueError, match="origin"):
+        _deserialize_blocks([raw])
 
 
 def test_legacy_reasoning_block_without_kind_defaults_to_raw() -> None:

@@ -148,6 +148,7 @@ async def prepare_attachment_plan(
                     extractor_version=file.extractor_version or "legacy",
                     warnings=tuple(file.warnings or []),
                     summary=dict(file.summary_metadata or {}),
+                    origin=file.origin.value,
                 )
             )
         elif file.model_input_kind == FileModelInputKind.IMAGE:
@@ -248,6 +249,7 @@ async def bind_attachment_plan(
                 media_type=file.media_type,
                 size_bytes=file.size_bytes,
                 warnings=list(file.warnings or []),
+                origin=file.origin,
             )
         )
         if file.bound_at is None:

@@ -23,6 +23,7 @@ from app.models.files import (
     FileModelInputKind,
     FileObject,
     FileObjectRole,
+    FileOrigin,
     FilePurpose,
     FileQuota,
     FileStorageLocation,
@@ -37,6 +38,7 @@ from app.schemas.files import (
     FileAssetResponse,
     FileModelInputKindValue,
     FileReadUrlResponse,
+    FileTextResponse,
     FileUploadResponse,
     MessageAttachmentResponse,
     UploadPart,
@@ -193,6 +195,7 @@ async def create_upload(
     client_ip: str,
     settings: Settings,
     purpose: FilePurpose = FilePurpose.MESSAGE_ATTACHMENT,
+    origin: FileOrigin = FileOrigin.UPLOAD,
     now: datetime | None = None,
 ) -> CreateFileUploadResponse:
     if not settings.file_upload_enabled:
@@ -257,6 +260,7 @@ async def create_upload(
         multipart_part_size_bytes=(
             settings.files_multipart_part_size_bytes if use_multipart else None
         ),
+        origin=origin,
         status=FileUploadStatus.PENDING,
         available_at=moment,
         expires_at=moment + timedelta(seconds=settings.files_upload_session_ttl_seconds),
@@ -602,6 +606,7 @@ async def asset_response(session: AsyncSession, file: FileAsset) -> FileAssetRes
             for key, value in (file.summary_metadata or {}).items()
             if isinstance(value, int | str)
         },
+        origin=file.origin.value,
     )
 
 
@@ -687,6 +692,7 @@ async def attachment_responses(
                 if file is not None
                 else {},
                 position=attachment.position,
+                origin=attachment.origin.value,
             )
         )
     return result
@@ -763,18 +769,14 @@ async def _sign_file_read_url(
     return FileReadUrlResponse(url=signed.url, expires_at=moment + timedelta(seconds=ttl_seconds))
 
 
-async def issue_read_url(
+async def _owned_readable_file(
     session: AsyncSession,
-    storage: FileStorage,
     *,
     user: User,
     file_public_id: UUID,
-    role: str,
-    settings: Settings,
-    preview_storage: FileStorage | None = None,
-    now: datetime | None = None,
-) -> FileReadUrlResponse:
-    moment = now or datetime.now(UTC)
+    moment: datetime,
+) -> FileAsset:
+    """Resolve an asset the owner may still read, or raise a uniform 404."""
     active_user_id = await session.scalar(
         select(User.id)
         .where(User.id == user.id, User.is_active.is_(True))
@@ -810,7 +812,60 @@ async def issue_read_url(
         )
         if visible is None:
             raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    return file
 
+
+async def _shared_readable_file(
+    session: AsyncSession,
+    *,
+    file_public_id: UUID,
+    owner_user_id: int,
+) -> FileAsset:
+    """Resolve an asset reached through a share snapshot, or raise a uniform 404.
+
+    The share snapshot is the authorization proof, so there is no live-message
+    visibility check: later edits archive rows but must not break an existing
+    share. Asset deletion and owner deactivation still revoke access, and the
+    asset must belong to ``owner_user_id`` so a snapshot can never reach another
+    user's file.
+    """
+    file = await session.scalar(
+        select(FileAsset).where(
+            FileAsset.public_id == file_public_id,
+            FileAsset.user_id == owner_user_id,
+            FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
+            FileAsset.deletion_started_at.is_(None),
+            FileAsset.bound_at.is_not(None),
+        )
+    )
+    if file is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    return file
+
+
+def _pasted_text(file: FileAsset) -> FileTextResponse:
+    # Only pasted text is served inline; every other asset keeps the signed
+    # object-storage read path and looks absent here.
+    if file.origin != FileOrigin.PASTE or not file.document_text:
+        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
+    return FileTextResponse(text=file.document_text)
+
+
+async def issue_read_url(
+    session: AsyncSession,
+    storage: FileStorage,
+    *,
+    user: User,
+    file_public_id: UUID,
+    role: str,
+    settings: Settings,
+    preview_storage: FileStorage | None = None,
+    now: datetime | None = None,
+) -> FileReadUrlResponse:
+    moment = now or datetime.now(UTC)
+    file = await _owned_readable_file(
+        session, user=user, file_public_id=file_public_id, moment=moment
+    )
     return await _sign_file_read_url(
         session,
         storage,
@@ -820,6 +875,23 @@ async def issue_read_url(
         preview_storage=preview_storage,
         moment=moment,
     )
+
+
+async def read_pasted_text(
+    session: AsyncSession,
+    *,
+    user: User,
+    file_public_id: UUID,
+    now: datetime | None = None,
+) -> FileTextResponse:
+    """Return a pasted-text attachment's full text to its owner."""
+    file = await _owned_readable_file(
+        session,
+        user=user,
+        file_public_id=file_public_id,
+        moment=now or datetime.now(UTC),
+    )
+    return _pasted_text(file)
 
 
 async def issue_shared_attachment_read_url(
@@ -833,26 +905,11 @@ async def issue_shared_attachment_read_url(
     preview_storage: FileStorage | None = None,
     now: datetime | None = None,
 ) -> FileReadUrlResponse:
-    """Sign a read URL for an attachment reached through a public share token.
-
-    The share snapshot is the authorization proof, so there is no live-message
-    visibility check: later edits archive rows but must not break an existing
-    share. Asset deletion and owner deactivation still revoke access, and the
-    asset must belong to ``owner_user_id`` so a snapshot can never reach another
-    user's file.
-    """
+    """Sign a read URL for an attachment reached through a public share token."""
     moment = now or datetime.now(UTC)
-    file = await session.scalar(
-        select(FileAsset).where(
-            FileAsset.public_id == file_public_id,
-            FileAsset.user_id == owner_user_id,
-            FileAsset.purpose == FilePurpose.MESSAGE_ATTACHMENT,
-            FileAsset.deletion_started_at.is_(None),
-            FileAsset.bound_at.is_not(None),
-        )
+    file = await _shared_readable_file(
+        session, file_public_id=file_public_id, owner_user_id=owner_user_id
     )
-    if file is None:
-        raise AppError(status.HTTP_404_NOT_FOUND, FILE_NOT_FOUND)
     return await _sign_file_read_url(
         session,
         storage,
@@ -863,6 +920,18 @@ async def issue_shared_attachment_read_url(
         moment=moment,
     )
 
+
+async def read_shared_pasted_text(
+    session: AsyncSession,
+    *,
+    file_public_id: UUID,
+    owner_user_id: int,
+) -> FileTextResponse:
+    """Return a pasted-text attachment's full text through a public share."""
+    file = await _shared_readable_file(
+        session, file_public_id=file_public_id, owner_user_id=owner_user_id
+    )
+    return _pasted_text(file)
 
 
 async def begin_file_deletion(

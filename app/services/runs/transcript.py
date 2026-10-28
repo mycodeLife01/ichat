@@ -84,19 +84,21 @@ def serialize_blocks(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
         if isinstance(block, TextBlock):
             serialized.append({"type": "text", "text": block.text})
         elif isinstance(block, DocumentBlock):
-            serialized.append(
-                {
-                    "type": "document",
-                    "file_id": block.file_id,
-                    "filename": block.filename,
-                    "media_type": block.media_type,
-                    "text": block.text,
-                    "sha256": block.sha256,
-                    "extractor_version": block.extractor_version,
-                    "warnings": list(block.warnings),
-                    "summary": block.summary,
-                }
-            )
+            document: dict[str, Any] = {
+                "type": "document",
+                "file_id": block.file_id,
+                "filename": block.filename,
+                "media_type": block.media_type,
+                "text": block.text,
+                "sha256": block.sha256,
+                "extractor_version": block.extractor_version,
+                "warnings": list(block.warnings),
+                "summary": block.summary,
+            }
+            # Uploads keep the pre-origin shape; only pastes record the field.
+            if block.origin != "upload":
+                document["origin"] = block.origin
+            serialized.append(document)
         elif isinstance(block, ImageBlock):
             serialized.append(
                 {
@@ -181,6 +183,9 @@ def _deserialize_blocks(raw_blocks: object) -> list[ContentBlock]:
             summary = raw.get("summary")
             if summary is not None and not isinstance(summary, dict):
                 raise ValueError("Transcript document summary must be a JSON object")
+            origin = raw.get("origin", "upload")
+            if origin not in ("upload", "paste"):
+                raise ValueError("Transcript document origin is invalid")
             blocks.append(
                 DocumentBlock(
                     file_id=_required_string(raw, "file_id"),
@@ -191,6 +196,7 @@ def _deserialize_blocks(raw_blocks: object) -> list[ContentBlock]:
                     extractor_version=_required_string(raw, "extractor_version"),
                     warnings=tuple(warnings),
                     summary=summary,
+                    origin=origin,
                 )
             )
         elif block_type == "attachment_notice":

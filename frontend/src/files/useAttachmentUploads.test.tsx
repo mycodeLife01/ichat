@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FilesApi, StoragePut } from "../api/files";
 import { attachmentDraftStore } from "./draftStore";
+import { createPastedTextFile, pastedText } from "./pastedText";
 import {
   FILE_TOO_LARGE_MESSAGE,
   FILE_TYPE_UNSUPPORTED_MESSAGE,
@@ -77,6 +78,7 @@ function makeApi(overrides: Partial<FilesApi> = {}): FilesApi {
       url: "https://downloads.example.test/file-1",
       expires_at: "2026-08-01T10:05:00Z",
     })),
+    readText: vi.fn(async () => ({ text: "pasted text" })),
     ...overrides,
   };
 }
@@ -242,6 +244,65 @@ describe("useAttachmentUploads", () => {
 
     expect(status).toHaveBeenCalledTimes(2);
     expect(result.current.readyAttachmentIds).toEqual(["file-1"]);
+  });
+
+  it("uploads pasted text with its origin and keeps the text for the processed file", async () => {
+    const filesApi = makeApi();
+    const storagePut = vi.fn<StoragePut>(async () => ({ ok: true, etag: '"r2-etag"' }));
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        storagePut,
+      }),
+    );
+
+    let outcome: ReturnType<typeof result.current.addFiles> | undefined;
+    act(() => {
+      outcome = result.current.addFiles([createPastedTextFile("hello", [])], { origin: "paste" });
+    });
+
+    expect(outcome).toEqual({ accepted: 1, error: null });
+    await waitFor(() => expect(result.current.readyAttachmentIds).toEqual(["file-1"]));
+    expect(filesApi.createUpload).toHaveBeenCalledWith({
+      filename: "pasted-text-1.txt",
+      content_type: "text/plain",
+      size_bytes: 5,
+      origin: "paste",
+    });
+    expect(result.current.attachments[0].origin).toBe("paste");
+    expect(pastedText("file-1")).toBe("hello");
+    expect(attachmentDraftStore.read(7, "conversation-1").attachments[0]).toMatchObject({
+      origin: "paste",
+    });
+  });
+
+  it("returns the rejection instead of reporting it for quiet adds", () => {
+    const filesApi = makeApi();
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useAttachmentUploads({
+        userId: 7,
+        conversationId: "conversation-1",
+        capability,
+        filesApi,
+        onError,
+      }),
+    );
+
+    let outcome: ReturnType<typeof result.current.addFiles> | undefined;
+    act(() => {
+      outcome = result.current.addFiles([createPastedTextFile("x".repeat(64), [])], {
+        origin: "paste",
+        quiet: true,
+      });
+    });
+
+    expect(outcome).toEqual({ accepted: 0, error: FILE_TOO_LARGE_MESSAGE });
+    expect(onError).not.toHaveBeenCalled();
+    expect(filesApi.createUpload).not.toHaveBeenCalled();
   });
 
   it("blocks unsupported files and enforces the local count limit before creating uploads", () => {

@@ -628,3 +628,26 @@ async def test_stream_sends_reasoning_effort_for_openrouter_gpt5_id() -> None:
 
     assert captured["model"] == "openai/gpt-5.6-luna"
     assert captured["reasoning_effort"] == "high"
+
+
+def test_pasted_document_metadata_carries_origin_only_for_pastes() -> None:
+    from app.agent.providers.openai_compat import _document_to_text
+
+    def document(origin: str) -> DocumentBlock:
+        return DocumentBlock(
+            file_id="doc-1",
+            filename="pasted-text-1.txt",
+            media_type="text/plain",
+            text="pasted body",
+            sha256="b" * 64,
+            extractor_version="text-v1",
+            origin=origin,
+        )
+
+    pasted = _document_to_text(document("paste"))
+    uploaded = _document_to_text(document("upload"))
+
+    assert pasted.startswith("\n\n[BEGIN UNTRUSTED ATTACHMENT]\n")
+    assert '"origin":"paste"' in pasted
+    assert "pasted body\n[END UNTRUSTED ATTACHMENT]" in pasted
+    assert "origin" not in uploaded

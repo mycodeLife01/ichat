@@ -28,6 +28,7 @@ import {
 } from "./classes";
 import { Icons } from "./icons";
 import { ReplyQuote } from "../messages/ReplyQuote";
+import { COUNTER_VISIBLE_RATIO, countChars, formatCount } from "../files/pastedText";
 
 type ComposerState = "idle" | "submitting" | "streaming" | "stopping";
 
@@ -63,6 +64,13 @@ type ComposerProps = {
   sendDisabledReason?: string | null;
   readOnly?: boolean;
   isMobile?: boolean;
+  /**
+   * Offered each plain-text paste (unless the user pressed the plain-paste
+   * shortcut); returns true when it consumed it.
+   */
+  onPasteText?: (text: string) => boolean;
+  /** Shows the character counter near the limit. */
+  charLimit?: { limit: number; onConvert: () => void };
 };
 
 // ChatGPT lets the prompt occupy up to 30% of the viewport before scrolling.
@@ -183,6 +191,8 @@ export function Composer({
   sendDisabledReason = null,
   readOnly = false,
   isMobile = false,
+  onPasteText,
+  charLimit,
 }: ComposerProps) {
   const localInputRef = useRef<HTMLTextAreaElement>(null);
   const ref = inputRef ?? localInputRef;
@@ -190,6 +200,7 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
+  const plainPasteRef = useRef(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -394,15 +405,27 @@ export function Composer({
       event.preventDefault();
       return;
     }
-    if (!canDropFiles) return;
-    const images = Array.from(event.clipboardData.items)
-      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => file !== null);
-    if (images.length === 0) return;
-    event.preventDefault();
-    handleSelectFiles(images);
+    const plainPaste = plainPasteRef.current;
+    plainPasteRef.current = false;
+    if (canDropFiles) {
+      const images = Array.from(event.clipboardData.items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (images.length > 0) {
+        event.preventDefault();
+        handleSelectFiles(images);
+        return;
+      }
+    }
+    if (!onPasteText || plainPaste) return;
+    const text = event.clipboardData.getData("text/plain");
+    if (text && onPasteText(text)) event.preventDefault();
   };
+  const promptChars = charLimit ? countChars(value) : 0;
+  const showCounter =
+    charLimit !== undefined && promptChars >= charLimit.limit * COUNTER_VISIBLE_RATIO;
+  const overLimit = charLimit !== undefined && promptChars > charLimit.limit;
 
   const hasDraggedFiles = (types: readonly string[] | DOMStringList) =>
     Array.from(types).includes("Files");
@@ -575,6 +598,11 @@ export function Composer({
             rows={1}
             style={{ maxHeight: PROMPT_MAX_HEIGHT }}
             onKeyDown={(event) => {
+              // Cmd/Ctrl+Shift+V pastes as plain text, skipping conversion.
+              plainPasteRef.current =
+                event.shiftKey &&
+                (event.metaKey || event.ctrlKey) &&
+                event.key.toLowerCase() === "v";
               if (
                 event.key === "Enter" &&
                 !event.shiftKey &&
@@ -692,6 +720,26 @@ export function Composer({
               promptExpanded ? "row-start-3" : "row-start-2"
             }`}
           >
+            {showCounter && (
+              <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] leading-5 tabular-nums">
+                {overLimit && (
+                  <button
+                    type="button"
+                    className={`${composerPill} border-border bg-transparent text-text-primary hover:bg-hover`}
+                    onClick={charLimit.onConvert}
+                  >
+                    转为附件
+                  </button>
+                )}
+                <span
+                  className={overLimit ? "text-error-foreground" : "text-text-muted"}
+                  aria-live="polite"
+                >
+                  {formatCount(promptChars)}
+                  {isMobile ? "" : ` / ${formatCount(charLimit.limit)}`}
+                </span>
+              </span>
+            )}
             {pickerLabel !== "" && (
               <div className="relative" ref={pickerRef}>
                 <button

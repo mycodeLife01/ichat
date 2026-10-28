@@ -27,6 +27,7 @@ from app.models.files import (
     FileModelInputKind,
     FileObject,
     FileObjectRole,
+    FileOrigin,
     FilePurpose,
     FileStorageLocation,
     FileUpload,
@@ -666,3 +667,103 @@ async def test_read_url_requires_active_account_and_visible_non_deleted_message(
         json={"role": "download"},
     )
     assert inactive.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_paste_origin_requires_a_txt_filename(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "file-paste-name")
+    await verify_user(session_factory, data)
+
+    response = await client.post(
+        "/api/v1/files/uploads",
+        headers=auth_header(data),
+        json={
+            "filename": "pasted.md",
+            "content_type": "text/markdown",
+            "size_bytes": 12,
+            "origin": "paste",
+        },
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_create_records_paste_origin(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "file-paste-origin")
+    await verify_user(session_factory, data)
+
+    response = await client.post(
+        "/api/v1/files/uploads",
+        headers=auth_header(data),
+        json={
+            "filename": "pasted-text-1.txt",
+            "content_type": "text/plain",
+            "size_bytes": 12,
+            "origin": "paste",
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    async with session_factory() as session:
+        upload = await session.scalar(
+            select(FileUpload).where(
+                FileUpload.public_id == UUID(response.json()["data"]["upload_id"])
+            )
+        )
+        assert upload is not None
+        assert upload.origin == FileOrigin.PASTE
+
+
+async def test_text_route_serves_only_owned_pasted_text(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    data = await register(client, "file-text-owner")
+    other = await register(client, "file-text-other")
+    await verify_user(session_factory, data)
+    async with session_factory() as session:
+        user = await session.get(User, data["user"]["id"])
+        assert user is not None
+        assets = {}
+        for origin in (FileOrigin.PASTE, FileOrigin.UPLOAD):
+            asset = FileAsset(
+                user_id=user.id,
+                purpose=FilePurpose.MESSAGE_ATTACHMENT,
+                original_filename="pasted-text-1.txt",
+                media_type="text/plain",
+                size_bytes=11,
+                sha256="c" * 64,
+                document_text="hello\nworld",
+                model_input_kind=FileModelInputKind.DOCUMENT,
+                origin=origin,
+                unbound_expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+            session.add(asset)
+            await session.flush()
+            assets[origin] = str(asset.public_id)
+        await session.commit()
+
+    pasted = await client.post(
+        f"/api/v1/files/{assets[FileOrigin.PASTE]}/text", headers=auth_header(data)
+    )
+    assert pasted.status_code == status.HTTP_200_OK
+    assert pasted.json()["data"] == {"text": "hello\nworld"}
+
+    # Uploaded files keep the signed read-url path and look absent here.
+    uploaded = await client.post(
+        f"/api/v1/files/{assets[FileOrigin.UPLOAD]}/text", headers=auth_header(data)
+    )
+    assert uploaded.status_code == status.HTTP_404_NOT_FOUND
+
+    foreign = await client.post(
+        f"/api/v1/files/{assets[FileOrigin.PASTE]}/text", headers=auth_header(other)
+    )
+    assert foreign.status_code == status.HTTP_404_NOT_FOUND
+
+    anonymous = await client.post(f"/api/v1/files/{assets[FileOrigin.PASTE]}/text")
+    assert anonymous.status_code == status.HTTP_401_UNAUTHORIZED

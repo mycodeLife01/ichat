@@ -21,6 +21,7 @@ import { Wordmark } from "../ui/Wordmark";
 import { Markdown } from "./Markdown";
 import type { FileReadRole } from "../files/types";
 import { MessageAttachments } from "./MessageAttachments";
+import { PastedTextReaderContext } from "../files/pastedText";
 import { SourcesTrigger } from "./Message";
 import { SourcesPanel } from "./SourcesPanel";
 import { ReplyQuote } from "./ReplyQuote";
@@ -94,6 +95,13 @@ export function SharePage() {
     (ref: string, role: FileReadRole) =>
       token
         ? services.shareApi.readAttachment(token, ref, role)
+        : Promise.reject(new Error("Missing share token")),
+    [token, services],
+  );
+  const readPastedText = useCallback(
+    (ref: string) =>
+      token
+        ? services.shareApi.readAttachmentText(token, ref).then(({ text }) => text)
         : Promise.reject(new Error("Missing share token")),
     [token, services],
   );
@@ -188,6 +196,7 @@ export function SharePage() {
             </div>
           )}
           {state.status === "ready" && (
+            <PastedTextReaderContext.Provider value={readPastedText}>
             <SharedThread
               share={state.share}
               isMobile={isMobile}
@@ -195,6 +204,7 @@ export function SharePage() {
               onShowSources={(sources) => setSourcesPanel({ sources, open: true })}
               onRevealReplyQuote={revealSharedReplyQuote}
             />
+            </PastedTextReaderContext.Provider>
           )}
         </div>
 

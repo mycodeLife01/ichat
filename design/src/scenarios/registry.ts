@@ -110,6 +110,22 @@ export const scenes: Scene[] = [
   ),
   scene(
     "聊天工作台",
+    "long-paste",
+    "长文本粘贴转附件",
+    "/c/design-chat",
+    "ui/Composer.tsx",
+    "long-paste",
+  ),
+  scene(
+    "聊天工作台",
+    "over-limit",
+    "输入超出字数上限",
+    "/c/design-chat",
+    "ui/Composer.tsx",
+    "over-limit",
+  ),
+  scene(
+    "聊天工作台",
     "upload-error",
     "附件失败与重试",
     "/c/design-chat",
