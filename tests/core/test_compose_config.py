@@ -6,8 +6,8 @@ def test_compose_uses_explicit_env_file() -> None:
 
     # Infrastructure, migrations, and file parsing use explicit least-
     # privilege environments instead of receiving every application secret.
-    assert compose.count("\n    env_file:\n") == 5
-    assert compose.count("- .env") == 5
+    assert compose.count("\n    env_file:\n") == 6
+    assert compose.count("- .env") == 6
     postgres = compose.split("  postgres:", 1)[1].split("  redis:", 1)[0]
     migrate = compose.split("  migrate:", 1)[1].split("  api:", 1)[0]
     file_worker = compose.split("  file-worker:", 1)[1].split("  celery-beat:", 1)[0]
@@ -123,3 +123,23 @@ def test_clamav_startup_and_healthcheck_are_signature_aware() -> None:
     assert "zVERSION" in healthcheck
     assert "freshclam --version" in healthcheck
     assert "CLAMAV_SIGNATURE_MAX_AGE_SECONDS" in healthcheck
+
+
+def test_anime_services_are_opt_in_and_isolated() -> None:
+    for filename in ("compose.yml", "compose.prod.yml"):
+        compose = Path(filename).read_text()
+        openlist = compose.split("  openlist:", 1)[1].split("  anime-worker:", 1)[0]
+        anime_worker = compose.split("  anime-worker:", 1)[1].split("\nvolumes:", 1)[0]
+
+        assert 'profiles: ["anime"]' in openlist
+        assert 'profiles: ["anime"]' in anime_worker
+        assert "openlistteam/openlist:v4.2.10" in openlist
+        assert "openlist_data:/opt/openlist/data" in openlist
+        assert '"--queues=anime"' in anime_worker
+        assert 'MODEL_ADMIN_ACCESS_KEY: ""' in anime_worker
+        assert 'FILES_WORKER_ACCESS_KEY_ID: ""' in anime_worker
+
+    prod_openlist = Path("compose.prod.yml").read_text().split("  openlist:", 1)[1]
+    assert "ports:" not in prod_openlist.split("  anime-worker:", 1)[0]
+    dev_openlist = Path("compose.yml").read_text().split("  openlist:", 1)[1]
+    assert '"127.0.0.1:5244:5244"' in dev_openlist.split("  anime-worker:", 1)[0]

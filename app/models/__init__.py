@@ -1,3 +1,4 @@
+from app.models.anime import AnimeDownload, AnimeFeed, AnimeIntegrationState, AnimeRelease
 from app.models.auth_token import AuthToken
 from app.models.avatar import AvatarDeletion, AvatarUpload
 from app.models.conversation import Conversation, Message, ShareLink
@@ -20,6 +21,10 @@ from app.models.run import ConversationTitleJob, Run, RunDraft, RunEvent, RunPro
 from app.models.user import RefreshToken, User
 
 __all__ = [
+    "AnimeDownload",
+    "AnimeFeed",
+    "AnimeIntegrationState",
+    "AnimeRelease",
     "AuthToken",
     "AvatarDeletion",
     "AvatarUpload",

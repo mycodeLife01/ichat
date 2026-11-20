@@ -5,11 +5,22 @@ import app.models  # noqa: F401
 from app.db.base import Base
 
 # Tables that expose an opaque external identifier alongside their bigint PK.
-_PUBLIC_ID_TABLES = ("conversations", "files", "file_uploads", "runs", "messages")
+_PUBLIC_ID_TABLES = (
+    "conversations",
+    "files",
+    "file_uploads",
+    "runs",
+    "messages",
+    "anime_downloads",
+)
 
 
 def test_core_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
+        "anime_downloads",
+        "anime_feeds",
+        "anime_integration_state",
+        "anime_releases",
         "auth_tokens",
         "avatar_deletions",
         "avatar_uploads",

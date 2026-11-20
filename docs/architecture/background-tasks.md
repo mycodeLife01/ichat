@@ -36,6 +36,8 @@
 | 事实源 | PostgreSQL | PostgreSQL | PostgreSQL |
 | Redis/Broker 角色 | pub/sub 唤醒 + Run Stream 实时传输；不参与 claim 仲裁，PG poll/checkpoint 兜底 | 仅作 broker/加速器，不持有业务状态 | 仅作 broker/加速器；`available_at`、lease 与补偿完成时间在 PG |
 
+番剧追更（`app/services/anime`，`anime` queue）是第四个实例：状态表为 `anime_feeds`（拉取租约）、`anime_downloads`（提交 `lease_owner` fencing、检查链以 `next_check_at` 为版本号、通知 claim）、`anime_integration_state`（告警是否已发单独记录）；唤醒信号是 Celery 消息与 countdown，兜底是 beat 的 `poll_running_downloads`（60 秒）与 `maintain_downloads`（5 分钟）。三个问题的回答：提交最多 5 次、退避 1m/5m/15m/1h/6h、耗尽或 permanent 错误落 `dead`；云端运行不重试提交，按自适应间隔检查，云端失败或超过停滞上限落 `failed`；通知最多 5 次、同样退避、落 `notify_status=dead`；告警不设 dead，耗尽后每 6 小时重试。详见规格 §6.4、§6.5。
+
 file-worker 每个文件任务新建带 TCP keepalive、超时和标准重试的 R2 client，避免长寿命连接池退化跨任务传播；`max-tasks-per-child` 只作为资源与连接状态的进程级兜底，不改变 PG claim、lease 或重试语义。
 
 三条链路都**只把 PG 当事实源**，把广播组件（Redis pub/sub / Stream、Celery broker）当加速器。

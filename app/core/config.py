@@ -216,6 +216,22 @@ class Settings(BaseSettings):
     clamav_timeout_seconds: float = 30.0
     clamav_signature_max_age_seconds: int = 48 * 3_600
 
+    # --- Anime tracking (Mikan RSS -> OpenList/PikPak -> Telegram) ---
+    anime_enabled: bool = False
+    # Docker-network address for API calls; the public URL only prefixes links.
+    openlist_base_url: str = ""
+    openlist_public_url: str = ""
+    openlist_username: str = ""
+    openlist_password: str = ""
+    openlist_offline_tool: str = "PikPak"
+    # Relative to the OpenList user's base path, which is the anime root itself.
+    anime_storage_root: str = "/"
+    anime_download_stall_timeout_seconds: int = 86_400
+    anime_drive_call_timeout_seconds: float = 30.0
+    anime_submit_lease_seconds: int = 300
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -366,6 +382,31 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"file_upload_enabled=true requires non-empty: {', '.join(missing)}"
                 )
+        # A submit lease shorter than one drive call would turn lease fencing
+        # from a rare safety net into the normal path for every slow call.
+        if self.anime_drive_call_timeout_seconds <= 0:
+            raise ValueError("anime_drive_call_timeout_seconds must be positive")
+        if self.anime_submit_lease_seconds < self.anime_drive_call_timeout_seconds + 60:
+            raise ValueError(
+                "anime_submit_lease_seconds must be at least "
+                "anime_drive_call_timeout_seconds + 60"
+            )
+        if self.anime_download_stall_timeout_seconds < 600:
+            raise ValueError("anime_download_stall_timeout_seconds must be at least 600")
+        if not self.anime_storage_root.startswith("/"):
+            raise ValueError("anime_storage_root must be an absolute path")
+        if self.anime_enabled:
+            anime_required = (
+                ("openlist_base_url", self.openlist_base_url),
+                ("openlist_public_url", self.openlist_public_url),
+                ("openlist_username", self.openlist_username),
+                ("openlist_password", self.openlist_password),
+                ("telegram_bot_token", self.telegram_bot_token),
+                ("telegram_chat_id", self.telegram_chat_id),
+            )
+            missing = [name for name, value in anime_required if not value.strip()]
+            if missing:
+                raise ValueError(f"anime_enabled=true requires non-empty: {', '.join(missing)}")
         return self
 
     @property

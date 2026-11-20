@@ -16,3 +16,6 @@ def pytest_configure() -> None:
     environ.setdefault("WORKER_HEARTBEAT_INTERVAL_SECONDS", "10")
     environ.setdefault("SUMMARY_MODEL", "deepseek-test")
     environ.setdefault("LOG_LEVEL", "INFO")
+    # Process env beats .env, so a developer's local ANIME_ENABLED=true cannot
+    # trip the anime config validation or schedule assertions.
+    environ.setdefault("ANIME_ENABLED", "false")

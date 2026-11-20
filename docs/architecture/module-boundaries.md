@@ -86,6 +86,12 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 
 **生成器即边界**：编排层只 yield 事件宣告，不知道 seq/sink/发布/持久化；与取消无关（仅需取消安全）。`SourceRegistry` 等单一工具的私有产物以闭包内化，通过 `assistant_metadata` 中性钩子交给 worker，web_search/sources/tavily 词汇不出包。不读数据库——历史加载归 `app/services/runs`。
 
+## `app/services/anime`
+
+番剧追更（`docs/specs/2026-11-18-anime-tracking.md`）的唯一业务拥有者：订阅源、资源、下载任务与集成健康状态。`feeds` 负责订阅源 claim 与拉取入库，`downloads` 负责下载任务状态机（提交 fencing、检查链、通知 claim），`health` 负责健康状态与告警补发；外部系统只经三个窄接口接入：`sources`（RSS 拉取与解析）、`drive.CloudDriveAdapter`（P0 实现为 `openlist`）、`notify.Notifier`（P0 实现为 Telegram）。
+
+该模块使用同步 SQLAlchemy 会话，因为调用方只有 Celery prefork 任务和运维 CLI `app/anime_admin.py`；不调用聊天 provider，不依赖 `app/agent`。云端任务引用对业务不透明，只由所属适配器解释。
+
 ## `app/search`
 
 负责 provider-agnostic 搜索能力抽象：统一 `types`、`SearchClient` 协议（`client`）、`registry`（按名解析 client）、Tavily adapter（`tavily`）、结果去重/编号/证据压缩（`postprocess`）。调用外部搜索 API，不读取数据库。
@@ -98,7 +104,7 @@ agent 编排层（04b 引入）——**agent 循环的主人**，对应 LangChai
 
 ## `app/tasks`
 
-负责 Celery 的有限、非流式任务入口与 queue 路由：邮件 outbox、标题、媒体头像和 files。`file_tasks` 只按上传 public ID 调用 files 的处理/维护 interface，使用 `files` queue；`media_tasks` 只处理 avatar purpose，使用 `media` queue。任务入口不重写状态机或业务规则，所有 claim、lease、终态和补偿仍由所属 service 和 PG 行决定。
+负责 Celery 的有限、非流式任务入口与 queue 路由：邮件 outbox、标题、媒体头像、files 和番剧追更。`anime_tasks` 只按订阅源 id 或下载任务 public ID 调用 `services/anime`，使用 `anime` queue 与独立的 anime-worker。`file_tasks` 只按上传 public ID 调用 files 的处理/维护 interface，使用 `files` queue；`media_tasks` 只处理 avatar purpose，使用 `media` queue。任务入口不重写状态机或业务规则，所有 claim、lease、终态和补偿仍由所属 service 和 PG 行决定。
 
 ## 跨模块规则
 

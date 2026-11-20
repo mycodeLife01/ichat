@@ -20,8 +20,35 @@ celery_app = Celery(
         "app.tasks.llm_tasks",
         "app.tasks.media_tasks",
         "app.tasks.file_tasks",
+        "app.tasks.anime_tasks",
     ],
 )
+
+_ANIME_QUEUE = {"queue": "anime"}
+# Only scheduled when enabled: without the opt-in anime-worker nothing
+# consumes the anime queue, and beat messages would pile up in Redis.
+ANIME_BEAT_SCHEDULE = {
+    "dispatch-anime-feeds": {
+        "task": "app.tasks.anime_tasks.dispatch_due_feeds",
+        "schedule": 60.0,
+        "options": _ANIME_QUEUE,
+    },
+    "poll-running-anime-downloads": {
+        "task": "app.tasks.anime_tasks.poll_running_downloads",
+        "schedule": 60.0,
+        "options": _ANIME_QUEUE,
+    },
+    "maintain-anime-downloads": {
+        "task": "app.tasks.anime_tasks.maintain_downloads",
+        "schedule": 300.0,
+        "options": _ANIME_QUEUE,
+    },
+    "anime-health-check": {
+        "task": "app.tasks.anime_tasks.health_check",
+        "schedule": 21600.0,
+        "options": _ANIME_QUEUE,
+    },
+}
 
 celery_app.conf.update(
     task_serializer="json",
@@ -49,10 +76,12 @@ celery_app.conf.update(
             "schedule": float(_settings.files_maintenance_interval_seconds),
             "options": {"queue": "files"},
         },
+        **(ANIME_BEAT_SCHEDULE if _settings.anime_enabled else {}),
     },
     task_routes={
         "app.tasks.media_tasks.*": {"queue": "media"},
         "app.tasks.file_tasks.*": {"queue": "files"},
+        "app.tasks.anime_tasks.*": _ANIME_QUEUE,
     },
 )
 

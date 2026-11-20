@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 from dotenv import dotenv_values
@@ -444,3 +445,22 @@ def test_vision_runtime_rejects_preview_bucket_aliasing_an_original_bucket() -> 
         validate_api_vision_settings(settings)
     with pytest.raises(ValueError, match="must be distinct"):
         validate_worker_vision_settings(settings)
+
+
+def test_anime_settings_validate_lease_and_required_fields() -> None:
+    base: dict[str, Any] = {"_env_file": None, "summary_provider_name": "deepseek"}
+    assert Settings(**base).anime_enabled is False
+
+    with pytest.raises(ValidationError, match="anime_submit_lease_seconds"):
+        Settings(**base, anime_drive_call_timeout_seconds=30, anime_submit_lease_seconds=60)
+    with pytest.raises(ValidationError, match="absolute path"):
+        Settings(**base, anime_storage_root="Anime")
+    with pytest.raises(ValidationError, match="openlist_password, telegram_bot_token"):
+        Settings(
+            **base,
+            anime_enabled=True,
+            openlist_base_url="http://openlist:5244",
+            openlist_public_url="https://list.example.com",
+            openlist_username="ichat",
+            telegram_chat_id="1",
+        )
