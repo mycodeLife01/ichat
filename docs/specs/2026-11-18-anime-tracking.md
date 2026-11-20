@@ -2,6 +2,8 @@
 
 - 日期：2026-11-18
 - 状态：草案，待确认（§15 待确认事项）；未实现
+- 修订：2026-11-20 补充一致性约束（§5.1、§6.3–§6.5、§7.1、§7.2、§7.4、§7.7、§13）；通知渠道改为
+  Telegram（§7.6）；`running` 检查改为自适应轮询（§7.4）；P0 只接入蜜柑，爱恋移到 P1（§2、§7.2）
 - 范围：新增 `app/services/anime` 领域模块、`app/tasks/anime_tasks.py` Celery 任务与 `anime` 队列、
   `app/anime_admin.py` 运维 CLI、OpenList 部署；P1 新增聊天内番剧工具、动作提议与确认接口
 - 不涉及（本期）：Run 挂起/恢复状态机、MCP client/server、浏览器自动化兜底、多租户、计费
@@ -30,8 +32,8 @@
 |---|---|---|
 | PikPak | 无公开开放 API；网页版提供 WebDAV（会员，据第三方资料为只读） | 写操作（离线下载）只能走非官方接口 → 经 OpenList 驱动隔离，见 §5 |
 | OpenList | Alist 的社区分支，自托管网盘聚合程序；提供 Web UI、WebDAV、HTTP API 与离线下载工具 | 仍依赖 PikPak 非官方接口，维护成本转移给社区；需健康检查与告警 |
-| 蜜柑计划 | 「我的番组」个人 RSS（`/RSS/MyBangumi?token=…`）、搜索 RSS（`/RSS/Search?searchstr=…`） | 域名可能变化或受网络限制 → base URL 可配置；个人 RSS 的 token 视为凭据，日志脱敏 |
-| 爱恋动漫 | 第三方资料给出搜索 RSS 格式 `/rss-{关键词}.xml`、全站 `/rss.xml`，无官方说明 | 以站内 RSS 按钮生成的实际链接为准（S0 验证） |
+| 蜜柑计划 | 「我的番组」个人 RSS（`/RSS/MyBangumi?token=…`）、搜索 RSS（`/RSS/Search?searchstr=…`） | P0 唯一订阅来源。常见故障是某个域名不可达而非服务停摆 → base URL 可配置，故障时先切换镜像域名（个人 RSS 与站内字幕组选择不受影响）；个人 RSS 的 token 视为凭据，日志脱敏 |
+| 爱恋动漫 | 第三方资料给出搜索 RSS 格式 `/rss-{关键词}.xml`、全站 `/rss.xml`，无官方说明 | P1 接入（搜索工具，兼作蜜柑不可用时的手动备用订阅源）；以站内 RSS 按钮生成的实际链接为准（P1 前验证） |
 | bangumi.tv | 公开 API（`api.bgm.tv`），可搜索条目、取中日文名与别名；要求合理 User-Agent | 仅 P1 使用；失败时 agent 降级为直接关键词搜索 |
 
 PikPak 的离线下载链接、文件直链均由 OpenList 在访问时换取，iChat 不保存任何 PikPak 直链或凭据。
@@ -58,17 +60,18 @@ PikPak 的离线下载链接、文件直链均由 OpenList 在访问时换取，
 
 ```
              ┌──────────────── celery-beat ────────────────┐
-             │ dispatch_due_feeds / maintain_downloads /    │
-             │ health_check（周期投递，均为兜底扫描）         │
+             │ dispatch_due_feeds / poll_running_downloads /│
+             │ maintain_downloads / health_check            │
+             │（周期投递，均为兜底扫描）                      │
              └──────────────────────┬──────────────────────┘
                                     v  queue: anime
- 蜜柑/爱恋 RSS ──> poll_feed ──> anime_releases ──> anime_downloads(pending)
+ 蜜柑 RSS（P1 起可加爱恋）──> poll_feed ──> anime_releases ──> anime_downloads(pending)
                                                         │ claim + lease
                                                         v
                                       CloudDriveAdapter(OpenList) ──> PikPak 离线下载
-                                                        │ 轮询云端任务
+                                                        │ check_download（自适应间隔）
                                                         v
-                                      anime_downloads(completed) ──> Notifier(飞书) ──> 手机
+                                      anime_downloads(completed) ──> Notifier(Telegram) ──> 手机
                                                                           │
                                          OpenList 文件页 / 直链 <── 点击播放（PotPlayer/IINA/Infuse）
 
@@ -91,13 +94,17 @@ P1 的聊天 Run 仍由现有 LLM worker 执行。
 ```python
 class CloudDriveAdapter(Protocol):
     async def submit_offline(self, *, magnet: str, target_dir: str) -> SubmitReceipt: ...
-    async def get_task(self, ref: CloudTaskRef) -> CloudTaskStatus: ...       # running/completed/failed
+    async def get_task(self, ref: CloudTaskRef) -> CloudTaskStatus: ...       # running/completed/failed/not_found
     async def find_existing(self, *, infohash: str, target_dir: str) -> CloudTaskRef | None: ...
+    async def list_names(self, path: str) -> list[str]: ...                   # 目录下的文件/文件夹名
     async def health(self) -> DriveHealth: ...                                 # 登录有效、根目录可列
     def play_links(self, path: str) -> PlayLinks: ...                          # 文件页 + 直链 + 播放器 scheme
 ```
 
-- `CloudTaskRef` 对业务不透明（JSON），只由所属适配器解释。
+- `CloudTaskRef` 对业务不透明（JSON），只由所属适配器解释；云端在提交响应或任务详情中给出落盘名称时，
+  适配器把它存入引用，供 §7.4 的 `not_found` 兜底使用。
+- `not_found` 表示云端已查不到该任务（如 OpenList 清理任务列表或重启），**不等于失败**，处理见 §7.4。
+- 所有适配器调用的 HTTP 超时为 `ANIME_DRIVE_CALL_TIMEOUT_SECONDS`，与提交租约的关系见 §6.5。
 - 适配器错误分为 `transient`（网络、5xx、限流 → 退避重试）与 `permanent`（磁链非法、目录不存在、
   权限不足 → 直接 dead），由适配器归类，业务不解析错误文案。
 
@@ -125,7 +132,7 @@ class CloudDriveAdapter(Protocol):
 |---|---|---|
 | `id` | bigint PK | |
 | `name` | varchar(100) unique | 运维可读名 |
-| `source` | varchar(16) | `CHECK (source IN ('mikan','kisssub'))` |
+| `source` | varchar(16) | `CHECK (source IN ('mikan','kisssub'))`；P0 只实现 `mikan`，约束预留 `kisssub` 以免 P1 迁移 |
 | `url` | text | 视为凭据：日志与 CLI 输出中脱敏查询参数 |
 | `target_dir` | text | 云盘目标目录（相对番剧根目录） |
 | `filters` | jsonb | 过滤规则，见 §7.2 |
@@ -164,8 +171,10 @@ class CloudDriveAdapter(Protocol):
 | `cloud_task` | jsonb null | 不透明 `CloudTaskRef` |
 | `file_paths` | jsonb null | 完成后的云盘文件路径 |
 | `attempt_count` / `next_attempt_at` / `lease_expires_at` / `last_error` | | claim 与退避 |
-| `submitted_at` / `completed_at` | timestamptz null | |
-| `notify_status` | varchar(16) | `none` / `pending` / `sent` / `dead` |
+| `lease_owner` | varchar(255) null | 每次 claim 新生成，写回时校验（fencing，§6.5） |
+| `next_check_at` | timestamptz null | 仅 `running` 使用：下一次检查云端任务的时间，同时作为检查链的版本号（§7.4） |
+| `submitted_at` / `completed_at` | timestamptz null | `submitted_at` 也是自适应检查间隔的计时起点 |
+| `notify_status` | varchar(16) | `none` / `pending` / `sent` / `dead`；完成通知与失败通知共用，内容按下载状态生成 |
 | `notify_attempts` / `notified_at` | int / timestamptz null | |
 
 ### 6.4 下载任务状态机
@@ -184,21 +193,40 @@ pending ──claim──> submitting ──成功──> running ──云端�
 
 | 阶段 | 重试几次 | 退避 | 死了落到哪 |
 |---|---|---|---|
-| 提交（`pending→running`） | 最多 5 次 | 1m / 5m / 15m / 1h / 6h | `dead` + `last_error` + 告警通知 |
-| 云端运行（`running`） | 不重试提交；按 5 分钟间隔轮询 | — | 云端报失败或超过 `ANIME_DOWNLOAD_STALL_TIMEOUT_SECONDS`（默认 24h）→ `failed` + 通知 |
+| 提交（`pending→running`） | 最多 5 次 | 1m / 5m / 15m / 1h / 6h | `dead` + `last_error` + 失败通知（经 `notify_status`） |
+| 云端运行（`running`） | 不重试提交；按 §7.4 自适应间隔检查（10s 起，逐步放宽到 10min） | — | 云端报失败、任务不可查且无法确认文件已落盘（§7.4）、或超过 `ANIME_DOWNLOAD_STALL_TIMEOUT_SECONDS`（默认 24h）→ `failed` + 失败通知（经 `notify_status`） |
 | 通知 | 最多 5 次 | 同提交 | `notify_status=dead`，记日志，不影响下载状态 |
 
-`failed` / `dead` 可经 CLI `downloads retry` 重置为 `pending`（`attempt_count` 清零）。
+`failed` / `dead` / `skipped` 可经 CLI `downloads retry` 重置为 `pending`（`attempt_count` 清零）。
+
+进入 `completed` / `failed` / `dead` 的同一事务内置 `notify_status=pending`：通知是否发出单独记录，
+不随状态变化一起「假定已发」。
 
 ### 6.5 崩溃窗口与提交幂等
 
-最危险的窗口：worker 已调用 `submit_offline` 成功，但在写回 `running` 前崩溃。处理：
+两个危险窗口：
 
-1. 调用前先把行置为 `submitting` 并写租约（单独提交事务）。
-2. 租约过期的 `submitting` 行被回收时，**先调用 `find_existing(infohash, target_dir)` 对账**：找到则直接
-   置 `running` 并写入引用；找不到才重新提交。
-3. PikPak 对同一 infohash 的重复离线是否去重（秒存）作为最后一道防线，在 S0 中验证；即使重复，
-   影响也只是同一目录多一份文件，不扩散。
+- worker 已调用 `submit_offline` 成功，但在写回 `running` 前崩溃；
+- worker 没有崩溃，只是调用慢于租约，行已被回收并由另一个 worker 接手，旧 worker 随后写回。
+
+处理：
+
+1. **claim**：调用前在单独提交的事务中把行置为 `submitting`，写入新生成的 `lease_owner` 与
+   `lease_expires_at`，`attempt_count += 1`。
+2. **租约大于调用超时**：提交租约 `ANIME_SUBMIT_LEASE_SECONDS`（默认 300）必须不小于
+   `ANIME_DRIVE_CALL_TIMEOUT_SECONDS`（默认 30）加 60 秒，配置校验不满足时拒绝启动。正常情况下
+   worker 一定在租约过期前得到结果（成功、失败或超时）。
+3. **fencing 写回**：调用返回后，在 `SELECT … FOR UPDATE` 中校验 `status='submitting' AND
+   lease_owner=:owner`。不成立说明所有权已丢失：不修改任何字段，记 `anime_download_stale_writeback`
+   （带本次 `CloudTaskRef`）并告警，供人工核对是否多出一个云端任务。沿用头像处理的 `lease_owner`
+   模式（`app/services/avatars/processing.py`）。
+4. **对账**：租约过期的 `submitting` 行被回收时，**先调用 `find_existing(infohash, target_dir)`**：找到则
+   直接置 `running` 并写入引用（同时写 `submitted_at`、`next_check_at`，进入 §7.4 检查链）；找不到才重新提交。`target_dir` 使用下载任务创建时落库的值，不重新计算，
+   避免解析器升级后对账到另一个目录。
+5. **前提与降级**：第 4 步依赖「云端任务在完成后、OpenList 重启后仍能按 infohash 查到」，由 S0-6 验证。
+   不成立时 `find_existing` 恒返回 `None`，崩溃恢复退化为依赖 PikPak 对同一 infohash 去重（S0-3）；
+   两者都不成立则接受「崩溃窗口内可能重复一份」，并写入 ADR（Q9）。即使重复，影响也只是同一目录
+   多一份文件，不扩散。
 
 通知同理：`notify_status` 先在事务中由 `pending` 原子 claim，发送成功后置 `sent`；崩溃窗口内最多
 重复一次通知（至少一次语义），可接受。
@@ -208,13 +236,15 @@ pending ──claim──> submitting ──成功──> running ──云端�
 ### 7.1 拉取（`dispatch_due_feeds` → `poll_feed`）
 
 - beat 每 60 秒投递 `dispatch_due_feeds`：`FOR UPDATE SKIP LOCKED` 选出到期且无有效租约的订阅源，
-  写租约后逐个投递 `poll_feed(feed_id)`。
+  写租约（120 秒，大于拉取超时与入库耗时）后逐个投递 `poll_feed(feed_id)`。重复拉取不影响正确性
+  （入库幂等），租约只用于减少重复请求。
 - `poll_feed`：条件 GET（ETag / Last-Modified），超时 15 秒；解析 RSS 条目 → 规范化 infohash →
   解析标题 → **同一事务内** `INSERT anime_releases ON CONFLICT DO NOTHING`，对通过过滤的资源
   `INSERT anime_downloads ON CONFLICT (infohash) DO NOTHING`，更新 `next_poll_at`、清租约。
 - 提交后对新建的下载任务投递 `submit_download(public_id)` 作为唤醒信号；丢失由 `maintain_downloads`
   兜底。
-- 失败：`consecutive_failures += 1`，按退避推迟 `next_poll_at`；达到 5 次发告警（只在状态变化时发一次）。
+- 失败：`consecutive_failures += 1`，按退避推迟 `next_poll_at`，并清租约；达到 5 次时把监控状态
+  `feed:{id}` 置为 `failing`，成功拉取后置回 `ok`，告警按 §7.7 发送。
 
 ### 7.2 过滤规则（`filters` jsonb）
 
@@ -230,12 +260,27 @@ pending ──claim──> submitting ──成功──> running ──云端�
 
 - `include` / `exclude` 为对原始标题的正则，大小写不敏感；正则在写入时校验可编译并限制长度。
 - `skip_batch`：解析为合集的资源记为 `skipped`。
-- `episode_dedupe`：同一 `(series, episode)` 已有非终态失败的下载任务时，后来者记为 `skipped`
-  （避免同一集不同字幕组、不同分辨率重复下载）；解析不出集数时不做该去重。
+- `episode_dedupe`：同一 `(series, episode)` 已存在状态为 `pending` / `submitting` / `running` /
+  `completed` 的下载任务时，后来者记为 `skipped`（避免同一集不同字幕组、不同分辨率重复下载）；已有任务为
+  `failed` / `dead` / `skipped` 时不阻挡，后来者正常进入 `pending`。解析不出集数时不做该去重。
+  - 该判定是先查后插，没有唯一约束保护：两个订阅源被并发拉取且含同一集的不同资源时，可能各产生一个
+    下载任务。P0 只有蜜柑单一订阅源，基本不会发生；P1 加入爱恋备用订阅源后接受这种少见的重复，不加锁。
+  - 已跳过的资源不会在先前任务失败后自动补位：失败通知列出同集被跳过资源的 `public_id`，可经
+    `downloads retry` 手动补位；自动补位属于 P2 异常处理 agent。
 - `backfill_hours`：**首次拉取**时，发布时间早于「订阅源创建时间 − backfill_hours」的资源只入库为
   `skipped`，防止添加订阅源时一次性下载大量旧集。
 
-蜜柑「我的番组」已在站内选好字幕组，P0 主要依赖它；爱恋关键词 RSS 作为可选的补充订阅源。
+蜜柑「我的番组」已在站内选好字幕组，P0 只依赖它，订阅源通常只有一个。
+
+蜜柑不可用时的处置（人工，不自动切换）：
+
+1. 订阅源连续失败 5 次后收到告警（§7.1）。
+2. 优先 `feeds update --url` 把域名换成镜像，个人 RSS token 与站内字幕组选择不变。
+3. 镜像也不可用时，P1 起可 `feeds add` 爱恋关键词订阅源作为临时备用；必须设置 `include` / `exclude`，
+   并依赖 `backfill_hours` 防止下载旧集。同一种子由 infohash 唯一约束去重，同集不同字幕组由
+   `episode_dedupe` 去重。
+
+不做自动切换：两站的标题格式与字幕组覆盖不同，自动切换需要另一套过滤规则，且容易一次下载大量旧集。
 
 ### 7.3 标题解析（P0 规则版）
 
@@ -243,12 +288,53 @@ pending ──claim──> submitting ──成功──> running ──云端�
 `[组名] 番名 - 01 [1080p][简日内嵌]`、`【组名】番名 第01话 …`、`… S01E01 …`、合集标记（`01-12`、
 `Fin`、`合集`、`Batch`）。解析失败的字段为 `null`，不阻断下载。P1 用同一接口接入 LLM 解析并做评测对比（§11）。
 
-### 7.4 提交与轮询（`submit_download` / `maintain_downloads`）
+### 7.4 提交与检查（`submit_download` / `check_download` / `poll_running_downloads` / `maintain_downloads`）
 
-- `submit_download`：按 §6.5 claim 并提交，成功置 `running`。
-- `maintain_downloads`（beat 每 5 分钟）：回收过期租约；补投到期的 `pending`；对 `running` 批量调用
-  `get_task`，完成则写 `file_paths`、置 `completed` 与 `notify_status=pending` 并投递 `notify_download`；
-  失败或停滞置 `failed` 并发失败通知；补投到期的 `notify_status=pending`。
+- `submit_download`：按 §6.5 claim 并提交。fencing 写回成功时，在同一事务内置 `running`、写
+  `submitted_at=now()`、`next_check_at=now()+10s`；提交后投递 `check_download(public_id)`，`countdown=10`。
+
+**检查间隔**：PikPak 对新番资源通常 10–30 秒内完成离线，检查前密后疏，按提交后经过的时间
+（`now − submitted_at`）决定下一次间隔：
+
+| 提交后经过 | 间隔 | 该段约检查次数 |
+|---|---|---|
+| 0–2 分钟 | 10 秒 | 12 |
+| 2–10 分钟 | 30 秒 | 16 |
+| 10–60 分钟 | 2 分钟 | 25 |
+| 1–24 小时 | 10 分钟 | 约 138 |
+
+档位为代码常量，不做配置；第一档在 S0-2 实测 OpenList 状态刷新延迟后确定（刷新本身慢于 10 秒时
+改为 20 秒）。卡满 24 小时停滞上限的任务共检查约 190 次。
+
+**`check_download(public_id)`**：
+
+1. 读取行；不是 `running` 时直接结束。记下本次读到的 `next_check_at` 为 `:observed`。
+2. 调用 `get_task`（只读，重复检查无害）。
+3. 按结果写回，所有写回都带条件 `WHERE status='running' AND next_check_at=:observed`：
+   - `running` 且未超停滞上限：写新的 `next_check_at`，影响 1 行才投递下一条 countdown 消息；
+   - `completed`：写 `file_paths` 与 `completed_at`，置 `completed`、`notify_status=pending`、
+     `next_check_at=NULL`，提交后投递 `notify_download`；
+   - `failed` 或超过停滞上限：置 `failed`、`notify_status=pending`、`next_check_at=NULL`；
+   - `not_found`：引用中有落盘名称且该名称出现在 `list_names(target_dir)` 中时，按 `completed` 处理；
+     否则置 `failed`，`last_error=cloud_task_missing`，失败通知写明「云端任务已不可查，文件可能已在
+     目录中，请核对」，与普通下载失败区分。
+4. 条件不成立（影响 0 行）说明另一条检查链已推进或已处理该行：不写、不投递，直接结束。
+
+`next_check_at` 充当检查链的版本号。迟到的消息、兜底补投与 broker 重投可能让同一行同时存在两条
+检查链；每次推进只有一方成功，多余的链在下一步自然终止，不会永久翻倍检查，也不会重复发通知。
+
+**`poll_running_downloads`**（beat 每 60 秒）：选出 `status='running' AND next_check_at < now() − 30s`
+的行（检查消息已丢失或卡住），逐个投递 `check_download`。30 秒宽限避免与正常到期的 countdown 消息
+竞争；最坏情况（消息全部丢失）下完成通知延迟约 1–1.5 分钟。
+
+Redis broker 下 countdown 消息由 worker 预取并在内存中持有到期；worker 被 `kill -9` 时，这些消息要到
+broker 的 visibility timeout（默认 1 小时）后才会重投。由于 `poll_running_downloads` 兜底，正确性不依赖
+重投；最大间隔 10 分钟也远小于 visibility timeout，不会触发 countdown 超过 visibility timeout 的重复投递。
+
+**`maintain_downloads`**（beat 每 5 分钟，不再检查 `running`）：
+
+- 回收过期租约，`submitting` 行按 §6.5 第 4 步对账；补投到期的 `pending`。
+- 补投到期的 `notify_status=pending`；补发 §7.7 中未发出的告警。
 
 ### 7.5 目标目录
 
@@ -257,26 +343,43 @@ pending ──claim──> submitting ──成功──> running ──云端�
 
 ### 7.6 通知与播放链接
 
-- `Notifier` 协议，P0 实现飞书自定义机器人 webhook（带签名校验密钥），可选 Telegram Bot。
+- `Notifier` 协议，P0 唯一实现为 Telegram Bot：`sendMessage`（HTML 格式），发往 `TELEGRAM_CHAT_ID`
+  （需先在 Telegram 中对 bot 执行 `/start`）。关闭链接预览：Telegram 服务器访问不到 Tailscale 地址，预览
+  只会失败。
+- Bot token 位于请求 URL 路径中（`/bot{token}/sendMessage`），视为凭据：日志、异常信息与 CLI 输出中
+  一律脱敏，HTTP 客户端的请求日志不得记录完整 URL。
 - 完成通知内容：番名、集数、字幕组、分辨率、大小，以及：
-  - OpenList 文件页链接（页面自带 PotPlayer / IINA / Infuse 等外部播放器按钮）——**主入口**；
+  - OpenList 文件页链接，以 inline keyboard 的 URL 按钮呈现（页面自带 PotPlayer / IINA / Infuse 等外部
+    播放器按钮）——**主入口**；
   - 直链派生的播放器 scheme：`potplayer://{直链}`、`iina://weblink?url={编码直链}`、
-    `infuse://x-callback-url/play?url={编码直链}`——飞书卡片能否唤起自定义 scheme 在 S0 验证，不能则只保留文件页链接。
+    `infuse://x-callback-url/play?url={编码直链}`。Telegram 的 URL 按钮只接受 http(s) 与 `tg://`，scheme
+    只能放在消息正文中；正文中的自定义 scheme 能否点击唤起在 S0 验证，不能则只保留文件页链接。
 - 直链使用 OpenList `/d/{路径}`（必要时带签名），每次访问时才换取 PikPak CDN 地址，通知中的链接不会过期。
 - iOS 也可直接用 PikPak App 或在 Infuse 中挂载 PikPak WebDAV，无需本功能参与。
 
 ### 7.7 健康检查（`health_check`，beat 每 6 小时）
 
-调用 `CloudDriveAdapter.health()`（登录有效、番剧根目录可列）。结果写入单行状态表
-`anime_integration_state`（`status`、`since`、`last_error`），**仅在状态变化时**发告警或恢复通知，
-避免刷屏。
+调用 `CloudDriveAdapter.health()`（登录有效、番剧根目录可列）。结果写入监控状态表
+`anime_integration_state`，每个监控对象一行：`key`（`drive` 或 `feed:{id}`）、`status`、`since`、
+`last_error`、`alerted_status`、`alert_attempts`、`next_alert_at`。
+
+告警只在状态变化时发出，避免刷屏；「状态已变」与「告警已发」分开记录，避免故障同时打断告警发送时
+告警永久丢失：
+
+- 状态变化时在同一事务内更新 `status` / `since`，并置 `next_alert_at=now()`。
+- `health_check` 结束时与每轮 `maintain_downloads` 对 `status <> alerted_status AND next_alert_at <= now()`
+  的行发送当前状态的告警或恢复通知，成功后置 `alerted_status=status`。
+- 发送失败按 §6.4 的通知退避推迟；5 次耗尽后改为每 6 小时重试，直到发出。告警是无人值守系统唯一的
+  故障信号，不设 `dead`。
+- 告警发出前状态已变回 `alerted_status`（短暂故障在告警发出前恢复）时不再发送，可接受。
 
 ### 7.8 运维 CLI（`python -m app.anime_admin`）
 
 P0 不做前端界面（前端变更需按 AGENTS.md 走设计门禁）。命令：
 
 - `feeds add|list|update|enable|disable|poll-now`
-- `downloads list [--status]`、`downloads retry <id>`、`downloads add --magnet …`（`origin=manual`）
+- `downloads list [--status]`、`downloads retry <id>`（`failed` / `dead` / `skipped` → `pending`）、
+  `downloads add --magnet …`（`origin=manual`）
 - `releases parse "<标题>"`（调试解析器）
 - `health`（立即执行一次健康检查并打印）
 
@@ -334,7 +437,7 @@ P0 不做前端界面（前端变更需按 AGENTS.md 走设计门禁）。命令
 ```
 app/services/anime/
   __init__.py        # 对外高层 interface
-  sources.py         # MikanSource / KisssubSource：RSS 拉取与条目规范化
+  sources.py         # MikanSource（P0）/ KisssubSource（P1）：RSS 拉取与条目规范化
   infohash.py        # magnet / torrent URL → 小写 hex infohash
   parsing.py         # 标题解析（规则版；P1 增加 LLM 版）
   filters.py         # §7.2 过滤规则
@@ -342,7 +445,7 @@ app/services/anime/
   downloads.py       # 下载任务状态机、提交/对账/轮询
   drive.py           # CloudDriveAdapter 协议与错误分类
   openlist.py        # OpenList 实现
-  notify.py          # Notifier 协议、飞书/Telegram 实现、消息组装
+  notify.py          # Notifier 协议、Telegram 实现、消息组装
   health.py
   proposals.py       # P1
   tools.py           # P1
@@ -370,13 +473,14 @@ app/anime_admin.py           # 运维 CLI
 | `OPENLIST_USERNAME` / `OPENLIST_PASSWORD` | | 专用低权限用户 |
 | `OPENLIST_OFFLINE_TOOL` | `PikPak` | |
 | `ANIME_STORAGE_ROOT` | `/PikPak/Anime` | OpenList 中的番剧根路径 |
-| `MIKAN_BASE_URL` / `KISSSUB_BASE_URL` | 官方域名 | 可改为镜像 |
+| `MIKAN_BASE_URL` | 官方域名 | 故障时改为镜像（§7.2） |
+| `KISSSUB_BASE_URL` | 官方域名 | P1 |
 | `BANGUMI_API_BASE_URL` / `BANGUMI_USER_AGENT` | | P1 |
 | `ANIME_DOWNLOAD_STALL_TIMEOUT_SECONDS` | `86400` | |
+| `ANIME_DRIVE_CALL_TIMEOUT_SECONDS` | `30` | 适配器单次 HTTP 调用超时 |
+| `ANIME_SUBMIT_LEASE_SECONDS` | `300` | 提交租约；须 ≥ 调用超时 + 60，否则拒绝启动（§6.5） |
 | `ANIME_MAX_TOOL_CALLS` | `8` | P1 |
-| `ANIME_NOTIFIER` | `feishu` | `feishu` / `telegram` |
-| `FEISHU_WEBHOOK_URL` / `FEISHU_WEBHOOK_SECRET` | | |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | | 可选 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | | 通知渠道；token 视为凭据 |
 
 部署：
 
@@ -384,8 +488,10 @@ app/anime_admin.py           # 运维 CLI
   只绑定 Tailscale 或 127.0.0.1）。
 - 新增 `anime-worker`：`celery … worker --queues=anime --concurrency=2`，与邮件队列隔离，避免外部接口
   卡顿拖慢邮件；`task_routes` 增加 `app.tasks.anime_tasks.* → anime`。
-- beat 新增 `dispatch-anime-feeds`（60s）、`maintain-anime-downloads`（300s）、`anime-health-check`（21600s），
-  均投递到 `anime` 队列。
+- beat 新增 `dispatch-anime-feeds`（60s）、`poll-running-anime-downloads`（60s）、
+  `maintain-anime-downloads`（300s）、`anime-health-check`（21600s），均投递到 `anime` 队列。
+- `check_download` 的 countdown 消息与其他 anime 任务共用 `anime-worker`；并发 2 足够，单次检查只是
+  一次短 HTTP 调用。
 
 ## 11. 评测（P1）
 
@@ -401,7 +507,8 @@ app/anime_admin.py           # 运维 CLI
 
 结构化日志事件：`anime_feed_polled`（新条目数、耗时、是否 304）、`anime_download_transition`
 （from/to、尝试次数、错误分类）、`anime_drive_call`（操作、耗时、结果）、`anime_notify_sent`、
-`anime_health_changed`、`anime_proposal_decided`。URL 中的 token 一律脱敏。
+`anime_health_changed`、`anime_alert_sent`、`anime_download_stale_writeback`、`anime_proposal_decided`。
+URL 中的 token 一律脱敏。
 
 ## 13. 分期与验收
 
@@ -410,20 +517,25 @@ app/anime_admin.py           # 运维 CLI
 | # | 验证项 | 通过标准 |
 |---|---|---|
 | S0-1 | OpenList 挂载 PikPak 并保持登录 | 放置 48 小时后仍可列目录，无需人工处理 |
-| S0-2 | API 发起 PikPak 离线下载 | curl 调用后任务出现在 PikPak，文件落到指定目录；记录端点、字段、任务查询方式 |
+| S0-2 | API 发起 PikPak 离线下载 | curl 调用后任务出现在 PikPak，文件落到指定目录；记录端点、字段、任务查询方式。另记录：多个新番资源从提交到 OpenList 显示完成的耗时（决定 §7.4 第一档间隔）；能否一次调用查询全部任务（能则 `check_download` 可合并查询） |
 | S0-3 | 重复提交同一 infohash | 记录 PikPak 行为（去重 / 重复文件），决定 §6.5 第 3 点是否可依赖 |
-| S0-4 | 播放 | PotPlayer、IINA、Infuse 均能播放 `/d/` 链接；飞书卡片能否唤起自定义 scheme |
-| S0-5 | RSS 格式 | 蜜柑个人 RSS、蜜柑搜索 RSS、爱恋搜索 RSS 的条目字段与 infohash 提取方式 |
+| S0-4 | 播放与通知 | PotPlayer、IINA、Infuse 均能播放 `/d/` 链接；部署服务器能直连 `api.telegram.org`（不能则在实现计划中加代理配置）；Telegram 正文中的自定义 scheme 能否点击唤起 |
+| S0-5 | RSS 格式 | 蜜柑个人 RSS、蜜柑搜索 RSS 的条目字段与 infohash 提取方式；记录至少一个可用的蜜柑镜像域名（爱恋搜索 RSS 移到 P1 开工前验证） |
+| S0-6 | 云端任务可查询性 | 记录：任务完成 1 小时后、OpenList 重启后能否查到该任务，能否从中取得磁链或 infohash；提交响应或任务详情能否给出落盘名称；文件是否只在下载完成后出现在目录中。据此确定 §6.5 第 4–5 步与 §7.4 `not_found` 兜底的实现 |
 
-任一项不通过，回到本文调整方案后再实现。
+S0-1 至 S0-5 任一项不通过，回到本文调整方案后再实现；S0-6 只记录结果，按 §6.5 第 5 步与 §7.4 选择
+已定义的降级路径。
 
 ### P0 验收
 
-1. 蜜柑「我的番组」有新的一集发布后，在一个拉取周期加若干分钟内收到飞书通知，点击后能在三端之一播放。
+1. 蜜柑「我的番组」有新的一集发布后，在一个拉取周期加若干分钟内收到 Telegram 通知，点击后能在三端之一播放。
+   其中云端完成到收到通知的延迟：正常不超过 20 秒；检查消息全部丢失时不超过 2 分钟。
 2. 同一资源在多个订阅源、多次拉取中出现，只产生一个下载任务和一条完成通知。
 3. 在 `submitting` 状态 `kill -9` anime-worker，重启后经对账不重复提交（以 PikPak 侧任务数核对）。
 4. OpenList 停机期间：下载任务按退避重试，健康检查发出一次告警；恢复后自动继续并发出一次恢复通知。
+   Telegram 不可达期间发生的状态变化，在恢复后补发。
 5. 新增订阅源时不会下载回填窗口之外的旧集。
+6. 下载进行中重启 OpenList：已完成的下载收到完成通知，或收到「云端任务已不可查」通知，不报普通下载失败。
 
 ### P1 验收
 
@@ -435,9 +547,11 @@ app/anime_admin.py           # 运维 CLI
 
 ### 测试
 
-- 单元：infohash 规范化、标题解析、过滤规则、状态机转换（假适配器注入 transient/permanent 错误）、
-  通知内容组装、提议确认幂等。
-- PG 集成：入库幂等（并发两次 `poll_feed`）、claim 互斥、租约过期回收与对账。
+- 单元：infohash 规范化、标题解析、过滤规则（含 `episode_dedupe` 对各状态的阻挡规则）、状态机转换
+  （假适配器注入 transient/permanent 错误与 `not_found`）、检查间隔档位、通知内容组装、提议确认幂等。
+- PG 集成：入库幂等（并发两次 `poll_feed`）、claim 互斥、租约过期回收与对账、fencing（租约被接手后
+  旧 worker 写回不生效）、检查链收敛（同一行并发两次 `check_download`，只有一方推进 `next_check_at`、
+  只产生一次完成通知）、`poll_running_downloads` 只补投过期行、告警发送失败后补发。
 - 外部契约：针对真实 OpenList 的手动 smoke 脚本，不进 CI。
 - 现有门禁：`ruff`、`mypy`、`pytest`；P1 前端改动另跑前端检查。
 
@@ -457,9 +571,9 @@ app/anime_admin.py           # 运维 CLI
 | # | 问题 | 推荐 |
 |---|---|---|
 | Q1 | 数据是否按用户隔离 | 否。P0/P1 为单用户运维功能，表不带 `user_id`（提议表除外，用于确认归属）；以后需要多用户再加 |
-| Q2 | 通知渠道 | 飞书自定义机器人 webhook；Telegram 作为可选实现 |
+| Q2 | 通知渠道 | 已定：Telegram Bot，P0 唯一实现；`Notifier` 协议保留，以后可加其他渠道 |
 | Q3 | 订阅源管理方式 | P0 只用 CLI，不做前端；P1 再考虑「让 agent 创建订阅源」 |
-| Q4 | 标题解析的集数去重是否默认开启 | 开启（`episode_dedupe: true`），只在解析出集数时生效 |
+| Q4 | 标题解析的集数去重是否默认开启 | 开启（`episode_dedupe: true`），只在解析出集数时生效；已有任务失败时不阻挡后来者，并发下的少见重复可接受（§7.2） |
 | Q5 | 目标目录按番名分子目录 | 是；解析不出番名时放 `_未分类` |
 | Q6 | P1 审批方式 | 提议-确认（§8.3），Run 级挂起放到 P2 |
 | Q7 | anime 任务是否独立 worker | 是，独立 `anime` 队列与 `anime-worker`，并发 2 |
