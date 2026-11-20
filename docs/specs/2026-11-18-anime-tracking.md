@@ -4,6 +4,11 @@
 - 状态：草案，待确认（§15 待确认事项）；未实现
 - 修订：2026-11-20 补充一致性约束（§5.1、§6.3–§6.5、§7.1、§7.2、§7.4、§7.7、§13）；通知渠道改为
   Telegram（§7.6）；`running` 检查改为自适应轮询（§7.4）；P0 只接入蜜柑，爱恋移到 P1（§2、§7.2）
+- 修订：2026-11-20 按 S0 实测结果调整（§13 S0 结果）：适配器改为返回目录条目（§5.1、§5.2）；崩溃恢复
+  去掉 PikPak 去重层（§6.5）；`not_found` 改为按目录条目匹配并继续检查（§7.4）；拉取去掉条件 GET、
+  pubDate 按 UTC+8 解析（§6.1、§6.2、§7.1）；蜜柑无独立镜像（§2、§7.2）；播放链接签名来源（§7.6）；
+  OpenList 改为经 nginx + Cloudflare 公开 HTTPS 访问，不用 Tailscale（§5.2、§7.6、§10、Q8）；完成通知附
+  视频截图（§7.6）
 - 范围：新增 `app/services/anime` 领域模块、`app/tasks/anime_tasks.py` Celery 任务与 `anime` 队列、
   `app/anime_admin.py` 运维 CLI、OpenList 部署；P1 新增聊天内番剧工具、动作提议与确认接口
 - 不涉及（本期）：Run 挂起/恢复状态机、MCP client/server、浏览器自动化兜底、多租户、计费
@@ -32,7 +37,7 @@
 |---|---|---|
 | PikPak | 无公开开放 API；网页版提供 WebDAV（会员，据第三方资料为只读） | 写操作（离线下载）只能走非官方接口 → 经 OpenList 驱动隔离，见 §5 |
 | OpenList | Alist 的社区分支，自托管网盘聚合程序；提供 Web UI、WebDAV、HTTP API 与离线下载工具 | 仍依赖 PikPak 非官方接口，维护成本转移给社区；需健康检查与告警 |
-| 蜜柑计划 | 「我的番组」个人 RSS（`/RSS/MyBangumi?token=…`）、搜索 RSS（`/RSS/Search?searchstr=…`） | P0 唯一订阅来源。常见故障是某个域名不可达而非服务停摆 → base URL 可配置，故障时先切换镜像域名（个人 RSS 与站内字幕组选择不受影响）；个人 RSS 的 token 视为凭据，日志脱敏 |
+| 蜜柑计划 | 「我的番组」个人 RSS（`/RSS/MyBangumi?token=…`，只返回最近一段时间的条目）、搜索 RSS（`/RSS/Search?searchstr=…`，最多 100 条）、番剧 RSS（`/RSS/Bangumi?bangumiId=…`，不截断） | P0 唯一订阅来源。未找到独立镜像（`mikanime.tv` 只是 302 到 `mikanani.me`），base URL 仍可配置以备换域名；个人 RSS 有时间窗口，停机超过窗口会漏集，补救见 §7.2；个人 RSS 的 token 视为凭据，日志脱敏 |
 | 爱恋动漫 | 第三方资料给出搜索 RSS 格式 `/rss-{关键词}.xml`、全站 `/rss.xml`，无官方说明 | P1 接入（搜索工具，兼作蜜柑不可用时的手动备用订阅源）；以站内 RSS 按钮生成的实际链接为准（P1 前验证） |
 | bangumi.tv | 公开 API（`api.bgm.tv`），可搜索条目、取中日文名与别名；要求合理 User-Agent | 仅 P1 使用；失败时 agent 降级为直接关键词搜索 |
 
@@ -94,28 +99,54 @@ P1 的聊天 Run 仍由现有 LLM worker 执行。
 ```python
 class CloudDriveAdapter(Protocol):
     async def submit_offline(self, *, magnet: str, target_dir: str) -> SubmitReceipt: ...
-    async def get_task(self, ref: CloudTaskRef) -> CloudTaskStatus: ...       # running/completed/failed/not_found
+    async def get_task(self, ref: CloudTaskRef) -> CloudTaskStatus: ...       # running/completed/failed/not_found + total_bytes
     async def find_existing(self, *, infohash: str, target_dir: str) -> CloudTaskRef | None: ...
-    async def list_names(self, path: str) -> list[str]: ...                   # 目录下的文件/文件夹名
+    async def list_dir(self, path: str) -> list[DirEntry]: ...                # 名称、大小、创建时间、播放签名、截图 URL
     async def health(self) -> DriveHealth: ...                                 # 登录有效、根目录可列
-    def play_links(self, path: str) -> PlayLinks: ...                          # 文件页 + 直链 + 播放器 scheme
+    def play_links(self, path: str, entry: DirEntry) -> PlayLinks: ...         # 文件页 + 直链 + 播放器 scheme
 ```
 
-- `CloudTaskRef` 对业务不透明（JSON），只由所属适配器解释；云端在提交响应或任务详情中给出落盘名称时，
-  适配器把它存入引用，供 §7.4 的 `not_found` 兜底使用。
-- `not_found` 表示云端已查不到该任务（如 OpenList 清理任务列表或重启），**不等于失败**，处理见 §7.4。
+- `CloudTaskRef` 对业务不透明（JSON），只由所属适配器解释。云端任务详情不给落盘文件名，只给
+  `total_bytes`；`check_download` 每次看到它就写回引用，供 §7.4 的 `not_found` 兜底按大小匹配文件。
+- `not_found` 表示云端已查不到该任务（OpenList 重启会清空任务列表），**不等于失败**，处理见 §7.4。
+- 落盘文件名由种子决定，与 RSS 标题不同（如标题写「悠哈璃羽字幕社」，文件名为 `[UHA-WINGS]…`），
+  不能由标题推出；完成后的文件一律由 `list_dir` 按大小与创建时间确定。
 - 所有适配器调用的 HTTP 超时为 `ANIME_DRIVE_CALL_TIMEOUT_SECONDS`，与提交租约的关系见 §6.5。
 - 适配器错误分为 `transient`（网络、5xx、限流 → 退避重试）与 `permanent`（磁链非法、目录不存在、
   权限不足 → 直接 dead），由适配器归类，业务不解析错误文案。
 
 ### 5.2 OpenList 实现（P0 唯一实现）
 
-- 调用 OpenList HTTP API：登录取 token、离线下载（工具选 PikPak、目标路径为 PikPak 存储下的目录）、
-  查询离线下载任务、列目录。具体端点与字段在 S0 中以实测为准，写入实现计划。
-- 鉴权：为 iChat 建立**专用 OpenList 用户**，只授予番剧根目录的读与离线下载权限，不使用管理员 token；
-  401 时重新登录一次后重试。
-- 存储设置：PikPak 存储关闭「Web 代理」，`/d/` 直链以 302 重定向到 PikPak CDN，播放流量不经服务器。
-- 网络：OpenList 仅监听内网 / Docker 网络，经 Tailscale 供手机与电脑访问；不暴露公网。
+- 调用 OpenList HTTP API（v4.2.10 实测）：
+  - 登录：`POST /api/auth/login` 取 token，放在 `Authorization` 头（无 `Bearer` 前缀）。
+  - 提交：`POST /api/fs/add_offline_download`，`{"path", "urls": [磁链], "tool": "PikPak"}`；响应直接返回
+    任务 `id`，任务 `name` 形如 `download magnet:?xt=urn:btih:{infohash} to ({存储绝对路径})`。
+  - 查询：`GET /api/task/offline_download/undone` 与 `/done` 各一次即可取得全部任务；`state=1` 运行中、
+    `2` 成功、`7` 失败（`error` 为 PikPak 原始文案）。`status` 文案中的「maybe transferring」可忽略：
+    文件在任务标为成功前已出现在目录中。
+  - 列目录：`POST /api/fs/list`，条目带 `size`、`created`（带时区）与 `sign`。
+  - 只用 infohash 拼出的磁链（`magnet:?xt=urn:btih:{infohash}`，不带 tracker）可以正常下载。
+- 鉴权：为 iChat 建立**专用 OpenList 用户**，基本路径设为番剧根目录（如 `/pikpak/anime`），只授予离线下载
+  权限，不使用管理员 token。普通用户可以提交与查询离线任务（实测）。基本路径限制的是 OpenList 虚拟路径，
+  设为 `/pikpak` 时该用户能看到整个 PikPak 根目录，所以必须设到番剧目录。
+- OpenList 重启后任务列表清空、登录 token 失效：401 时重新登录一次后重试。
+- 存储设置：
+  - PikPak 存储关闭「Web 代理」，`/d/` 直链以 302 重定向到 PikPak CDN，播放流量不经服务器（实测）。
+  - **缓存过期设为 0**。默认目录缓存下，完成的文件要过期后才对 iChat 用户可见，而普通用户没有刷新权限
+    （`Refresh without permission`）。
+  - 「设置 → 离线下载」中配置 PikPak 临时目录，否则工具列表里没有 `PikPak`。
+- 路径：API 中的路径相对于用户基本路径；`/d/` 直链必须用存储绝对路径（基本路径 + 相对路径），否则 401。
+  适配器登录后从 `GET /api/me` 读取 `base_path`，不另设配置。
+- 网络（P0 取舍：先跑通功能）：OpenList **经现有 nginx + Cloudflare 以独立子域名公开 HTTPS 访问**，手机与
+  电脑不需要额外客户端，可与日常代理共存。容器端口不映射到宿主机，只由 nginx 经 Docker 内网转发；iChat
+  后端也走 Docker 内网（`OPENLIST_BASE_URL`），不绕公网。
+- 公开带来的风险与 P0 缓解：
+  - OpenList 全部接口暴露在公网扫描下：admin 与 iChat 用户都用长随机密码；关闭 guest 用户；nginx 对
+    `/api/auth/login` 限流；OpenList 跟进安全更新。
+  - 签名直链「拿到即可访问」：链接泄露后可被他人下载该文件、消耗 PikPak 流量，但不能浏览网盘或发起下载。
+    签名过期策略见 §7.6；必要时在 OpenList 中重置签名密钥使全部旧链接失效。
+  - 收紧暴露面（只公开 `/d/`，或改回 Tailscale）列入 P2（§14）。
+- 播放流量不经服务器与 Cloudflare：`/d/` 只返回 302，视频直接从 PikPak CDN 下载（实测）。
 
 ### 5.3 备选实现（不在本期）
 
@@ -140,7 +171,6 @@ class CloudDriveAdapter(Protocol):
 | `poll_interval_seconds` | int | 默认 600 |
 | `next_poll_at` / `last_polled_at` | timestamptz | |
 | `lease_expires_at` | timestamptz null | 拉取 claim 租约 |
-| `etag` / `last_modified` | text null | 条件 GET |
 | `consecutive_failures` / `last_error` | int / text | 连续失败达阈值告警 |
 | `created_at` / `updated_at` | timestamptz | |
 
@@ -152,7 +182,7 @@ class CloudDriveAdapter(Protocol):
 | `title` | text | 原始标题，**不受信任文本** |
 | `source` / `source_url` | varchar / text | 首次发现来源与详情页 |
 | `magnet` / `torrent_url` | text null | 至少一个非空；提交时优先磁链，否则由 infohash 构造磁链 |
-| `size_bytes` / `published_at` | bigint null / timestamptz null | |
+| `size_bytes` / `published_at` | bigint null / timestamptz null | 均为 RSS 声明值。`size_bytes` 与实际文件可相差约 5%，不能用于匹配文件；蜜柑 pubDate 不带时区，按 Asia/Shanghai 解析 |
 | `parsed` | jsonb | `series`、`episode`、`group`、`resolution`、`subtitle_lang`、`is_batch`、`parser`（`regex`/`llm`）、`parser_version` |
 | `first_seen_at` | timestamptz | |
 
@@ -168,7 +198,7 @@ class CloudDriveAdapter(Protocol):
 | `feed_id` / `proposal_id` | bigint null | 来源追溯 |
 | `target_dir` | text | |
 | `status` | varchar(16) | 见 §6.4 |
-| `cloud_task` | jsonb null | 不透明 `CloudTaskRef` |
+| `cloud_task` | jsonb null | 不透明 `CloudTaskRef`；含云端任务 id、观察到的 `total_bytes`、是否已丢失（§7.4） |
 | `file_paths` | jsonb null | 完成后的云盘文件路径 |
 | `attempt_count` / `next_attempt_at` / `lease_expires_at` / `last_error` | | claim 与退避 |
 | `lease_owner` | varchar(255) null | 每次 claim 新生成，写回时校验（fencing，§6.5） |
@@ -221,12 +251,19 @@ pending ──claim──> submitting ──成功──> running ──云端�
    （带本次 `CloudTaskRef`）并告警，供人工核对是否多出一个云端任务。沿用头像处理的 `lease_owner`
    模式（`app/services/avatars/processing.py`）。
 4. **对账**：租约过期的 `submitting` 行被回收时，**先调用 `find_existing(infohash, target_dir)`**：找到则
-   直接置 `running` 并写入引用（同时写 `submitted_at`、`next_check_at`，进入 §7.4 检查链）；找不到才重新提交。`target_dir` 使用下载任务创建时落库的值，不重新计算，
-   避免解析器升级后对账到另一个目录。
-5. **前提与降级**：第 4 步依赖「云端任务在完成后、OpenList 重启后仍能按 infohash 查到」，由 S0-6 验证。
-   不成立时 `find_existing` 恒返回 `None`，崩溃恢复退化为依赖 PikPak 对同一 infohash 去重（S0-3）；
-   两者都不成立则接受「崩溃窗口内可能重复一份」，并写入 ADR（Q9）。即使重复，影响也只是同一目录
-   多一份文件，不扩散。
+   直接置 `running` 并写入引用（同时写 `submitted_at`、`next_check_at`，进入 §7.4 检查链）；找不到才重新提交。
+   `target_dir` 使用下载任务创建时落库的值，不重新计算，避免解析器升级后对账到另一个目录。
+   `find_existing` 遍历 `undone` 与 `done` 两个任务列表，从任务 `name` 中解析 infohash 与目标路径匹配；
+   有多个匹配时取非失败的最新一个。
+5. **对账的边界（S0 实测）**：
+   - 云端任务列表在 OpenList 进程存活期间保留（含已完成任务），所以**只有 anime-worker 崩溃**（P0 验收
+     第 3 条的场景）时对账有效。
+   - OpenList 重启会清空任务列表，此时 `find_existing` 返回 `None`。PikPak **不对同一 infohash 去重**，
+     重复提交会落成 `…(1).mp4`（S0-3）。
+   - 因此「worker 在 `submitting` 崩溃」与「恢复前 OpenList 也重启」同时发生时会多一份文件。两者都发生在
+     约 0.1 秒的提交窗口附近，常见于宿主机整体重启。接受这一重复并写入 ADR（Q9）；影响只是同一目录多一份
+     文件，不扩散。不用目录比对来补这个洞：提交前不知道文件大小（RSS 声明值误差约 5%），按时间匹配又会
+     误认同目录里并发下载的其他集。
 
 通知同理：`notify_status` 先在事务中由 `pending` 原子 claim，发送成功后置 `sent`；崩溃窗口内最多
 重复一次通知（至少一次语义），可接受。
@@ -238,8 +275,9 @@ pending ──claim──> submitting ──成功──> running ──云端�
 - beat 每 60 秒投递 `dispatch_due_feeds`：`FOR UPDATE SKIP LOCKED` 选出到期且无有效租约的订阅源，
   写租约（120 秒，大于拉取超时与入库耗时）后逐个投递 `poll_feed(feed_id)`。重复拉取不影响正确性
   （入库幂等），租约只用于减少重复请求。
-- `poll_feed`：条件 GET（ETag / Last-Modified），超时 15 秒；解析 RSS 条目 → 规范化 infohash →
-  解析标题 → **同一事务内** `INSERT anime_releases ON CONFLICT DO NOTHING`，对通过过滤的资源
+- `poll_feed`：普通 GET，超时 15 秒（蜜柑不返回 ETag / Last-Modified，条件请求也只回 200，不做条件 GET；
+  个人 RSS 只有几 KB）；解析 RSS 条目 → 取 infohash（蜜柑条目没有磁链，infohash 即 `enclosure` 种子地址与
+  `link` 详情页地址末段的 40 位 hex，已与种子实际 infohash 核对一致）→ 解析标题 → **同一事务内** `INSERT anime_releases ON CONFLICT DO NOTHING`，对通过过滤的资源
   `INSERT anime_downloads ON CONFLICT (infohash) DO NOTHING`，更新 `next_poll_at`、清租约。
 - 提交后对新建的下载任务投递 `submit_download(public_id)` 作为唤醒信号；丢失由 `maintain_downloads`
   兜底。
@@ -270,13 +308,17 @@ pending ──claim──> submitting ──成功──> running ──云端�
 - `backfill_hours`：**首次拉取**时，发布时间早于「订阅源创建时间 − backfill_hours」的资源只入库为
   `skipped`，防止添加订阅源时一次性下载大量旧集。
 
-蜜柑「我的番组」已在站内选好字幕组，P0 只依赖它，订阅源通常只有一个。
+蜜柑「我的番组」已在站内选好番剧与字幕组，P0 只依赖它，订阅源通常只有一个。但同一字幕组常对同一集发多个
+版本（如简繁内封、繁体内嵌、简体内嵌），个人 RSS 中同一集可有 4 条，所以仍需 `include` / `exclude` 选定
+版本，`episode_dedupe` 兜底。条目不带字幕组 ID，字幕组只能从标题解析。
 
-蜜柑不可用时的处置（人工，不自动切换）：
+蜜柑不可用、或拉取中断时间超过个人 RSS 窗口时的处置（人工，不自动切换）：
 
 1. 订阅源连续失败 5 次后收到告警（§7.1）。
-2. 优先 `feeds update --url` 把域名换成镜像，个人 RSS token 与站内字幕组选择不变。
-3. 镜像也不可用时，P1 起可 `feeds add` 爱恋关键词订阅源作为临时备用；必须设置 `include` / `exclude`，
+2. 已知可用的新域名时，`feeds update --url` 换域名，个人 RSS token 与站内字幕组选择不变。目前未找到独立镜像。
+3. 恢复后若中断超过个人 RSS 窗口，按番剧 RSS（`/RSS/Bangumi?bangumiId=…`，不截断）临时 `feeds add`
+   补齐漏掉的集，设置 `backfill_hours` 覆盖中断时长，补齐后删除。
+4. 蜜柑长时间不可用时，P1 起可 `feeds add` 爱恋关键词订阅源作为临时备用；必须设置 `include` / `exclude`，
    并依赖 `backfill_hours` 防止下载旧集。同一种子由 infohash 唯一约束去重，同集不同字幕组由
    `episode_dedupe` 去重。
 
@@ -293,7 +335,7 @@ pending ──claim──> submitting ──成功──> running ──云端�
 - `submit_download`：按 §6.5 claim 并提交。fencing 写回成功时，在同一事务内置 `running`、写
   `submitted_at=now()`、`next_check_at=now()+10s`；提交后投递 `check_download(public_id)`，`countdown=10`。
 
-**检查间隔**：PikPak 对新番资源通常 10–30 秒内完成离线，检查前密后疏，按提交后经过的时间
+**检查间隔**：PikPak 对新番资源通常 10–30 秒内完成离线（S0-2 实测 300–480MB 单集 6–8 秒），检查前密后疏，按提交后经过的时间
 （`now − submitted_at`）决定下一次间隔：
 
 | 提交后经过 | 间隔 | 该段约检查次数 |
@@ -303,22 +345,34 @@ pending ──claim──> submitting ──成功──> running ──云端�
 | 10–60 分钟 | 2 分钟 | 25 |
 | 1–24 小时 | 10 分钟 | 约 138 |
 
-档位为代码常量，不做配置；第一档在 S0-2 实测 OpenList 状态刷新延迟后确定（刷新本身慢于 10 秒时
-改为 20 秒）。卡满 24 小时停滞上限的任务共检查约 190 次。
+档位为代码常量，不做配置。卡满 24 小时停滞上限的任务共检查约 190 次。一次 `undone` + `done` 查询即可
+取得全部任务，实现可以让同一轮到期的多个 `check_download` 共用一次查询，但正确性不依赖它。
 
 **`check_download(public_id)`**：
 
 1. 读取行；不是 `running` 时直接结束。记下本次读到的 `next_check_at` 为 `:observed`。
-2. 调用 `get_task`（只读，重复检查无害）。
+2. 调用 `get_task`（只读，重复检查无害）；引用已标记丢失时跳过，直接按 `not_found` 处理。
 3. 按结果写回，所有写回都带条件 `WHERE status='running' AND next_check_at=:observed`：
-   - `running` 且未超停滞上限：写新的 `next_check_at`，影响 1 行才投递下一条 countdown 消息；
-   - `completed`：写 `file_paths` 与 `completed_at`，置 `completed`、`notify_status=pending`、
-     `next_check_at=NULL`，提交后投递 `notify_download`；
+   - `running` 且未超停滞上限：写新的 `next_check_at`（及首次观察到的 `total_bytes`），影响 1 行才投递
+     下一条 countdown 消息；
+   - `completed`：按下文「定位文件」确定 `file_paths`，写 `completed_at`，置 `completed`、
+     `notify_status=pending`、`next_check_at=NULL`，提交后投递 `notify_download`；
    - `failed` 或超过停滞上限：置 `failed`、`notify_status=pending`、`next_check_at=NULL`；
-   - `not_found`：引用中有落盘名称且该名称出现在 `list_names(target_dir)` 中时，按 `completed` 处理；
-     否则置 `failed`，`last_error=cloud_task_missing`，失败通知写明「云端任务已不可查，文件可能已在
+   - `not_found`：按「定位文件」查目标目录。找到唯一匹配时按 `completed` 处理；否则在引用中标记丢失，
+     按正常间隔继续检查（PikPak 侧的下载不受 OpenList 重启影响，文件可能稍后出现）；超过停滞上限仍未
+     找到时置 `failed`，`last_error=cloud_task_missing`，失败通知写明「云端任务已不可查，文件可能已在
      目录中，请核对」，与普通下载失败区分。
 4. 条件不成立（影响 0 行）说明另一条检查链已推进或已处理该行：不写、不投递，直接结束。
+
+**定位文件**：`list_dir(target_dir)` 中满足以下全部条件的文件条目：
+
+- `created ≥ submitted_at − 60s`（60 秒容忍时钟偏差；`created` 带时区，实测落在提交与任务完成之间）；
+- 未出现在其他下载任务的 `file_paths` 中；
+- 引用中已有 `total_bytes` 时，`size` 与之**完全相等**（实测一致）。
+
+`completed` 分支下有多个匹配时取 `created` 最早者并记日志；`not_found` 分支只接受唯一匹配，宁可继续
+等待也不误认同目录中并发下载的另一集。只验证过单文件种子；多文件种子落成文件夹还是散落文件，在实现前
+补测，落成文件夹时按文件夹条目匹配，`file_paths` 记文件夹路径。
 
 `next_check_at` 充当检查链的版本号。迟到的消息、兜底补投与 broker 重投可能让同一行同时存在两条
 检查链；每次推进只有一方成功，多余的链在下一步自然终止，不会永久翻倍检查，也不会重复发通知。
@@ -343,18 +397,35 @@ broker 的 visibility timeout（默认 1 小时）后才会重投。由于 `poll
 
 ### 7.6 通知与播放链接
 
-- `Notifier` 协议，P0 唯一实现为 Telegram Bot：`sendMessage`（HTML 格式），发往 `TELEGRAM_CHAT_ID`
-  （需先在 Telegram 中对 bot 执行 `/start`）。关闭链接预览：Telegram 服务器访问不到 Tailscale 地址，预览
-  只会失败。
+- `Notifier` 协议，P0 唯一实现为 Telegram Bot，发往 `TELEGRAM_CHAT_ID`（需先在 Telegram 中对 bot 执行
+  `/start`）。完成通知有截图时用 `sendPhoto`（文字作为 HTML caption），否则与失败通知、告警一样用
+  `sendMessage`（HTML 格式）。关闭链接预览：预览会让 Telegram 服务器抓取签名直链，触发一次
+  CDN 下载，并把签名链接交给第三方；文件页需要登录，预览也没有内容。
 - Bot token 位于请求 URL 路径中（`/bot{token}/sendMessage`），视为凭据：日志、异常信息与 CLI 输出中
   一律脱敏，HTTP 客户端的请求日志不得记录完整 URL。
-- 完成通知内容：番名、集数、字幕组、分辨率、大小，以及：
+- 完成通知内容：截图（有则发）、番名、集数、字幕组、分辨率、大小，以及：
   - OpenList 文件页链接，以 inline keyboard 的 URL 按钮呈现（页面自带 PotPlayer / IINA / Infuse 等外部
-    播放器按钮）——**主入口**；
+    播放器按钮）——**主入口**。guest 已关闭，首次在某个浏览器打开需登录 OpenList（用自己的账号，不是
+    iChat 用户）；
   - 直链派生的播放器 scheme：`potplayer://{直链}`、`iina://weblink?url={编码直链}`、
     `infuse://x-callback-url/play?url={编码直链}`。Telegram 的 URL 按钮只接受 http(s) 与 `tg://`，scheme
     只能放在消息正文中；正文中的自定义 scheme 能否点击唤起在 S0 验证，不能则只保留文件页链接。
-- 直链使用 OpenList `/d/{路径}`（必要时带签名），每次访问时才换取 PikPak CDN 地址，通知中的链接不会过期。
+- 截图：PikPak 为视频自动生成截图，`fs/list` 条目的 `thumb` 字段是其 CDN 地址（实测 720×405 JPEG，无需
+  认证即可下载，内容为视频中的一帧，可能是 OP 或剧情画面）。
+  - `notify_download` 发送前调用一次 `list_dir(target_dir)`，按 `file_paths` 中的文件名取当前的 `sign` 与
+    `thumb`。在发送时现取而不是沿用完成检查时的结果：截图可能在完成后才生成，签名也以当时为准。
+  - worker 下载截图（限 5MB、超时 10 秒）后以 multipart 上传给 `sendPhoto`，不把 PikPak 的地址交给
+    Telegram：不依赖该地址的有效期，也不向第三方暴露。
+  - `thumb` 为空、下载失败或 caption 超过 1024 字符（按解析后的可见文本计）时，退回 `sendMessage` 纯文字
+    通知，不等待截图、不因此重试。截图生成延迟在 S0-4 补测；若普遍在几十秒内生成，再考虑让
+    `notify_download` 短暂延后。
+- 直链使用 OpenList `/d/{存储绝对路径}?sign={签名}`，每次访问时才换取 PikPak CDN 地址。签名规则（实测）：
+  - 签名**只能取 `fs/list` 条目中的 `sign`**；同一文件 `fs/get` 返回的 `sign` 在 `/d/` 上一律
+    `sign invalid`，与基本路径无关。取用时机见上条「截图」。
+  - 路径必须是存储绝对路径（含用户基本路径，见 §5.2），路径段逐段 URL 编码。
+  - 签名后缀 `:0` 表示永不过期，此时通知中的链接长期有效；若在 OpenList 设置了链接过期时间，旧通知中的
+    链接会失效，需要从文件页重新打开。OpenList 公开部署（§5.2）下推荐设置过期时间（如 30 天）：文件页
+    是主入口，过期只影响旧通知正文里的直链与 scheme。部署时确定并写入部署文档。
 - iOS 也可直接用 PikPak App 或在 Infuse 中挂载 PikPak WebDAV，无需本功能参与。
 
 ### 7.7 健康检查（`health_check`，beat 每 6 小时）
@@ -469,11 +540,11 @@ app/anime_admin.py           # 运维 CLI
 | `ANIME_ENABLED` | `false` | 总开关；关闭时 beat 任务直接返回 |
 | `ANIME_ALLOWED_USER_EMAILS` | 空 | P1 工具门禁 |
 | `OPENLIST_BASE_URL` | | 服务端访问地址（Docker 网络内） |
-| `OPENLIST_PUBLIC_URL` | | 通知中的链接前缀（Tailscale 地址） |
+| `OPENLIST_PUBLIC_URL` | | 通知中的链接前缀（OpenList 公开子域名，HTTPS） |
 | `OPENLIST_USERNAME` / `OPENLIST_PASSWORD` | | 专用低权限用户 |
 | `OPENLIST_OFFLINE_TOOL` | `PikPak` | |
-| `ANIME_STORAGE_ROOT` | `/PikPak/Anime` | OpenList 中的番剧根路径 |
-| `MIKAN_BASE_URL` | 官方域名 | 故障时改为镜像（§7.2） |
+| `ANIME_STORAGE_ROOT` | `/` | 番剧根路径，相对于 iChat 用户的基本路径（基本路径本身设为番剧目录，§5.2） |
+| `MIKAN_BASE_URL` | `https://mikanani.me` | 蜜柑换域名时修改（§7.2） |
 | `KISSSUB_BASE_URL` | 官方域名 | P1 |
 | `BANGUMI_API_BASE_URL` / `BANGUMI_USER_AGENT` | | P1 |
 | `ANIME_DOWNLOAD_STALL_TIMEOUT_SECONDS` | `86400` | |
@@ -484,8 +555,15 @@ app/anime_admin.py           # 运维 CLI
 
 部署：
 
-- `compose.yml` / `compose.prod.yml` 新增 `openlist` 服务（数据卷持久化，只连 Docker 内网，宿主机端口
-  只绑定 Tailscale 或 127.0.0.1）。
+- `compose.yml` / `compose.prod.yml` 新增 `openlist` 服务（数据卷持久化，只连 Docker 内网，`compose.prod.yml`
+  中不映射宿主机端口；本地 `compose.yml` 可只绑定 127.0.0.1 便于初始化）。OpenList v4.1 起容器以 uid 1001
+  运行，新建数据卷需先 `chown 1001:1001`，否则启动即退出。
+- `deploy/nginx.conf` 新增 OpenList 子域名的 server 块：复用现有 Cloudflare real-IP 配置与源站防火墙规则，
+  反代到 `openlist:5244`；`/api/auth/login` 加 `limit_req`；证书需覆盖该子域名。Cloudflare 侧为该子域名
+  开启代理，`/d/*` 不缓存（302 响应带签名）。
+- OpenList 初始化（部署文档中列为手动步骤）：admin 改为长随机密码、关闭 guest、挂载 PikPak 存储（关闭 Web
+  代理、缓存过期 0）、设置 PikPak 离线临时目录、设置签名过期时间（§7.6）、创建 iChat 用户（基本路径为番剧
+  目录、只开离线下载权限、长随机密码）。
 - 新增 `anime-worker`：`celery … worker --queues=anime --concurrency=2`，与邮件队列隔离，避免外部接口
   卡顿拖慢邮件；`task_routes` 增加 `app.tasks.anime_tasks.* → anime`。
 - beat 新增 `dispatch-anime-feeds`（60s）、`poll-running-anime-downloads`（60s）、
@@ -505,7 +583,7 @@ app/anime_admin.py           # 运维 CLI
 
 ## 12. 可观测性
 
-结构化日志事件：`anime_feed_polled`（新条目数、耗时、是否 304）、`anime_download_transition`
+结构化日志事件：`anime_feed_polled`（条目数、新条目数、耗时）、`anime_download_transition`
 （from/to、尝试次数、错误分类）、`anime_drive_call`（操作、耗时、结果）、`anime_notify_sent`、
 `anime_health_changed`、`anime_alert_sent`、`anime_download_stale_writeback`、`anime_proposal_decided`。
 URL 中的 token 一律脱敏。
@@ -519,23 +597,38 @@ URL 中的 token 一律脱敏。
 | S0-1 | OpenList 挂载 PikPak 并保持登录 | 放置 48 小时后仍可列目录，无需人工处理 |
 | S0-2 | API 发起 PikPak 离线下载 | curl 调用后任务出现在 PikPak，文件落到指定目录；记录端点、字段、任务查询方式。另记录：多个新番资源从提交到 OpenList 显示完成的耗时（决定 §7.4 第一档间隔）；能否一次调用查询全部任务（能则 `check_download` 可合并查询） |
 | S0-3 | 重复提交同一 infohash | 记录 PikPak 行为（去重 / 重复文件），决定 §6.5 第 3 点是否可依赖 |
-| S0-4 | 播放与通知 | PotPlayer、IINA、Infuse 均能播放 `/d/` 链接；部署服务器能直连 `api.telegram.org`（不能则在实现计划中加代理配置）；Telegram 正文中的自定义 scheme 能否点击唤起 |
+| S0-4 | 播放与通知 | PotPlayer、IINA、Infuse 均能播放 `/d/` 链接；部署服务器能直连 `api.telegram.org`（不能则在实现计划中加代理配置）；Telegram 正文中的自定义 scheme 能否点击唤起；手机在日常网络（开着代理）下经公开子域名打开文件页与 `/d/` 链接 |
 | S0-5 | RSS 格式 | 蜜柑个人 RSS、蜜柑搜索 RSS 的条目字段与 infohash 提取方式；记录至少一个可用的蜜柑镜像域名（爱恋搜索 RSS 移到 P1 开工前验证） |
 | S0-6 | 云端任务可查询性 | 记录：任务完成 1 小时后、OpenList 重启后能否查到该任务，能否从中取得磁链或 infohash；提交响应或任务详情能否给出落盘名称；文件是否只在下载完成后出现在目录中。据此确定 §6.5 第 4–5 步与 §7.4 `not_found` 兜底的实现 |
 
 S0-1 至 S0-5 任一项不通过，回到本文调整方案后再实现；S0-6 只记录结果，按 §6.5 第 5 步与 §7.4 选择
 已定义的降级路径。
 
+**S0 结果（2026-11-20，开发机 Docker 中的 OpenList v4.2.10 + 正式 PikPak 账号）**：
+
+| # | 结果 | 结论与落点 |
+|---|---|---|
+| S0-1 | 进行中 | 11-20 16:44 挂载，11-22 下午复查。部署服务器上重新登录 PikPak 时另观察是否触发验证码或设备限制 |
+| S0-2 | 通过 | 普通用户可提交与查询；只带 infohash 的磁链可下载；两集 300–480MB 提交到完成 6–8 秒（§7.4 第一档 10 秒不变）；一次 `undone` + `done` 查询取得全部任务；需配置 PikPak 临时目录、缓存过期设 0（§5.2） |
+| S0-3 | 不通过 | PikPak **不去重**，重复提交落成 `…(1).mp4`；§6.5 去掉该降级层，改为接受并写 ADR |
+| S0-4 | 部分通过 | 开发机与部署服务器均可直连 `api.telegram.org`；`/d/` 链接在浏览器中 302 到 PikPak CDN；签名只能取自 `fs/list`（§7.6）；`fs/list` 的 `thumb` 为可匿名下载的视频截图（§7.6）。待测：三端播放器、Telegram 正文中的 scheme、手机经公开子域名访问（部署后）、刚完成的文件 `thumb` 是否已生成及延迟 |
+| S0-5 | 部分通过 | infohash 取自 `enclosure` / `link` 末段并与种子核对一致；无 ETag（§7.1）；pubDate 为 UTC+8 无时区（§6.2）；搜索 RSS 上限 100 条，个人 RSS 只返回最近一段；**未找到独立镜像**（§2、§7.2） |
+| S0-6 | 已记录 | OpenList 重启后任务列表清空、token 失效；任务详情无落盘文件名，只有 `total_bytes`，与文件 `size` 完全相等；文件 `created` 落在提交与完成之间（§6.5 第 5 步、§7.4 定位文件） |
+
+实现前仍需补测：多文件种子的落盘形态（§7.4）；部署环境下基本路径设为番剧目录时 `fs/list` 签名仍有效。
+
 ### P0 验收
 
 1. 蜜柑「我的番组」有新的一集发布后，在一个拉取周期加若干分钟内收到 Telegram 通知，点击后能在三端之一播放。
    其中云端完成到收到通知的延迟：正常不超过 20 秒；检查消息全部丢失时不超过 2 分钟。
 2. 同一资源在多个订阅源、多次拉取中出现，只产生一个下载任务和一条完成通知。
-3. 在 `submitting` 状态 `kill -9` anime-worker，重启后经对账不重复提交（以 PikPak 侧任务数核对）。
+3. 在 `submitting` 状态 `kill -9` anime-worker（OpenList 不重启），重启后经对账不重复提交（以目标目录中
+   无 `(1)` 副本核对）。
 4. OpenList 停机期间：下载任务按退避重试，健康检查发出一次告警；恢复后自动继续并发出一次恢复通知。
    Telegram 不可达期间发生的状态变化，在恢复后补发。
 5. 新增订阅源时不会下载回填窗口之外的旧集。
-6. 下载进行中重启 OpenList：已完成的下载收到完成通知，或收到「云端任务已不可查」通知，不报普通下载失败。
+6. 提交后、首次检查前重启 OpenList：经「定位文件」收到完成通知；找不到文件时继续检查，直到停滞上限才发
+   「云端任务已不可查」通知，不报普通下载失败。
 
 ### P1 验收
 
@@ -547,8 +640,11 @@ S0-1 至 S0-5 任一项不通过，回到本文调整方案后再实现；S0-6 �
 
 ### 测试
 
-- 单元：infohash 规范化、标题解析、过滤规则（含 `episode_dedupe` 对各状态的阻挡规则）、状态机转换
-  （假适配器注入 transient/permanent 错误与 `not_found`）、检查间隔档位、通知内容组装、提议确认幂等。
+- 单元：infohash 规范化（含从蜜柑 `enclosure` / `link` 提取）、pubDate 按 UTC+8 解析、标题解析、过滤规则
+  （含 `episode_dedupe` 对各状态的阻挡规则）、状态机转换（假适配器注入 transient/permanent 错误与
+  `not_found`）、检查间隔档位、定位文件（时间下界、排除他人文件、`total_bytes` 精确匹配、多匹配）、
+  `find_existing` 解析任务 `name`、直链拼接（基本路径前缀、逐段编码、`fs/list` 签名）、通知内容组装（有无截图、caption 超长退回纯文字）、
+  提议确认幂等。
 - PG 集成：入库幂等（并发两次 `poll_feed`）、claim 互斥、租约过期回收与对账、fencing（租约被接手后
   旧 worker 写回不生效）、检查链收敛（同一行并发两次 `check_download`，只有一方推进 `next_check_at`、
   只产生一次完成通知）、`poll_running_downloads` 只补投过期行、告警发送失败后补发。
@@ -565,6 +661,8 @@ S0-1 至 S0-5 任一项不通过，回到本文调整方案后再实现；S0-6 �
   生成提议。
 - **LLM 标题解析入管线**：评测证明收益后，对规则解析失败的标题回退到 LLM。
 - **浏览器兜底适配器**：OpenList 驱动失效时的备用写入路径。
+- **收紧 OpenList 暴露面**：反代只放行 `/d/*`，管理界面与 API 只在内网或 SSH 隧道访问；代价是通知主入口
+  改为直链（没有文件页）。或在手机代理与 Tailscale 能共存时改回 Tailscale。
 
 ## 15. 待确认事项
 
@@ -577,5 +675,5 @@ S0-1 至 S0-5 任一项不通过，回到本文调整方案后再实现；S0-6 �
 | Q5 | 目标目录按番名分子目录 | 是；解析不出番名时放 `_未分类` |
 | Q6 | P1 审批方式 | 提议-确认（§8.3），Run 级挂起放到 P2 |
 | Q7 | anime 任务是否独立 worker | 是，独立 `anime` 队列与 `anime-worker`，并发 2 |
-| Q8 | OpenList 部署位置 | 与 iChat 同机、同一 Compose，经 Tailscale 访问 |
-| Q9 | 是否为本功能写 ADR | 写一篇：「经 OpenList 适配非官方云盘接口，PG 状态行持有下载事实」，在 S0 通过后补 |
+| Q8 | OpenList 部署位置 | 已定：与 iChat 同机、同一 Compose，经现有 nginx + Cloudflare 以子域名公开 HTTPS 访问（§5.2）；不用 Tailscale，因为手机需与日常代理共存 |
+| Q9 | 是否为本功能写 ADR | 写一篇：「经 OpenList 适配非官方云盘接口，PG 状态行持有下载事实」，在 S0 通过后补；含 §6.5 第 5 步接受的重复下载窗口 |
