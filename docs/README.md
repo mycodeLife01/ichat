@@ -147,7 +147,7 @@ Goal documents for goal-driven development runs (success criteria + verification
 
 Current feature requirement and design specifications. A design status does not imply implementation or verification is complete.
 
-- `2026-11-18-anime-tracking.md` — anime tracking and search assistant: RSS feeds (Mikan/Kisssub) → OpenList → PikPak offline downloads with Feishu notifications and play links (P0, no LLM); chat tools, action proposals, and confirmation (P1); data model, download state machine and crash-window reconciliation, S0 spikes, evals, and open questions; draft, not implemented.
+- `2026-11-18-anime-tracking.md` — anime tracking and search assistant: Mikan RSS → OpenList → PikPak offline downloads with Telegram notifications and play links (P0, no LLM); Kisssub, chat tools, action proposals, and confirmation (P1); data model, download state machine, lease fencing and crash-window reconciliation, adaptive download checks, alert delivery, S0 spikes, evals, and open questions; draft, not implemented.
 - `2026-10-28-long-paste-attachment.md` — long paste becomes a `.txt` message attachment: thresholds, attachment `origin` (upload/paste) across uploads/assets/attachments, paste stats, owner and share text-read endpoints, model metadata tagging, share snapshot, and composer/message/share cards; in progress.
 - `2026-09-27-run-timing.md` — run timing: worker phase partition persisted to `runs.timing`, `run_timing` log metric, and the assistant 已思考 N 秒 work-time label (hidden on shares); implemented.
 - `2026-09-26-send-anchored-scrolling.md` — live thread send-anchored scrolling: three scroll modes, anchor position, collapsible bottom reserve, effective bottom, and real-Chromium acceptance; implemented.
@@ -179,6 +179,12 @@ Pre-implementation design specs. Consult for product/design rationale.
 ### `docs/superpowers/plans/`
 
 Historical implementation checklists, one per past sprint. **Not active reference.** Consult only when reconstructing how a past implementation was sequenced. For "what was built", prefer the matching handover doc.
+
+### `docs/learning/`
+
+Study notes that explain general engineering principles through this project's real designs. **Non-authoritative: never use them as implementation rules or design facts.** Rules live in `docs/architecture/`, design facts in the linked spec/handover; when a note disagrees with those, the note is stale.
+
+- `eventual-consistency.md` — eventual consistency across PG, Celery, external APIs, and notifications, taught through the anime tracking spec: post-commit wakeups with sweeps, unique constraints over check-then-act, transactional outbox, in-doubt states and reconciliation, lease fencing, version-conditioned writes, at-least-once vs at-most-once, when not to add protection, a design retrospective, a checklist, and self-test questions.
 
 ### `docs/archive/scratch/`
 
